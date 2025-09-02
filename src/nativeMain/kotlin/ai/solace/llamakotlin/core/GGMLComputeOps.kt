@@ -2,7 +2,9 @@ package ai.solace.llamakotlin.core
 
 import ai.solace.llamakotlin.core.GGMLGraphAllocator // Required for new function signatures
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.round
+import kotlin.math.sqrt
 import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES
 
 /**
@@ -915,6 +917,42 @@ fun computeMatMulRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a
     return dst
 }
 
+fun computeRelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
+    val dst = GGMLTensor(type = a.type)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
+    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
+    graphAllocator.allocateGraph(tempGraph)
+    computeRelu(graphAllocator, graphAllocator.context, a, dst)
+    return dst
+}
+
+fun computeGelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
+    val dst = GGMLTensor(type = a.type)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
+    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
+    graphAllocator.allocateGraph(tempGraph)
+    computeGelu(graphAllocator, graphAllocator.context, a, dst)
+    return dst
+}
+
+fun computeSilu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
+    val dst = GGMLTensor(type = a.type)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
+    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
+    graphAllocator.allocateGraph(tempGraph)
+    computeSilu(graphAllocator, graphAllocator.context, a, dst)
+    return dst
+}
+
+fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, eps: Float): GGMLTensor {
+    val dst = GGMLTensor(type = a.type)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
+    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
+    graphAllocator.allocateGraph(tempGraph)
+    computeRMSNorm(graphAllocator, graphAllocator.context, a, eps, dst)
+    return dst
+}
+
 fun dequantizeTensor(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor): GGMLTensor {
     val result = GGMLTensor(type = GGMLType.F32)
     result.ne = tensor.ne.copyOf()
@@ -1590,6 +1628,70 @@ fun computeGelu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context:
         GGMLType.F32 -> applyNDIter(dst, totalSize) { _, ind -> dst.setFloat(graphAllocator, gelu(a.getFloat(graphAllocator, *ind)), *ind) }
         GGMLType.F16 -> applyNDIter(dst, totalSize) { _, ind -> dst.setHalf(graphAllocator, gelu(a.getHalf(graphAllocator, *ind)), *ind) }
         else -> throw NotImplementedError("computeGelu not implemented for type ${a.type}")
+    }
+}
+
+fun computeSilu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+    for (i in 0 until GGML_MAX_DIMS) {
+        if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
+    }
+    if (dst.type != a.type) throw IllegalArgumentException("Result tensor type must match input type")
+
+    val totalSize = dst.numElements().toInt()
+    val sigmoid = {x:Float -> 1.0f / (1.0f + exp(-x))}
+    when (a.type) {
+        GGMLType.F32 -> applyNDIter(dst, totalSize) { _, ind ->
+            val v = a.getFloat(graphAllocator, *ind)
+            dst.setFloat(graphAllocator, v * sigmoid(v), *ind)
+        }
+        GGMLType.F16 -> applyNDIter(dst, totalSize) { _, ind ->
+            val v = a.getHalf(graphAllocator, *ind)
+            dst.setHalf(graphAllocator, v * sigmoid(v), *ind)
+        }
+        else -> throw NotImplementedError("computeSilu not implemented for type ${a.type}")
+    }
+}
+
+fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, eps: Float, dst: GGMLTensor) {
+    for (i in 0 until GGML_MAX_DIMS) {
+        if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
+    }
+    if (dst.type != a.type) throw IllegalArgumentException("Result tensor type must match input type")
+
+    val ne0 = a.ne[0].toInt()
+    val ne1 = a.ne.getOrElse(1) { 1L }.toInt()
+    val ne2 = a.ne.getOrElse(2) { 1L }.toInt()
+    val ne3 = a.ne.getOrElse(3) { 1L }.toInt()
+    when (a.type) {
+        GGMLType.F32 -> {
+            for (i3 in 0 until ne3) for (i2 in 0 until ne2) for (i1 in 0 until ne1) {
+                var sumSq = 0.0f
+                for (i0 in 0 until ne0) {
+                    val v = a.getFloat(graphAllocator, i0, i1, i2, i3)
+                    sumSq += v * v
+                }
+                val scale = 1.0f / sqrt(sumSq / ne0 + eps)
+                for (i0 in 0 until ne0) {
+                    val v = a.getFloat(graphAllocator, i0, i1, i2, i3)
+                    dst.setFloat(graphAllocator, v * scale, i0, i1, i2, i3)
+                }
+            }
+        }
+        GGMLType.F16 -> {
+            for (i3 in 0 until ne3) for (i2 in 0 until ne2) for (i1 in 0 until ne1) {
+                var sumSq = 0.0f
+                for (i0 in 0 until ne0) {
+                    val v = a.getHalf(graphAllocator, i0, i1, i2, i3)
+                    sumSq += v * v
+                }
+                val scale = 1.0f / sqrt(sumSq / ne0 + eps)
+                for (i0 in 0 until ne0) {
+                    val v = a.getHalf(graphAllocator, i0, i1, i2, i3)
+                    dst.setHalf(graphAllocator, v * scale, i0, i1, i2, i3)
+                }
+            }
+        }
+        else -> throw NotImplementedError("computeRMSNorm not implemented for type ${a.type}")
     }
 }
 
@@ -2629,19 +2731,18 @@ object GGMLComputeOps {
     val context = graphAllocator.context
     computeGelu(graphAllocator, context, src, node)
     }
-    
+
     private fun computeSilu(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SILU operation requires source tensor")
     val context = graphAllocator.context
-    // TODO: implement SiLU; quick fallback using GELU for now
-    computeGelu(graphAllocator, context, src, node)
+    computeSilu(graphAllocator, context, src, node)
     }
-    
+
     private fun computeRmsNorm(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("RMS_NORM operation requires source tensor")
     val context = graphAllocator.context
-    // TODO: implement RMSNorm; no-op dup for now to keep graph running
-    computeDup(graphAllocator, node)
+    val eps = Float.fromBits(node.opParams[0])
+    computeRMSNorm(graphAllocator, context, src, eps, node)
     }
     
     private fun computeMulMat(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
