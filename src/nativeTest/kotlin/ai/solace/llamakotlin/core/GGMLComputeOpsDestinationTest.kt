@@ -1,5 +1,6 @@
 package ai.solace.llamakotlin.core
 
+import kotlin.math.exp
 import kotlin.test.*
 
 /**
@@ -190,6 +191,34 @@ class GGMLComputeOpsDestinationTest {
             val expected = if (testValues[i] > 0.0f) testValues[i] else 0.0f
             val actual = dst.getFloat(graphAllocator, i)
             assertEquals(expected, actual, "RELU result mismatch at index $i")
+        }
+    }
+
+    @Test
+    fun testComputeSoftMaxWithDestination() {
+        val context = GGMLContext()
+        var currentOffset = 0uL
+        val dims = longArrayOf(4)
+        val size = calculateTensorByteSize(GGMLType.F32, dims)
+
+        val src = createAndInitTensor("softmax_src", GGMLType.F32, dims, currentOffset)
+        val testValues = floatArrayOf(1f, 2f, 3f, 4f)
+        for (i in testValues.indices) {
+            src.setFloat(graphAllocator, testValues[i], i)
+        }
+        currentOffset += size
+
+        val dst = createAndInitTensor("softmax_dst", GGMLType.F32, dims, currentOffset)
+
+        computeSoftMax(graphAllocator, context, src, dst)
+
+        val max = testValues.maxOrNull()!!
+        val expVals = testValues.map { exp(it - max) }
+        val sum = expVals.sum()
+        for (i in testValues.indices) {
+            val expected = (expVals[i] / sum).toFloat()
+            val actual = dst.getFloat(graphAllocator, i)
+            assertEquals(expected, actual, 1e-5f, "SoftMax result mismatch at index $i")
         }
     }
 

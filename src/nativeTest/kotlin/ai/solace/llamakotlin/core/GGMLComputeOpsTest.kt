@@ -645,6 +645,52 @@ class GGMLComputeOpsTest {
         }
     }
 
+    // --- SOFT_MAX Tests ---
+    @Test
+    fun testComputeSoftMaxF32() {
+        val srcNe = longArrayOf(4)
+        val srcData = floatArrayOf(1f, 2f, 3f, 4f)
+        val srcTensor = createAndInitTensor("softmax_f32_src", GGMLType.F32, srcNe, dataOffset = 0uL)
+        for (i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
+
+        val resultTensor = computeSoftMax(graphAllocator, srcTensor)
+
+        assertEquals(GGMLType.F32, resultTensor.type)
+        assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SoftMax F32")
+
+        val max = srcData.maxOrNull()!!
+        val expVals = srcData.map { exp(it - max).toFloat() }
+        val sum = expVals.sum()
+        val expected = expVals.map { it / sum }.toFloatArray()
+        val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        for (i in expected.indices) {
+            assertEquals(expected[i], resultData[i], 1e-5f, "SoftMax F32 output mismatch at index $i")
+        }
+    }
+
+    @Test
+    fun testComputeSoftMaxF16() {
+        val srcNe = longArrayOf(4)
+        val srcDataF32 = floatArrayOf(1f, 2f, 3f, 4f)
+        val srcTensor = createAndInitTensor("softmax_f16_src", GGMLType.F16, srcNe, dataOffset = 0uL)
+        for (i in srcDataF32.indices) srcTensor.setHalf(graphAllocator, srcDataF32[i], i)
+
+        val resultTensor = computeSoftMax(graphAllocator, srcTensor)
+
+        assertEquals(GGMLType.F16, resultTensor.type)
+        assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SoftMax F16")
+
+        val max = srcDataF32.maxOrNull()!!
+        val expVals = srcDataF32.map { exp(it - max).toFloat() }
+        val sum = expVals.sum()
+        val expectedF32 = expVals.map { it / sum }.toFloatArray()
+        val resultDataF16AsF32 = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        for (i in expectedF32.indices) {
+            assertEquals(halfToFloat(floatToHalf(expectedF32[i])), resultDataF16AsF32[i], 0.001f,
+                "SoftMax F16 output mismatch at index $i")
+        }
+    }
+
     // --- RMS_NORM Tests ---
     @Test
     fun testComputeRMSNormF32() {

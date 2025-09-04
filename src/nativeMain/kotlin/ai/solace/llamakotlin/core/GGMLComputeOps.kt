@@ -944,6 +944,19 @@ fun computeSilu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
     return dst
 }
 
+/**
+ * Computes the SoftMax of tensor [a].
+ * Applies the operation along the first dimension of each row, producing a tensor of the same shape and type.
+ */
+fun computeSoftMax(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
+    val dst = GGMLTensor(type = a.type)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
+    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
+    graphAllocator.allocateGraph(tempGraph)
+    computeSoftMax(graphAllocator, graphAllocator.context, a, dst)
+    return dst
+}
+
 fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, eps: Float): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
     dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
@@ -1649,6 +1662,80 @@ fun computeSilu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context:
             dst.setHalf(graphAllocator, v * sigmoid(v), *ind)
         }
         else -> throw NotImplementedError("computeSilu not implemented for type ${a.type}")
+    }
+}
+
+fun computeSoftMax(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+    for (i in 0 until GGML_MAX_DIMS) {
+        if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
+    }
+    if (dst.type != a.type) throw IllegalArgumentException("Result tensor type must match input type")
+
+    val nCols = a.ne[0].toInt()
+    val nRows = (a.numElements() / a.ne[0]).toInt()
+    val rank = a.rank()
+    val baseIndices = IntArray(rank)
+
+    when (a.type) {
+        GGMLType.F32 -> {
+            for (row in 0 until nRows) {
+                var tmp = row
+                for (d in 1 until rank) {
+                    val dimSize = a.ne[d].toInt()
+                    baseIndices[d] = tmp % dimSize
+                    tmp /= dimSize
+                }
+                var maxVal = Float.NEGATIVE_INFINITY
+                for (col in 0 until nCols) {
+                    baseIndices[0] = col
+                    val v = a.getFloat(graphAllocator, *baseIndices)
+                    if (v > maxVal) maxVal = v
+                }
+                var sum = 0.0f
+                for (col in 0 until nCols) {
+                    baseIndices[0] = col
+                    val e = exp(a.getFloat(graphAllocator, *baseIndices) - maxVal)
+                    dst.setFloat(graphAllocator, e, *baseIndices)
+                    sum += e
+                }
+                val invSum = 1.0f / sum
+                for (col in 0 until nCols) {
+                    baseIndices[0] = col
+                    val v = dst.getFloat(graphAllocator, *baseIndices) * invSum
+                    dst.setFloat(graphAllocator, v, *baseIndices)
+                }
+            }
+        }
+        GGMLType.F16 -> {
+            for (row in 0 until nRows) {
+                var tmp = row
+                for (d in 1 until rank) {
+                    val dimSize = a.ne[d].toInt()
+                    baseIndices[d] = tmp % dimSize
+                    tmp /= dimSize
+                }
+                var maxVal = Float.NEGATIVE_INFINITY
+                for (col in 0 until nCols) {
+                    baseIndices[0] = col
+                    val v = a.getHalf(graphAllocator, *baseIndices)
+                    if (v > maxVal) maxVal = v
+                }
+                var sum = 0.0f
+                for (col in 0 until nCols) {
+                    baseIndices[0] = col
+                    val e = exp(a.getHalf(graphAllocator, *baseIndices) - maxVal)
+                    dst.setHalf(graphAllocator, e, *baseIndices)
+                    sum += e
+                }
+                val invSum = 1.0f / sum
+                for (col in 0 until nCols) {
+                    baseIndices[0] = col
+                    val v = dst.getHalf(graphAllocator, *baseIndices) * invSum
+                    dst.setHalf(graphAllocator, v, *baseIndices)
+                }
+            }
+        }
+        else -> throw NotImplementedError("computeSoftMax not implemented for type ${a.type}")
     }
 }
 
@@ -2641,6 +2728,7 @@ object GGMLComputeOps {
             GGMLOp.RELU -> computeRelu(graphAllocator, node)
             GGMLOp.GELU -> computeGelu(graphAllocator, node)
             GGMLOp.SILU -> computeSilu(graphAllocator, node)
+            GGMLOp.SOFT_MAX -> computeSoftMax(graphAllocator, node)
             GGMLOp.RMS_NORM -> computeRmsNorm(graphAllocator, node)
             GGMLOp.MUL_MAT -> computeMulMat(graphAllocator, node)
             GGMLOp.SUM -> computeSum(graphAllocator, node)
@@ -2736,6 +2824,12 @@ object GGMLComputeOps {
         val src = node.src[0] ?: throw IllegalArgumentException("SILU operation requires source tensor")
     val context = graphAllocator.context
     computeSilu(graphAllocator, context, src, node)
+    }
+
+    private fun computeSoftMax(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("SOFT_MAX operation requires source tensor")
+    val context = graphAllocator.context
+    computeSoftMax(graphAllocator, context, src, node)
     }
 
     private fun computeRmsNorm(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
