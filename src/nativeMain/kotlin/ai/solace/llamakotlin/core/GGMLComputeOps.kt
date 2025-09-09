@@ -2544,16 +2544,14 @@ private fun dequantizeQ2_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
     
     var elementIdx = destOffset
     
-    // Process 16-element sub-blocks
-    for (subBlock in 0 until QK_K/16) {
-        // Get quantized scale and min for this sub-block
+    // Process 16-element sub-blocks (Q2_K has 16 sub-blocks of 16 elements each)
+    for (subBlock in 0 until 16) {
+        // Get quantized scale for this sub-block
         val scaleAndMin = tensor.getQ2_KScale(graphAllocator, blockIndex, subBlock)
         val quantizedScale = scaleAndMin.toInt() and 0x0F
-        val quantizedMin = (scaleAndMin.toInt() shr 4) and 0x0F
         
-        // Reconstruct scale and min
+        // Reconstruct scale (Q2_K uses simple scale mapping)
         val scale = (quantizedScale.toFloat() / 15.0f) * d
-        val min = (quantizedMin.toFloat() * d) + dmin
         
         // Dequantize 16 values (4 values per byte, 2 bits each)
         for (i in 0 until 16 step 4) {
@@ -2562,7 +2560,7 @@ private fun dequantizeQ2_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
             for (j in 0 until 4) {
                 if (elementIdx < dest.size) {
                     val quantizedValue = (packedByte.toInt() shr (j * 2)) and 0x03
-                    val dequantizedValue = (quantizedValue.toFloat() / 3.0f) * scale + min
+                    val dequantizedValue = (quantizedValue.toFloat() / 3.0f) * scale + dmin
                     dest[elementIdx++] = dequantizedValue
                 }
             }
