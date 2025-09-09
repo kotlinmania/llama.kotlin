@@ -27,6 +27,7 @@
 .DS_Store
 .envrc
 .idea/
+.gradle/
 .swiftpm
 .vs/
 .vscode/
