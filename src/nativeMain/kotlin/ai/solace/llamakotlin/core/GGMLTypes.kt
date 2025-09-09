@@ -997,7 +997,7 @@ class GGMLTensor(
         
         // Store high 4 bits of min in alternating locations
         val minByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong() * 2uL + 1uL
-        if (minByteOffset < blockByteOffset + 4uL + K_SCALE_SIZE.toULong()) {
+        if ((subBlockIndex * 2 + 1) < K_SCALE_SIZE) {
             val minHighBits = (quantizedMin shr 2) and 0x0F
             buffer[(dataOffset + minByteOffset).toInt()] = minHighBits.toByte()
         }
