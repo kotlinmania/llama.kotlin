@@ -141,11 +141,11 @@ class SimpleQ4KTest {
         assertEquals(originalData.size, dequantizedData.size)
         
         // Check accuracy (Q4_K should have reasonable precision)
-        var sumSquaredError = 0.0
+        var sumSquaredError = 0.0f
         var maxError = 0.0f
         for (i in originalData.indices) {
             val error = abs(originalData[i] - dequantizedData[i])
-            sumSquaredError += (error * error).toDouble()
+            sumSquaredError += (error * error)
             maxError = maxOf(maxError, error)
         }
         val mse = sumSquaredError / originalData.size
