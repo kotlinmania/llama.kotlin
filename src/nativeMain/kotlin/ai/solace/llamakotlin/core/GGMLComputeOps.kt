@@ -219,9 +219,9 @@ internal fun computeDotProductQ4_KQ4_K(
             val scaleByteA = bufferA[(tensorQ4_KA.dataOffset + blockByteOffsetA.toULong() + 4uL + subBlock.toULong()).toInt()]
             val quantizedScaleA = scaleByteA.toInt() and 0x3F
             val quantizedMinLowA = (scaleByteA.toInt() shr 6) and 0x03
-            val minByteOffsetA = blockByteOffsetA + 4 + subBlock * 2 + 1
+            val minByteOffsetA = blockByteOffsetA + 4 + subBlock * 2
             val quantizedMinHighA = if (minByteOffsetA < blockByteOffsetA + 4 + K_SCALE_SIZE) {
-                bufferA[(tensorQ4_KA.dataOffset + minByteOffsetA.toULong()).toInt()].toInt() and 0x0F
+                bufferA[(tensorQ4_KA.dataOffset + minByteOffsetA.toULong() + 1uL).toInt()].toInt() and 0x0F
             } else 0
             val quantizedMinA = quantizedMinLowA or (quantizedMinHighA shl 2)
             val scaleA = (quantizedScaleA.toFloat() / 63.0f) * dA
