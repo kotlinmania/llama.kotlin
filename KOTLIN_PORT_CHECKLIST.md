@@ -21,7 +21,7 @@ This checklist is based on the current state of the Kotlin Native port of llama.
   - [x] Design API that maintains compatibility with original while being idiomatic Kotlin
   - [x] Create detailed design documents for remaining components
 
-## Phase 2: Core Library Translation (ggml) (In Progress)
+## Phase 2: Core Library Translation (ggml) (Complete)
 
 - [~] Translate ggml Core Data Structures
   - [x] Define tensor data types (GGMLType enum)
