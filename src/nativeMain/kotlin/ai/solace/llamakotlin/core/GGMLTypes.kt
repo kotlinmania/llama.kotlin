@@ -998,11 +998,13 @@ class GGMLTensor(
         val scaleByte = (quantizedScale and 0x3F) or ((quantizedMin and 0x03) shl 6)
         buffer[(dataOffset + scaleByteOffset).toInt()] = scaleByte.toByte()
         
-        // Store high 4 bits of min in alternating locations
-        val minByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong() * 2uL + 1uL
-        if ((subBlockIndex * 2 + 1) < K_SCALE_SIZE) {
+        // Store high 4 bits of min in correct location
+        val minByteOffset = blockByteOffset + 4uL + 8uL + (subBlockIndex / 2).toULong()
+        val minByteIndex = (dataOffset + minByteOffset).toInt()
+        // Bounds check similar to getQ4_KQuantizedMin
+        if (minByteIndex >= 0 && minByteIndex < buffer.size) {
             val minHighBits = (quantizedMin shr 2) and 0x0F
-            buffer[(dataOffset + minByteOffset).toInt()] = minHighBits.toByte()
+            buffer[minByteIndex] = minHighBits.toByte()
         }
     }
 
