@@ -128,7 +128,7 @@ fun computeMul(
             for (i in 0 until totalSize) {
                 val aVal = a.getInt(graphAllocator, i)
                 val bVal = b.getInt(graphAllocator, i)
-                dst.setInt(graphAllocator, aVal * bVal, i)
+                dst.setInt(graphAllocator, i, aVal * bVal)
             }
         }
         // Handle other types...
