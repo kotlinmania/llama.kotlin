@@ -121,7 +121,7 @@ fun computeMul(
             for (i in 0 until totalSize) {
                 val aVal = a.getFloat(graphAllocator, i)
                 val bVal = b.getFloat(graphAllocator, i) 
-                dst.setFloat(graphAllocator, aVal * bVal, i)
+                dst.setFloat(graphAllocator, i, aVal * bVal)
             }
         }
         GGMLType.I32 -> {
