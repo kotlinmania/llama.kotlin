@@ -1004,7 +1004,15 @@ class GGMLTensor(
         // Bounds check similar to getQ4_KQuantizedMin
         if (minByteIndex >= 0 && minByteIndex < buffer.size) {
             val minHighBits = (quantizedMin shr 2) and 0x0F
-            buffer[minByteIndex] = minHighBits.toByte()
+            val currentByte = buffer[minByteIndex].toInt() and 0xFF
+            val newByte = if (subBlockIndex % 2 == 0) {
+                // Even sub-block: update lower 4 bits
+                (currentByte and 0xF0) or minHighBits
+            } else {
+                // Odd sub-block: update upper 4 bits
+                (currentByte and 0x0F) or (minHighBits shl 4)
+            }
+            buffer[minByteIndex] = newByte.toByte()
         }
     }
 
