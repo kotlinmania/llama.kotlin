@@ -148,7 +148,7 @@ internal fun computeDotProductF32Q4_K(
                     sumF32 += f32Value1 * dequantizedQ4K1
                     
                     if (k2 < commonDimK) {
-                        val q2 = (qsByte.toInt() shr 4) and 0x0F
+                        val f32Value2 = tensorF32.getFloat(graphAllocator, rowIndexInF32, k2)
                         val f32Value2 = tensorF32.getFloat(graphAllocator, rowIndexInF32, k2)
                         val f32Value2 = tensorF32.getFloat(graphAllocator, k2, rowIndexInF32)
                         val dequantizedQ4K2 = (q2.toFloat() / 15.0f) * scale + min
