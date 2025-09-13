@@ -895,16 +895,19 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
         
-        // Min values are packed with scales - low 2 bits in the scale byte, high 4 bits in separate location
+        // Min values are packed with scales - low 2 bits in the scale byte, high 4 bits packed in bytes 8-11 of the scales array
         val scaleByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong()
         val scaleByte = buffer[(dataOffset + scaleByteOffset).toInt()]
         val quantizedMinLow = (scaleByte.toInt() shr 6) and 0x03
 
-        // High 4 bits are stored in alternating locations within the scales array
-        val minByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong() * 2uL + 1uL
-        val quantizedMinHigh = if (minByteOffset < blockByteOffset + 4uL + K_SCALE_SIZE.toULong()) {
-            buffer[(dataOffset + minByteOffset).toInt()].toInt() and 0x0F
-        } else 0
+        // High 4 bits for each sub-block are packed two per byte in bytes 8-11 of the scales array
+        val minHighByteOffset = blockByteOffset + 4uL + 8uL + (subBlockIndex / 2).toULong()
+        val minHighByte = buffer[(dataOffset + minHighByteOffset).toInt()]
+        val quantizedMinHigh = if (subBlockIndex % 2 == 0) {
+            minHighByte.toInt() and 0x0F // lower 4 bits
+        } else {
+            (minHighByte.toInt() shr 4) and 0x0F // upper 4 bits
+        }
         
         return quantizedMinLow or (quantizedMinHigh shl 2)
     }
