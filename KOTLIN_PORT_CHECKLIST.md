@@ -247,10 +247,15 @@ This checklist is based on the current state of the Kotlin Native port of llama.
     - [x] Added synthetic data generation matching upstream test-quantize-fns.cpp patterns.
     - [x] Added random data, edge case, and cross-quantization validation.
     - [x] Added dot product accuracy testing for quantized operations.
-    - [ ] Test accuracy for other future quantization types as they are implemented (e.g., Q2_K, Q3_K, Q5_K, Q6_K).
-  - [x] Test `GGMLDynTensorAllocator` (dynamic memory allocation within a buffer).
-  - [x] Test `GGMLGraphAllocator` (graph-level memory planning: reserve, inplace allocation, freeing).
-  - [x] Test `GGMLTensor` data accessors (low-level read/write for F32, I32, I16, F16).
+    - [~] Test accuracy for other future quantization types as they are implemented.
+      - [x] Q2_K
+      - [x] Q3_K
+      - [x] Q4_K
+      - [x] Q5_K
+      - [ ] Q6_K
+    - [x] Test `GGMLDynTensorAllocator` (dynamic memory allocation within a buffer).
+    - [x] Test `GGMLGraphAllocator` (graph-level memory planning: reserve, inplace allocation, freeing).
+    - [x] Test `GGMLTensor` data accessors (low-level read/write for F32, I32, I16, F16).
 
 - [x] Implement Integration Tests
   - [x] Test end-to-end computation graph operations and complex operation chains.

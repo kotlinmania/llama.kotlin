@@ -21,7 +21,7 @@ This is a **Kotlin/Native implementation** of llama.cpp, designed to bring the p
 - **CPU and Apple Metal backends** for optimal performance on supported hardware
 - **Idiomatic Kotlin API** while maintaining compatibility with original concepts
 - **Memory-efficient tensor operations** adapted for Kotlin/Native's memory model
-- **Comprehensive quantization support** (Q8_0, Q4_0, Q4_1, with K-Quant types in progress)
+- **Comprehensive quantization support** (Q8_0, Q4_0, Q4_1, BitNet 1.58, and K-Quant types Q2_K, Q3_K, Q4_K, Q5_K, Q8_K; Q6_K in progress)
 - **Automatic differentiation** for training and fine-tuning capabilities
 
 ## Current Status - Phase 3-4 (Advanced Core Implementation & Backend Development)
