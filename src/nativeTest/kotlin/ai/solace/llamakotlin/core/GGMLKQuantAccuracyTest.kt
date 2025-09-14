@@ -155,10 +155,10 @@ class GGMLKQuantAccuracyTest {
         val numElements = QK_K * 2 // Test with 2 blocks
         val originalF32Data = FloatArray(numElements) { i ->
             when {
-                i % QK_K < QK_K / 4 -> (i % QK_K).toFloat() / (QK_K / 4).toFloat() * 2.0f - 1.0f
-                i % QK_K < QK_K / 2 -> if ((i % QK_K) % 2 == 0) 0.5f else -0.5f
-                i % QK_K < 3 * QK_K / 4 -> (i % QK_K - QK_K / 2).toFloat() / (QK_K / 4).toFloat() * 0.25f
-                else -> ((i % QK_K - 3 * QK_K / 4).toFloat() / (QK_K / 4).toFloat()) * 3.0f - 1.5f
+                i % QK_K < QK_K / 4 -> (i % QK_K).toFloat() / (QK_K / 4).toFloat() * 2.0f - 1.0f // -1.0 to 1.0
+                i % QK_K < QK_K / 2 -> if ((i % QK_K) % 2 == 0) 0.5f else -0.5f // alternating
+                i % QK_K < 3 * QK_K / 4 -> (i % QK_K - QK_K / 2).toFloat() / (QK_K / 4).toFloat() * 0.25f // small range
+                else -> ((i % QK_K - 3 * QK_K / 4).toFloat() / (QK_K / 4).toFloat()) * 3.0f - 1.5f // wider range
             }
         }
 
