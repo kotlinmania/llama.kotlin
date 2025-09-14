@@ -106,7 +106,7 @@ class GGMLKQuantAccuracyTest {
     private fun calculateMeanAbsoluteDifference(original: FloatArray, new: FloatArray): Double {
         require(original.size == new.size) { "Arrays must have the same size for MAD." }
         if (original.isEmpty()) return 0.0
-        
+
         var sumAbsDiff = 0.0
         for (i in original.indices) {
             sumAbsDiff += abs(original[i] - new[i]).toDouble()
@@ -114,48 +114,78 @@ class GGMLKQuantAccuracyTest {
         return sumAbsDiff / original.size
     }
 
+    private fun performKQuantAccuracyTest(
+        quantType: GGMLType,
+        originalF32Data: FloatArray,
+        mseThreshold: Double,
+        madThreshold: Double
+    ) {
+        val numElements = originalF32Data.size
+        val dims = longArrayOf(numElements.toLong())
+        val f32SrcTensor = createAndPopulateF32Tensor(
+            name = "f32Src_${quantType.name}_Test",
+            dims = dims,
+            values = originalF32Data,
+            dataOffset = 0uL
+        )
+
+        val qTensor = quantizeTensor(graphAllocator, f32SrcTensor, quantType)
+        assertEquals(quantType, qTensor.type, "Tensor type should be ${quantType.name}")
+        assertTrue(qTensor.ne.contentEquals(f32SrcTensor.ne), "Tensor dimensions should match")
+        assertNotNull(qTensor.data)
+        assertTrue(qTensor.data is ByteArray)
+
+        val f32Dequantized = dequantizeTensor(graphAllocator, qTensor)
+        assertEquals(GGMLType.F32, f32Dequantized.type)
+        assertNotNull(f32Dequantized.data)
+        assertTrue(f32Dequantized.data is FloatArray)
+
+        val dequantizedData = getTensorDataAsFloatArray(f32Dequantized, graphAllocator)
+        assertEquals(originalF32Data.size, dequantizedData.size)
+
+        val mse = calculateMeanSquaredError(originalF32Data, dequantizedData)
+        assertTrue(mse < mseThreshold, "${quantType.name} MSE $mse too high (threshold $mseThreshold)")
+
+        val mad = calculateMeanAbsoluteDifference(originalF32Data, dequantizedData)
+        assertTrue(mad < madThreshold, "${quantType.name} Mean Absolute Difference $mad too high (threshold $madThreshold)")
+    }
+
     @Test
     fun testQ2_KAccuracy() {
         val numElements = QK_K * 2 // Test with 2 blocks
         val originalF32Data = FloatArray(numElements) { i ->
             when {
-                i % QK_K < QK_K/4 -> (i % QK_K).toFloat() / (QK_K/4).toFloat() * 2.0f - 1.0f // Block 1: -1.0 to 1.0
-                i % QK_K < QK_K/2 -> if ((i % QK_K) % 2 == 0) 0.5f else -0.5f // Block 1: alternating
-                i % QK_K < 3*QK_K/4 -> (i % QK_K - QK_K/2).toFloat() / (QK_K/4).toFloat() * 0.25f // Block 1: small range
-                else -> ((i % QK_K - 3*QK_K/4).toFloat() / (QK_K/4).toFloat()) * 3.0f - 1.5f // Block 1: wider range
+                i % QK_K < QK_K / 4 -> (i % QK_K).toFloat() / (QK_K / 4).toFloat() * 2.0f - 1.0f
+                i % QK_K < QK_K / 2 -> if ((i % QK_K) % 2 == 0) 0.5f else -0.5f
+                i % QK_K < 3 * QK_K / 4 -> (i % QK_K - QK_K / 2).toFloat() / (QK_K / 4).toFloat() * 0.25f
+                else -> ((i % QK_K - 3 * QK_K / 4).toFloat() / (QK_K / 4).toFloat()) * 3.0f - 1.5f
             }
         }
 
-        val dims = longArrayOf(numElements.toLong())
-        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q2K_Test", dims, originalF32Data, dataOffset = 0uL)
+        performKQuantAccuracyTest(
+            quantType = GGMLType.Q2_K,
+            originalF32Data = originalF32Data,
+            mseThreshold = 0.1,
+            madThreshold = 0.3
+        )
+    }
 
-        // Quantize to Q2_K
-        val q2kTensor = quantizeTensor(graphAllocator, f32SrcTensor, GGMLType.Q2_K)
-        assertEquals(GGMLType.Q2_K, q2kTensor.type)
-        assertTrue(q2kTensor.ne.contentEquals(f32SrcTensor.ne))
-        assertNotNull(q2kTensor.data)
-        assertTrue(q2kTensor.data is ByteArray)
+    @Test
+    fun testQ3_KAccuracy() {
+        val numElements = QK_K * 2 // Test with 2 blocks
+        val originalF32Data = FloatArray(numElements) { i ->
+            when (i / QK_K) {
+                0 -> (i % QK_K).toFloat() / QK_K.toFloat() * 3.0f - 1.5f
+                else -> if ((i % 3) == 0) 0.75f else -0.75f
+            }
+        }
 
-        // Dequantize Q2_K back to F32
-        val f32DequantizedTensor = dequantizeTensor(graphAllocator, q2kTensor)
-        assertEquals(GGMLType.F32, f32DequantizedTensor.type)
-        assertTrue(f32DequantizedTensor.ne.contentEquals(f32SrcTensor.ne))
-        assertNotNull(f32DequantizedTensor.data)
-        assertTrue(f32DequantizedTensor.data is FloatArray)
-
-        // Extract data for comparison
-        val dequantizedF32Data = getTensorDataAsFloatArray(f32DequantizedTensor, graphAllocator)
-
-        // Perform accuracy assertions
-        assertEquals(originalF32Data.size, dequantizedF32Data.size)
-
-        val mse = calculateMeanSquaredError(originalF32Data, dequantizedF32Data)
-        val mseThreshold = 0.1 // Q2_K has lower precision, so higher threshold
-        assertTrue(mse < mseThreshold, "Q2_K MSE $mse too high (threshold $mseThreshold)")
-
-        val mad = calculateMeanAbsoluteDifference(originalF32Data, dequantizedF32Data)
-        val madThreshold = 0.3
-        assertTrue(mad < madThreshold, "Q2_K Mean Absolute Difference $mad too high (threshold $madThreshold)")
+        performKQuantAccuracyTest(
+            quantType = GGMLType.Q3_K,
+            originalF32Data = originalF32Data,
+            mseThreshold = 0.08,
+            madThreshold = 0.25
+        )
     }
 
     @Test
@@ -163,38 +193,35 @@ class GGMLKQuantAccuracyTest {
         val numElements = QK_K * 2 // Test with 2 blocks
         val originalF32Data = FloatArray(numElements) { i ->
             when (i / QK_K) {
-                0 -> (i % QK_K).toFloat() / QK_K.toFloat() * 4.0f - 2.0f // Block 1: -2.0 to 2.0
-                else -> if ((i % QK_K) % 16 < 8) 1.0f else -1.0f // Block 2: alternating blocks of 1.0/-1.0
+                0 -> (i % QK_K).toFloat() / QK_K.toFloat() * 4.0f - 2.0f
+                else -> if ((i % QK_K) % 16 < 8) 1.0f else -1.0f
             }
         }
 
-        val dims = longArrayOf(numElements.toLong())
-        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q4K_Test", dims, originalF32Data, dataOffset = 0uL)
+        performKQuantAccuracyTest(
+            quantType = GGMLType.Q4_K,
+            originalF32Data = originalF32Data,
+            mseThreshold = 0.05,
+            madThreshold = 0.2
+        )
+    }
 
-        // Quantize to Q4_K
-        val q4kTensor = quantizeTensor(graphAllocator, f32SrcTensor, GGMLType.Q4_K)
-        assertEquals(GGMLType.Q4_K, q4kTensor.type)
-        assertTrue(q4kTensor.ne.contentEquals(f32SrcTensor.ne))
-        assertNotNull(q4kTensor.data)
-        assertTrue(q4kTensor.data is ByteArray)
+    @Test
+    fun testQ5_KAccuracy() {
+        val numElements = QK_K * 2 // Test with 2 blocks
+        val originalF32Data = FloatArray(numElements) { i ->
+            when (i / QK_K) {
+                0 -> (i % QK_K).toFloat() / QK_K.toFloat() * 4.0f - 2.0f
+                else -> if ((i % QK_K) % 32 < 16) 1.25f else -1.25f
+            }
+        }
 
-        // Dequantize back to F32
-        val f32DequantizedTensor = dequantizeTensor(graphAllocator, q4kTensor)
-        assertEquals(GGMLType.F32, f32DequantizedTensor.type)
-        assertNotNull(f32DequantizedTensor.data)
-        assertTrue(f32DequantizedTensor.data is FloatArray)
-
-        // Compare accuracy
-        val dequantizedF32Data = getTensorDataAsFloatArray(f32DequantizedTensor, graphAllocator)
-        assertEquals(originalF32Data.size, dequantizedF32Data.size)
-
-        val mse = calculateMeanSquaredError(originalF32Data, dequantizedF32Data)
-        val mseThreshold = 0.05 // Q4_K has better precision than Q2_K
-        assertTrue(mse < mseThreshold, "Q4_K MSE $mse too high (threshold $mseThreshold)")
-
-        val mad = calculateMeanAbsoluteDifference(originalF32Data, dequantizedF32Data)
-        val madThreshold = 0.2
-        assertTrue(mad < madThreshold, "Q4_K Mean Absolute Difference $mad too high (threshold $madThreshold)")
+        performKQuantAccuracyTest(
+            quantType = GGMLType.Q5_K,
+            originalF32Data = originalF32Data,
+            mseThreshold = 0.03,
+            madThreshold = 0.15
+        )
     }
 
     @Test
@@ -202,38 +229,19 @@ class GGMLKQuantAccuracyTest {
         val numElements = QK_K * 1 // Test with 1 block
         val originalF32Data = FloatArray(numElements) { i ->
             when {
-                i < QK_K/4 -> i.toFloat() / (QK_K/4).toFloat() * 10.0f // 0 to 10
-                i < QK_K/2 -> -(i - QK_K/4).toFloat() / (QK_K/4).toFloat() * 10.0f // 0 to -10
-                i < 3*QK_K/4 -> if (i % 2 == 0) 50.0f else -50.0f // Alternating large values
-                else -> (i - 3*QK_K/4).toFloat() * 0.1f - 1.0f // Small values around -1
+                i < QK_K / 4 -> i.toFloat() / (QK_K / 4).toFloat() * 10.0f
+                i < QK_K / 2 -> -(i - QK_K / 4).toFloat() / (QK_K / 4).toFloat() * 10.0f
+                i < 3 * QK_K / 4 -> if (i % 2 == 0) 50.0f else -50.0f
+                else -> (i - 3 * QK_K / 4).toFloat() * 0.1f - 1.0f
             }
         }
 
-        val dims = longArrayOf(numElements.toLong())
-        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q8K_Test", dims, originalF32Data, dataOffset = 0uL)
-
-        // Quantize to Q8_K
-        val q8kTensor = quantizeTensor(graphAllocator, f32SrcTensor, GGMLType.Q8_K)
-        assertEquals(GGMLType.Q8_K, q8kTensor.type)
-        assertTrue(q8kTensor.ne.contentEquals(f32SrcTensor.ne))
-        assertNotNull(q8kTensor.data)
-        assertTrue(q8kTensor.data is ByteArray)
-
-        // Dequantize back to F32
-        val f32DequantizedTensor = dequantizeTensor(graphAllocator, q8kTensor)
-        assertEquals(GGMLType.F32, f32DequantizedTensor.type)
-
-        // Compare accuracy
-        val dequantizedF32Data = getTensorDataAsFloatArray(f32DequantizedTensor, graphAllocator)
-        assertEquals(originalF32Data.size, dequantizedF32Data.size)
-
-        val mse = calculateMeanSquaredError(originalF32Data, dequantizedF32Data)
-        val mseThreshold = 0.02 // Q8_K should have good precision
-        assertTrue(mse < mseThreshold, "Q8_K MSE $mse too high (threshold $mseThreshold)")
-
-        val mad = calculateMeanAbsoluteDifference(originalF32Data, dequantizedF32Data)
-        val madThreshold = 0.1
-        assertTrue(mad < madThreshold, "Q8_K Mean Absolute Difference $mad too high (threshold $madThreshold)")
+        performKQuantAccuracyTest(
+            quantType = GGMLType.Q8_K,
+            originalF32Data = originalF32Data,
+            mseThreshold = 0.02,
+            madThreshold = 0.1
+        )
     }
 
     @Test

@@ -130,7 +130,12 @@ This document provides a comprehensive summary of the testing infrastructure imp
 ### 🔄 Remaining Work (Future)
 - [ ] End-to-end model loading and inference tests
 - [ ] Comparison with original C++ implementation outputs
-- [ ] Support for additional quantization types (Q2_K, Q3_K, etc.)
+- [~] Support for additional quantization types
+  - [x] Q2_K
+  - [x] Q3_K
+  - [x] Q4_K
+  - [x] Q5_K
+  - [ ] Q6_K
 - [ ] Extended model compatibility validation
 
 ## 🎉 Achievement Highlights

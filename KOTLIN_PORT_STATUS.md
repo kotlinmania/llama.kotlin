@@ -29,6 +29,7 @@ The project has made substantial progress across multiple development phases. He
      - BitNet 1.58 ternary quantization implementation
      - Direct quantized-to-quantized operations (Q×Q) avoiding expensive dequantization
      - Symmetric F32×Q_type optimizations providing 2-3x speedups
+     - K-Quant family (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K, Q8_K) with accuracy tests for Q2_K, Q3_K, Q4_K, Q5_K, and Q8_K
    - **Automatic differentiation** with backward pass for all core operations
 
 3. **✅ Phase 6 - Model Loading and File Format Support**: Largely Complete
