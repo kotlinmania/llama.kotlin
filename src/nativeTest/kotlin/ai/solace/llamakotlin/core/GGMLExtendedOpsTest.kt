@@ -62,7 +62,7 @@ class GGMLExtendedOpsTest {
         return tensor
     }
 
-    // Use shared utility for data extraction - no need for private function
+    // Use shared utility GGMLTestUtils.extractFloatData for data extraction - no need for private function
 
     private val dummyContext = GGMLContext() // Reusable dummy context
 
