@@ -101,7 +101,8 @@ class LlamaAttention(
         }
         
         // Compute attention scores: Q @ K^T
-        val scores = matmul(context, graphAllocator, qRope, transpose(finalKey))
+        val keyTransposed = transpose(context, graphAllocator, finalKey)
+        val scores = matmul(context, graphAllocator, qRope, keyTransposed)
         
         // Scale by sqrt(head_dim)
         val scaleFactor = 1.0f / sqrt(headDim.toFloat())
@@ -114,8 +115,8 @@ class LlamaAttention(
             scaledScores
         }
         
-        // Apply softmax
-        val attentionWeights = softmax(context, graphAllocator, maskedScores)
+        // Apply softmax using existing implementation
+        val attentionWeights = computeSoftMax(graphAllocator, maskedScores)
         
         // Apply attention to values: attention_weights @ V
         val output = matmul(context, graphAllocator, attentionWeights, finalValue)
@@ -126,16 +127,49 @@ class LlamaAttention(
     /**
      * Helper function to transpose a tensor (swap last two dimensions).
      */
-    private fun transpose(tensor: GGMLTensor): GGMLTensor {
+    private fun transpose(
+        context: GGMLContext,
+        graphAllocator: GGMLGraphAllocator,
+        tensor: GGMLTensor
+    ): GGMLTensor {
         val result = GGMLTensor(type = tensor.type)
         result.ne = tensor.ne.copyOf()
         
-        // Swap last two dimensions
-        val temp = result.ne[result.ne.size - 1]
-        result.ne[result.ne.size - 1] = result.ne[result.ne.size - 2]
-        result.ne[result.ne.size - 2] = temp
+        // Swap dimensions 0 and 1 (last two dimensions for 2D case)
+        val temp = result.ne[1]
+        result.ne[1] = result.ne[0]
+        result.ne[0] = temp
         
         result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.op = GGMLOp.TRANSPOSE
+        result.src[0] = tensor
+        
+        graphAllocator.allocateTensor(result)
+        
+        // For now, implement transpose manually since it may not be in compute ops yet
+        when (tensor.type) {
+            GGMLType.F32 -> {
+                val rows = tensor.ne[1].toInt()
+                val cols = tensor.ne[0].toInt()
+                for (i in 0 until rows) {
+                    for (j in 0 until cols) {
+                        val value = tensor.getFloat(graphAllocator, j, i)
+                        result.setFloat(graphAllocator, value, i, j)
+                    }
+                }
+            }
+            GGMLType.F16 -> {
+                val rows = tensor.ne[1].toInt()
+                val cols = tensor.ne[0].toInt()
+                for (i in 0 until rows) {
+                    for (j in 0 until cols) {
+                        val value = tensor.getHalf(graphAllocator, j, i)
+                        result.setHalf(graphAllocator, value, i, j)
+                    }
+                }
+            }
+            else -> throw NotImplementedError("Transpose not implemented for type ${tensor.type}")
+        }
         
         return result
     }
@@ -151,25 +185,25 @@ class LlamaAttention(
     ): GGMLTensor {
         val result = GGMLTensor(type = GGMLType.F32)
         
-        // Set result dimensions: [a.ne[0], b.ne[1], a.ne[2], a.ne[3]]
-        result.ne[0] = a.ne[0]
-        result.ne[1] = b.ne[1]
-        result.ne[2] = maxOf(a.ne[2], b.ne[2])
-        result.ne[3] = maxOf(a.ne[3], b.ne[3])
+        // Set result dimensions for matrix multiplication: [M, N, batch_dims...]
+        // a is [M, K], b is [K, N] -> result is [M, N]
+        result.ne[0] = a.ne[0]  // M
+        result.ne[1] = b.ne[1]  // N
+        result.ne[2] = maxOf(a.ne[2], b.ne[2])  // batch size
+        result.ne[3] = maxOf(a.ne[3], b.ne[3])  // additional batch dims
         
         result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
-        // Allocate result tensor
-        graphAllocator.allocateTensor(result)
-        
-        // Use existing matrix multiplication from GGMLComputeOps
-        val graph = GGMLCGraph()
+        // Set up operation
         result.op = GGMLOp.MUL_MAT
         result.src[0] = a
         result.src[1] = b
         
-        // Execute the operation
-        computeGraph(context, graphAllocator, graph)
+        // Allocate result tensor
+        graphAllocator.allocateTensor(result)
+        
+        // Use existing matrix multiplication implementation
+        computeMatMul(graphAllocator, context, a, b, result)
         
         return result
     }
@@ -221,68 +255,16 @@ class LlamaAttention(
         result.ne = a.ne.copyOf()
         result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
-        // Allocate result tensor
-        graphAllocator.allocateTensor(result)
-        
-        // Use existing ADD operation from GGMLComputeOps
-        val graph = GGMLCGraph()
+        // Set up operation
         result.op = GGMLOp.ADD
         result.src[0] = a
         result.src[1] = b
         
-        // Execute the operation
-        computeGraph(context, graphAllocator, graph)
-        
-        return result
-    }
-
-    /**
-     * Apply softmax to the last dimension of the tensor.
-     */
-    private fun softmax(
-        context: GGMLContext,
-        graphAllocator: GGMLGraphAllocator,
-        tensor: GGMLTensor
-    ): GGMLTensor {
-        val result = GGMLTensor(type = tensor.type)
-        result.ne = tensor.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        
         // Allocate result tensor
         graphAllocator.allocateTensor(result)
         
-        // Apply softmax along the last dimension
-        val batchSize = tensor.ne[3].toInt()
-        val seqLen = tensor.ne[2].toInt()
-        val numHeads = tensor.ne[1].toInt()
-        val dim = tensor.ne[0].toInt()
-        
-        for (b in 0 until batchSize) {
-            for (s in 0 until seqLen) {
-                for (h in 0 until numHeads) {
-                    // Find max for numerical stability
-                    var maxVal = Float.NEGATIVE_INFINITY
-                    for (d in 0 until dim) {
-                        val value = tensor.getFloat(graphAllocator, d, h, s, b)
-                        if (value > maxVal) maxVal = value
-                    }
-                    
-                    // Compute exp(x - max) and sum
-                    var sum = 0.0f
-                    val expValues = FloatArray(dim)
-                    for (d in 0 until dim) {
-                        val value = tensor.getFloat(graphAllocator, d, h, s, b)
-                        expValues[d] = exp(value - maxVal)
-                        sum += expValues[d]
-                    }
-                    
-                    // Normalize
-                    for (d in 0 until dim) {
-                        result.setFloat(graphAllocator, expValues[d] / sum, d, h, s, b)
-                    }
-                }
-            }
-        }
+        // Use existing ADD operation from GGMLComputeOps
+        computeAdd(graphAllocator, context, a, b, result)
         
         return result
     }

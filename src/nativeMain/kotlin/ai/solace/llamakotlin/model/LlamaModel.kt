@@ -50,89 +50,8 @@ class RMSNorm(
         graphAllocator: GGMLGraphAllocator,
         input: GGMLTensor
     ): GGMLTensor {
-        // Compute RMS: sqrt(mean(x^2) + eps)
-        val inputSquared = elementWiseSquare(context, graphAllocator, input)
-        val meanSquared = meanLastDim(context, graphAllocator, inputSquared)
-        val rms = elementWiseSqrt(context, graphAllocator, addScalar(context, graphAllocator, meanSquared, eps))
-        
-        // Normalize: x / rms
-        val normalized = elementWiseDiv(context, graphAllocator, input, rms)
-        
-        // Scale by learned weight
-        return elementWiseMul(context, graphAllocator, normalized, weight)
-    }
-    
-    // Helper functions - simplified implementations
-    private fun elementWiseSquare(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor): GGMLTensor {
-        // Use existing SQR operation
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.SQR
-        result.src[0] = input
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun meanLastDim(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor): GGMLTensor {
-        // Simplified mean computation - would use proper reduction
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.ne[0] = 1L // Reduce last dimension
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun elementWiseSqrt(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor): GGMLTensor {
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.SQRT
-        result.src[0] = input
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun addScalar(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor, scalar: Float): GGMLTensor {
-        // Create scalar tensor and add
-        val scalarTensor = GGMLTensor(type = GGMLType.F32)
-        scalarTensor.ne[0] = 1L
-        for (i in 1 until GGML_MAX_DIMS) scalarTensor.ne[i] = 1L
-        scalarTensor.nb = calculateContiguousStrides(scalarTensor.ne, scalarTensor.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(scalarTensor)
-    scalarTensor.setFloat(graphAllocator, scalar, 0)
-        
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.ADD
-        result.src[0] = input
-        result.src[1] = scalarTensor
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun elementWiseDiv(context: GGMLContext, graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-        val result = GGMLTensor(type = a.type)
-        result.ne = a.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.DIV
-        result.src[0] = a
-        result.src[1] = b
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun elementWiseMul(context: GGMLContext, graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-        val result = GGMLTensor(type = a.type)
-        result.ne = a.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.MUL
-        result.src[0] = a
-        result.src[1] = b
-        graphAllocator.allocateTensor(result)
-        return result
+        // Use the existing RMS norm implementation
+        return computeRMSNorm(graphAllocator, input, eps)
     }
 }
 
@@ -201,6 +120,9 @@ class LlamaMLP(
         result.op = GGMLOp.SILU
         result.src[0] = input
         graphAllocator.allocateTensor(result)
+        
+        // Use existing SILU implementation
+        computeSilu(graphAllocator, context, input, result)
         return result
     }
     
@@ -212,6 +134,9 @@ class LlamaMLP(
         result.src[0] = a
         result.src[1] = b
         graphAllocator.allocateTensor(result)
+        
+        // Use existing MUL implementation
+        computeMul(graphAllocator, context, a, b, result)
         return result
     }
 }

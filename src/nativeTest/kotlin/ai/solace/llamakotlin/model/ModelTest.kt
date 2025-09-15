@@ -90,8 +90,8 @@ class LlamaAttentionTest {
             headDim = 2
         )
         
-        // Create query, key, value tensors
-        val query = createTestTensor(2, 2, 2, 1) // [head_dim, num_heads, seq_len, batch]
+        // Create query, key, value tensors [head_dim=2, num_heads=2, seq_len=2, batch=1]
+        val query = createTestTensor(2, 2, 2, 1)
         val key = createTestTensor(2, 2, 2, 1)
         val value = createTestTensor(2, 2, 2, 1)
         
@@ -110,6 +110,11 @@ class LlamaAttentionTest {
         assertEquals(query.ne[1], result.ne[1]) // num_heads
         assertEquals(query.ne[2], result.ne[2]) // seq_len
         assertEquals(query.ne[3], result.ne[3]) // batch
+        
+        // Verify attention output has reasonable values (not NaN or infinite)
+        val outputVal = result.getFloat(graphAllocator, 0, 0, 0, 0)
+        assertFalse(outputVal.isNaN(), "Attention output should not be NaN")
+        assertFalse(outputVal.isInfinite(), "Attention output should not be infinite")
     }
     
     private fun createTestTensor(dim0: Int, dim1: Int, dim2: Int, dim3: Int): GGMLTensor {
@@ -452,7 +457,7 @@ class LlamaModelTest {
         
         // Set weights to 1.0
         for (i in 0 until 4) {
-            norm.weight.setFloat(graphAllocator, i, 1.0f)
+            norm.weight.setFloat(graphAllocator, 1.0f, i)
         }
         
         // Create input tensor
@@ -461,11 +466,11 @@ class LlamaModelTest {
         input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
         graphAllocator.allocateTensor(input)
         
-        // Set input values
-        input.setFloat(graphAllocator, 0, 0, 0, 1.0f)
-        input.setFloat(graphAllocator, 1, 0, 0, 2.0f)
-        input.setFloat(graphAllocator, 2, 0, 0, 3.0f)
-        input.setFloat(graphAllocator, 3, 0, 0, 4.0f)
+        // Set input values [1.0, 2.0, 3.0, 4.0] for first sequence position
+        input.setFloat(graphAllocator, 1.0f, 0, 0, 0)
+        input.setFloat(graphAllocator, 2.0f, 1, 0, 0)
+        input.setFloat(graphAllocator, 3.0f, 2, 0, 0)
+        input.setFloat(graphAllocator, 4.0f, 3, 0, 0)
         
         val result = norm.forward(context, graphAllocator, input)
         
@@ -473,5 +478,13 @@ class LlamaModelTest {
         assertEquals(input.ne[0], result.ne[0])
         assertEquals(input.ne[1], result.ne[1])
         assertEquals(input.ne[2], result.ne[2])
+        
+        // Verify result values are reasonable (not NaN or infinite)
+        val resultVal = result.getFloat(graphAllocator, 0, 0, 0, 0)
+        assertFalse(resultVal.isNaN(), "RMSNorm output should not be NaN")
+        assertFalse(resultVal.isInfinite(), "RMSNorm output should not be infinite")
+        
+        // The result should have smaller magnitude than input since we're normalizing
+        assertTrue(kotlin.math.abs(resultVal) < 4.0f, "Normalized value should be smaller than original")
     }
 }
