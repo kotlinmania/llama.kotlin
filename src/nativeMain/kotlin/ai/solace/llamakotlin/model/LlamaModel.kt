@@ -3,6 +3,95 @@ package ai.solace.llamakotlin.model
 import ai.solace.llamakotlin.core.*
 
 /**
+ * Utility function for linear transformation (matrix multiplication) with proper computation.
+ * This function creates the result tensor, sets up the operation, and executes the computation.
+ */
+internal fun computeLinear(
+    context: GGMLContext,
+    graphAllocator: GGMLGraphAllocator,
+    input: GGMLTensor,
+    weight: GGMLTensor
+): GGMLTensor {
+    val result = GGMLTensor(type = GGMLType.F32)
+    result.ne[0] = weight.ne[1] // output dimension
+    result.ne[1] = input.ne[1]  // sequence length
+    result.ne[2] = input.ne[2]  // batch size
+    for (i in 3 until GGML_MAX_DIMS) result.ne[i] = 1L
+    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.op = GGMLOp.MUL_MAT
+    result.src[0] = weight
+    result.src[1] = input
+    graphAllocator.allocateTensor(result)
+    
+    // Execute the actual computation
+    computeMatMul(graphAllocator, context, weight, input, result)
+    return result
+}
+
+/**
+ * Utility function for element-wise addition with proper computation.
+ */
+internal fun computeElementAdd(
+    context: GGMLContext,
+    graphAllocator: GGMLGraphAllocator,
+    a: GGMLTensor,
+    b: GGMLTensor
+): GGMLTensor {
+    val result = GGMLTensor(type = GGMLType.F32)
+    result.ne = a.ne.copyOf()
+    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.op = GGMLOp.ADD
+    result.src[0] = a
+    result.src[1] = b
+    graphAllocator.allocateTensor(result)
+    
+    // Execute the actual computation
+    computeAdd(graphAllocator, context, a, b, result)
+    return result
+}
+
+/**
+ * Utility function for element-wise multiplication with proper computation.
+ */
+internal fun computeElementMul(
+    context: GGMLContext,
+    graphAllocator: GGMLGraphAllocator,
+    a: GGMLTensor,
+    b: GGMLTensor
+): GGMLTensor {
+    val result = GGMLTensor(type = a.type)
+    result.ne = a.ne.copyOf()
+    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.op = GGMLOp.MUL
+    result.src[0] = a
+    result.src[1] = b
+    graphAllocator.allocateTensor(result)
+    
+    // Execute the actual computation  
+    computeMul(graphAllocator, context, a, b, result)
+    return result
+}
+
+/**
+ * Utility function for SILU activation with proper computation.
+ */
+internal fun computeSilu(
+    graphAllocator: GGMLGraphAllocator,
+    input: GGMLTensor
+): GGMLTensor {
+    val result = GGMLTensor(type = input.type)
+    result.ne = input.ne.copyOf()
+    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.op = GGMLOp.SILU
+    result.src[0] = input
+    graphAllocator.allocateTensor(result)
+    
+    // Use existing SILU implementation
+    computeSiluImpl(graphAllocator, graphAllocator.context, input, result)
+    return result
+}
+
+/**
  * LLaMA model configuration.
  */
 data class LlamaConfig(
@@ -50,89 +139,8 @@ class RMSNorm(
         graphAllocator: GGMLGraphAllocator,
         input: GGMLTensor
     ): GGMLTensor {
-        // Compute RMS: sqrt(mean(x^2) + eps)
-        val inputSquared = elementWiseSquare(context, graphAllocator, input)
-        val meanSquared = meanLastDim(context, graphAllocator, inputSquared)
-        val rms = elementWiseSqrt(context, graphAllocator, addScalar(context, graphAllocator, meanSquared, eps))
-        
-        // Normalize: x / rms
-        val normalized = elementWiseDiv(context, graphAllocator, input, rms)
-        
-        // Scale by learned weight
-        return elementWiseMul(context, graphAllocator, normalized, weight)
-    }
-    
-    // Helper functions - simplified implementations
-    private fun elementWiseSquare(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor): GGMLTensor {
-        // Use existing SQR operation
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.SQR
-        result.src[0] = input
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun meanLastDim(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor): GGMLTensor {
-        // Simplified mean computation - would use proper reduction
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.ne[0] = 1L // Reduce last dimension
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun elementWiseSqrt(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor): GGMLTensor {
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.SQRT
-        result.src[0] = input
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun addScalar(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor, scalar: Float): GGMLTensor {
-        // Create scalar tensor and add
-        val scalarTensor = GGMLTensor(type = GGMLType.F32)
-        scalarTensor.ne[0] = 1L
-        for (i in 1 until GGML_MAX_DIMS) scalarTensor.ne[i] = 1L
-        scalarTensor.nb = calculateContiguousStrides(scalarTensor.ne, scalarTensor.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(scalarTensor)
-    scalarTensor.setFloat(graphAllocator, scalar, 0)
-        
-        val result = GGMLTensor(type = input.type)
-        result.ne = input.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.ADD
-        result.src[0] = input
-        result.src[1] = scalarTensor
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun elementWiseDiv(context: GGMLContext, graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-        val result = GGMLTensor(type = a.type)
-        result.ne = a.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.DIV
-        result.src[0] = a
-        result.src[1] = b
-        graphAllocator.allocateTensor(result)
-        return result
-    }
-    
-    private fun elementWiseMul(context: GGMLContext, graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-        val result = GGMLTensor(type = a.type)
-        result.ne = a.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
-        result.op = GGMLOp.MUL
-        result.src[0] = a
-        result.src[1] = b
-        graphAllocator.allocateTensor(result)
-        return result
+        // Use the existing RMS norm implementation
+        return computeRMSNorm(graphAllocator, input, eps)
     }
 }
 
@@ -162,17 +170,17 @@ class LlamaMLP(
         input: GGMLTensor
     ): GGMLTensor {
         // Gate path: gate_proj(x)
-        val gate = linear(context, graphAllocator, input, gateProj)
-        val gateActivated = silu(context, graphAllocator, gate)
+        val gate = computeLinear(context, graphAllocator, input, gateProj)
+        val gateActivated = computeSilu(graphAllocator, gate)
         
         // Up path: up_proj(x)  
-        val up = linear(context, graphAllocator, input, upProj)
+        val up = computeLinear(context, graphAllocator, input, upProj)
         
         // Element-wise multiply: gate * up
-        val intermediate = elementWiseMul(context, graphAllocator, gateActivated, up)
+        val intermediate = computeElementMul(context, graphAllocator, gateActivated, up)
         
         // Down projection: down_proj(intermediate)
-        return linear(context, graphAllocator, intermediate, downProj)
+        return computeLinear(context, graphAllocator, intermediate, downProj)
     }
     
     private fun linear(
@@ -201,6 +209,9 @@ class LlamaMLP(
         result.op = GGMLOp.SILU
         result.src[0] = input
         graphAllocator.allocateTensor(result)
+        
+        // Use existing SILU implementation
+        computeSilu(graphAllocator, context, input, result)
         return result
     }
     
@@ -212,6 +223,9 @@ class LlamaMLP(
         result.src[0] = a
         result.src[1] = b
         graphAllocator.allocateTensor(result)
+        
+        // Use existing MUL implementation
+        computeMul(graphAllocator, context, a, b, result)
         return result
     }
 }
