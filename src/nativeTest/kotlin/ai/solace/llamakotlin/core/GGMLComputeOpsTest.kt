@@ -11,21 +11,7 @@ class GGMLComputeOpsTest {
     private lateinit var testBuffer: ByteArray
     private val bufferSize = 1 * 1024 * 1024 // 1MB
 
-    // Helper to calculate strides for a contiguous tensor
-    private fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
-        val nb = ULongArray(maxDims) { 0uL }
-        if (type.byteSize > 0uL) {
-            nb[0] = type.byteSize
-            if (maxDims > 1) {
-                for (d in 1 until maxDims) {
-                    // Use ne.getOrElse to handle cases where ne.size < d-1, default to 1 for element count
-                    val prevDimSize = ne.getOrElse(d - 1) { 1L }
-                    nb[d] = nb[d-1] * (if (prevDimSize > 0) prevDimSize.toULong() else 1uL)
-                }
-            }
-        }
-        return nb
-    }
+    // Use shared utility for stride calculation
 
     // Helper to calculate tensor byte size
     private fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
@@ -95,7 +81,7 @@ class GGMLComputeOpsTest {
             if (index < GGML_MAX_DIMS) tensor.ne[index] = dimSize
         }
 
-        tensor.nb = calculateStrides(type, tensor.ne)
+        tensor.nb = GGMLTestUtils.calculateStrides(type, tensor.ne)
         tensor.bufferId = bufferId
         tensor.dataOffset = dataOffset
         tensor.data = null // Important: We are testing accessors on the shared buffer

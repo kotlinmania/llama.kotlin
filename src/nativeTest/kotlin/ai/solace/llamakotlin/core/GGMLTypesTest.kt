@@ -30,76 +30,7 @@ class GGMLTypesTest {
         }
     }
 
-    private fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
-        if (type.byteSize == 0uL && type != GGMLType.COUNT) {
-            // This case should ideally not be hit for types we are testing direct access on (F32, F16, I32, I16)
-            // For robust testing of other types later, this might need adjustment or specific handling.
-            println("Warning: Calculating byte size for type ${type.name} with byteSize 0.")
-            return 0uL
-        }
-        var totalElements = 1UL
-        var nonZeroDimFound = false
-        for (dimSize in ne) {
-            if (dimSize > 0L) {
-                totalElements *= dimSize.toULong()
-                nonZeroDimFound = true
-            }
-        }
-        if (!nonZeroDimFound && ne.isNotEmpty()) return type.byteSize // Scalar from ne=[1,1,1,1]
-        if (totalElements == 0UL && ne.isNotEmpty()) return 0UL
-
-
-        return totalElements * type.byteSize
-    }
-
-    private fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
-        val nb = ULongArray(maxDims) { 0uL }
-        if (type.byteSize > 0uL) {
-            nb[0] = type.byteSize
-            var currentNelements = 1L
-            for(d in 0 until maxDims) { // Calculate ne based on actual rank from ne array
-                if (ne[d] == 0L && d > 0) { // typical for dims beyond actual rank if padded with 0
-                     if (d > 0 && ne[d-1] > 0) nb[d] = nb[d-1] * ne[d-1].toULong() else nb[d] = nb[0]
-                     continue
-                }
-                 if (ne[d] == 1L && d > 0 && ne.sliceArray(0 until d).all{it <=1L} ) { // scalar-like up to this dim
-                    currentNelements = 1L // reset for scalar like cases
-                 }
-
-
-                if (d == 0) {
-                    nb[d] = type.byteSize
-                    currentNelements = if(ne[d] > 0) ne[d] else 1L
-                } else {
-                     nb[d] = nb[d-1] * (if (ne[d-1] > 0) ne[d-1].toULong() else 1uL)
-                }
-            }
-        }
-        // Correction for ggml's nb definition where nb[0] is element size, nb[1] is stride for dim1 etc.
-        // The loop above calculates strides such that nb[d] is the stride for dimension d
-        // For contiguous:
-        // nb[0] = type_size
-        // nb[1] = ne[0] * type_size
-        // nb[2] = ne[1] * ne[0] * type_size
-        // nb[3] = ne[2] * ne[1] * ne[0] * type_size
-        // The getElementByteOffset uses: offset += indices[d] * nb[d]
-        // This means nb[d] should be the stride for dimension d.
-        // My loop for nb:
-        // nb[0] = type.byteSize
-        // nb[1] = nb[0] * ne[0]
-        // nb[2] = nb[1] * ne[1]  <-- This is correct for the getElementByteOffset interpretation
-        // nb[d] = nb[d-1] * ne[d-1]
-        // So the loop should be:
-        if (type.byteSize > 0uL) {
-            nb[0] = type.byteSize
-            for (i in 1 until maxDims) {
-                 nb[i] = nb[i-1] * (if (ne[i-1] > 0L) ne[i-1].toULong() else 1uL)
-            }
-        } else {
-            nb.fill(0uL)
-        }
-        return nb
-    }
+    // Use shared utilities for byte size and stride calculations
 
 
     private fun createTestTensor(
