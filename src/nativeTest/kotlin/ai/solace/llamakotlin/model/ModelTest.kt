@@ -517,7 +517,7 @@ class LlamaModelTest {
         
         // Set weights to 1.0
         for (i in 0 until 4) {
-            norm.weight.setFloat(graphAllocator, 1.0f, i)
+            norm.weight.setFloat(1.0f, i, graphAllocator)
         }
         
         // Create input tensor
