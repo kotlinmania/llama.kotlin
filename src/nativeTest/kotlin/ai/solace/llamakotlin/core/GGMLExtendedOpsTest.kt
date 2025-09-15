@@ -26,55 +26,11 @@ class GGMLExtendedOpsTest {
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
     }
 
-    // Helper to calculate tensor byte size (copied from existing tests for consistency)
-    private fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
-        if (type.byteSize == 0uL && type != GGMLType.COUNT && !type.name.startsWith("Q")) {
-            println("Warning: Calculating byte size for type ${type.name} with byteSize 0.")
-            return 0uL
-        }
-        var elements = 1UL
-        var validDimFound = false
-        for (i in ne.indices) {
-            if (ne[i] > 0L) {
-                elements *= ne[i].toULong()
-                validDimFound = true
-            } else if (ne[i] == 0L && elements != 0UL && validDimFound) {
-                return 0UL
-            }
-        }
-        if (!validDimFound && ne.isNotEmpty() && ne.all { it <= 1L }) {
-            elements = 1UL // Scalar or effectively scalar
-        } else if (!validDimFound && ne.isEmpty()) {
-            elements = 1UL // Treat as scalar if ne is completely empty
-        }
+    // Use shared utility for tensor byte size calculation
 
-        // For quantized types
-        if (type == GGMLType.Q8_0 && elements > 0uL) {
-            if (elements.toLong() % QK8_0 != 0L) {
-                println("Warning: Total elements $elements for Q8_0 is not divisible by block size $QK8_0.")
-            }
-            return (elements.toLong() / QK8_0).toULong() * type.byteSize
-        }
+    // Use shared utility for stride calculation
 
-        return elements * type.byteSize
-    }
-
-    // Helper to calculate contiguous strides (simplified)
-    private fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
-        val nb = ULongArray(maxDims) { 0uL }
-        if (type.byteSize > 0uL) {
-            nb[0] = type.byteSize
-            if (maxDims > 1) {
-                for (d in 1 until maxDims) {
-                    val prevDimSize = ne.getOrElse(d - 1) { 1L }
-                    nb[d] = nb[d-1] * (if (prevDimSize > 0) prevDimSize.toULong() else 1uL)
-                }
-            }
-        }
-        return nb
-    }
-
-    // Helper to create and initialize tensor
+    // Use shared utility for tensor creation
     private fun createAndInitTensor(
         name: String,
         type: GGMLType,
@@ -92,11 +48,11 @@ class GGMLExtendedOpsTest {
         // Ensure at least rank 1 for non-empty tensors
         if (rank == 0 && ne.any { it >= 1 }) rank = 1
 
-        // Calculate contiguous strides
-        tensor.nb = calculateStrides(type, ne)
+        // Calculate contiguous strides using shared utility
+        tensor.nb = GGMLTestUtils.calculateStrides(type, ne)
 
         // Calculate buffer size needed and allocate in graph allocator
-        val byteSize = calculateTensorByteSize(type, ne)
+        val byteSize = GGMLTestUtils.calculateTensorByteSize(type, ne)
         if (byteSize > 0uL) {
             val allocatedTensor = graphAllocator.tensorAllocators[0].allocate(byteSize, type, name)
             tensor.bufferId = allocatedTensor.bufferId
@@ -106,27 +62,7 @@ class GGMLExtendedOpsTest {
         return tensor
     }
 
-    // Helper to extract tensor data as FloatArray
-    private fun getTensorDataAsFloatArray(tensor: GGMLTensor, graphAllocator: GGMLGraphAllocator): FloatArray {
-        val numElements = tensor.numElements().toInt()
-        if (numElements == 0) return floatArrayOf()
-        
-        val result = FloatArray(numElements)
-        var idx = 0
-        
-        // Simple iteration for 1D case (most common in tests)
-        if (tensor.ne.size >= 1) {
-            for (i in 0 until numElements) {
-                result[idx++] = when (tensor.type) {
-                    GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
-                    GGMLType.F16 -> halfToFloat(tensor.getHalf(graphAllocator, i))
-                    else -> tensor.getFloat(graphAllocator, i) // Try to convert to float
-                }
-            }
-        }
-        
-        return result
-    }
+    // Use shared utility GGMLTestUtils.extractFloatData for data extraction - no need for private function
 
     private val dummyContext = GGMLContext() // Reusable dummy context
 
@@ -149,7 +85,7 @@ class GGMLExtendedOpsTest {
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for SUB F32")
 
-        val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
         assertEquals(expectedData.size, resultData.size, "SUB F32 result size mismatch")
         
         for (i in expectedData.indices) {
@@ -175,7 +111,7 @@ class GGMLExtendedOpsTest {
         assertEquals(GGMLType.F16, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for SUB F16")
 
-        val resultDataF32 = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        val resultDataF32 = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
         assertEquals(expectedDataF32.size, resultDataF32.size, "SUB F16 result size mismatch")
         
         for (i in expectedDataF32.indices) {
@@ -200,7 +136,7 @@ class GGMLExtendedOpsTest {
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for NEG F32")
 
-        val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
         assertEquals(expectedData.size, resultData.size, "NEG F32 result size mismatch")
         
         for (i in expectedData.indices) {
@@ -222,7 +158,7 @@ class GGMLExtendedOpsTest {
         assertEquals(GGMLType.F16, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for NEG F16")
 
-        val resultDataF32 = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        val resultDataF32 = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
         assertEquals(expectedDataF32.size, resultDataF32.size, "NEG F16 result size mismatch")
         
         for (i in expectedDataF32.indices) {
@@ -250,7 +186,7 @@ class GGMLExtendedOpsTest {
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for DIV F32")
 
-        val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
         assertEquals(expectedData.size, resultData.size, "DIV F32 result size mismatch")
         
         for (i in expectedData.indices) {
@@ -275,7 +211,7 @@ class GGMLExtendedOpsTest {
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for DIV F32 edge cases")
 
-        val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
         
         // Test that division handles edge cases appropriately
         assertTrue(resultData[0].isNaN() || resultData[0] == 0.0f, "1.0f / POSITIVE_INFINITY should be 0 or NaN")
@@ -301,7 +237,7 @@ class GGMLExtendedOpsTest {
             assertEquals(GGMLType.F32, resultTensor.type)
             assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SQR F32")
 
-            val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+            val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
             assertEquals(expectedData.size, resultData.size, "SQR F32 result size mismatch")
             
             for (i in expectedData.indices) {
@@ -330,7 +266,7 @@ class GGMLExtendedOpsTest {
             assertEquals(GGMLType.F32, resultTensor.type)
             assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SQRT F32")
 
-            val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
+            val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
             assertEquals(expectedData.size, resultData.size, "SQRT F32 result size mismatch")
             
             for (i in expectedData.indices) {

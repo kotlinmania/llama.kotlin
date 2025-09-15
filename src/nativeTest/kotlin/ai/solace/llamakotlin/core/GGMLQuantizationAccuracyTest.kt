@@ -18,19 +18,7 @@ class GGMLQuantizationAccuracyTest {
     // NOTE: These should ideally be in a common test utility file.
     // For now, they are included here for self-containment of this test file.
 
-    private fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
-        val nb = ULongArray(maxDims) { 0uL }
-        if (type.byteSize > 0uL) {
-            nb[0] = type.byteSize
-            if (maxDims > 1) {
-                for (d in 1 until maxDims) {
-                    val prevDimSize = ne.getOrElse(d - 1) { 1L }
-                    nb[d] = nb[d-1] * (if (prevDimSize > 0) prevDimSize.toULong() else 1uL)
-                }
-            }
-        }
-        return nb
-    }
+    // Use shared utility for stride calculation
 
     // Removed local helper calculateTensorByteSize(tensor: GGMLTensor)
     // Will use global ai.solace.llamakotlin.core.calculateTensorByteSize(tensor: GGMLTensor)
