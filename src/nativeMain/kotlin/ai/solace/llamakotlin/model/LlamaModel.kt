@@ -87,7 +87,7 @@ internal fun computeSilu(
     graphAllocator.allocateTensor(result)
     
     // Use existing SILU implementation
-    computeSilu(graphAllocator, graphAllocator.context, input, result)
+    computeSiluImpl(graphAllocator, graphAllocator.context, input, result)
     return result
 }
 
