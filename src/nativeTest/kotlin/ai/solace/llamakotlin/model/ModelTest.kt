@@ -444,6 +444,66 @@ class LlamaModelTest {
         assertEquals(config.vocabSize.toLong(), result.ne[0]) // vocab size
         assertEquals(inputIds.size.toLong(), result.ne[1]) // sequence length
         assertEquals(1L, result.ne[2]) // batch size
+        
+        // Verify output has reasonable values (not NaN or infinite)
+        val outputVal = result.getFloat(graphAllocator, 0, 0, 0, 0)
+        assertFalse(outputVal.isNaN(), "Model output should not be NaN")
+        assertFalse(outputVal.isInfinite(), "Model output should not be infinite")
+    }
+    
+    @Test
+    fun testMLPForward() {
+        val config = LlamaConfig(
+            hiddenSize = 32,
+            intermediateSize = 64
+        )
+        
+        val mlp = LlamaMLP(config)
+        
+        // Allocate MLP weights
+        graphAllocator.allocateTensor(mlp.gateProj)
+        graphAllocator.allocateTensor(mlp.upProj)
+        graphAllocator.allocateTensor(mlp.downProj)
+        
+        // Initialize weights with small values to avoid numerical issues
+        val weights = arrayOf(mlp.gateProj, mlp.upProj, mlp.downProj)
+        for (weight in weights) {
+            val numElements = weight.numElements().toInt()
+            for (i in 0 until numElements) {
+                val indices = IntArray(GGML_MAX_DIMS) { 0 }
+                var temp = i
+                for (d in 0 until GGML_MAX_DIMS) {
+                    indices[d] = temp % weight.ne[d].toInt()
+                    temp /= weight.ne[d].toInt()
+                }
+                weight.setFloat(graphAllocator, 0.01f * (i % 10 - 5), *indices)
+            }
+        }
+        
+        // Create input tensor
+        val input = GGMLTensor(type = GGMLType.F32)
+        input.ne = longArrayOf(32, 3, 1, 1) // [hidden, seq, batch]
+        input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
+        graphAllocator.allocateTensor(input)
+        
+        // Initialize input with small values
+        for (i in 0 until 32) {
+            for (j in 0 until 3) {
+                input.setFloat(graphAllocator, 0.1f * (i + j), i, j, 0, 0)
+            }
+        }
+        
+        val result = mlp.forward(context, graphAllocator, input)
+        
+        // Check output shape should match input hidden dimension
+        assertEquals(32L, result.ne[0]) // hidden size
+        assertEquals(3L, result.ne[1])  // sequence length
+        assertEquals(1L, result.ne[2])  // batch size
+        
+        // Verify result values are reasonable
+        val resultVal = result.getFloat(graphAllocator, 0, 0, 0, 0)
+        assertFalse(resultVal.isNaN(), "MLP output should not be NaN")
+        assertFalse(resultVal.isInfinite(), "MLP output should not be infinite")
     }
     
     @Test
