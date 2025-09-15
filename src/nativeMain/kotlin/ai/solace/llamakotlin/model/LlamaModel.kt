@@ -87,7 +87,7 @@ internal fun computeSilu(
     graphAllocator.allocateTensor(result)
     
     // Use existing SILU implementation
-    ai.solace.llamakotlin.core.computeSilu(graphAllocator, graphAllocator.context, input, result)
+    computeSilu(graphAllocator, graphAllocator.context, input, result)
     return result
 }
 
