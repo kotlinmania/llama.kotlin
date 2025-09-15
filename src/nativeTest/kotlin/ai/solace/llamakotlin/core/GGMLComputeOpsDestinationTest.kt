@@ -13,41 +13,7 @@ class GGMLComputeOpsDestinationTest {
     private lateinit var graphAllocator: GGMLGraphAllocator
     private val bufferSize = 1 * 1024 * 1024 // 1MB
 
-    // Helper to calculate strides for a contiguous tensor
-    private fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
-        val nb = ULongArray(maxDims) { 0uL }
-        if (type.byteSize > 0uL) {
-            nb[0] = type.byteSize
-            if (maxDims > 1) {
-                for (d in 1 until maxDims) {
-                    val prevDimSize = ne.getOrElse(d - 1) { 1L }
-                    nb[d] = nb[d-1] * (if (prevDimSize > 0) prevDimSize.toULong() else 1uL)
-                }
-            }
-        }
-        return nb
-    }
-
-    // Helper to calculate tensor byte size
-    private fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
-        if (type.byteSize == 0uL && type != GGMLType.COUNT && !type.name.startsWith("Q")) {
-            return 0uL
-        }
-        var elements = 1UL
-        for (i in ne.indices) {
-            if (ne[i] > 0L) {
-                elements *= ne[i].toULong()
-            } else if (ne[i] == 0L) {
-                return 0UL
-            }
-        }
-        return when (type) {
-            GGMLType.Q4_0 -> ((elements + QK4_0.toULong() - 1uL) / QK4_0.toULong()) * QK4_0_SIZE.toULong()
-            GGMLType.Q4_1 -> ((elements + QK4_1.toULong() - 1uL) / QK4_1.toULong()) * QK4_1_SIZE.toULong() 
-            GGMLType.Q8_0 -> ((elements + QK8_0.toULong() - 1uL) / QK8_0.toULong()) * QK8_0_SIZE.toULong()
-            else -> elements * type.byteSize
-        }
-    }
+    // Use shared utilities for stride and byte size calculations
 
     // Helper to create and initialize tensor in graph allocator
     private fun createAndInitTensor(
@@ -69,7 +35,7 @@ class GGMLComputeOpsDestinationTest {
             if (index < GGML_MAX_DIMS) tensor.ne[index] = dimSize
         }
 
-        tensor.nb = calculateStrides(type, tensor.ne)
+        tensor.nb = GGMLTestUtils.calculateStrides(type, tensor.ne)
         tensor.bufferId = bufferId
         tensor.dataOffset = dataOffset
 
