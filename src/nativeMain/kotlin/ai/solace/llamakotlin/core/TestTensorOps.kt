@@ -31,8 +31,8 @@ fun testAdd(context: GGMLContext, graphAllocator: GGMLGraphAllocator) {
     println("\nTesting optimized add operation:")
 
     // Create tensors
-    val a = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = calculateContiguousStrides(it.ne, it.type, it.rank()) }
-    val b = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = calculateContiguousStrides(it.ne, it.type, it.rank()) }
+    val a = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = GGMLTensorUtils.calculateContiguousStrides(it.ne, it.type, it.rank()) }
+    val b = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = GGMLTensorUtils.calculateContiguousStrides(it.ne, it.type, it.rank()) }
     val tmpGraph = createGraph(2).also { it.nodes[0]=a; it.nodes[1]=b; it.nNodes=2; it.allocator = graphAllocator }
     graphAllocator.allocateGraph(tmpGraph)
 
@@ -77,8 +77,8 @@ fun testMul(context: GGMLContext, graphAllocator: GGMLGraphAllocator) {
     println("\nTesting optimized mul operation:")
 
     // Create tensors
-    val a = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = calculateContiguousStrides(it.ne, it.type, it.rank()) }
-    val b = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = calculateContiguousStrides(it.ne, it.type, it.rank()) }
+    val a = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = GGMLTensorUtils.calculateContiguousStrides(it.ne, it.type, it.rank()) }
+    val b = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = GGMLTensorUtils.calculateContiguousStrides(it.ne, it.type, it.rank()) }
     val tmpGraph = createGraph(2).also { it.nodes[0]=a; it.nodes[1]=b; it.nNodes=2; it.allocator = graphAllocator }
     graphAllocator.allocateGraph(tmpGraph)
 
@@ -123,8 +123,8 @@ fun testMatMul(context: GGMLContext, graphAllocator: GGMLGraphAllocator) {
     println("\nTesting optimized matMul operation:")
 
     // Create tensors
-    val a = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = calculateContiguousStrides(it.ne, it.type, it.rank()) }
-    val b = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = calculateContiguousStrides(it.ne, it.type, it.rank()) }
+    val a = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = GGMLTensorUtils.calculateContiguousStrides(it.ne, it.type, it.rank()) }
+    val b = GGMLTensor(type = GGMLType.F32).also { it.ne[0]=4; it.ne[1]=4; it.nb = GGMLTensorUtils.calculateContiguousStrides(it.ne, it.type, it.rank()) }
     val tmpGraph = createGraph(2).also { it.nodes[0]=a; it.nodes[1]=b; it.nNodes=2; it.allocator = graphAllocator }
     graphAllocator.allocateGraph(tmpGraph)
 

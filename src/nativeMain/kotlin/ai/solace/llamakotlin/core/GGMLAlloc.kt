@@ -490,7 +490,7 @@ class GGMLGraphAllocator {
         val limit = if (ne.size < GGML_MAX_DIMS) ne.size else GGML_MAX_DIMS
         for (i in 0 until limit) { shape[i] = ne[i] }
         t.ne = shape
-        t.nb = calculateContiguousStrides(t.ne, t.type, t.rank())
+        t.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(t.ne, t.type, GGML_MAX_DIMS)
 
         // Register minimal usage info so internal allocateTensor() can work
         tensorUsageMap[t] = TensorUsageInfo()

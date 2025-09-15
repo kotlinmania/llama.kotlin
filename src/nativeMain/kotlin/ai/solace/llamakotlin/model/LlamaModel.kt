@@ -17,7 +17,7 @@ internal fun computeLinear(
     result.ne[1] = input.ne[1]  // sequence length
     result.ne[2] = input.ne[2]  // batch size
     for (i in 3 until GGML_MAX_DIMS) result.ne[i] = 1L
-    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
     result.op = GGMLOp.MUL_MAT
     result.src[0] = weight
     result.src[1] = input
@@ -39,7 +39,7 @@ internal fun computeElementAdd(
 ): GGMLTensor {
     val result = GGMLTensor(type = GGMLType.F32)
     result.ne = a.ne.copyOf()
-    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
     result.op = GGMLOp.ADD
     result.src[0] = a
     result.src[1] = b
@@ -61,7 +61,7 @@ internal fun computeElementMul(
 ): GGMLTensor {
     val result = GGMLTensor(type = a.type)
     result.ne = a.ne.copyOf()
-    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
     result.op = GGMLOp.MUL
     result.src[0] = a
     result.src[1] = b
@@ -81,7 +81,7 @@ internal fun computeSilu(
 ): GGMLTensor {
     val result = GGMLTensor(type = input.type)
     result.ne = input.ne.copyOf()
-    result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+    result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
     result.op = GGMLOp.SILU
     result.src[0] = input
     graphAllocator.allocateTensor(result)
@@ -131,7 +131,7 @@ class RMSNorm(
     val weight: GGMLTensor = GGMLTensor(type = GGMLType.F32).apply {
         ne[0] = normalizedShape.toLong()
         for (i in 1 until GGML_MAX_DIMS) ne[i] = 1L
-        nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
     }
     
     fun forward(
@@ -160,7 +160,7 @@ class LlamaMLP(
             ne[0] = inputSize.toLong()
             ne[1] = outputSize.toLong()
             for (i in 2 until GGML_MAX_DIMS) ne[i] = 1L
-            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
     }
     
@@ -194,7 +194,7 @@ class LlamaMLP(
         result.ne[1] = input.ne[1]  // sequence length
         result.ne[2] = input.ne[2]  // batch size
         for (i in 3 until GGML_MAX_DIMS) result.ne[i] = 1L
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         result.op = GGMLOp.MUL_MAT
         result.src[0] = weight
         result.src[1] = input
@@ -205,7 +205,7 @@ class LlamaMLP(
     private fun silu(context: GGMLContext, graphAllocator: GGMLGraphAllocator, input: GGMLTensor): GGMLTensor {
         val result = GGMLTensor(type = input.type)
         result.ne = input.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         result.op = GGMLOp.SILU
         result.src[0] = input
         graphAllocator.allocateTensor(result)
@@ -218,7 +218,7 @@ class LlamaMLP(
     private fun elementWiseMul(context: GGMLContext, graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
         val result = GGMLTensor(type = a.type)
         result.ne = a.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         result.op = GGMLOp.MUL
         result.src[0] = a
         result.src[1] = b
@@ -260,7 +260,7 @@ class LlamaDecoderLayer(
             ne[0] = inputSize.toLong()
             ne[1] = outputSize.toLong()
             for (i in 2 until GGML_MAX_DIMS) ne[i] = 1L
-            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
     }
     
@@ -309,7 +309,7 @@ class LlamaDecoderLayer(
         result.ne[1] = input.ne[1]  // sequence length
         result.ne[2] = input.ne[2]  // batch size
         for (i in 3 until GGML_MAX_DIMS) result.ne[i] = 1L
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         result.op = GGMLOp.MUL_MAT
         result.src[0] = weight
         result.src[1] = input
@@ -320,7 +320,7 @@ class LlamaDecoderLayer(
     private fun add(context: GGMLContext, graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
         val result = GGMLTensor(type = a.type)
         result.ne = a.ne.copyOf()
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         result.op = GGMLOp.ADD
         result.src[0] = a
         result.src[1] = b
@@ -340,7 +340,7 @@ class LlamaModel(
         ne[0] = config.hiddenSize.toLong()
         ne[1] = config.vocabSize.toLong()
         for (i in 2 until GGML_MAX_DIMS) ne[i] = 1L
-        nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
     }
     
     // Transformer layers
@@ -356,7 +356,7 @@ class LlamaModel(
         ne[0] = config.hiddenSize.toLong()
         ne[1] = config.vocabSize.toLong()
         for (i in 2 until GGML_MAX_DIMS) ne[i] = 1L
-        nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
     }
     
     /**
@@ -402,7 +402,7 @@ class LlamaModel(
         result.ne[1] = inputIds.size.toLong()
         result.ne[2] = 1L // batch size
         for (i in 3 until GGML_MAX_DIMS) result.ne[i] = 1L
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
         graphAllocator.allocateTensor(result)
         
@@ -429,7 +429,7 @@ class LlamaModel(
         result.ne[1] = input.ne[1]  // sequence length
         result.ne[2] = input.ne[2]  // batch size
         for (i in 3 until GGML_MAX_DIMS) result.ne[i] = 1L
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         result.op = GGMLOp.MUL_MAT
         result.src[0] = weight
         result.src[1] = input

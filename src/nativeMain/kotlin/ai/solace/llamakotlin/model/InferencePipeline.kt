@@ -138,7 +138,7 @@ class LlamaInferencePipeline(
         val result = GGMLTensor(type = GGMLType.F32)
         result.ne[0] = vocabSize.toLong()
         for (i in 1 until GGML_MAX_DIMS) result.ne[i] = 1L
-        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
         graphAllocator.allocateTensor(result)
         
@@ -188,7 +188,7 @@ class LlamaInferencePipeline(
                     val filteredLogits = GGMLTensor(type = GGMLType.F32)
                     filteredLogits.ne[0] = vocabSize.toLong()
                     for (i in 1 until GGML_MAX_DIMS) filteredLogits.ne[i] = 1L
-                    filteredLogits.nb = calculateContiguousStrides(filteredLogits.ne, filteredLogits.type, GGML_MAX_DIMS)
+                    filteredLogits.nb = GGMLTensorUtils.calculateContiguousStrides(filteredLogits.ne, filteredLogits.type, GGML_MAX_DIMS)
                     
                     graphAllocator.allocateTensor(filteredLogits)
                     

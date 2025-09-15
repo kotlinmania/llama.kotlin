@@ -18,7 +18,7 @@ class GGMLMatMulVerificationTest {
             // Create minimal test tensors
             val f32Tensor = GGMLTensor(GGMLType.F32)
             f32Tensor.ne[0] = 32L; f32Tensor.ne[1] = 2L
-            f32Tensor.nb = calculateContiguousStrides(f32Tensor.ne, f32Tensor.type, GGML_MAX_DIMS)
+            f32Tensor.nb = GGMLTensorUtils.calculateContiguousStrides(f32Tensor.ne, f32Tensor.type, GGML_MAX_DIMS)
             graphAllocator.allocateTensor(f32Tensor)
             for (j in 0 until f32Tensor.ne[1].toInt()) {
                 for (i in 0 until f32Tensor.ne[0].toInt()) {
@@ -28,7 +28,7 @@ class GGMLMatMulVerificationTest {
             
             val q80Tensor = GGMLTensor(GGMLType.Q8_0) 
             q80Tensor.ne[0] = 2L; q80Tensor.ne[1] = 32L
-            q80Tensor.nb = calculateContiguousStrides(q80Tensor.ne, q80Tensor.type, GGML_MAX_DIMS)
+            q80Tensor.nb = GGMLTensorUtils.calculateContiguousStrides(q80Tensor.ne, q80Tensor.type, GGML_MAX_DIMS)
             graphAllocator.allocateTensor(q80Tensor)
             // Leave quantized buffer zero-initialized; presence is enough for compile-time check
             

@@ -30,76 +30,17 @@ object GGMLTestUtils {
     }
     
     /**
-     * Calculate tensor byte size for any tensor type
+     * Calculate tensor byte size for any tensor type - delegated to centralized utility
      */
     fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
-        if (type.byteSize == 0uL && type != GGMLType.COUNT && !type.name.startsWith("Q")) {
-            return 0uL
-        }
-        
-        var elements = 1UL
-        var validDimFound = false
-        
-        for (i in ne.indices) {
-            if (ne[i] > 0L) {
-                elements *= ne[i].toULong()
-                validDimFound = true
-            } else if (ne[i] == 0L && elements != 0UL && validDimFound) {
-                return 0UL
-            }
-        }
-        
-        if (!validDimFound && ne.isNotEmpty() && ne.all { it <= 1L }) {
-            elements = 1UL // Scalar or effectively scalar
-        } else if (!validDimFound && ne.isEmpty()) {
-            elements = 1UL // Treat as scalar if ne is completely empty
-        }
-
-        // Handle quantized types
-        return when (type) {
-            GGMLType.Q8_0 -> {
-                if (elements > 0uL) {
-                    if (elements.toLong() % QK8_0 != 0L) {
-                        println("Warning: Total elements $elements for Q8_0 is not divisible by block size $QK8_0.")
-                    }
-                    (elements.toLong() / QK8_0).toULong() * type.byteSize
-                } else 0uL
-            }
-            GGMLType.Q4_0 -> {
-                if (elements > 0uL) {
-                    if (elements.toLong() % QK4_0 != 0L) {
-                        println("Warning: Total elements $elements for Q4_0 is not divisible by block size $QK4_0.")
-                    }
-                    (elements.toLong() / QK4_0).toULong() * type.byteSize
-                } else 0uL
-            }
-            GGMLType.Q4_1 -> {
-                if (elements > 0uL) {
-                    if (elements.toLong() % QK4_1 != 0L) {
-                        println("Warning: Total elements $elements for Q4_1 is not divisible by block size $QK4_1.")
-                    }
-                    (elements.toLong() / QK4_1).toULong() * type.byteSize
-                } else 0uL
-            }
-            else -> elements * type.byteSize
-        }
+        return GGMLTensorUtils.calculateTensorByteSize(type, ne)
     }
     
     /**
-     * Calculate contiguous tensor strides
+     * Calculate contiguous tensor strides - delegated to centralized utility
      */
     fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
-        val nb = ULongArray(maxDims) { 0uL }
-        if (type.byteSize > 0uL) {
-            nb[0] = type.byteSize
-            if (maxDims > 1) {
-                for (d in 1 until maxDims) {
-                    val prevDimSize = ne.getOrElse(d - 1) { 1L }
-                    nb[d] = nb[d-1] * (if (prevDimSize > 0) prevDimSize.toULong() else 1uL)
-                }
-            }
-        }
-        return nb
+        return GGMLTensorUtils.calculateContiguousStrides(ne, type, maxDims)
     }
     
     /**
