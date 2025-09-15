@@ -34,7 +34,7 @@ class LlamaAttention(
     ): GGMLTensor {
         val result = GGMLTensor(type = tensor.type)
         result.ne = tensor.ne.copyOf()
-        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
         val batchSize = tensor.ne[2].toInt()
         val seqLen = tensor.ne[1].toInt()
@@ -140,7 +140,7 @@ class LlamaAttention(
         result.ne[1] = result.ne[0]
         result.ne[0] = temp
         
-        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         result.op = GGMLOp.TRANSPOSE
         result.src[0] = tensor
         
@@ -192,7 +192,7 @@ class LlamaAttention(
         result.ne[2] = maxOf(a.ne[2], b.ne[2])  // batch size
         result.ne[3] = maxOf(a.ne[3], b.ne[3])  // additional batch dims
         
-        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
         // Set up operation
         result.op = GGMLOp.MUL_MAT
@@ -219,7 +219,7 @@ class LlamaAttention(
     ): GGMLTensor {
         val result = GGMLTensor(type = tensor.type)
         result.ne = tensor.ne.copyOf()
-        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
         // Allocate result tensor
         graphAllocator.allocateTensor(result)
@@ -253,7 +253,7 @@ class LlamaAttention(
     ): GGMLTensor {
         val result = GGMLTensor(type = GGMLType.F32)
         result.ne = a.ne.copyOf()
-        result.nb = GGMLTensorUtils.calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
+        result.nb = calculateContiguousStrides(result.ne, result.type, GGML_MAX_DIMS)
         
         // Set up operation
         result.op = GGMLOp.ADD

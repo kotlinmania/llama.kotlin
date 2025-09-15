@@ -122,3 +122,61 @@ internal fun floatToHalf(f_val: Float): Short {
     }
     return (fSign or hExp or hMant).toShort()
 }
+
+/**
+ * CONSOLIDATION: Numeric utility functions to reduce code duplication
+ * These functions consolidate common numeric operations found throughout the codebase
+ */
+
+/**
+ * Consolidated array conversion function
+ * Replaces repeated float-to-half conversion loops
+ */
+fun convertFloatArrayToHalf(floatArray: FloatArray): ShortArray {
+    return ShortArray(floatArray.size) { i -> floatToHalf(floatArray[i]) }
+}
+
+/**
+ * Consolidated array conversion function  
+ * Replaces repeated half-to-float conversion loops
+ */
+fun convertHalfArrayToFloat(halfArray: ShortArray): FloatArray {
+    return FloatArray(halfArray.size) { i -> halfToFloat(halfArray[i]) }
+}
+
+/**
+ * Consolidated numeric validation utility
+ * Replaces scattered isFinite and range checks
+ */
+fun validateNumericArray(array: FloatArray, allowInfinite: Boolean = false, allowNaN: Boolean = false): Boolean {
+    for (value in array) {
+        if (!allowNaN && value.isNaN()) return false
+        if (!allowInfinite && value.isInfinite()) return false
+    }
+    return true
+}
+
+/**
+ * Consolidated clamping utility
+ * Replaces repeated min/max clamping patterns
+ */
+fun clampFloatArray(array: FloatArray, minValue: Float, maxValue: Float): FloatArray {
+    return FloatArray(array.size) { i -> 
+        array[i].coerceIn(minValue, maxValue)
+    }
+}
+
+/**
+ * Consolidated numeric precision comparison
+ * Replaces inconsistent floating-point comparison patterns
+ */
+fun arraysEqualWithinTolerance(a: FloatArray, b: FloatArray, tolerance: Float = 1e-6f): Boolean {
+    if (a.size != b.size) return false
+    
+    for (i in a.indices) {
+        val diff = kotlin.math.abs(a[i] - b[i])
+        val threshold = tolerance * kotlin.math.max(kotlin.math.abs(a[i]), kotlin.math.abs(b[i])).coerceAtLeast(tolerance)
+        if (diff > threshold) return false
+    }
+    return true
+}

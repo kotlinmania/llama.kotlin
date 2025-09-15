@@ -186,7 +186,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Create data with 2 * A values
                 when (src0.type) {
@@ -266,7 +266,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Create data with 0.5 / sqrt(A) values
                 when (src0.type) {
@@ -394,7 +394,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Get the gradient value (should be a scalar)
                 val gradValue = when (tensor.grad!!.type) {
@@ -456,7 +456,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Get the gradient value (should be a scalar)
                 val gradValue = when (tensor.grad!!.type) {
@@ -521,10 +521,10 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size of src0
-                val totalSizeSrc0 = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSizeSrc0 = calculateTotalSize(src0.ne)
 
                 // Calculate total size of tensor (output of repeat)
-                val totalSizeTensor = GGMLTensorUtils.calculateTotalSizeInt(tensor.ne)
+                val totalSizeTensor = calculateTotalSize(tensor.ne)
 
                 // Calculate repeat factors for each dimension
                 val repeatFactors = IntArray(GGML_MAX_DIMS)
@@ -753,7 +753,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Create data with sign values
                 when (src0.type) {
@@ -858,7 +858,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Create data with zeros
                 when (src0.type) {
@@ -909,7 +909,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Create data with zeros
                 when (src0.type) {
@@ -952,7 +952,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Create mask data based on the tensor type
                 when (src0.type) {
@@ -1031,7 +1031,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Compute the derivative based on the tensor type
                 when (src0.type) {
@@ -1332,7 +1332,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 val gradAContribution = GGMLTensor(type = src0.type)
                 gradAContribution.ne = src0.ne.copyOf()
                 gradAContribution.nb = src0.nb.copyOf()
-                val totalElementsSrc0 = GGMLTensorUtils.calculateTotalSizeInt(gradAContribution.ne)
+                val totalElementsSrc0 = calculateTotalSize(gradAContribution.ne)
                 gradAContribution.data = when (src0.type) {
                     GGMLType.F32 -> FloatArray(totalElementsSrc0) { 0.0f }
                     GGMLType.F16 -> ShortArray(totalElementsSrc0) { 0 } // Represents 0.0f for F16
@@ -1453,7 +1453,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
             val unmaskedMask = GGMLTensor(type = type)
             unmaskedMask.ne = src0.ne.copyOf()
             unmaskedMask.nb = src0.nb.copyOf()
-            val totalElements = GGMLTensorUtils.calculateTotalSizeInt(unmaskedMask.ne)
+            val totalElements = calculateTotalSize(unmaskedMask.ne)
 
             val s0Data = src0.data
             val cData = tensor.data // Data of the output tensor C
@@ -1823,7 +1823,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // Compute the derivative based on the tensor type
                 when (src0.type) {
@@ -1951,7 +1951,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
 
             if (src0?.grad != null) {
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
 
                 // First, we need to compute the L2 norm of src0
                 var norm = 0.0f
@@ -2183,7 +2183,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
 
             if (src0?.grad != null) {
                 // Calculate total size
-                val totalSize = GGMLTensorUtils.calculateTotalSizeInt(src0.ne)
+                val totalSize = calculateTotalSize(src0.ne)
                 val eps = 1e-5f // Small constant for numerical stability
 
                 // First, we need to compute the mean of squared values

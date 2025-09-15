@@ -20,23 +20,6 @@ fun calculateTotalSize(ne: LongArray): Int {
 }
 
 /**
- * Allocates memory for a tensor based on its type and size.
- * (Note: This function is less relevant now that compute ops use graphAllocator for results)
- */
-@Suppress("unused")
-fun allocateMemory(type: GGMLType, size: Int): Any {
-    return when (type) {
-        GGMLType.F32 -> FloatArray(size) { 0.0f }
-        GGMLType.F16 -> ShortArray(size) { 0 } // Still used by quantizeTensor for F16 intermediate
-        GGMLType.I8 -> ByteArray(size) { 0 }
-        GGMLType.I16 -> ShortArray(size) { 0 }
-        GGMLType.I32 -> IntArray(size) { 0 }
-        GGMLType.I64 -> LongArray(size) { 0L }
-        else -> ByteArray(size) { 0 } // Default for quantized types
-    }
-}
-
-/**
  * Computes the dot product of a row from a Q8_0 tensor and a column from an F32 tensor.
  * Used as a core part of Q8_0 x F32 matrix multiplication.
  * Assumes tensorQ80 (src0) is M x K (ne = [K, M])
@@ -1003,7 +986,7 @@ fun computeAdd(
     GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K -> {
             val aF32 = dequantizeTensor(graphAllocator, a)
             val bF32 = dequantizeTensor(graphAllocator, b)
-            val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(tempF32.ne, GGMLType.F32, GGML_MAX_DIMS)
+            val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
             computeAdd(graphAllocator, context, aF32, bF32, tempF32)
             val quantizedResult = quantizeTensor(graphAllocator, tempF32, dst.type)
             // Copy quantized data to destination
@@ -1076,7 +1059,7 @@ fun computeMul(
         GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1, GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K, GGMLType.BITNET_1_58 -> {
             val aF32 = dequantizeTensor(graphAllocator, a)
             val bF32 = dequantizeTensor(graphAllocator, b)
-            val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(tempF32.ne, GGMLType.F32, GGML_MAX_DIMS)
+            val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
             computeMul(graphAllocator, context, aF32, bF32, tempF32)
             val quantizedResult = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = quantizedResult.data
@@ -1088,7 +1071,7 @@ fun computeMul(
 // Temporary return-style wrappers to ease test migration
 fun computeAddRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     // Ensure allocation for dst in same buffer as sources if possible
     val alloc = graphAllocator
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = alloc)
@@ -1099,7 +1082,7 @@ fun computeAddRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: G
 
 fun computeMulRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     val alloc = graphAllocator
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = alloc)
     alloc.allocateGraph(tempGraph)
@@ -1113,7 +1096,7 @@ fun computeMatMulRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a
     dst.ne[0] = b.ne[0]
     dst.ne[1] = a.ne[1]
     for (i in 2 until GGML_MAX_DIMS) dst.ne[i] = 1
-    dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
     graphAllocator.allocateGraph(tempGraph)
     computeMatMul(graphAllocator, context, a, b, dst)
@@ -1122,7 +1105,7 @@ fun computeMatMulRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a
 
 fun computeRelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
     graphAllocator.allocateGraph(tempGraph)
     computeRelu(graphAllocator, graphAllocator.context, a, dst)
@@ -1131,7 +1114,7 @@ fun computeRelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
 
 fun computeGelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
     graphAllocator.allocateGraph(tempGraph)
     computeGelu(graphAllocator, graphAllocator.context, a, dst)
@@ -1140,7 +1123,7 @@ fun computeGelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
 
 fun computeSilu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
     graphAllocator.allocateGraph(tempGraph)
     computeSilu(graphAllocator, graphAllocator.context, a, dst)
@@ -1153,7 +1136,7 @@ fun computeSilu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
  */
 fun computeSoftMax(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
     graphAllocator.allocateGraph(tempGraph)
     computeSoftMax(graphAllocator, graphAllocator.context, a, dst)
@@ -1162,7 +1145,7 @@ fun computeSoftMax(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTenso
 
 fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, eps: Float): GGMLTensor {
     val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(dst.ne, dst.type, GGML_MAX_DIMS)
+    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
     val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
     graphAllocator.allocateGraph(tempGraph)
     computeRMSNorm(graphAllocator, graphAllocator.context, a, eps, dst)
@@ -1834,7 +1817,7 @@ fun computeMatMul(graphAllocator: GGMLGraphAllocator, @Suppress("unused") contex
         }
         GGMLType.Q4_0,GGMLType.Q4_1,GGMLType.Q5_0,GGMLType.Q5_1,GGMLType.Q8_0,GGMLType.Q8_1,GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K,GGMLType.BITNET_1_58 -> {
             val aF32=dequantizeTensor(graphAllocator,a); val bF32=dequantizeTensor(graphAllocator,b)
-            val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(tempF32.ne, GGMLType.F32, GGML_MAX_DIMS)
+            val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
             computeMatMul(graphAllocator,context,aF32,bF32,tempF32)
             val qRes=quantizeTensor(graphAllocator,tempF32,dst.type); dst.data=qRes.data
         }
@@ -2054,7 +2037,7 @@ fun computeSub(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
             val bf = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
             tempF32.ne = dst.ne.copyOf()
-            tempF32.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(tempF32.ne, GGMLType.F32, GGML_MAX_DIMS)
+            tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
             computeSub(graphAllocator, context, af, bf, tempF32)
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
@@ -2077,7 +2060,7 @@ fun computeNeg(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
         GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K -> {
             val af = dequantizeTensor(graphAllocator, a)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
-            tempF32.ne = dst.ne.copyOf(); tempF32.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(tempF32.ne, GGMLType.F32, GGML_MAX_DIMS)
+            tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
             computeNeg(graphAllocator, context, af, tempF32)
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
@@ -2138,7 +2121,7 @@ fun computeDiv(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
         GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K -> {
             val af = dequantizeTensor(graphAllocator, a); val bf = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
-            tempF32.ne = dst.ne.copyOf(); tempF32.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(tempF32.ne, GGMLType.F32, GGML_MAX_DIMS)
+            tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
             computeDiv(graphAllocator, context, af, bf, tempF32)
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
@@ -2971,7 +2954,7 @@ object GGMLComputeOps {
         val context = graphAllocator.context
         // Simple dup: copy element-wise based on type
         node.type = src.type
-        node.ne = src.ne.copyOf(); node.nb = GGMLTensorUtils.GGMLTensorUtils.calculateContiguousStrides(node.ne, node.type, GGML_MAX_DIMS)
+        node.ne = src.ne.copyOf(); node.nb = calculateContiguousStrides(node.ne, node.type, node.ne.size)
         val total = src.numElements().toInt()
         when (src.type) {
             GGMLType.F32 -> applyNDIter(src, total) { _, ind -> node.setFloat(graphAllocator, src.getFloat(graphAllocator, *ind), *ind) }

@@ -294,14 +294,14 @@ class ConstantFoldingPass : GGMLOptimizationPass {
             GGMLOp.SUB -> {
                 val src0 = tensor.src[0] ?: return null
                 val src1 = tensor.src[1] ?: return null
-                val dst = GGMLTensor(type = src0.type).apply { ne = src0.ne.copyOf(); nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, ne.size) }
+                val dst = GGMLTensor(type = src0.type).apply { ne = src0.ne.copyOf(); nb = calculateContiguousStrides(ne, type, ne.size) }
                 allocator.allocateGraph(GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = allocator))
                 computeSub(allocator, context, src0, src1, dst)
                 dst
             }
             GGMLOp.NEG -> {
                 val src0 = tensor.src[0] ?: return null
-                val dst = GGMLTensor(type = src0.type).apply { ne = src0.ne.copyOf(); nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, ne.size) }
+                val dst = GGMLTensor(type = src0.type).apply { ne = src0.ne.copyOf(); nb = calculateContiguousStrides(ne, type, ne.size) }
                 allocator.allocateGraph(GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = allocator))
                 computeNeg(allocator, context, src0, dst)
                 dst

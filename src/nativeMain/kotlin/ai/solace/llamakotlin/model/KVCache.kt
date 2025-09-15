@@ -21,7 +21,7 @@ class KVCache(
             ne[1] = numHeads.toLong()
             ne[2] = maxSequenceLength.toLong()
             ne[3] = 1L
-            nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }.also { graphAllocator.allocateTensor(it) }
 
         values = GGMLTensor(type = GGMLType.F32).apply {
@@ -29,7 +29,7 @@ class KVCache(
             ne[1] = numHeads.toLong()
             ne[2] = maxSequenceLength.toLong()
             ne[3] = 1L
-            nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }.also { graphAllocator.allocateTensor(it) }
 
         currentLength = 0
@@ -57,7 +57,7 @@ class KVCache(
             ne[1] = numHeads.toLong()
             ne[2] = (currentLength + newSeqLen).toLong()
             ne[3] = 1L
-            nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
         graphAllocator.allocateTensor(out)
         for (h in 0 until numHeads) {
@@ -97,7 +97,7 @@ class KVCache(
             ne[1] = numHeads.toLong()
             ne[2] = currentLength.toLong()
             ne[3] = 1L
-            nb = GGMLTensorUtils.calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
         graphAllocator.allocateTensor(out)
         for (h in 0 until numHeads) {

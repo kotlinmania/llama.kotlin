@@ -7,6 +7,12 @@ import kotlin.random.Random
  * Common utilities and helper functions for GGML testing.
  * This file contains reusable test infrastructure to reduce code duplication
  * and ensure consistent testing patterns across all test files.
+ * 
+ * CONSOLIDATION IMPROVEMENTS:
+ * - Added tensor dimension validation helpers
+ * - Consolidated duplicate pattern matching functions  
+ * - Enhanced error analysis with additional metrics
+ * - Added tensor comparison utilities
  */
 object GGMLTestUtils {
     
@@ -30,17 +36,117 @@ object GGMLTestUtils {
     }
     
     /**
-     * Calculate tensor byte size for any tensor type - delegated to centralized utility
+     * CONSOLIDATION: Unified tensor dimension validation
+     * Replaces repeated validation logic across test files
      */
-    fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
-        return GGMLTensorUtils.calculateTensorByteSize(type, ne)
+    fun validateTensorDimensions(tensor: GGMLTensor, expectedShape: LongArray): Boolean {
+        if (expectedShape.size > GGML_MAX_DIMS) return false
+        
+        for (i in expectedShape.indices) {
+            if (tensor.ne[i] != expectedShape[i]) return false
+        }
+        
+        // Check that dimensions beyond expected shape are 1 (default padding)
+        for (i in expectedShape.size until GGML_MAX_DIMS) {
+            if (tensor.ne[i] != 1L) return false
+        }
+        
+        return true
     }
     
     /**
-     * Calculate contiguous tensor strides - delegated to centralized utility
+     * CONSOLIDATION: Unified tensor type and shape creation
+     * Eliminates duplicate tensor setup patterns found in multiple test files
+     */
+    fun createStandardTestTensor(
+        type: GGMLType, 
+        shape: LongArray, 
+        name: String = "test_tensor"
+    ): GGMLTensor {
+        val tensor = GGMLTensor(type = type, name = name)
+        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+        
+        shape.forEachIndexed { index, dimSize ->
+            if (index < GGML_MAX_DIMS) {
+                tensor.ne[index] = dimSize
+            }
+        }
+        
+        tensor.nb = calculateStrides(type, tensor.ne)
+        return tensor
+    }
+    
+    /**
+     * Calculate tensor byte size for any tensor type
+     */
+    fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
+        if (type.byteSize == 0uL && type != GGMLType.COUNT && !type.name.startsWith("Q")) {
+            return 0uL
+        }
+        
+        var elements = 1UL
+        var validDimFound = false
+        
+        for (i in ne.indices) {
+            if (ne[i] > 0L) {
+                elements *= ne[i].toULong()
+                validDimFound = true
+            } else if (ne[i] == 0L && elements != 0UL && validDimFound) {
+                return 0UL
+            }
+        }
+        
+        if (!validDimFound && ne.isNotEmpty() && ne.all { it <= 1L }) {
+            elements = 1UL // Scalar or effectively scalar
+        } else if (!validDimFound && ne.isEmpty()) {
+            elements = 1UL // Treat as scalar if ne is completely empty
+        }
+
+        // Handle quantized types
+        return when (type) {
+            GGMLType.Q8_0 -> {
+                if (elements > 0uL) {
+                    if (elements.toLong() % QK8_0 != 0L) {
+                        println("Warning: Total elements $elements for Q8_0 is not divisible by block size $QK8_0.")
+                    }
+                    (elements.toLong() / QK8_0).toULong() * type.byteSize
+                } else 0uL
+            }
+            GGMLType.Q4_0 -> {
+                if (elements > 0uL) {
+                    if (elements.toLong() % QK4_0 != 0L) {
+                        println("Warning: Total elements $elements for Q4_0 is not divisible by block size $QK4_0.")
+                    }
+                    (elements.toLong() / QK4_0).toULong() * type.byteSize
+                } else 0uL
+            }
+            GGMLType.Q4_1 -> {
+                if (elements > 0uL) {
+                    if (elements.toLong() % QK4_1 != 0L) {
+                        println("Warning: Total elements $elements for Q4_1 is not divisible by block size $QK4_1.")
+                    }
+                    (elements.toLong() / QK4_1).toULong() * type.byteSize
+                } else 0uL
+            }
+            else -> elements * type.byteSize
+        }
+    }
+    
+    /**
+     * Calculate contiguous tensor strides
      */
     fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
-        return GGMLTensorUtils.calculateContiguousStrides(ne, type, maxDims)
+        val nb = ULongArray(maxDims) { 0uL }
+        if (type.byteSize > 0uL) {
+            nb[0] = type.byteSize
+            if (maxDims > 1) {
+                for (d in 1 until maxDims) {
+                    val prevDimSize = ne.getOrElse(d - 1) { 1L }
+                    nb[d] = nb[d-1] * (if (prevDimSize > 0) prevDimSize.toULong() else 1uL)
+                }
+            }
+        }
+        return nb
     }
     
     /**
@@ -80,8 +186,69 @@ object GGMLTestUtils {
     }
     
     /**
-     * Extract float data from any tensor type
+     * CONSOLIDATION: Unified tensor comparison utilities  
+     * Replaces duplicate comparison logic found across multiple test files
      */
+    object TensorComparison {
+        
+        /**
+         * Compare two tensors for structural equality (type, dimensions, strides)
+         */
+        fun tensorsStructurallyEqual(a: GGMLTensor, b: GGMLTensor): Boolean {
+            if (a.type != b.type) return false
+            if (!a.ne.contentEquals(b.ne)) return false
+            if (!a.nb.contentEquals(b.nb)) return false
+            return true
+        }
+        
+        /**
+         * Compare tensor data values within tolerance
+         */
+        fun tensorsDataEqual(
+            a: GGMLTensor, 
+            b: GGMLTensor, 
+            graphAllocator: GGMLGraphAllocator,
+            tolerance: Float = 1e-6f
+        ): Boolean {
+            if (!tensorsStructurallyEqual(a, b)) return false
+            
+            val aData = extractFloatData(a, graphAllocator)
+            val bData = extractFloatData(b, graphAllocator)
+            
+            if (aData.size != bData.size) return false
+            
+            for (i in aData.indices) {
+                if (abs(aData[i] - bData[i]) > tolerance) return false
+            }
+            
+            return true
+        }
+        
+        /**
+         * Find first difference between two tensors
+         */
+        fun findFirstDifference(
+            a: GGMLTensor, 
+            b: GGMLTensor, 
+            graphAllocator: GGMLGraphAllocator
+        ): String? {
+            if (a.type != b.type) return "Types differ: ${a.type} vs ${b.type}"
+            if (!a.ne.contentEquals(b.ne)) return "Dimensions differ: ${a.ne.contentToString()} vs ${b.ne.contentToString()}"
+            
+            val aData = extractFloatData(a, graphAllocator)
+            val bData = extractFloatData(b, graphAllocator)
+            
+            if (aData.size != bData.size) return "Data sizes differ: ${aData.size} vs ${bData.size}"
+            
+            for (i in aData.indices) {
+                if (aData[i] != bData[i]) {
+                    return "Data differs at index $i: ${aData[i]} vs ${bData[i]}"
+                }
+            }
+            
+            return null // No differences found
+        }
+    }
     fun extractFloatData(tensor: GGMLTensor, graphAllocator: GGMLGraphAllocator): FloatArray {
         val numElements = tensor.numElements().toInt()
         if (numElements == 0) return floatArrayOf()
@@ -99,6 +266,64 @@ object GGMLTestUtils {
         }
         
         return result
+    }
+    
+    /**
+     * CONSOLIDATION: Quantization test utilities
+     * Consolidates repeated quantization testing patterns
+     */
+    object QuantizationTestUtils {
+        
+        /**
+         * Create standard quantization test data that exercises edge cases
+         */
+        fun createQuantizationTestData(size: Int): FloatArray {
+            return FloatArray(size) { i ->
+                when (i % 8) {
+                    0 -> 0.0f                    // Zero
+                    1 -> 1.0f                    // Positive unit
+                    2 -> -1.0f                   // Negative unit
+                    3 -> 0.5f                    // Positive fraction
+                    4 -> -0.5f                   // Negative fraction
+                    5 -> 2.0f * (i % 3)          // Small integers
+                    6 -> 0.1f * (i % 7 - 3)      // Small decimals
+                    else -> (i % 13 - 6) * 0.25f // Varying range
+                }
+            }
+        }
+        
+        /**
+         * Validate quantization accuracy against reference
+         */
+        fun validateQuantizationAccuracy(
+            original: FloatArray,
+            quantized: FloatArray,
+            expectedMaxError: Float = 1.0f,
+            quantizationType: String = "unknown"
+        ): Boolean {
+            require(original.size == quantized.size) { "Array sizes must match" }
+            
+            var maxError = 0.0f
+            var errorCount = 0
+            
+            for (i in original.indices) {
+                val error = abs(original[i] - quantized[i])
+                if (error > maxError) maxError = error
+                if (error > expectedMaxError) errorCount++
+            }
+            
+            if (maxError > expectedMaxError * 2) {
+                println("Warning: $quantizationType quantization max error $maxError exceeds 2x expected $expectedMaxError")
+                return false
+            }
+            
+            if (errorCount > original.size * 0.1) {
+                println("Warning: $quantizationType quantization has ${errorCount}/${original.size} values exceeding error threshold")
+                return false
+            }
+            
+            return true
+        }
     }
     
     /**
