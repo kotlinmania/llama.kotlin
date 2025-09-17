@@ -1201,6 +1201,20 @@ fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, eps: Float
     return dst
 }
 
+fun computeTranspose(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
+    val dst = GGMLTensor(type = a.type)
+    // Swap the first two dimensions for transpose
+    dst.ne = a.ne.copyOf()
+    dst.ne[0] = a.ne[1]  // Swap dimension 0 and 1
+    dst.ne[1] = a.ne[0]
+    dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
+    
+    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
+    graphAllocator.allocateGraph(tempGraph)
+    computeTranspose(graphAllocator, graphAllocator.context, a, dst)
+    return dst
+}
+
 fun dequantizeTensor(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor): GGMLTensor {
     val result = GGMLTensor(type = GGMLType.F32)
     result.ne = tensor.ne.copyOf()
@@ -2950,6 +2964,114 @@ private fun computeSqrt(graphAllocator: GGMLGraphAllocator, context: GGMLContext
 }
 
 /**
+ * Transpose operation for tensor matrices.
+ * Swaps the last two dimensions of a tensor (for 2D case, transposes rows and columns).
+ * For higher-dimensional tensors, transposes the last two dimensions while preserving others.
+ */
+fun computeTranspose(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+    // Validate dimensions - dst should have swapped last two dimensions compared to src
+    require(a.ne[0] == dst.ne[1] && a.ne[1] == dst.ne[0]) {
+        "Transpose dimensions mismatch: src(${a.ne[0]}, ${a.ne[1]}) vs dst(${dst.ne[0]}, ${dst.ne[1]})"
+    }
+    
+    // For dimensions beyond the first two, they should match
+    for (i in 2 until GGML_MAX_DIMS) {
+        require(a.ne[i] == dst.ne[i]) {
+            "Higher dimensions must match for transpose: src.ne[$i]=${a.ne[i]} vs dst.ne[$i]=${dst.ne[i]}"
+        }
+    }
+    
+    require(a.type == dst.type) {
+        "Source and destination tensors must have the same type"
+    }
+    
+    when (a.type) {
+        GGMLType.F32 -> {
+            val rows = a.ne[1].toInt()
+            val cols = a.ne[0].toInt()
+            val batches = (2 until GGML_MAX_DIMS).fold(1L) { acc, dim -> acc * a.ne[dim] }.toInt()
+            
+            for (batch in 0 until batches) {
+                val batchOffset = calculateBatchOffset(a, batch)
+                for (i in 0 until rows) {
+                    for (j in 0 until cols) {
+                        val srcIndices = IntArray(GGML_MAX_DIMS) { dim ->
+                            when (dim) {
+                                0 -> j
+                                1 -> i
+                                else -> (batchOffset / calculateStrideFactor(a, dim)) % a.ne[dim].toInt()
+                            }
+                        }
+                        val dstIndices = IntArray(GGML_MAX_DIMS) { dim ->
+                            when (dim) {
+                                0 -> i  // Swapped
+                                1 -> j  // Swapped
+                                else -> srcIndices[dim]
+                            }
+                        }
+                        val value = a.getFloat(graphAllocator, *srcIndices)
+                        dst.setFloat(graphAllocator, value, *dstIndices)
+                    }
+                }
+            }
+        }
+        GGMLType.F16 -> {
+            val rows = a.ne[1].toInt()
+            val cols = a.ne[0].toInt()
+            val batches = (2 until GGML_MAX_DIMS).fold(1L) { acc, dim -> acc * a.ne[dim] }.toInt()
+            
+            for (batch in 0 until batches) {
+                val batchOffset = calculateBatchOffset(a, batch)
+                for (i in 0 until rows) {
+                    for (j in 0 until cols) {
+                        val srcIndices = IntArray(GGML_MAX_DIMS) { dim ->
+                            when (dim) {
+                                0 -> j
+                                1 -> i
+                                else -> (batchOffset / calculateStrideFactor(a, dim)) % a.ne[dim].toInt()
+                            }
+                        }
+                        val dstIndices = IntArray(GGML_MAX_DIMS) { dim ->
+                            when (dim) {
+                                0 -> i  // Swapped
+                                1 -> j  // Swapped
+                                else -> srcIndices[dim]
+                            }
+                        }
+                        val value = a.getHalf(graphAllocator, *srcIndices)
+                        dst.setHalf(graphAllocator, value, *dstIndices)
+                    }
+                }
+            }
+        }
+        else -> throw NotImplementedError("Transpose not implemented for type ${a.type}")
+    }
+}
+
+/**
+ * Helper function to calculate batch offset for higher-dimensional transpose
+ */
+private fun calculateBatchOffset(tensor: GGMLTensor, batchIndex: Int): Int {
+    var offset = batchIndex
+    var stride = 1
+    for (dim in 2 until GGML_MAX_DIMS) {
+        stride *= tensor.ne[dim].toInt()
+    }
+    return offset * tensor.ne[0].toInt() * tensor.ne[1].toInt()
+}
+
+/**
+ * Helper function to calculate stride factor for dimension calculations
+ */
+private fun calculateStrideFactor(tensor: GGMLTensor, dim: Int): Int {
+    var factor = 1
+    for (i in 0 until dim) {
+        factor *= tensor.ne[i].toInt()
+    }
+    return factor
+}
+
+/**
  * Main compute operations object for executing graphs
  */
 object GGMLComputeOps {
@@ -2988,6 +3110,7 @@ object GGMLComputeOps {
             GGMLOp.SOFT_MAX -> computeSoftMax(graphAllocator, node)
             GGMLOp.RMS_NORM -> computeRmsNorm(graphAllocator, node)
             GGMLOp.MUL_MAT -> computeMulMat(graphAllocator, node)
+            GGMLOp.TRANSPOSE -> computeTranspose(graphAllocator, node)
             GGMLOp.SUM -> computeSum(graphAllocator, node)
             GGMLOp.MEAN -> computeMean(graphAllocator, node)
             GGMLOp.REPEAT -> computeRepeat(graphAllocator, node)
@@ -3151,6 +3274,12 @@ object GGMLComputeOps {
             }
             else -> throw NotImplementedError("REPEAT not implemented for ${src.type}")
         }
+    }
+
+    private fun computeTranspose(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("TRANSPOSE operation requires source tensor")
+        val context = graphAllocator.context
+        computeTranspose(graphAllocator, context, src, node)
     }
     
     // Removed copyTensorData: compute functions now write directly into node

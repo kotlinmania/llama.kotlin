@@ -432,4 +432,164 @@ class GGMLIntegrationTest {
             println("Dimension mismatch correctly caught: ${e.message}")
         }
     }
+
+    @Test 
+    fun testLlamaModelComponentsBasicIntegration() {
+        // Test basic LLaMA model components using existing infrastructure
+        
+        // Test RMSNorm operation with realistic parameters
+        val hiddenSize = 32
+        val input = createTensorWithData(
+            "rms_input", 
+            GGMLType.F32, 
+            longArrayOf(hiddenSize.toLong(), 1L), // [hidden_size, seq_len]
+            FloatArray(hiddenSize) { (it + 1).toFloat() / hiddenSize }
+        )
+        
+        // Test RMSNorm computation
+        val rmsNormResult = GGMLTensor(type = GGMLType.F32)
+        rmsNormResult.ne = input.ne.copyOf()
+        rmsNormResult.nb = calculateContiguousStrides(rmsNormResult.ne, rmsNormResult.type, GGML_MAX_DIMS)
+        graphAllocator.allocateTensor(rmsNormResult)
+        computeRMSNorm(graphAllocator, dummyContext, input, 1e-6f, rmsNormResult)
+        assertNotNull(rmsNormResult)
+        assertEquals(hiddenSize.toLong(), rmsNormResult.ne[0])
+        
+        // Verify normalization worked (check magnitude)
+        val outputData = extractFloatData(rmsNormResult)
+        var sumSquared = 0.0f
+        for (value in outputData) {
+            sumSquared += value * value
+        }
+        val rms = sqrt(sumSquared / hiddenSize)
+        assertTrue(abs(rms - 1.0f) < 0.1f, "RMS should be approximately 1.0, got $rms")
+        
+        println("✓ RMSNorm component test passed")
+        
+        // Test SiLU activation function
+        val activationInput = createTensorWithData(
+            "activation_input",
+            GGMLType.F32,
+            longArrayOf(8L),
+            floatArrayOf(-2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 3.0f)
+        )
+        
+        val siluResult = GGMLTensor(type = GGMLType.F32)
+        siluResult.ne = activationInput.ne.copyOf()
+        siluResult.nb = calculateContiguousStrides(siluResult.ne, siluResult.type, GGML_MAX_DIMS)
+        graphAllocator.allocateTensor(siluResult)
+        computeSilu(graphAllocator, dummyContext, activationInput, siluResult)
+        assertNotNull(siluResult)
+        assertEquals(8L, siluResult.ne[0])
+        
+        val siluData = extractFloatData(siluResult)
+        // Verify SiLU properties: f(0) = 0, f(x) > 0 for x > 0
+        assertTrue(abs(siluData[3]) < 1e-6f, "SiLU(0) should be ~0")
+        assertTrue(siluData[4] > 0, "SiLU(0.5) should be positive")
+        assertTrue(siluData[5] > siluData[4], "SiLU should be increasing for positive values")
+        
+        println("✓ SiLU activation test passed")
+        
+        // Test basic matrix multiplication for transformer components
+        val inputDim = 16
+        val outputDim = 32
+        val seqLen = 4
+        
+        val inputTensor = createTensorWithData(
+            "transformer_input",
+            GGMLType.F32, 
+            longArrayOf(inputDim.toLong(), seqLen.toLong()),
+            FloatArray(inputDim * seqLen) { 0.1f * (it % 10 + 1) }
+        )
+        
+        val weightTensor = createTensorWithData(
+            "linear_weight",
+            GGMLType.F32,
+            longArrayOf(inputDim.toLong(), outputDim.toLong()),
+            FloatArray(inputDim * outputDim) { 0.01f * ((it % 7) - 3) }
+        )
+        
+        val matmulResult = GGMLTensor(type = GGMLType.F32)
+        matmulResult.ne[0] = outputDim.toLong()
+        matmulResult.ne[1] = seqLen.toLong()
+        for (i in 2 until GGML_MAX_DIMS) matmulResult.ne[i] = 1L
+        matmulResult.nb = calculateContiguousStrides(matmulResult.ne, matmulResult.type, GGML_MAX_DIMS)
+        graphAllocator.allocateTensor(matmulResult)
+        computeMatMul(graphAllocator, dummyContext, weightTensor, inputTensor, matmulResult)
+        assertNotNull(matmulResult)
+        assertEquals(outputDim.toLong(), matmulResult.ne[0])
+        assertEquals(seqLen.toLong(), matmulResult.ne[1])
+        
+        val matmulData = extractFloatData(matmulResult)
+        // Verify reasonable output range and no NaN/Inf
+        for (value in matmulData) {
+            assertFalse(value.isNaN(), "Matrix multiplication output should not be NaN")
+            assertFalse(value.isInfinite(), "Matrix multiplication output should not be infinite")
+        }
+        
+        println("✓ Linear transformation test passed")
+        
+        // Test attention-like computation pattern (simplified)
+        val numHeads = 4
+        val headDim = 8
+        val totalDim = numHeads * headDim // 32
+        
+        val queryTensor = createTensorWithData(
+            "query",
+            GGMLType.F32,
+            longArrayOf(totalDim.toLong(), 1L), // Single token
+            FloatArray(totalDim) { 0.1f }
+        )
+        
+        val keyTensor = createTensorWithData(
+            "key", 
+            GGMLType.F32,
+            longArrayOf(totalDim.toLong(), 3L), // 3 key vectors
+            FloatArray(totalDim * 3) { 0.05f * (it % 5 + 1) }
+        )
+        
+        // Compute attention scores: Q @ K^T (simplified - using existing matmul)
+        // Note: This is a simplified test, real attention would need transpose and softmax
+        val attentionScores = GGMLTensor(type = GGMLType.F32)
+        attentionScores.ne[0] = 1L // query_seq_len
+        attentionScores.ne[1] = 3L // key_seq_len
+        for (i in 2 until GGML_MAX_DIMS) attentionScores.ne[i] = 1L
+        attentionScores.nb = calculateContiguousStrides(attentionScores.ne, attentionScores.type, GGML_MAX_DIMS)
+        graphAllocator.allocateTensor(attentionScores)
+        computeMatMul(graphAllocator, dummyContext, queryTensor, keyTensor, attentionScores)
+        assertNotNull(attentionScores)
+        assertEquals(1L, attentionScores.ne[0]) // query_seq_len
+        assertEquals(3L, attentionScores.ne[1]) // key_seq_len
+        
+        println("✓ Attention pattern test passed")
+        
+        // Test softmax operation (important for attention)
+        val logitsInput = createTensorWithData(
+            "logits",
+            GGMLType.F32,
+            longArrayOf(5L),
+            floatArrayOf(1.0f, 2.0f, 3.0f, 4.0f, 5.0f)
+        )
+        
+        val softmaxResult = GGMLTensor(type = GGMLType.F32)
+        softmaxResult.ne = logitsInput.ne.copyOf()
+        softmaxResult.nb = calculateContiguousStrides(softmaxResult.ne, softmaxResult.type, GGML_MAX_DIMS)
+        graphAllocator.allocateTensor(softmaxResult)
+        computeSoftMax(graphAllocator, dummyContext, logitsInput, softmaxResult)
+        assertNotNull(softmaxResult)
+        assertEquals(5L, softmaxResult.ne[0])
+        
+        val softmaxData = extractFloatData(softmaxResult)
+        // Verify softmax properties: sum to 1, all positive
+        var sum = 0.0f
+        for (value in softmaxData) {
+            assertTrue(value > 0, "Softmax outputs should be positive")
+            assertTrue(value < 1, "Individual softmax outputs should be < 1")
+            sum += value
+        }
+        assertTrue(abs(sum - 1.0f) < 1e-5f, "Softmax outputs should sum to 1.0, got $sum")
+        
+        println("✓ Softmax test passed")
+        println("✓ All LLaMA model component integration tests passed!")
+    }
 }
