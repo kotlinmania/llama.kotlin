@@ -1,14 +1,35 @@
 package ai.solace.llamakotlin.core
 
 /**
- * Centralized tensor utility functions to avoid code duplication.
- * This file consolidates common helper functions used across the GGML implementation.
+ * Centralized tensor utility functions implementing DRY principle.
+ * 
+ * This object consolidates common helper functions used across the GGML implementation
+ * to avoid code duplication and provide consistent behavior. It includes:
+ * 
+ * - Tensor size and stride calculations
+ * - Memory layout utilities
+ * - Validation and bounds checking
+ * - Type conversion and compatibility helpers
+ * 
+ * All functions are designed to work with the ByteArray-based memory model
+ * used throughout the Kotlin GGML implementation.
  */
 object GGMLTensorUtils {
     
     /**
      * Calculate total size (number of elements) of a tensor from its dimensions.
-     * Used throughout the codebase for memory allocation and validation.
+     * 
+     * This function computes the total number of elements in a tensor by multiplying
+     * all valid dimensions. It handles edge cases like zero dimensions and ensures
+     * proper bounds checking.
+     * 
+     * Used throughout the codebase for:
+     * - Memory allocation calculations
+     * - Validation of tensor operations
+     * - Buffer size determination
+     * 
+     * @param ne Array of dimension sizes (up to GGML_MAX_DIMS)
+     * @return Total number of elements in the tensor
      */
     fun calculateTotalSize(ne: LongArray): Long {
         var totalSize = 1L
@@ -24,18 +45,35 @@ object GGMLTensorUtils {
     
     /**
      * Legacy compatibility function that returns Int for backward compatibility.
-     * @deprecated Use calculateTotalSize() that returns Long for better precision
+     * 
+     * @param ne Array of dimension sizes
+     * @return Total number of elements as Int (may overflow for large tensors)
+     * @deprecated Use calculateTotalSize() for better precision and overflow safety
      */
-    @Deprecated("Use calculateTotalSize() for better precision", ReplaceWith("calculateTotalSize(ne).toInt()"))
+    @Deprecated(
+        message = "Use calculateTotalSize() for better precision", 
+        replaceWith = ReplaceWith("calculateTotalSize(ne).toInt()")
+    )
     fun calculateTotalSizeInt(ne: LongArray): Int {
         return calculateTotalSize(ne).toInt()
     }
     
     /**
      * Calculate contiguous tensor strides for memory layout.
-     * Consolidates the stride calculation logic from GGMLOps and GGMLTestUtils.
+     * 
+     * Strides define how to navigate through multi-dimensional tensor data stored
+     * in a contiguous ByteArray. The stride for dimension d indicates how many bytes
+     * to advance to move one position in that dimension.
+     * 
+     * This function consolidates the stride calculation logic from GGMLOps and 
+     * other utilities to ensure consistent memory layout throughout the library.
+     * 
+     * @param ne Array of dimension sizes
+     * @param type Tensor data type (determines element size)
+     * @param maxDims Maximum dimensions to calculate (defaults to GGML_MAX_DIMS)
+     * @return Array of stride values in bytes for each dimension
      */
-    fun GGMLTensorUtils.calculateContiguousStrides(ne: LongArray, type: GGMLType, maxDims: Int = GGML_MAX_DIMS): ULongArray {
+    fun calculateContiguousStrides(ne: LongArray, type: GGMLType, maxDims: Int = GGML_MAX_DIMS): ULongArray {
         val nb = ULongArray(maxDims) { 0uL }
         
         if (type.byteSize == 0uL) {

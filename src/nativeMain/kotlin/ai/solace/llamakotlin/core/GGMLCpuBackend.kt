@@ -1,5 +1,14 @@
 package ai.solace.llamakotlin.core
 
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getLongLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
+
 /**
  * CPU backend implementation for GGML operations.
  * 

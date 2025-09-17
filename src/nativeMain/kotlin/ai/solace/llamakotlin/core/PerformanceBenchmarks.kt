@@ -1,10 +1,25 @@
 package ai.solace.llamakotlin.core
 
 /**
- * Performance benchmarks for graph optimization and scheduling
+ * Performance benchmarks for graph optimization and scheduling.
+ * 
+ * This module provides comprehensive benchmarking capabilities for:
+ * - Graph optimization performance measurement
+ * - Memory allocation efficiency testing  
+ * - Parallel vs sequential execution comparison
+ * - Operation-specific performance analysis
  */
 import kotlin.time.TimeSource
 
+/**
+ * Data class representing the results of a performance benchmark.
+ * 
+ * @param operationName Human-readable name of the benchmarked operation
+ * @param unoptimizedTimeMs Execution time in milliseconds without optimization
+ * @param optimizedTimeMs Execution time in milliseconds with optimization
+ * @param speedupRatio Ratio of unoptimized time to optimized time (>1.0 means improvement)
+ * @param memoryReduction Number of operations or bytes reduced through optimization
+ */
 data class BenchmarkResult(
     val operationName: String,
     val unoptimizedTimeMs: Long,
@@ -14,7 +29,16 @@ data class BenchmarkResult(
 )
 
 /**
- * Benchmark graph optimization performance
+ * Benchmark graph optimization performance across multiple optimization strategies.
+ * 
+ * This function runs a comprehensive suite of benchmarks to measure the effectiveness
+ * of various graph optimization techniques including:
+ * - Redundant operation elimination
+ * - Dead code elimination  
+ * - Constant folding optimization
+ * - Parallel execution performance
+ * 
+ * @return List of benchmark results for analysis
  */
 fun benchmarkGraphOptimization(): List<BenchmarkResult> {
     println("=== Graph Optimization Performance Benchmark ===")
@@ -101,7 +125,7 @@ private fun benchmarkRedundantOperations(): BenchmarkResult {
     
     println("Unoptimized: ${unoptimizedTime}ms with ${unoptimizedGraph.nNodes} operations")
     println("Optimized: ${optimizedTime}ms with ${graph.nNodes} operations")
-    println("Speedup: ${format2(speedup)}x")
+    println("Speedup: ${GGMLUtilities.formatSpeedup(speedup)}")
     println("Memory reduction: $memoryReduction operations")
     
     backendManager.cleanup()
@@ -286,7 +310,7 @@ private fun benchmarkParallelExecution(): BenchmarkResult {
     
     println("Sequential: ${sequentialTime}ms")
     println("Parallel: ${parallelTime}ms")
-    println("Speedup: ${format2(speedup)}x")
+    println("Speedup: ${GGMLUtilities.formatSpeedup(speedup)}")
     
     backendManager.cleanup()
     
@@ -295,13 +319,13 @@ private fun benchmarkParallelExecution(): BenchmarkResult {
 
 // Helper functions
 
-// Timing uses TimeSource.Monotonic; no deprecated APIs.
-
-private fun format2(x: Double): String {
-    val v = kotlin.math.round(x * 100.0) / 100.0
-    return v.toString()
-}
-
+/**
+ * Creates a deep copy of a computation graph for benchmarking purposes.
+ * Used to ensure fair comparison between optimization strategies.
+ * 
+ * @param original The source graph to duplicate
+ * @return A new graph with identical structure and content
+ */
 private fun duplicateGraph(original: GGMLCGraph): GGMLCGraph {
     val duplicate = createGraph(original.size)
     
@@ -319,7 +343,11 @@ private fun duplicateGraph(original: GGMLCGraph): GGMLCGraph {
 }
 
 /**
- * Run all benchmarks and display results
+ * Run all benchmarks and display results in a formatted summary.
+ * 
+ * This function executes the complete benchmark suite and provides
+ * a comprehensive analysis of performance improvements and optimization
+ * effectiveness across all tested operations.
  */
 fun runPerformanceBenchmarks() {
     val results = benchmarkGraphOptimization()
@@ -327,7 +355,7 @@ fun runPerformanceBenchmarks() {
     println("\n=== Performance Benchmark Summary ===")
     results.forEach { result ->
         println("${result.operationName}:")
-        println("  Speedup: ${format2(result.speedupRatio)}x")
+        println("  Speedup: ${GGMLUtilities.formatSpeedup(result.speedupRatio)}")
         if (result.memoryReduction > 0) {
             println("  Memory reduction: ${result.memoryReduction} operations")
         }
@@ -335,5 +363,5 @@ fun runPerformanceBenchmarks() {
     }
     
     val avgSpeedup = results.map { it.speedupRatio }.average()
-    println("Average speedup: ${format2(avgSpeedup)}x")
+    println("Average speedup: ${GGMLUtilities.formatSpeedup(avgSpeedup)}")
 }
