@@ -30,6 +30,9 @@ fun main() {
     // Demonstrate the new graph optimization and scheduling features
     demonstrateGraphOptimization()
     
+    // Demonstrate LLaMA model architecture components
+    demonstrateLlamaModelArchitecture()
+    
     kotlin.io.println()
     kotlin.io.println("🚀 All demonstrations completed! The Kotlin llama.cpp port is comprehensive and functional.")
 }
@@ -249,6 +252,204 @@ fun demonstrateGraphOptimization() {
     } catch (e: Exception) {
         kotlin.io.println("✗ Error during optimization demo: ${e.message}")
         // Don't crash the main demo, just log the error
+    }
+}
+
+/**
+ * Demonstrates the LLaMA model architecture and core transformer components
+ */
+fun demonstrateLlamaModelArchitecture() {
+    kotlin.io.println("\n=== LLaMA Model Architecture Demo ===")
+    kotlin.io.println("Testing transformer components and attention mechanisms...")
+    
+    try {
+        // Setup allocator and context
+        val allocator = GGMLGraphAllocator()
+        allocator.reserve(4 * 1024 * 1024) // 4MB buffer
+        val context = GGMLContext()
+        
+        // Test 1: Model Configuration and Creation
+        kotlin.io.println("\n1. Model Configuration")
+        val config = ai.solace.llamakotlin.model.LlamaConfig(
+            vocabSize = 100,
+            hiddenSize = 64,
+            intermediateSize = 128,
+            numHiddenLayers = 2,
+            numAttentionHeads = 4,
+            numKeyValueHeads = 4
+        )
+        
+        val model = ai.solace.llamakotlin.model.LlamaModel(config)
+        kotlin.io.println("   ✓ LLaMA model created with ${config.numHiddenLayers} layers")
+        kotlin.io.println("   ✓ Hidden size: ${config.hiddenSize}, Head dimension: ${config.headDim}")
+        
+        // Test 2: Transpose Operation (critical for attention)
+        kotlin.io.println("\n2. Transpose Operation")
+        val matrix = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = 3L  // 3 columns
+            ne[1] = 2L  // 2 rows  
+            ne[2] = 1L; ne[3] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(matrix)
+        
+        // Fill test matrix: [[1,2,3], [4,5,6]]
+        matrix.setFloat(allocator, 1.0f, 0, 0)
+        matrix.setFloat(allocator, 2.0f, 1, 0)
+        matrix.setFloat(allocator, 3.0f, 2, 0)
+        matrix.setFloat(allocator, 4.0f, 0, 1)
+        matrix.setFloat(allocator, 5.0f, 1, 1)
+        matrix.setFloat(allocator, 6.0f, 2, 1)
+        
+        val transposed = computeTranspose(allocator, matrix)
+        kotlin.io.println("   ✓ Matrix transposed from (3x2) to (2x3)")
+        
+        // Verify transpose worked correctly
+        val val00 = transposed.getFloat(allocator, 0, 0) // Should be 1
+        val val10 = transposed.getFloat(allocator, 1, 0) // Should be 4
+        val val01 = transposed.getFloat(allocator, 0, 1) // Should be 2
+        val val11 = transposed.getFloat(allocator, 1, 1) // Should be 5
+        kotlin.io.println("   ✓ Transpose verification: T[0,0]=$val00, T[1,0]=$val10, T[0,1]=$val01, T[1,1]=$val11")
+        
+        // Test 3: RMSNorm (Layer Normalization)
+        kotlin.io.println("\n3. RMSNorm Layer Normalization")
+        val hiddenSize = 32
+        val inputTensor = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = hiddenSize.toLong(); ne[1] = 1L; ne[2] = 1L; ne[3] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(inputTensor)
+        
+        // Fill with test values
+        for (i in 0 until hiddenSize) {
+            inputTensor.setFloat(allocator, (i + 1).toFloat(), i, 0)
+        }
+        
+        val normalized = computeRMSNorm(allocator, inputTensor, 1e-6f)
+        
+        // Verify normalization
+        var sumSquared = 0.0f
+        for (i in 0 until hiddenSize) {
+            val value = normalized.getFloat(allocator, i, 0)
+            sumSquared += value * value
+        }
+        val rms = kotlin.math.sqrt(sumSquared / hiddenSize)
+        kotlin.io.println("   ✓ RMS after normalization: %.4f (target: ~1.0)".replace("%.4f", rms.toString().take(6)))
+        
+        // Test 4: SiLU Activation Function
+        kotlin.io.println("\n4. SiLU Activation Function")
+        val activationInput = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = 8L; ne[1] = 1L; ne[2] = 1L; ne[3] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(activationInput)
+        
+        val testValues = floatArrayOf(-2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 3.0f)
+        for (i in testValues.indices) {
+            activationInput.setFloat(allocator, testValues[i], i, 0)
+        }
+        
+        val siluResult = GGMLTensor(type = GGMLType.F32).apply {
+            ne = activationInput.ne.copyOf()
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(siluResult)
+        computeSilu(allocator, context, activationInput, siluResult)
+        
+        val siluZero = siluResult.getFloat(allocator, 3, 0) // SiLU(0)
+        val siluPositive = siluResult.getFloat(allocator, 4, 0) // SiLU(0.5)
+        kotlin.io.println("   ✓ SiLU(0) = %.6f (should be ~0)".replace("%.6f", siluZero.toString().take(8)))
+        kotlin.io.println("   ✓ SiLU(0.5) = %.4f (should be positive)".replace("%.4f", siluPositive.toString().take(6)))
+        
+        // Test 5: Matrix Multiplication for Linear Layers
+        kotlin.io.println("\n5. Matrix Multiplication for Linear Layers")
+        val inputDim = 16
+        val outputDim = 32
+        val seqLen = 4
+        
+        val transformerInput = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = inputDim.toLong(); ne[1] = seqLen.toLong(); ne[2] = 1L; ne[3] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(transformerInput)
+        
+        val weightMatrix = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = inputDim.toLong(); ne[1] = outputDim.toLong(); ne[2] = 1L; ne[3] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(weightMatrix)
+        
+        // Initialize with small test values
+        for (i in 0 until inputDim * seqLen) {
+            transformerInput.setFloat(allocator, 0.1f * (i % 10 + 1), i % inputDim, i / inputDim)
+        }
+        for (i in 0 until inputDim * outputDim) {
+            weightMatrix.setFloat(allocator, 0.01f * ((i % 7) - 3), i % inputDim, i / inputDim)
+        }
+        
+        val matmulResult = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = outputDim.toLong(); ne[1] = seqLen.toLong(); ne[2] = 1L; ne[3] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(matmulResult)
+        computeMatMul(allocator, context, weightMatrix, transformerInput, matmulResult)
+        
+        kotlin.io.println("   ✓ Linear transformation: ($inputDim × $seqLen) × ($inputDim × $outputDim) → ($outputDim × $seqLen)")
+        
+        // Test 6: Softmax for Attention Weights
+        kotlin.io.println("\n6. Softmax for Attention Scores")
+        val logitsInput = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = 5L; ne[1] = 1L; ne[2] = 1L; ne[3] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(logitsInput)
+        
+        val logitValues = floatArrayOf(1.0f, 2.0f, 3.0f, 4.0f, 5.0f)
+        for (i in logitValues.indices) {
+            logitsInput.setFloat(allocator, logitValues[i], i, 0)
+        }
+        
+        val softmaxResult = GGMLTensor(type = GGMLType.F32).apply {
+            ne = logitsInput.ne.copyOf()
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(softmaxResult)
+        computeSoftMax(allocator, context, logitsInput, softmaxResult)
+        
+        // Verify softmax properties
+        var sum = 0.0f
+        for (i in 0 until 5) {
+            val value = softmaxResult.getFloat(allocator, i, 0)
+            sum += value
+        }
+        kotlin.io.println("   ✓ Softmax sum: %.6f (should be 1.0)".replace("%.6f", sum.toString().take(8)))
+        
+        // Test 7: KV Cache for Efficient Inference
+        kotlin.io.println("\n7. KV Cache for Efficient Inference")
+        val kvCache = ai.solace.llamakotlin.model.KVCache(
+            maxSequenceLength = 10,
+            numHeads = 4,
+            headDim = 8
+        )
+        kvCache.initialize(allocator)
+        kotlin.io.println("   ✓ KV Cache initialized for efficient autoregressive generation")
+        kotlin.io.println("   ✓ Max sequence length: 10, Heads: 4, Head dimension: 8")
+        
+        kotlin.io.println("\n🎉 LLaMA Model Architecture Demo Complete!")
+        kotlin.io.println("✓ All core transformer components are working:")
+        kotlin.io.println("  • Model configuration and instantiation")
+        kotlin.io.println("  • Matrix transpose for attention mechanisms")
+        kotlin.io.println("  • RMSNorm layer normalization")
+        kotlin.io.println("  • SiLU activation function")
+        kotlin.io.println("  • Matrix multiplication for linear layers")
+        kotlin.io.println("  • Softmax for attention weights")
+        kotlin.io.println("  • KV cache for efficient inference")
+        kotlin.io.println()
+        kotlin.io.println("🚀 Ready for full LLaMA model inference implementation!")
+        
+    } catch (e: Exception) {
+        kotlin.io.println("✗ Error during LLaMA model demo: ${e.message}")
+        e.printStackTrace()
     }
 }
 

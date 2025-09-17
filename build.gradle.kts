@@ -14,10 +14,34 @@ repositories {
 
 kotlin {
     jvm()
-    linuxX64()
-    macosX64()
-    macosArm64()
-    mingwX64()
+    linuxX64 {
+        binaries {
+            executable {
+                entryPoint = "ai.solace.llamakotlin.main"
+            }
+        }
+    }
+    macosX64 {
+        binaries {
+            executable {
+                entryPoint = "ai.solace.llamakotlin.main"
+            }
+        }
+    }
+    macosArm64 {
+        binaries {
+            executable {
+                entryPoint = "ai.solace.llamakotlin.main"
+            }
+        }
+    }
+    mingwX64 {
+        binaries {
+            executable {
+                entryPoint = "ai.solace.llamakotlin.main"
+            }
+        }
+    }
 
     js(IR) {
         browser()
@@ -81,16 +105,16 @@ publishing {
     }
 }
 
-// Temporarily disable native test compilation to allow assembling main targets while stabilizing sources
-tasks.configureEach {
-    if (
-        name.contains("Test") && (
-            name.contains("LinuxX64", ignoreCase = true) ||
-            name.contains("MacosX64", ignoreCase = true) ||
-            name.contains("MacosArm64", ignoreCase = true) ||
-            name.contains("MingwX64", ignoreCase = true)
-        )
-    ) {
-        enabled = false
-    }
-}
+// Native test compilation re-enabled for model integration testing
+// tasks.configureEach {
+//     if (
+//         name.contains("Test") && (
+//             name.contains("LinuxX64", ignoreCase = true) ||
+//             name.contains("MacosX64", ignoreCase = true) ||
+//             name.contains("MacosArm64", ignoreCase = true) ||
+//             name.contains("MingwX64", ignoreCase = true)
+//         )
+//     ) {
+//         enabled = false
+//     }
+// }
