@@ -1,103 +1,100 @@
 package ai.solace.llamakotlin.core
 
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getLongLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
 import kotlin.Short.Companion.SIZE_BYTES
-
-// Numeric conversion functions (assuming they are in the same package or imported)
-// import ai.solace.llamakotlin.core.halfToFloat // Not needed if in same file/package
-// import ai.solace.llamakotlin.core.floatToHalf // Not needed if in same file/package
-
-// Helper functions for Little Endian byte conversions
-internal fun ByteArray.getIntLe(offset: Int): Int {
-    if (offset + 3 >= size) throw IndexOutOfBoundsException("Not enough bytes to read an Int at offset $offset")
-    return (this[offset].toInt() and 0xFF) or
-            ((this[offset + 1].toInt() and 0xFF) shl 8) or
-            ((this[offset + 2].toInt() and 0xFF) shl 16) or
-            ((this[offset + 3].toInt() and 0xFF) shl 24)
-}
-
-internal fun ByteArray.getFloatLe(offset: Int): Float = Float.fromBits(this.getIntLe(offset))
-
-internal fun ByteArray.setIntLe(offset: Int, value: Int) {
-    if (offset + 3 >= size) throw IndexOutOfBoundsException("Not enough bytes to write an Int at offset $offset")
-    this[offset] = (value and 0xFF).toByte()
-    this[offset + 1] = ((value shr 8) and 0xFF).toByte()
-    this[offset + 2] = ((value shr 16) and 0xFF).toByte()
-    this[offset + 3] = ((value shr 24) and 0xFF).toByte()
-}
-
-internal fun ByteArray.setFloatLe(offset: Int, value: Float) = this.setIntLe(offset, value.toRawBits())
-
-internal fun ByteArray.getShortLe(offset: Int): Short {
-    if (offset + 1 >= size) throw IndexOutOfBoundsException("Not enough bytes to read a Short at offset $offset")
-    return ((this[offset].toInt() and 0xFF) or
-            ((this[offset + 1].toInt() and 0xFF) shl 8)).toShort()
-}
-
-internal fun ByteArray.setShortLe(offset: Int, value: Short) {
-    if (offset + 1 >= size) throw IndexOutOfBoundsException("Not enough bytes to write a Short at offset $offset")
-    this[offset] = (value.toInt() and 0xFF).toByte()
-    this[offset + 1] = ((value.toInt() shr 8) and 0xFF).toByte()
-}
-
-internal fun ByteArray.getLongLe(offset: Int): Long {
-    require(offset + Long.SIZE_BYTES <= size) { "Offset $offset + ${Long.SIZE_BYTES} > size $size" }
-    var result = 0L
-    for (i in 0 until Long.SIZE_BYTES) {
-        result = result or ((this[offset + i].toLong() and 0xFF) shl (i * 8))
-    }
-    return result
-}
-
-internal fun ByteArray.setLongLe(offset: Int, value: Long) {
-    require(offset + Long.SIZE_BYTES <= size) { "Offset $offset + ${Long.SIZE_BYTES} > size $size" }
-    for (i in 0 until Long.SIZE_BYTES) {
-        this[offset + i] = ((value shr (i * 8)) and 0xFF).toByte()
-    }
-}
-
 
 /**
  * Kotlin Native port of GGML tensor library core data types.
- * This file contains the core data structures used in the GGML library.
+ * 
+ * This file contains the fundamental data structures and type definitions used throughout
+ * the GGML tensor computation library. It provides:
+ * 
+ * - Tensor data type definitions (F32, F16, quantized types, etc.)
+ * - Core tensor structure (GGMLTensor) with dimension and memory layout information
+ * - Operation type enumeration for computational graphs
+ * - Memory management utilities and buffer access patterns
+ * - Type-safe accessor methods for different data formats
+ * 
+ * The implementation follows Kotlin/Native memory management patterns while maintaining
+ * compatibility with the original GGML C++ library design principles.
  */
 
 /**
- * Maximum number of dimensions in a tensor
+ * Maximum number of dimensions supported in a tensor.
+ * GGML uses a fixed-size tensor structure with up to 4 dimensions
+ * following NumPy-style dimension ordering.
  */
 const val GGML_MAX_DIMS = 4
 
 /**
- * Maximum number of source tensors for an operation
+ * Maximum number of source tensors for a single operation.
+ * Used for operations that can take multiple input tensors.
  */
 const val GGML_MAX_SRC = 10
 
 /**
- * Maximum number of operation parameters
+ * Maximum number of operation parameters.
+ * Used for storing operation-specific configuration data.
  */
 const val GGML_MAX_OP_PARAMS = 32
 
 /**
- * Maximum name length for a tensor
+ * Maximum name length for a tensor.
+ * Used for debugging and graph visualization purposes.
  */
 const val GGML_MAX_NAME = 64
-const val GGML_TENSOR_FLAG_OUTPUT = 1 shl 0
-internal const val QK8_0: Int = 32 // Block size for Q8_0 blocks
-internal const val QK4_0: Int = 32 // Block size for Q4_0 blocks
-internal const val QK4_1: Int = 32 // Block size for Q4_1 blocks (same number of elements as Q4_0)
-
-// BitNet 1.58 constants
-internal const val QK_BITNET_1_58: Int = 32 // Block size for BitNet 1.58 blocks (ternary values per block)
-
-// K-Quant constants
-internal const val QK_K: Int = 256 // Super-block size for K-quants
-internal const val K_SCALE_SIZE: Int = 12 // Number of scale bytes for Q4_K and Q5_K
 
 /**
- * Tensor data types
+ * Tensor flag indicating this tensor is an output of the computation graph.
+ * Used for gradient computation and memory management optimization.
  */
-@Suppress("UNUSED_PARAMETER") // For description in enum, if not used elsewhere
+const val GGML_TENSOR_FLAG_OUTPUT = 1 shl 0
+
+// Quantization block size constants
+/** Block size for Q8_0 quantization (32 elements per block). */
+internal const val QK8_0: Int = 32
+/** Block size for Q4_0 quantization (32 elements per block). */
+internal const val QK4_0: Int = 32
+/** Block size for Q4_1 quantization (32 elements per block, same as Q4_0). */
+internal const val QK4_1: Int = 32
+
+// BitNet 1.58 constants  
+/** Block size for BitNet 1.58 quantization (32 ternary values per block). */
+internal const val QK_BITNET_1_58: Int = 32
+
+// K-Quant constants
+/** Super-block size for K-quantization schemes (256 elements per super-block). */
+internal const val QK_K: Int = 256
+/** Number of scale bytes for Q4_K and Q5_K quantization schemes. */
+internal const val K_SCALE_SIZE: Int = 12
+
+/**
+ * Enumeration of supported tensor data types in the GGML system.
+ * 
+ * This enum defines all supported data formats for tensor storage and computation,
+ * including:
+ * - Standard floating-point types (F32, F16)
+ * - Integer types (I32, I64, etc.)
+ * - Quantized types for memory-efficient inference
+ * - Specialized quantization schemes (K-quants, BitNet)
+ * 
+ * Each type includes its description and memory size per element in bytes.
+ * The byteSize is used for memory allocation and stride calculations.
+ * 
+ * @param description Human-readable description of the data type
+ * @param byteSize Size of one element in bytes (0 for variable-size types)
+ */
+@Suppress("UNUSED_PARAMETER") // For description parameter used in documentation
 enum class GGMLType(val description: String, val byteSize: ULong) {
-    F32("float32", 4uL),    // 32-bit float
+    /** 32-bit IEEE 754 floating-point type. */
+    F32("float32", 4uL),
     F16("float16", 2uL),    // 16-bit float
     // For quantized types, byteSize here represents the size of the fundamental element IF applicable for simple stride calculations.
     // Actual memory per element for quantized types is fractional and depends on block size.

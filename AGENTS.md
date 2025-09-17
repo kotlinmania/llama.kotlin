@@ -94,12 +94,19 @@ It summarizes the current project state and lists recommended next steps. Before
 - **Memory Efficiency**: Use ByteArray-based storage with accessor methods rather than individual arrays
 - **Type Safety**: Leverage Kotlin's type system for compile-time safety in tensor operations
 - **Performance**: Consider SIMD and multi-threading opportunities in CPU-intensive operations
+- **DRY Principle**: Use centralized utilities in `GGMLUtilities.kt` and `GGMLTensorUtils.kt` to avoid code duplication
+- **Consistent Formatting**: Use `GGMLUtilities.formatDouble()` and related functions for consistent display formatting
+- **Centralized Extensions**: Use `ByteArrayExtensions` object for all ByteArray manipulation to ensure consistency
 
 ## Key Architecture Patterns
 - **Memory Management**: Use `GGMLGraphAllocator` for graph-level memory planning with inplace optimization
 - **Data Access**: Implement typed accessors (`getF32`, `setF32`, etc.) for ByteArray-backed tensors
 - **Quantization**: Follow block-based quantization patterns with optimized dot product routines
 - **Computation Separation**: Keep operation setup (graph building) separate from computation (execution)
+- **Utility Consolidation**: Leverage centralized utilities for common operations:
+  - `GGMLUtilities.kt`: Formatting, display helpers, and ByteArray extensions
+  - `GGMLTensorUtils.kt`: Tensor dimension calculations and validation
+  - `DemoTextUtilities`: Reusable components for demo and test output
 
 ## Build and Test
 - **Build System**: The project uses Gradle with Kotlin Multiplatform. Build with `./gradlew build`
@@ -170,6 +177,11 @@ It summarizes the current project state and lists recommended next steps. Before
 - **Quantization Implementation**: Reference `GGMLComputeOps.kt` for Q8_0/Q4_0/Q4_1 patterns
 - **Data Access Patterns**: See `GGMLTensor` accessor methods for ByteArray-based storage
 - **Testing Patterns**: Follow existing test structure in `src/nativeTest/kotlin/` 
+- **Utility Patterns**: Use `GGMLUtilities.kt` for formatting, display, and ByteArray operations
+- **DRY Implementation**: Reference centralized utilities to avoid code duplication:
+  - `GGMLTensorUtils.calculateTotalSize()` for tensor size calculations
+  - `ByteArrayExtensions` for consistent little-endian operations
+  - `DemoTextUtilities` for reusable demo components 
 
 ## Technical Implementation Guidance
 
@@ -203,6 +215,8 @@ fun computeNewOp(graphAllocator: GGMLGraphAllocator, context: GGMLContext,
 // 3. Add high-level interface in GGMLOps.kt  
 // 4. Create unit tests in GGMLComputeOpsDestinationTest.kt
 // 5. Add backward pass for automatic differentiation
+// 6. Use GGMLUtilities for consistent formatting and display
+// 7. Leverage GGMLTensorUtils for dimension calculations and validation
 ```
 
 ## Project Scope and Backend Support

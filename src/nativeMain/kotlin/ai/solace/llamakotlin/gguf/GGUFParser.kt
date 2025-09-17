@@ -1,10 +1,10 @@
 package ai.solace.llamakotlin.gguf
 
 import ai.solace.llamakotlin.core.GGMLType
-import ai.solace.llamakotlin.core.getLongLe
-import ai.solace.llamakotlin.core.getIntLe
-import ai.solace.llamakotlin.core.getShortLe
-import ai.solace.llamakotlin.core.getFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getLongLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
 import kotlin.math.pow
 
 /**

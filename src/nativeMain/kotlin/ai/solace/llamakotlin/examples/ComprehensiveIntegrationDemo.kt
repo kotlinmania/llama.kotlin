@@ -6,48 +6,61 @@ import kotlin.math.abs
 
 /**
  * Comprehensive integration demonstration showcasing the complete capabilities
- * of the Kotlin llama.cpp port including K-Quantization, tensor operations, 
- * and graph optimization.
+ * of the Kotlin llama.cpp port.
+ * 
+ * This demo provides a thorough overview of implemented features including:
+ * - K-Quantization support with all major formats
+ * - Advanced tensor operations with destination-based architecture
+ * - Graph optimization passes for performance improvement
+ * - Flexible backend system supporting multiple compute targets
+ * - Complete model infrastructure for inference workflows
+ * 
+ * The demonstration serves both as a feature showcase and validation that
+ * core systems are working correctly across the entire library.
  */
 class ComprehensiveIntegrationDemo {
     
+    /**
+     * Runs the complete demonstration showcasing all major capabilities.
+     * 
+     * @return Formatted string containing the complete demo output
+     */
     fun runCompleteDemo(): String {
         return buildString {
             appendLine("🦙 Kotlin llama.cpp Port - Comprehensive Integration Demo")
-            appendLine("=" + "=".repeat(59))
+            appendLine(GGMLUtilities.createDivider(59, "="))
             
             // Demo 1: K-Quantization Summary
-            appendLine("\n📊 DEMO 1: K-Quantization Support")
-            appendLine("-" + "-".repeat(29))
-            appendLine("✅ All K-Quantization formats implemented:")
-            appendLine("  • Q2_K, Q3_K, Q4_K, Q5_K, Q6_K, Q8_K")
-            appendLine("  • Quantization and dequantization functions")
-            appendLine("  • Optimized dot product routines")
-            appendLine("  • Comprehensive accuracy tests")
+            append(DemoTextUtilities.createFeatureSection(
+                sectionTitle = "K-Quantization Support",
+                emoji = "📊",
+                features = DemoTextUtilities.FeatureLists.kQuantizationFeatures,
+                statusIcon = "✅ All K-Quantization formats implemented:"
+            ))
             
             // Demo 2: Tensor Operations Summary
-            appendLine("\n🧮 DEMO 2: Advanced Tensor Operations") 
-            appendLine("-" + "-".repeat(29))
-            appendLine("✅ Destination-based compute architecture:")
-            appendLine("  • Matrix multiplication with all quantization types")
-            appendLine("  • Element-wise operations (ADD, MUL, SUB, DIV)")
-            appendLine("  • Activation functions (RELU, GELU, SILU)")
-            appendLine("  • Memory-efficient in-place operations")
+            append(DemoTextUtilities.createFeatureSection(
+                sectionTitle = "Advanced Tensor Operations",
+                emoji = "🧮", 
+                features = DemoTextUtilities.FeatureLists.tensorOperationFeatures,
+                statusIcon = "✅ Destination-based compute architecture:"
+            ))
             
-            // Demo 3: Graph Optimization Summary
-            appendLine("\n⚡ DEMO 3: Graph Optimization")
-            appendLine("-" + "-".repeat(29))
-            appendLine("✅ Multiple optimization passes implemented:")
-            appendLine("  • Dead code elimination")
-            appendLine("  • Redundant operation removal")
-            appendLine("  • Constant folding")
-            appendLine("  • Memory optimization")
+            // Demo 3: Graph Optimization Summary  
+            append(DemoTextUtilities.createFeatureSection(
+                sectionTitle = "Graph Optimization",
+                emoji = "⚡",
+                features = DemoTextUtilities.FeatureLists.graphOptimizationFeatures,
+                statusIcon = "✅ Multiple optimization passes implemented:"
+            ))
             
             // Demo 4: Backend Architecture
-            appendLine("\n🏗️ DEMO 4: Backend Architecture")
-            appendLine("-" + "-".repeat(29))
-            appendLine("✅ Flexible backend system:")
-            appendLine("  • CPU backend with ByteArray management")
+            append(DemoTextUtilities.createFeatureSection(
+                sectionTitle = "Backend Architecture", 
+                emoji = "🏗️",
+                features = DemoTextUtilities.FeatureLists.backendArchitectureFeatures,
+                statusIcon = "✅ Flexible backend system:"
+            ))
             appendLine("  • Metal backend foundations (stub)")
             appendLine("  • Graph allocator with inplace optimization")
             appendLine("  • Multi-backend computation scheduling")

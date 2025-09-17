@@ -1,6 +1,13 @@
 package ai.solace.llamakotlin.core
 
-import ai.solace.llamakotlin.core.GGMLGraphAllocator // Required for new function signatures
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getLongLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.round
@@ -9,21 +16,63 @@ import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES
 
 /**
  * Kotlin Native port of GGML tensor computation operations.
- * This file contains the implementation of actual computation functionality for tensor operations.
+ * 
+ * This module implements the core computational functionality for tensor operations
+ * in the GGML system. It provides:
+ * 
+ * - Low-level tensor computation kernels
+ * - Quantized operation implementations  
+ * - Matrix multiplication optimizations
+ * - Dot product routines for various data types
+ * - Memory-efficient destination-based operations
+ * 
+ * All operations follow the destination-based pattern where results are written
+ * directly into pre-allocated tensors to minimize memory allocation overhead.
+ * This aligns with GGML's memory management philosophy and enables efficient
+ * graph execution.
+ * 
+ * The implementation supports both standard floating-point operations and
+ * optimized quantized computations for memory-efficient inference.
  */
+
+/**
+ * Calculate total size of tensor elements using centralized utility.
+ * This function has been moved to GGMLTensorUtils to avoid duplication.
+ * 
+ * @param ne Array of tensor dimensions
+ * @return Total number of elements
+ * @deprecated Use GGMLTensorUtils.calculateTotalSize() instead
+ */
+@Deprecated(
+    message = "Use GGMLTensorUtils.calculateTotalSize() instead",
+    replaceWith = ReplaceWith("GGMLTensorUtils.calculateTotalSize(ne)")
+)
 fun calculateTotalSize(ne: LongArray): Int {
-    var totalSize = 1
-    for (i in 0 until GGML_MAX_DIMS) {
-        totalSize *= ne[i].toInt()
-    }
-    return totalSize
+    return GGMLTensorUtils.calculateTotalSize(ne).toInt()
 }
 
 /**
  * Computes the dot product of a row from a Q8_0 tensor and a column from an F32 tensor.
- * Used as a core part of Q8_0 x F32 matrix multiplication.
- * Assumes tensorQ80 (src0) is M x K (ne = [K, M])
- * Assumes tensorF32 (src1) is K x N (ne = [N, K])
+ * 
+ * This function is a core building block for Q8_0 × F32 matrix multiplication operations.
+ * It efficiently computes the dot product by:
+ * 1. Extracting quantized weights from Q8_0 blocks
+ * 2. Dequantizing using the block scale factor
+ * 3. Multiplying with corresponding F32 values
+ * 4. Accumulating the result
+ * 
+ * Memory layout assumptions:
+ * - tensorQ80: M × K tensor where ne[0]=K, ne[1]=M (row-major storage)
+ * - tensorF32: K × N tensor where ne[0]=N, ne[1]=K (column-major access)
+ * 
+ * @param graphAllocator Memory allocator for accessing tensor data
+ * @param tensorQ80 Source Q8_0 quantized tensor (M × K dimensions)
+ * @param tensorF32 Source F32 tensor (K × N dimensions)
+ * @param rowIndexInQ80 Row index in Q8_0 tensor (0 to M-1)
+ * @param colIndexInF32 Column index in F32 tensor (0 to N-1)
+ * @param commonDimK Shared dimension size (must match tensorQ80.ne[0] and tensorF32.ne[1])
+ * @return Computed dot product as Float
+ * @throws IllegalArgumentException if tensor types don't match or dimensions are inconsistent
  */
 internal fun computeDotProductQ80F32(
     graphAllocator: GGMLGraphAllocator,
