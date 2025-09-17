@@ -20,23 +20,6 @@ fun calculateTotalSize(ne: LongArray): Int {
 }
 
 /**
- * Allocates memory for a tensor based on its type and size.
- * (Note: This function is less relevant now that compute ops use graphAllocator for results)
- */
-@Suppress("unused")
-fun allocateMemory(type: GGMLType, size: Int): Any {
-    return when (type) {
-        GGMLType.F32 -> FloatArray(size) { 0.0f }
-        GGMLType.F16 -> ShortArray(size) { 0 } // Still used by quantizeTensor for F16 intermediate
-        GGMLType.I8 -> ByteArray(size) { 0 }
-        GGMLType.I16 -> ShortArray(size) { 0 }
-        GGMLType.I32 -> IntArray(size) { 0 }
-        GGMLType.I64 -> LongArray(size) { 0L }
-        else -> ByteArray(size) { 0 } // Default for quantized types
-    }
-}
-
-/**
  * Computes the dot product of a row from a Q8_0 tensor and a column from an F32 tensor.
  * Used as a core part of Q8_0 x F32 matrix multiplication.
  * Assumes tensorQ80 (src0) is M x K (ne = [K, M])
