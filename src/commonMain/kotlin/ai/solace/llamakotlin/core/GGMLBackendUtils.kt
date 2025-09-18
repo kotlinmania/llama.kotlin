@@ -46,12 +46,10 @@ class GGMLBackendManager {
         fallbackBackend = cpuBackend
         
         // Try to initialize Metal backend
-        val metalBackend = GGMLMetalBackend()
-        if (metalBackend is GGMLMetalBackend) {
-            if (metalBackend.initialize()) {
-                availableBackends[metalBackend.getName()] = metalBackend
-                primaryBackend = metalBackend
-            }
+        val metalBackend = metalBackendInstance()
+        if (metalBackend != null) {
+            availableBackends[metalBackend.getName()] = metalBackend
+            primaryBackend = metalBackend
         }
         
         // Set primary backend to CPU if Metal failed
@@ -223,11 +221,9 @@ class GGMLBackendManager {
             info["${name}_alignment"] = backend.getAlignment()
             info["${name}_maxSize"] = backend.getMaxSize()
             
-            // Add Metal-specific info if available
-            if (backend is GGMLMetalBackend) {
-                info["${name}_deviceInfo"] = backend.getDeviceInfo()
-            }
         }
+
+        metalDeviceInfo()?.let { info["Metal_deviceInfo"] = it }
         
         return info
     }

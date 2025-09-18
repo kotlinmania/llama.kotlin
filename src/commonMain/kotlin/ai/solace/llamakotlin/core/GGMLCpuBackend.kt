@@ -30,14 +30,14 @@ class GGMLCpuBufferType : GGMLBackendBufferType {
     override fun allocBuffer(size: ULong): GGMLBackendBuffer? {
         if (size == 0uL) return null
         
-        try {
+        return try {
             // Allocate with extra space for alignment
             val alignedSize = (size + TENSOR_ALIGNMENT).toInt()
             val data = ByteArray(alignedSize) { 0 }
-            return GGMLCpuBuffer(this, data, size)
-        } catch (e: OutOfMemoryError) {
-            println("GGMLCpuBufferType: Failed to allocate buffer of size $size")
-            return null
+            GGMLCpuBuffer(this, data, size)
+        } catch (t: Throwable) {
+            println("GGMLCpuBufferType: Failed to allocate buffer of size $size (${t.message})")
+            null
         }
     }
     

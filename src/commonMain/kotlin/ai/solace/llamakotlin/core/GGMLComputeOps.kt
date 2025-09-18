@@ -705,6 +705,31 @@ internal fun computeDotProductF32Q80(
 }
 
 /**
+ * Computes the dot product of a row from an F32 tensor and a column from another F32 tensor.
+ */
+internal fun computeDotProductF32F32(
+    graphAllocator: GGMLGraphAllocator,
+    tensorF32A: GGMLTensor,    // M x K (ne[0]=K, ne[1]=M)
+    tensorF32B: GGMLTensor,    // K x N (ne[0]=N, ne[1]=K)
+    rowIndexInF32A: Int,
+    colIndexInF32B: Int,
+    commonDimK: Int
+): Float {
+    require(tensorF32A.type == GGMLType.F32) { "computeDotProductF32F32: tensorF32A must be F32. Got ${tensorF32A.type}" }
+    require(tensorF32B.type == GGMLType.F32) { "computeDotProductF32F32: tensorF32B must be F32. Got ${tensorF32B.type}" }
+    require(tensorF32A.ne[0].toInt() == commonDimK) { "tensorF32A K dim (${tensorF32A.ne[0]}) must match commonDimK ($commonDimK)"}
+    require(tensorF32B.ne[1].toInt() == commonDimK) { "tensorF32B K dim (${tensorF32B.ne[1]}) must match commonDimK ($commonDimK)"}
+
+    var sumF32 = 0.0f
+    for (k in 0 until commonDimK) {
+        val f32ValueA = tensorF32A.getFloat(graphAllocator, k, rowIndexInF32A)
+        val f32ValueB = tensorF32B.getFloat(graphAllocator, colIndexInF32B, k)
+        sumF32 += f32ValueA * f32ValueB
+    }
+    return sumF32
+}
+
+/**
  * Computes the direct quantized dot product Q8_0 x Q8_0 -> F32.
  * This avoids dequantization by computing the dot product directly on quantized values.
  */
@@ -1850,21 +1875,20 @@ fun computeMatMul(graphAllocator: GGMLGraphAllocator, @Suppress("unused") contex
         return
     }
 
+    if (a.type == GGMLType.F32 && b.type == GGMLType.F32) {
+        if (dst.type != GGMLType.F32) throw IllegalArgumentException("Result tensor type must be F32 for F32 x F32 matmul")
+        for (i in 0 until M) {
+            for (j in 0 until N) {
+                val dot = computeDotProductF32F32(graphAllocator, a, b, i, j, K)
+                dst.setFloat(graphAllocator, dot, j, i)
+            }
+        }
+        return
+    }
+
     // General matrix multiplication fallback (dst-arg only)
     if (dst.type != a.type) throw IllegalArgumentException("Result tensor type must match first input type for general matmul")
     when (a.type) {
-        GGMLType.F32 -> {
-            val effA=a; val effB=if(b.type==GGMLType.F32)b else dequantizeTensor(graphAllocator,b)
-            for(i in 0 until M){
-                for(j in 0 until N){
-                    var sum=0.0f
-                    for(l in 0 until K){
-                        sum+=effA.getFloat(graphAllocator,l,i)*effB.getFloat(graphAllocator,j,l)
-                    }
-                    dst.setFloat(graphAllocator, sum, j, i) // Column j, row i
-                }
-            }
-        }
         GGMLType.F16 -> {
             val effA=a; val effB=if(b.type==GGMLType.F16)b else dequantizeTensor(graphAllocator,b)
             if(effB.type!=GGMLType.F16) throw NotImplementedError("F16xnon-F16 matmul to F16 not implemented")
@@ -3170,13 +3194,13 @@ object GGMLComputeOps {
     computeDiv(graphAllocator, context, src0, src1, node)
     }
     
-    private fun computeSqr(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+    internal fun computeSqr(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SQR operation requires source tensor")
     val context = graphAllocator.context
     computeSqr(graphAllocator, context, src, node)
     }
     
-    private fun computeSqrt(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+    internal fun computeSqrt(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SQRT operation requires source tensor")
     val context = graphAllocator.context
     computeSqrt(graphAllocator, context, src, node)

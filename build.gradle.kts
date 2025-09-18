@@ -44,6 +44,7 @@ kotlin {
     }
 
     js(IR) {
+        binaries.library()
         browser()
         nodejs()
     }
@@ -70,9 +71,11 @@ kotlin {
 
         val nativeMain by creating {
             dependsOn(commonMain)
+            kotlin.srcDir("src/nativeMain/kotlin")
         }
         val nativeTest by creating {
             dependsOn(commonTest)
+            kotlin.srcDir("src/nativeTest/kotlin")
         }
 
         val linuxX64Main by getting { dependsOn(nativeMain) }

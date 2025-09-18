@@ -155,11 +155,13 @@ enum class GGMLType(val description: String, val byteSize: ULong) {
                 11 -> Q5_K
                 12 -> Q6_K
                 13 -> Q8_K
-                14 -> Q1_5_K
-                15 -> I8
-                16 -> I16
-                17 -> I32
-                18 -> I64
+                14 -> BITNET_1_58
+                15 -> Q1_5_K
+                16 -> I8
+                17 -> I16
+                18 -> I32
+                19 -> I64
+                20 -> COUNT
                 else -> null
             }
         }

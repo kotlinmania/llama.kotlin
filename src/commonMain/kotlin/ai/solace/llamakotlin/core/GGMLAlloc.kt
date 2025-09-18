@@ -26,10 +26,11 @@ internal data class TensorUsageInfo(
  * @param alignment The alignment requirement (must be a power of 2)
  * @return The aligned offset
  */
-@OptIn(kotlin.experimental.ExperimentalNativeApi::class)
 fun alignedOffset(offset: ULong, alignment: UInt): ULong {
     // Ensure alignment is a power of 2
-    assert(alignment > 0u && (alignment and (alignment - 1u)) == 0u)
+    require(alignment > 0u && (alignment and (alignment - 1u)) == 0u) {
+        "Alignment must be a power of two, was $alignment"
+    }
 
     val align = (alignment - (offset % alignment)) % alignment
     return offset + align
@@ -274,7 +275,7 @@ class GGMLGraphAllocator {
     var backendBuffers = mutableListOf<GGMLBackendBuffer?>()
 
     // Map to store usage information for each tensor
-    private val tensorUsageMap = mutableMapOf<GGMLTensor, TensorUsageInfo>()
+    internal val tensorUsageMap = mutableMapOf<GGMLTensor, TensorUsageInfo>()
     
     // Backend for this allocator
     var backend: GGMLBackend? = null

@@ -193,13 +193,9 @@ object GGMLBackendRegistry {
             initFunction = { _ -> GGMLCpuBackend() },
             defaultBufferType = GGMLCpuBufferType()
         ))
-        
-        // Register Metal backend (stub for now)
-        register(GGMLBackendRegistration(
-            name = "Metal", 
-            initFunction = { _ -> GGMLMetalBackend() },
-            defaultBufferType = GGMLMetalBufferType()
-        ))
+
+        // Optionally register Metal backend if available on this target
+        metalBackendRegistration()?.let { register(it) }
     }
     
     /**
