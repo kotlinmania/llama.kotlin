@@ -24,6 +24,7 @@ class GGMLExtendedOpsTest {
 
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
+        resetAllocatorTracking(graphAllocator)
     }
 
     // Use shared utility for tensor byte size calculation
@@ -34,35 +35,46 @@ class GGMLExtendedOpsTest {
     private fun createAndInitTensor(
         name: String,
         type: GGMLType,
-        ne: LongArray,
-        dataOffset: ULong = 0uL
+        ne: LongArray
     ): GGMLTensor {
         val tensor = GGMLTensor(type = type, name = name)
-        tensor.ne = ne.copyOf()
-        
-        // Set rank (number of non-1 dimensions, minimum 1)
-        var rank = 0
-        for (dim in ne) {
-            if (dim > 1) rank++
+        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+        ne.forEachIndexed { index, dim ->
+            if (index < GGML_MAX_DIMS) tensor.ne[index] = dim
         }
-        // Ensure at least rank 1 for non-empty tensors
-        if (rank == 0 && ne.any { it >= 1 }) rank = 1
+        tensor.nb = GGMLTestUtils.calculateStrides(type, tensor.ne)
 
-        // Calculate contiguous strides using shared utility
-        tensor.nb = GGMLTestUtils.calculateStrides(type, ne)
-
-        // Calculate buffer size needed and allocate in graph allocator
-        val byteSize = GGMLTestUtils.calculateTensorByteSize(type, ne)
-        if (byteSize > 0uL) {
-            val allocatedTensor = graphAllocator.tensorAllocators[0].allocate(byteSize, type, name)
-            tensor.bufferId = allocatedTensor.bufferId
-            tensor.offset = allocatedTensor.offset
+        val byteSize = GGMLTestUtils.calculateTensorByteSize(type, tensor.ne).toInt()
+        if (byteSize > 0) {
+            val offset = graphAllocator.allocateTensorData(byteSize)
+            tensor.bufferId = 0
+            tensor.dataOffset = offset
         }
 
         return tensor
     }
 
-    // Use shared utility GGMLTestUtils.extractFloatData for data extraction - no need for private function
+    private fun createDestinationTensor(
+        name: String,
+        type: GGMLType,
+        ne: LongArray
+    ): GGMLTensor {
+        val tensor = GGMLTensor(type = type, name = name)
+        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+        ne.forEachIndexed { index, dim ->
+            if (index < GGML_MAX_DIMS) tensor.ne[index] = dim
+        }
+        tensor.nb = GGMLTestUtils.calculateStrides(type, tensor.ne)
+
+        val byteSize = GGMLTestUtils.calculateTensorByteSize(type, tensor.ne).toInt()
+        if (byteSize > 0) {
+            val offset = graphAllocator.allocateTensorData(byteSize)
+            tensor.bufferId = 0
+            tensor.dataOffset = offset
+        }
+
+        return tensor
+    }
 
     private val dummyContext = GGMLContext() // Reusable dummy context
 
@@ -80,12 +92,13 @@ class GGMLExtendedOpsTest {
         val src1 = createAndInitTensor("sub_f32_src1", GGMLType.F32, srcNe)
         for (i in src1Data.indices) src1.setFloat(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeSub(graphAllocator, dummyContext, src0, src1)
+        val dst = createDestinationTensor("sub_f32_dst", GGMLType.F32, srcNe)
+        computeSub(graphAllocator, dummyContext, src0, src1, dst)
 
-        assertEquals(GGMLType.F32, resultTensor.type)
-        assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for SUB F32")
+        assertEquals(GGMLType.F32, dst.type)
+        assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for SUB F32")
 
-        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
         assertEquals(expectedData.size, resultData.size, "SUB F32 result size mismatch")
         
         for (i in expectedData.indices) {
@@ -106,12 +119,13 @@ class GGMLExtendedOpsTest {
         val src1 = createAndInitTensor("sub_f16_src1", GGMLType.F16, srcNe)
         for (i in src1DataF32.indices) src1.setHalf(graphAllocator, src1DataF32[i], i)
 
-        val resultTensor = computeSub(graphAllocator, dummyContext, src0, src1)
+        val dst = createDestinationTensor("sub_f16_dst", GGMLType.F16, srcNe)
+        computeSub(graphAllocator, dummyContext, src0, src1, dst)
 
-        assertEquals(GGMLType.F16, resultTensor.type)
-        assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for SUB F16")
+        assertEquals(GGMLType.F16, dst.type)
+        assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for SUB F16")
 
-        val resultDataF32 = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+        val resultDataF32 = GGMLTestUtils.extractFloatData(dst, graphAllocator)
         assertEquals(expectedDataF32.size, resultDataF32.size, "SUB F16 result size mismatch")
         
         for (i in expectedDataF32.indices) {
@@ -131,12 +145,13 @@ class GGMLExtendedOpsTest {
         val srcTensor = createAndInitTensor("neg_f32_src", GGMLType.F32, srcNe)
         for (i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
-        val resultTensor = computeNeg(graphAllocator, dummyContext, srcTensor)
+        val dst = createDestinationTensor("neg_f32_dst", GGMLType.F32, srcNe)
+        computeNeg(graphAllocator, dummyContext, srcTensor, dst)
 
-        assertEquals(GGMLType.F32, resultTensor.type)
-        assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for NEG F32")
+        assertEquals(GGMLType.F32, dst.type)
+        assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for NEG F32")
 
-        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
         assertEquals(expectedData.size, resultData.size, "NEG F32 result size mismatch")
         
         for (i in expectedData.indices) {
@@ -153,12 +168,13 @@ class GGMLExtendedOpsTest {
         val srcTensor = createAndInitTensor("neg_f16_src", GGMLType.F16, srcNe)
         for (i in srcDataF32.indices) srcTensor.setHalf(graphAllocator, srcDataF32[i], i)
 
-        val resultTensor = computeNeg(graphAllocator, dummyContext, srcTensor)
+        val dst = createDestinationTensor("neg_f16_dst", GGMLType.F16, srcNe)
+        computeNeg(graphAllocator, dummyContext, srcTensor, dst)
 
-        assertEquals(GGMLType.F16, resultTensor.type)
-        assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for NEG F16")
+        assertEquals(GGMLType.F16, dst.type)
+        assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for NEG F16")
 
-        val resultDataF32 = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+        val resultDataF32 = GGMLTestUtils.extractFloatData(dst, graphAllocator)
         assertEquals(expectedDataF32.size, resultDataF32.size, "NEG F16 result size mismatch")
         
         for (i in expectedDataF32.indices) {
@@ -181,12 +197,13 @@ class GGMLExtendedOpsTest {
         val src1 = createAndInitTensor("div_f32_src1", GGMLType.F32, srcNe)
         for (i in src1Data.indices) src1.setFloat(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeDiv(graphAllocator, dummyContext, src0, src1)
+        val dst = createDestinationTensor("div_f32_dst", GGMLType.F32, srcNe)
+        computeDiv(graphAllocator, dummyContext, src0, src1, dst)
 
-        assertEquals(GGMLType.F32, resultTensor.type)
-        assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for DIV F32")
+        assertEquals(GGMLType.F32, dst.type)
+        assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for DIV F32")
 
-        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
         assertEquals(expectedData.size, resultData.size, "DIV F32 result size mismatch")
         
         for (i in expectedData.indices) {
@@ -206,12 +223,13 @@ class GGMLExtendedOpsTest {
         val src1 = createAndInitTensor("div_edge_src1", GGMLType.F32, srcNe)
         for (i in src1Data.indices) src1.setFloat(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeDiv(graphAllocator, dummyContext, src0, src1)
+        val dst = createDestinationTensor("div_edge_dst", GGMLType.F32, srcNe)
+        computeDiv(graphAllocator, dummyContext, src0, src1, dst)
 
-        assertEquals(GGMLType.F32, resultTensor.type)
-        assertTrue(src0.ne.contentEquals(resultTensor.ne), "Dimensions should match for DIV F32 edge cases")
+        assertEquals(GGMLType.F32, dst.type)
+        assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for DIV F32 edge cases")
 
-        val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+        val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
         
         // Test that division handles edge cases appropriately
         assertTrue(resultData[0].isNaN() || resultData[0] == 0.0f, "1.0f / POSITIVE_INFINITY should be 0 or NaN")
@@ -232,12 +250,13 @@ class GGMLExtendedOpsTest {
 
         // Note: computeSqr might not be implemented yet, so let's check for its existence
         try {
-            val resultTensor = computeSqr(graphAllocator, dummyContext, srcTensor)
+            val dst = createDestinationTensor("sqr_f32_dst", GGMLType.F32, srcNe)
+            computeSqr(graphAllocator, dummyContext, srcTensor, dst)
 
-            assertEquals(GGMLType.F32, resultTensor.type)
-            assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SQR F32")
+            assertEquals(GGMLType.F32, dst.type)
+            assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for SQR F32")
 
-            val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+            val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
             assertEquals(expectedData.size, resultData.size, "SQR F32 result size mismatch")
             
             for (i in expectedData.indices) {
@@ -245,8 +264,6 @@ class GGMLExtendedOpsTest {
             }
         } catch (e: NotImplementedError) {
             println("SQR operation not yet implemented - skipping test")
-        } catch (e: NoSuchMethodError) {
-            println("computeSqr method not found - operation not yet implemented")
         }
     }
 
@@ -261,12 +278,13 @@ class GGMLExtendedOpsTest {
         for (i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
         try {
-            val resultTensor = computeSqrt(graphAllocator, dummyContext, srcTensor)
+            val dst = createDestinationTensor("sqrt_f32_dst", GGMLType.F32, srcNe)
+            computeSqrt(graphAllocator, dummyContext, srcTensor, dst)
 
-            assertEquals(GGMLType.F32, resultTensor.type)
-            assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SQRT F32")
+            assertEquals(GGMLType.F32, dst.type)
+            assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for SQRT F32")
 
-            val resultData = GGMLTestUtils.extractFloatData(resultTensor, graphAllocator)
+            val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
             assertEquals(expectedData.size, resultData.size, "SQRT F32 result size mismatch")
             
             for (i in expectedData.indices) {
@@ -274,8 +292,6 @@ class GGMLExtendedOpsTest {
             }
         } catch (e: NotImplementedError) {
             println("SQRT operation not yet implemented - skipping test")
-        } catch (e: NoSuchMethodError) {
-            println("computeSqrt method not found - operation not yet implemented")
         }
     }
 
@@ -292,12 +308,14 @@ class GGMLExtendedOpsTest {
         scalar2.setFloat(graphAllocator, 3.0f, 0)
         
         // Test SUB with scalars
-        val subResult = computeSub(graphAllocator, dummyContext, scalar1, scalar2)
-        assertEquals(2.0f, subResult.getFloat(graphAllocator, 0), 0.001f, "Scalar subtraction failed")
+        val subDst = createDestinationTensor("scalar_sub_dst", GGMLType.F32, scalarNe)
+        computeSub(graphAllocator, dummyContext, scalar1, scalar2, subDst)
+        assertEquals(2.0f, subDst.getFloat(graphAllocator, 0), 0.001f, "Scalar subtraction failed")
         
         // Test NEG with scalar
-        val negResult = computeNeg(graphAllocator, dummyContext, scalar1)
-        assertEquals(-5.0f, negResult.getFloat(graphAllocator, 0), 0.001f, "Scalar negation failed")
+        val negDst = createDestinationTensor("scalar_neg_dst", GGMLType.F32, scalarNe)
+        computeNeg(graphAllocator, dummyContext, scalar1, negDst)
+        assertEquals(-5.0f, negDst.getFloat(graphAllocator, 0), 0.001f, "Scalar negation failed")
     }
 
     @Test
@@ -310,8 +328,9 @@ class GGMLExtendedOpsTest {
         
         // These operations should either handle empty tensors gracefully or throw appropriate exceptions
         try {
-            val subResult = computeSub(graphAllocator, dummyContext, empty1, empty2)
-            assertEquals(0, subResult.numElements(), "Empty tensor SUB should result in empty tensor")
+            val subDst = createDestinationTensor("empty_sub_dst", GGMLType.F32, emptyNe)
+            computeSub(graphAllocator, dummyContext, empty1, empty2, subDst)
+            assertEquals(0, subDst.numElements(), "Empty tensor SUB should result in empty tensor")
         } catch (e: Exception) {
             // It's acceptable for operations to throw exceptions on empty tensors
             println("SUB with empty tensors threw exception: ${e.message}")
@@ -338,10 +357,9 @@ class GGMLExtendedOpsTest {
         
         try {
             // This might not be supported yet, but let's test
-            val addResult = computeAdd(graphAllocator, dummyContext, tensor1, tensor2)
-            // If broadcasting is supported, result should be 4x3
-            // If not, this will throw an exception
-            println("Broadcasting ADD succeeded with result shape: ${addResult.ne.contentToString()}")
+            val broadcastDst = createDestinationTensor("broadcast_dst", GGMLType.F32, longArrayOf(4, 3))
+            computeAdd(graphAllocator, dummyContext, tensor1, tensor2, broadcastDst)
+            println("Broadcasting ADD succeeded with result shape: ${broadcastDst.ne.contentToString()}")
         } catch (e: Exception) {
             println("Broadcasting not yet supported: ${e.message}")
         }

@@ -111,8 +111,28 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 src0.grad = addOrSet(context, src0.grad, tensor.grad!!, zeroTable)
             }
             if (src1?.grad != null) {
-                // TODO: Handle broadcasting case with repeat_back
-                src1.grad = addOrSet(context, src1.grad, tensor.grad!!, zeroTable)
+                var needsRepeatBack = false
+                for (i in 0 until GGML_MAX_DIMS) {
+                    val srcDim = src1.ne[i]
+                    val outDim = tensor.ne[i]
+                    if (srcDim == outDim) continue
+                    if (srcDim == 1L && outDim >= 1L) {
+                        needsRepeatBack = true
+                    } else if (srcDim == 0L && outDim == 0L) {
+                        continue
+                    } else {
+                        throw IllegalArgumentException(
+                            "ADD backward does not support broadcasting mismatch: src dim ${srcDim} vs result ${outDim} on axis $i"
+                        )
+                    }
+                }
+
+                val gradForSrc1 = if (needsRepeatBack) {
+                    repeatBack(context, tensor.grad!!, src1)
+                } else {
+                    tensor.grad!!
+                }
+                src1.grad = addOrSet(context, src1.grad, gradForSrc1, zeroTable)
             }
         }
         GGMLOp.SUB -> {

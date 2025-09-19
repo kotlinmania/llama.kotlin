@@ -191,6 +191,39 @@ class GGMLBackendTest {
         val result = backend.graphCompute(graph)
         assertEquals(GGMLStatus.SUCCESS, result, "Empty graph computation should succeed")
     }
+
+    @Test
+    fun testCpuBackendThreadConfiguration() {
+        val backend = GGMLCpuBackend()
+
+        // Default configuration should be single-threaded sequential execution
+        assertEquals(1, backend.getThreadCount(), "Default CPU backend thread count should be 1")
+        assertEquals(
+            GGMLSchedulingStrategy.SEQUENTIAL,
+            backend.getSchedulingStrategy(),
+            "Default scheduling strategy should be sequential"
+        )
+
+        backend.setThreadCount(8)
+        backend.setSchedulingStrategy(GGMLSchedulingStrategy.PARALLEL)
+
+        assertEquals(8, backend.getThreadCount(), "CPU backend should accept updated thread count")
+        assertEquals(
+            GGMLSchedulingStrategy.PARALLEL,
+            backend.getSchedulingStrategy(),
+            "Scheduling strategy should reflect caller preference"
+        )
+
+        assertFalse(backend.isUsingDedicatedDispatcher(), "Dedicated dispatcher should default to false")
+        backend.setUseDedicatedDispatcher(true)
+        assertTrue(backend.isUsingDedicatedDispatcher(), "Dedicated dispatcher flag should be updateable")
+
+        // Ensure graph execution still succeeds when thread count > 1 (currently cooperative)
+        val allocator = GGMLGraphAllocator(backend)
+        val graph = GGMLCGraph(allocator = allocator)
+        val status = backend.graphCompute(graph)
+        assertEquals(GGMLStatus.SUCCESS, status, "Graph compute should succeed with updated runtime config")
+    }
     
     @Test
     fun testMetalGraphComputation() {

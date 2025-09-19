@@ -235,6 +235,21 @@ fun matMul(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
 }
 
 /**
+ * Reduces a broadcasted tensor back to a smaller shape by summing along
+ * broadcast dimensions. Mirrors ggml_repeat_back.
+ */
+fun repeatBack(context: GGMLContext, a: GGMLTensor, reference: GGMLTensor): GGMLTensor {
+    val result = GGMLTensor(type = a.type)
+    for (i in 0 until GGML_MAX_DIMS) {
+        result.ne[i] = reference.ne[i]
+    }
+    result.nb = calculateContiguousStrides(result.ne, result.type, result.rank())
+    result.op = GGMLOp.REPEAT_BACK
+    result.src[0] = a
+    return result
+}
+
+/**
  * Subtracts one tensor from another element-wise.
  *
  * @param context The GGML context

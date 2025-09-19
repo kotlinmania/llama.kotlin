@@ -48,8 +48,9 @@ The project has made substantial progress across multiple development phases. He
 
 5. **🔄 Phase 3 - CPU Backend Implementation**: In Progress
    - Core computational operations implemented and validated
-   - Multi-threading support planned for graph execution
-   - SIMD optimization exploration for Kotlin/Native
+   - Coroutine-based executor with configurable dispatcher landed (sequential fallback + parallel batches)
+   - Kotlin/Native SIMD port documented (`docs/kdocs/kotlin-native-simd-plan.md`); implementation underway
+   - Next milestone: rewrite ggml SIMD kernels in pure Kotlin using `Vector128` helpers
 
 6. **🔄 Phase 4 - Metal Backend Implementation**: In Progress 
    - Metal context setup and shader compilation infrastructure planned

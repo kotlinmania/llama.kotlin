@@ -3,6 +3,8 @@ package ai.solace.llamakotlin.core
 import kotlin.math.*
 import kotlin.test.*
 import kotlin.random.Random
+import kotlin.time.ExperimentalTime
+import kotlin.time.TimeSource
 
 /**
  * Comprehensive test suite for BitNet 1.58 quantization.
@@ -17,11 +19,13 @@ import kotlin.random.Random
  * - Tensor operations and matrix multiplication
  * - Edge cases and error conditions
  */
+@OptIn(ExperimentalTime::class)
 class GGMLBitNet158Test {
 
     private lateinit var graphAllocator: GGMLGraphAllocator
     private lateinit var testBuffer: ByteArray
     private val bufferSize = 4 * 1024 * 1024 // 4MB
+    private var currentOffset = 0uL
 
     // Error thresholds for BitNet 1.58
     companion object {
@@ -36,7 +40,18 @@ class GGMLBitNet158Test {
     fun setup() {
         testBuffer = ByteArray(bufferSize) { 0 }
         graphAllocator = GGMLGraphAllocator()
-        graphAllocator.buffers[0] = testBuffer
+        if (graphAllocator.buffers.isEmpty()) {
+            graphAllocator.buffers.add(testBuffer)
+        } else {
+            graphAllocator.buffers[0] = testBuffer
+        }
+        if (graphAllocator.tensorAllocators.isEmpty()) {
+            graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator(bufferSize = bufferSize.toULong()))
+        } else {
+            graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
+        }
+        resetAllocatorTracking(graphAllocator)
+        currentOffset = 0uL
         
         // Initialize a context 
         val context = GGMLContext()
@@ -60,9 +75,8 @@ class GGMLBitNet158Test {
         
         // Calculate tensor size and allocate
         val tensorByteSize = calculateTensorByteSize(tensor).toInt()
-        val offset = graphAllocator.allocateTensorData(tensorByteSize)
         tensor.bufferId = 0
-        tensor.dataOffset = offset.toULong()
+        tensor.dataOffset = allocateBytes(tensorByteSize)
         
         // Copy data
         for (i in data.indices) {
@@ -70,6 +84,18 @@ class GGMLBitNet158Test {
         }
         
         return tensor
+    }
+
+    private fun allocateBytes(byteSize: Int, alignment: Int = 16): ULong {
+        require(byteSize >= 0) { "byteSize must be non-negative" }
+        val align = alignment.toULong()
+        val alignedOffset = ((currentOffset + (align - 1uL)) / align) * align
+        val endOffset = alignedOffset + byteSize.toULong()
+        require(endOffset.toLong() <= testBuffer.size.toLong()) {
+            "Test buffer capacity exceeded: need $endOffset bytes, buffer size ${testBuffer.size}"
+        }
+        currentOffset = endOffset
+        return alignedOffset
     }
     
     private fun generateTestData(size: Int, seed: Int = 42): FloatArray {
@@ -325,9 +351,9 @@ class GGMLBitNet158Test {
         resultTensor.nb = calculateContiguousStrides(resultTensor.ne, GGMLType.F32, resultTensor.rank())
         
         val resultSize = calculateTensorByteSize(resultTensor).toInt()
-        val resultOffset = graphAllocator.allocateTensorData(resultSize)
+        val resultOffset = allocateBytes(resultSize)
         resultTensor.bufferId = 0
-        resultTensor.dataOffset = resultOffset.toULong()
+        resultTensor.dataOffset = resultOffset
         
         // Perform matrix multiplication using the existing computeMatMul infrastructure
         val context = GGMLContext()
@@ -421,15 +447,13 @@ class GGMLBitNet158Test {
             val data = generateTestData(adjustedSize)
             val f32Tensor = createF32TestTensor("perf_test_$size", data)
             
-            // Measure quantization time
-            val startQuant = kotlin.system.getTimeMillis()
+            val quantMark = TimeSource.Monotonic.markNow()
             val bitNetTensor = quantizeTensor(graphAllocator, f32Tensor, GGMLType.BITNET_1_58)
-            val quantTime = kotlin.system.getTimeMillis() - startQuant
-            
-            // Measure dequantization time
-            val startDequant = kotlin.system.getTimeMillis()
+            val quantTime = quantMark.elapsedNow().inWholeMilliseconds
+
+            val dequantMark = TimeSource.Monotonic.markNow()
             val dequantizedTensor = dequantizeTensor(graphAllocator, bitNetTensor)
-            val dequantTime = kotlin.system.getTimeMillis() - startDequant
+            val dequantTime = dequantMark.elapsedNow().inWholeMilliseconds
             
             println("BitNet 1.58 size $adjustedSize - Quantization: ${quantTime}ms, Dequantization: ${dequantTime}ms")
             

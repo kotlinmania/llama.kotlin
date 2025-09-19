@@ -1,5 +1,7 @@
 package ai.solace.llamakotlin.core
 
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
 import kotlin.test.*
 import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES // For F16
 

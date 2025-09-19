@@ -1,5 +1,9 @@
 package ai.solace.llamakotlin.core
 
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
+
 import kotlin.math.* // Import all math functions
 import kotlin.test.*
 import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES
@@ -59,6 +63,7 @@ class GGMLComputeOpsTest {
 
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
+        resetAllocatorTracking(graphAllocator)
     }
 
     // Helper to create a tensor and optionally initialize it with a sequence
@@ -418,6 +423,39 @@ class GGMLComputeOpsTest {
         }
     }
 
+    @Test
+    fun testComputeRepeatBackF32BroadcastFirstDim() {
+        val context = GGMLContext()
+        var currentOffset = 0uL
+
+        val srcNe = longArrayOf(4, 3)
+        val src = createAndInitTensor("repeat_back_src", GGMLType.F32, srcNe, currentOffset)
+        for (i1 in 0 until srcNe[1].toInt()) {
+            for (i0 in 0 until srcNe[0].toInt()) {
+                val value = (i1 * srcNe[0].toInt() + i0 + 1).toFloat()
+                src.setFloat(graphAllocator, value, i0, i1)
+            }
+        }
+
+        currentOffset += calculateTensorByteSize(GGMLType.F32, srcNe)
+        val dstNe = longArrayOf(1, 3)
+        val dst = createAndInitTensor("repeat_back_dst", GGMLType.F32, dstNe, currentOffset)
+
+        computeRepeatBack(graphAllocator, context, src, dst)
+
+        val result = getTensorDataAsFloatArray(dst, graphAllocator)
+        val expected = FloatArray(dstNe[1].toInt())
+        for (col in 0 until dstNe[1].toInt()) {
+            var sum = 0f
+            for (row in 0 until srcNe[0].toInt()) {
+                sum += src.getFloat(graphAllocator, row, col)
+            }
+            expected[col] = sum
+        }
+
+        assertContentEquals(expected, result, "RepeatBack should collapse broadcasted dimension by summing")
+    }
+
     // Helper to extract data from a tensor as a FloatArray
     // Adapted from GGMLQuantizationAccuracyTest.kt
     // Assumes result tensors from compute ops might have their .data field populated directly
@@ -452,11 +490,11 @@ class GGMLComputeOpsTest {
             // For simplicity, assuming a flat 1D iteration for now if applyNDIter is not in this file.
             // The existing applyNDIter in this file might need adjustment or direct use.
             // The createAndInitTensor sets up ne for up to GGML_MAX_DIMS.
-            applyNDIter(tensor.ne, tensor.rank(), numElements) { _, indices ->
+            applyNDIter(tensor, numElements) { _, indices ->
                 if (idx < numElements) {
                     floatArray[idx++] = when (tensor.type) {
                         GGMLType.F32 -> tensor.getFloat(graphAllocator, *indices)
-                        GGML_TYPE_F16 -> tensor.getHalf(graphAllocator, *indices)
+                        GGMLType.F16 -> tensor.getHalf(graphAllocator, *indices)
                         // Add other type direct conversions if getTensorDataAsFloatArray needs to support them
                         else -> throw IllegalArgumentException("getTensorDataAsFloatArray: Unsupported tensor type ${tensor.type} for direct float extraction from graph allocator without dequantization.")
                     }
@@ -739,7 +777,7 @@ class GGMLComputeOpsTest {
         if (tensor.bufferId != -1) {
             val byteArray = ByteArray(numElements)
             var idx = 0
-            applyNDIter(tensor.ne, tensor.rank(), numElements) { _, indices ->
+            applyNDIter(tensor, numElements) { _, indices ->
                 if (idx < numElements) {
                     byteArray[idx++] = tensor.getByte(graphAllocator, *indices)
                 }
@@ -758,7 +796,7 @@ class GGMLComputeOpsTest {
         if (tensor.bufferId != -1) {
             val shortArray = ShortArray(numElements)
             var idx = 0
-            applyNDIter(tensor.ne, tensor.rank(), numElements) { _, indices ->
+            applyNDIter(tensor, numElements) { _, indices ->
                 if (idx < numElements) {
                     shortArray[idx++] = tensor.getShort(graphAllocator, *indices)
                 }
@@ -777,7 +815,7 @@ class GGMLComputeOpsTest {
         if (tensor.bufferId != -1) {
             val intArray = IntArray(numElements)
             var idx = 0
-            applyNDIter(tensor.ne, tensor.rank(), numElements) { _, indices ->
+            applyNDIter(tensor, numElements) { _, indices ->
                 if (idx < numElements) {
                     intArray[idx++] = tensor.getInt(graphAllocator, *indices)
                 }
@@ -796,7 +834,7 @@ class GGMLComputeOpsTest {
         if (tensor.bufferId != -1) {
             val longArray = LongArray(numElements)
             var idx = 0
-            applyNDIter(tensor.ne, tensor.rank(), numElements) { _, indices ->
+            applyNDIter(tensor, numElements) { _, indices ->
                 if (idx < numElements) {
                     longArray[idx++] = tensor.getLong(graphAllocator, *indices)
                 }

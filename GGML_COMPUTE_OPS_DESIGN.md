@@ -22,6 +22,16 @@ See `COMPUTE_OPERATIONS_REFACTOR_SUMMARY.md` for complete details of the impleme
 
 The GGMLComputeOps.kt file provides the actual computation functionality for tensor operations using a **destination-based architecture**. Operations write results directly into pre-allocated destination tensors rather than creating new tensors, enabling efficient memory management and graph optimization.
 
+## Kotlin/Native SIMD Roadmap (2025)
+
+We are porting ggml's SIMD-heavy dot-product kernels into idiomatic Kotlin/Native so the project can remain C-free while still leveraging the same AVX/NEON optimizations. The detailed plan lives in [`docs/kdocs/kotlin-native-simd-plan.md`](docs/kdocs/kotlin-native-simd-plan.md) and covers:
+
+- Helpers that wrap `kotlinx.cinterop.Vector128` to mirror ggml's load/FMA/reduction macros for F32, F16, and BF16 paths.
+- Incremental migration of quantized dot products (Q4/Q5/Q8 and K-quant families) with scalar fallbacks for unsupported architectures.
+- Integration points inside `GGMLComputeOps` so the coroutine-based CPU executor can call the Kotlin SIMD kernels directly.
+
+As each kernel is ported, this document will be updated with Kotlin-specific implementation notes and benchmarking outcomes.
+
 ## Function Specifications (Updated Architecture)
 
 ### Destination-Based Operation Pattern

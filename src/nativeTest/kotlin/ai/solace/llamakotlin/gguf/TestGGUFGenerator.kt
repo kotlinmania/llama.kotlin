@@ -1,6 +1,9 @@
 package ai.solace.llamakotlin.gguf
 
 import ai.solace.llamakotlin.core.*
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
+import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 
 /**
  * Simple GGUF file generator for testing purposes

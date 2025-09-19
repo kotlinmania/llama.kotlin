@@ -1,11 +1,12 @@
 package ai.solace.llamakotlin.gguf
 
 import ai.solace.llamakotlin.core.*
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.test.assertFailsWith
 
 class GGUFTest {
     

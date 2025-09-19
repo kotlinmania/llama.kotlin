@@ -151,6 +151,12 @@ This checklist is based on the current state of the Kotlin Native port of llama.
   - [ ] Optimize memory access patterns
   - [ ] Implement SIMD optimizations where possible in Kotlin Native
 
+- [~] Kotlin/Native SIMD Migration
+  - [x] Publish SIMD port strategy (`docs/kdocs/kotlin-native-simd-plan.md`)
+  - [ ] Port float dot-product kernels (F32/F16/BF16) using `Vector128`
+  - [ ] Port quantized dot-product kernels (Q4/Q5/Q8/K families)
+  - [ ] Benchmark Kotlin SIMD vs. scalar fallbacks across supported targets
+
 ## Phase 4: Metal Backend Implementation
 
 - [ ] Translate Metal-Specific Code

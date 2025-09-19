@@ -2,6 +2,9 @@ package ai.solace.llamakotlin.core
 
 import kotlin.math.*
 import kotlin.random.Random
+import kotlin.test.fail
+import kotlin.time.ExperimentalTime
+import kotlin.time.TimeSource
 
 /**
  * Common utilities and helper functions for GGML testing.
@@ -25,13 +28,14 @@ object GGMLTestUtils {
     fun createTestAllocator(bufferSize: Int = DEFAULT_TEST_BUFFER_SIZE): Pair<GGMLGraphAllocator, ByteArray> {
         val graphAllocator = GGMLGraphAllocator()
         val testBuffer = ByteArray(bufferSize)
-        
+
         if (graphAllocator.buffers.isEmpty()) graphAllocator.buffers.add(null)
         if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator())
 
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
-        
+        GGMLTestAllocatorState.nextOffset[graphAllocator] = 0uL
+
         return Pair(graphAllocator, testBuffer)
     }
     
@@ -75,7 +79,95 @@ object GGMLTestUtils {
         tensor.nb = calculateStrides(type, tensor.ne)
         return tensor
     }
-    
+
+    /**
+     * Allocate a destination tensor backed by the test allocator without initial data.
+     */
+    fun allocateDestinationTensor(
+        graphAllocator: GGMLGraphAllocator,
+        name: String,
+        type: GGMLType,
+        shape: LongArray
+    ): GGMLTensor {
+        val tensor = createStandardTestTensor(type, shape, name)
+        val byteSize = calculateTensorByteSize(type, tensor.ne)
+        if (byteSize > 0uL) {
+            val allocation = graphAllocator.tensorAllocators.firstOrNull()
+                ?: throw IllegalStateException("Graph allocator must expose at least one tensor allocator for test allocations")
+            val legacyAllocation = allocation.allocate(byteSize, type, name)
+            tensor.bufferId = legacyAllocation.bufferId
+            tensor.offset = legacyAllocation.offset
+        }
+        return tensor
+    }
+
+    /**
+     * Create a contiguous F32 matrix tensor populated with generated values.
+     */
+    fun createF32Matrix(
+        graphAllocator: GGMLGraphAllocator,
+        name: String,
+        rows: Int,
+        cols: Int,
+        generator: (Int) -> Float
+    ): GGMLTensor {
+        val tensor = allocateDestinationTensor(
+            graphAllocator = graphAllocator,
+            name = name,
+            type = GGMLType.F32,
+            shape = longArrayOf(cols.toLong(), rows.toLong())
+        )
+        val elementCount = rows * cols
+        repeat(elementCount) { index ->
+            tensor.setFloat(graphAllocator, generator(index), index)
+        }
+        return tensor
+    }
+
+    /**
+     * Create a quantized matrix by generating F32 data and quantizing to the requested type.
+     */
+    fun createQuantizedMatrix(
+        graphAllocator: GGMLGraphAllocator,
+        name: String,
+        type: GGMLType,
+        rows: Int,
+        cols: Int,
+        generator: (Int) -> Float
+    ): GGMLTensor {
+        val elements = rows * cols
+        when (type) {
+            GGMLType.Q8_0 -> require(elements % QK8_0 == 0) { "Q8_0 matrix requires element count divisible by $QK8_0 (got $elements)" }
+            GGMLType.Q4_0 -> require(elements % QK4_0 == 0) { "Q4_0 matrix requires element count divisible by $QK4_0 (got $elements)" }
+            GGMLType.Q4_1 -> require(elements % QK4_1 == 0) { "Q4_1 matrix requires element count divisible by $QK4_1 (got $elements)" }
+            GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q6_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q3_K, GGMLType.Q2_K -> {
+                // Future K-quant helpers can refine these requirements when block sizes are finalized
+            }
+            else -> require(type == GGMLType.F32) { "Unsupported quantized matrix type: $type" }
+        }
+
+        val base = createF32Matrix(graphAllocator, "${name}_f32", rows, cols, generator)
+        val quantized = if (type == GGMLType.F32) base else quantizeTensor(graphAllocator, base, type)
+        quantized.name = name
+        return quantized
+    }
+
+    /**
+     * Allocate a destination tensor sized for matmul output (rows × cols, F32 by default).
+     */
+    fun allocateMatMulResult(
+        graphAllocator: GGMLGraphAllocator,
+        name: String,
+        rows: Int,
+        cols: Int,
+        type: GGMLType = GGMLType.F32
+    ): GGMLTensor = allocateDestinationTensor(
+        graphAllocator = graphAllocator,
+        name = name,
+        type = type,
+        shape = longArrayOf(cols.toLong(), rows.toLong())
+    )
+
     /**
      * Calculate tensor byte size for any tensor type
      */
@@ -258,7 +350,7 @@ object GGMLTestUtils {
         for (i in 0 until numElements) {
             result[i] = when (tensor.type) {
                 GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
-                GGMLType.F16 -> halfToFloat(tensor.getHalf(graphAllocator, i))
+                GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
                 GGMLType.I32 -> tensor.getInt(graphAllocator, i).toFloat()
                 GGMLType.I16 -> tensor.getShort(graphAllocator, i).toFloat()
                 else -> tensor.getFloat(graphAllocator, i)
@@ -527,11 +619,10 @@ object GGMLTestUtils {
             // Measured runs
             val times = mutableListOf<Long>()
             repeat(measureRuns) {
-                val startTime = System.currentTimeMillis()
+                val mark = TimeSource.Monotonic.markNow()
                 try {
                     operation()
-                    val endTime = System.currentTimeMillis()
-                    times.add(endTime - startTime)
+                    times.add(mark.elapsedNow().inWholeMilliseconds)
                 } catch (e: Exception) {
                     times.add(Long.MAX_VALUE) // Failure marker
                 }
@@ -613,4 +704,66 @@ object GGMLTestUtils {
             }
         }
     }
+}
+
+// Convenience overloads matching legacy helpers used across the test suite
+fun calculateTensorByteSize(tensor: GGMLTensor): ULong =
+    GGMLTestUtils.calculateTensorByteSize(tensor.type, tensor.ne)
+
+fun calculateTensorSize(tensor: GGMLTensor): ULong = calculateTensorByteSize(tensor)
+
+fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong =
+    GGMLTestUtils.calculateTensorByteSize(type, ne)
+
+fun calculateStrides(type: GGMLType, ne: LongArray): ULongArray =
+    GGMLTestUtils.calculateStrides(type, ne)
+
+inline fun <T> assertDoesNotThrow(message: String, block: () -> T): T {
+    return try {
+        block()
+    } catch (t: Throwable) {
+        fail("$message (unexpected exception: ${t.message})")
+    }
+}
+
+object GGMLTestAllocatorState {
+    val nextOffset: MutableMap<GGMLGraphAllocator, ULong> = mutableMapOf()
+}
+
+data class LegacyTensorAllocation(val bufferId: Int, val offset: ULong)
+
+fun GGMLDynTensorAllocator.allocate(size: ULong, type: GGMLType, name: String): LegacyTensorAllocation {
+    val placeholderTensor = GGMLTensor(type = type, name = name)
+    val offset = allocate(size, placeholderTensor)
+    return LegacyTensorAllocation(bufferId = 0, offset = offset)
+}
+
+fun resetAllocatorTracking(allocator: GGMLGraphAllocator) {
+    GGMLTestAllocatorState.nextOffset[allocator] = 0uL
+}
+
+fun GGMLGraphAllocator.allocateTensorData(byteSize: Int, alignment: Int = 16): ULong {
+    require(byteSize >= 0) { "byteSize must be non-negative" }
+    val bufferId = if (buffers.isEmpty()) {
+        val newBuffer = ByteArray(maxOf(byteSize, 1))
+        buffers.add(newBuffer)
+        tensorAllocators.add(GGMLDynTensorAllocator(bufferSize = newBuffer.size.toULong()))
+        0
+    } else {
+        0
+    }
+    val buffer = buffers[bufferId] ?: run {
+        val newBuffer = ByteArray(maxOf(byteSize, 1))
+        buffers[bufferId] = newBuffer
+        newBuffer
+    }
+    val current = (GGMLTestAllocatorState.nextOffset[this] ?: 0uL).toLong()
+    val align = alignment.coerceAtLeast(1)
+    val alignedOffset = ((current + (align - 1)) / align) * align
+    val endOffset = alignedOffset + byteSize.toLong()
+    require(endOffset <= buffer.size.toLong()) {
+        "Test allocator buffer overflow: requested $endOffset bytes exceeds buffer size ${buffer.size}"
+    }
+    GGMLTestAllocatorState.nextOffset[this] = endOffset.toULong()
+    return alignedOffset.toULong()
 }

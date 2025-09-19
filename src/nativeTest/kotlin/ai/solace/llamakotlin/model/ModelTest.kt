@@ -1,8 +1,16 @@
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*
-import kotlin.test.*
 import kotlin.math.*
+import kotlin.test.*
+
+private fun GGMLTensor.allocateTestBuffer(graphAllocator: GGMLGraphAllocator) {
+    val byteSize = calculateTensorByteSize(this.type, this.ne).toInt()
+    if (byteSize <= 0) return
+    val offset = graphAllocator.allocateTensorData(byteSize)
+    this.bufferId = 0
+    this.dataOffset = offset
+}
 
 class LlamaAttentionTest {
     
@@ -12,8 +20,9 @@ class LlamaAttentionTest {
     
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
-        graphAllocator.reserve(bufferSize.toLong())
+        val (allocator, _) = GGMLTestUtils.createTestAllocator(bufferSize)
+        graphAllocator = allocator
+        resetAllocatorTracking(graphAllocator)
         context = GGMLContext()
     }
     
@@ -57,13 +66,13 @@ class LlamaAttentionTest {
         input.ne[3] = 1L // batch_size
         input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
         
-        graphAllocator.allocateTensor(input)
+        input.allocateTestBuffer(graphAllocator)
         
         // Set test values
-        input.setFloat(graphAllocator, 0, 0, 0, 1.0f) // head 0, dim 0
-        input.setFloat(graphAllocator, 1, 0, 0, 0.0f) // head 0, dim 1
-        input.setFloat(graphAllocator, 0, 1, 0, 1.0f) // head 1, dim 0
-        input.setFloat(graphAllocator, 1, 1, 0, 0.0f) // head 1, dim 1
+        input.setFloat(graphAllocator, 1.0f, 0, 0, 0) // head 0, dim 0
+        input.setFloat(graphAllocator, 0.0f, 1, 0, 0) // head 0, dim 1
+        input.setFloat(graphAllocator, 1.0f, 0, 1, 0) // head 1, dim 0
+        input.setFloat(graphAllocator, 0.0f, 1, 1, 0) // head 1, dim 1
         
         // Apply RoPE
         val result = attention.applyRoPE(context, graphAllocator, input, 0)
@@ -125,7 +134,7 @@ class LlamaAttentionTest {
         tensor.ne[3] = dim3.toLong()
         tensor.nb = calculateContiguousStrides(tensor.ne, tensor.type, GGML_MAX_DIMS)
         
-        graphAllocator.allocateTensor(tensor)
+        tensor.allocateTestBuffer(graphAllocator)
         return tensor
     }
     
@@ -138,7 +147,7 @@ class LlamaAttentionTest {
                 indices[d] = temp % tensor.ne[d].toInt()
                 temp /= tensor.ne[d].toInt()
             }
-            tensor.setFloat(graphAllocator, *indices, (i % 10) / 10.0f)
+            tensor.setFloat(graphAllocator, (i % 10) / 10.0f, *indices)
         }
     }
 }
@@ -149,8 +158,9 @@ class KVCacheTest {
     
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
-        graphAllocator.reserve(1024 * 1024)
+        val (allocator, _) = GGMLTestUtils.createTestAllocator(1024 * 1024)
+        graphAllocator = allocator
+        resetAllocatorTracking(graphAllocator)
     }
     
     @Test
@@ -184,10 +194,10 @@ class KVCacheTest {
         newKey.ne[3] = 1L // batch
         newKey.nb = calculateContiguousStrides(newKey.ne, newKey.type, GGML_MAX_DIMS)
         
-        graphAllocator.allocateTensor(newKey)
+        newKey.allocateTestBuffer(graphAllocator)
         
         // Update cache
-        val result = cache.updateKey(newKey)
+        val result = cache.updateKey(graphAllocator, newKey)
         
         assertEquals(3, cache.getCurrentLength())
         assertEquals(4L, result.ne[0]) // head_dim
@@ -213,8 +223,8 @@ class KVCacheTest {
         newKey.ne[3] = 1L
         newKey.nb = calculateContiguousStrides(newKey.ne, newKey.type, GGML_MAX_DIMS)
         
-        graphAllocator.allocateTensor(newKey)
-        cache.updateKey(newKey)
+        newKey.allocateTestBuffer(graphAllocator)
+        cache.updateKey(graphAllocator, newKey)
         
         assertEquals(3, cache.getCurrentLength())
         
@@ -231,8 +241,9 @@ class SamplingTest {
     
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
-        graphAllocator.reserve(1024 * 1024)
+        val (allocator, _) = GGMLTestUtils.createTestAllocator(1024 * 1024)
+        graphAllocator = allocator
+        resetAllocatorTracking(graphAllocator)
     }
     
     @Test
@@ -263,11 +274,11 @@ class SamplingTest {
         for (i in 1 until GGML_MAX_DIMS) logits.ne[i] = 1L
         logits.nb = calculateContiguousStrides(logits.ne, logits.type, GGML_MAX_DIMS)
         
-        graphAllocator.allocateTensor(logits)
+        logits.allocateTestBuffer(graphAllocator)
         
         // Set logits with one clearly higher value
         for (i in 0 until 10) {
-            logits.setFloat(graphAllocator, i, if (i == 5) 10.0f else 0.0f)
+            logits.setFloat(graphAllocator, if (i == 5) 10.0f else 0.0f, i)
         }
         
         val sampledToken = context.sample(graphAllocator, logits)
@@ -288,7 +299,7 @@ class SamplingTest {
         // Create logits with one clearly higher value
         val logits = createLogitsTensor(10)
         for (i in 0 until 10) {
-            logits.setFloat(graphAllocator, i, if (i == 5) 2.0f else 0.0f)
+            logits.setFloat(graphAllocator, if (i == 5) 2.0f else 0.0f, i)
         }
         
         // Low temperature should be more deterministic
@@ -312,7 +323,7 @@ class SamplingTest {
         val logits = createLogitsTensor(10)
         // Set decreasing logits
         for (i in 0 until 10) {
-            logits.setFloat(graphAllocator, i, (10 - i).toFloat())
+            logits.setFloat(graphAllocator, (10 - i).toFloat(), i)
         }
         
         // Sample many times to check that only top-k tokens are selected
@@ -331,7 +342,7 @@ class SamplingTest {
         for (i in 1 until GGML_MAX_DIMS) tensor.ne[i] = 1L
         tensor.nb = calculateContiguousStrides(tensor.ne, tensor.type, GGML_MAX_DIMS)
         
-        graphAllocator.allocateTensor(tensor)
+        tensor.allocateTestBuffer(graphAllocator)
         return tensor
     }
 }
@@ -398,8 +409,9 @@ class LlamaModelTest {
     
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
-        graphAllocator.reserve(10 * 1024 * 1024) // 10MB
+        val (allocator, _) = GGMLTestUtils.createTestAllocator(10 * 1024 * 1024)
+        graphAllocator = allocator
+        resetAllocatorTracking(graphAllocator)
         context = GGMLContext()
     }
     
@@ -461,9 +473,9 @@ class LlamaModelTest {
         val mlp = LlamaMLP(config)
         
         // Allocate MLP weights
-        graphAllocator.allocateTensor(mlp.gateProj)
-        graphAllocator.allocateTensor(mlp.upProj)
-        graphAllocator.allocateTensor(mlp.downProj)
+        mlp.gateProj.allocateTestBuffer(graphAllocator)
+        mlp.upProj.allocateTestBuffer(graphAllocator)
+        mlp.downProj.allocateTestBuffer(graphAllocator)
         
         // Initialize weights with small values to avoid numerical issues
         val weights = arrayOf(mlp.gateProj, mlp.upProj, mlp.downProj)
@@ -484,7 +496,7 @@ class LlamaModelTest {
         val input = GGMLTensor(type = GGMLType.F32)
         input.ne = longArrayOf(32, 3, 1, 1) // [hidden, seq, batch]
         input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(input)
+        input.allocateTestBuffer(graphAllocator)
         
         // Initialize input with small values
         for (i in 0 until 32) {
@@ -513,18 +525,18 @@ class LlamaModelTest {
         // Initialize norm weight
         norm.weight.ne = longArrayOf(4, 1, 1, 1)
         norm.weight.nb = calculateContiguousStrides(norm.weight.ne, norm.weight.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(norm.weight)
+        norm.weight.allocateTestBuffer(graphAllocator)
         
         // Set weights to 1.0
         for (i in 0 until 4) {
-            norm.weight.setFloat(1.0f, i, graphAllocator)
+            norm.weight.setFloat(graphAllocator, 1.0f, i)
         }
         
         // Create input tensor
         val input = GGMLTensor(type = GGMLType.F32)
         input.ne = longArrayOf(4, 2, 1, 1) // [hidden, seq, batch]
         input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(input)
+        input.allocateTestBuffer(graphAllocator)
         
         // Set input values [1.0, 2.0, 3.0, 4.0] for first sequence position
         input.setFloat(graphAllocator, 1.0f, 0, 0, 0)

@@ -102,7 +102,7 @@ class GGMLQuantizationAccuracyTest {
         dims.forEachIndexed { index, dimSize ->
             if (index < GGML_MAX_DIMS) tensor.ne[index] = dimSize
         }
-        tensor.nb = calculateStrides(tensor.type, tensor.ne)
+        tensor.nb = GGMLTestUtils.calculateStrides(tensor.type, tensor.ne)
         tensor.bufferId = bufferId
         tensor.dataOffset = dataOffset
         tensor.data = null
@@ -205,7 +205,7 @@ class GGMLQuantizationAccuracyTest {
         }
 
         val dims = longArrayOf(numElements.toLong()) // 1D tensor
-        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q8Test", GGMLType.F32, dims, originalF32Data, dataOffset = 0uL)
+        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q8Test", dims, originalF32Data, dataOffset = 0uL)
 
         // 1. Quantize to Q8_0
         val q8Tensor = quantizeTensor(graphAllocator, f32SrcTensor, GGMLType.Q8_0)
@@ -267,7 +267,7 @@ class GGMLQuantizationAccuracyTest {
         // Ensure enough space for F32 source, Q4 representation (smaller), and F32 dequantized
         // For this test, f32SrcTensor is in graphAllocator's buffer.
         // q4Tensor and f32DequantizedTensor will have their own .data arrays.
-        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q4Test", GGMLType.F32, dims, originalF32Data, dataOffset = 0uL)
+        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q4Test", dims, originalF32Data, dataOffset = 0uL)
 
         // 1. Quantize to Q4_0
         val q4Tensor = quantizeTensor(graphAllocator, f32SrcTensor, GGMLType.Q4_0)
@@ -339,7 +339,7 @@ class GGMLQuantizationAccuracyTest {
         val dims = longArrayOf(numElements.toLong(), 1L, 1L, 1L)
         // Ensure f32SrcTensor is placed in the graphAllocator's managed buffer for this test
         // Adapting to existing createAndPopulateF32Tensor signature
-        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q4_1Test", GGMLType.F32, dims, originalF32Data, dataOffset = 0uL)
+        val f32SrcTensor = createAndPopulateF32Tensor("f32Src_Q4_1Test", dims, originalF32Data, dataOffset = 0uL)
 
 
         // 1. Quantize to Q4_1

@@ -83,7 +83,9 @@ class GGMLAllocTest {
 
     // Actual alignedOffset function as defined in GGMLAlloc.kt for testing purposes
     private fun alignedOffset(offset: ULong, alignment: UInt): ULong {
-        assert(alignment > 0u && (alignment and (alignment - 1u)) == 0u)
+        require(alignment > 0u && (alignment and (alignment - 1u)) == 0u) {
+            "Alignment must be a power of two, was $alignment"
+        }
         val align = (alignment - (offset % alignment)) % alignment
         return offset + align
     }

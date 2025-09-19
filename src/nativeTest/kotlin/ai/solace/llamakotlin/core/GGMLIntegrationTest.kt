@@ -2,82 +2,38 @@ package ai.solace.llamakotlin.core
 
 import kotlin.math.*
 import kotlin.test.*
+import kotlin.time.ExperimentalTime
+import kotlin.time.TimeSource
 
 /**
  * Integration tests for end-to-end computation graph operations.
  * Tests complex computation chains, memory allocation patterns, and multi-operation flows.
  */
+@OptIn(ExperimentalTime::class)
 class GGMLIntegrationTest {
 
     private lateinit var graphAllocator: GGMLGraphAllocator
-    private lateinit var testBuffer: ByteArray
     private val bufferSize = 8 * 1024 * 1024 // 8MB for complex graph operations
 
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
-        testBuffer = ByteArray(bufferSize)
-        if (graphAllocator.buffers.isEmpty()) graphAllocator.buffers.add(null)
-        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator())
-
-        graphAllocator.buffers[0] = testBuffer
-        graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
+        val (allocator, _) = GGMLTestUtils.createTestAllocator(bufferSize)
+        graphAllocator = allocator
+        resetAllocatorTracking(graphAllocator)
     }
 
     private val dummyContext = GGMLContext()
 
     // Helper to create tensor with data
-    private fun createTensorWithData(name: String, type: GGMLType, ne: LongArray, data: FloatArray): GGMLTensor {
-        val tensor = GGMLTensor(type = type, name = name)
-        tensor.ne = ne.copyOf()
-        
-        // Calculate strides
-        tensor.nb = ULongArray(GGML_MAX_DIMS) { 0uL }
-        tensor.nb[0] = type.byteSize
-        for (d in 1 until GGML_MAX_DIMS) {
-            tensor.nb[d] = tensor.nb[d-1] * ne.getOrElse(d-1) { 1L }.toULong()
-        }
-        
-        // Allocate memory
-        val totalElements = ne.fold(1L) { acc, dim -> acc * maxOf(dim, 1L) }
-        val byteSize = totalElements.toULong() * type.byteSize
-        val allocatedTensor = graphAllocator.tensorAllocators[0].allocate(byteSize, type, name)
-        tensor.bufferId = allocatedTensor.bufferId
-        tensor.offset = allocatedTensor.offset
-        
-        // Set data
-        when (type) {
-            GGMLType.F32 -> {
-                for (i in data.indices) {
-                    tensor.setFloat(graphAllocator, data[i], i)
-                }
-            }
-            GGMLType.F16 -> {
-                for (i in data.indices) {
-                    tensor.setHalf(graphAllocator, data[i], i)
-                }
-            }
-            else -> throw IllegalArgumentException("Unsupported type for test data: $type")
-        }
-        
-        return tensor
-    }
+    private fun createTensorWithData(name: String, type: GGMLType, ne: LongArray, data: FloatArray): GGMLTensor =
+        GGMLTestUtils.createTensorWithData(graphAllocator, name, type, ne, data)
+
+    private fun createDestinationTensor(name: String, type: GGMLType, ne: LongArray): GGMLTensor =
+        GGMLTestUtils.allocateDestinationTensor(graphAllocator, name, type, ne.copyOf())
 
     // Helper to extract float data from tensor
-    private fun extractFloatData(tensor: GGMLTensor): FloatArray {
-        val size = tensor.numElements().toInt()
-        val result = FloatArray(size)
-        
-        for (i in 0 until size) {
-            result[i] = when (tensor.type) {
-                GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
-                GGMLType.F16 -> halfToFloat(tensor.getHalf(graphAllocator, i))
-                else -> tensor.getFloat(graphAllocator, i)
-            }
-        }
-        
-        return result
-    }
+    private fun extractFloatData(tensor: GGMLTensor): FloatArray =
+        GGMLTestUtils.extractFloatData(tensor, graphAllocator)
 
     // --- Basic Computation Chain Tests ---
     
@@ -95,11 +51,15 @@ class GGMLIntegrationTest {
         val tensorC = createTensorWithData("C", GGMLType.F32, ne, dataC)
         val tensorD = createTensorWithData("D", GGMLType.F32, ne, dataD)
         
-        // Compute: (A + B) * C - D
-        val step1 = computeAdd(graphAllocator, dummyContext, tensorA, tensorB) // A + B
-        val step2 = computeMul(graphAllocator, dummyContext, step1, tensorC)   // (A + B) * C
-        val result = computeSub(graphAllocator, dummyContext, step2, tensorD)  // ((A + B) * C) - D
-        
+        val addDst = createDestinationTensor("chain_add", GGMLType.F32, ne)
+        computeAdd(graphAllocator, dummyContext, tensorA, tensorB, addDst)
+
+        val mulDst = createDestinationTensor("chain_mul", GGMLType.F32, ne)
+        computeMul(graphAllocator, dummyContext, addDst, tensorC, mulDst)
+
+        val result = createDestinationTensor("chain_result", GGMLType.F32, ne)
+        computeSub(graphAllocator, dummyContext, mulDst, tensorD, result)
+
         val resultData = extractFloatData(result)
         
         // Expected: ((1+0.5)*2-1, (2+1)*3-1, (3+1.5)*4-1, (4+2)*5-1) = (2, 8, 17, 29)
@@ -122,27 +82,16 @@ class GGMLIntegrationTest {
         
         val tensorF32 = createTensorWithData("F32", GGMLType.F32, ne, dataF32)
         val tensorF16 = createTensorWithData("F16", GGMLType.F16, ne, dataF16)
-        
-        // Convert F16 to F32 for operation
-        val convertedF16 = GGMLTensor(type = GGMLType.F32, name = "converted")
-        convertedF16.ne = ne.copyOf()
-        convertedF16.nb = tensorF32.nb.copyOf()
-        
-        val f32ByteSize = ne[0].toULong() * GGMLType.F32.byteSize
-        val allocatedConverted = graphAllocator.tensorAllocators[0].allocate(f32ByteSize, GGMLType.F32, "converted")
-        convertedF16.bufferId = allocatedConverted.bufferId
-        convertedF16.offset = allocatedConverted.offset
-        
-        // Copy F16 data to F32 tensor
-        for (i in 0 until ne[0].toInt()) {
-            val f16Value = tensorF16.getHalf(graphAllocator, i)
-            val f32Value = halfToFloat(f16Value)
-            convertedF16.setFloat(graphAllocator, f32Value, i)
+        val convertedF16 = createDestinationTensor("converted", GGMLType.F32, ne)
+        val totalElements = tensorF16.numElements().toInt()
+        applyNDIter(tensorF16, totalElements) { _, indices ->
+            convertedF16.setFloat(graphAllocator, tensorF16.getHalf(graphAllocator, *indices), *indices)
         }
         
         // Perform operation: F32 + converted(F16)
-        val result = computeAdd(graphAllocator, dummyContext, tensorF32, convertedF16)
-        val resultData = extractFloatData(result)
+        val mixedDst = createDestinationTensor("mixed_add", GGMLType.F32, ne)
+        computeAdd(graphAllocator, dummyContext, tensorF32, convertedF16, mixedDst)
+        val resultData = extractFloatData(mixedDst)
         
         val expected = floatArrayOf(7.0f, 13.0f, 19.0f) // 5+2, 10+3, 15+4
         
@@ -173,10 +122,12 @@ class GGMLIntegrationTest {
         
         try {
             // A * B (should be identity since both are identity)
-            val matMulResult = computeMatMul(graphAllocator, dummyContext, matrixA, matrixB)
+            val matMulDst = createDestinationTensor("matmul_chain_dst", GGMLType.F32, neMatrix)
+            computeMatMul(graphAllocator, dummyContext, matrixA, matrixB, matMulDst)
             
             // (A * B) + C
-            val finalResult = computeAdd(graphAllocator, dummyContext, matMulResult, matrixC)
+            val finalResult = createDestinationTensor("matmul_add_chain", GGMLType.F32, neMatrix)
+            computeAdd(graphAllocator, dummyContext, matMulDst, matrixC, finalResult)
             val resultData = extractFloatData(finalResult)
             
             // Expected: identity + 0.1 everywhere = diagonal 1.1, others 0.1
@@ -217,11 +168,13 @@ class GGMLIntegrationTest {
             val dequant2 = dequantizeTensor(graphAllocator, tensorQ4_0)
             
             // Perform operations on dequantized data
-            val addResult = computeAdd(graphAllocator, dummyContext, dequant1, dequant2)
-            val mulResult = computeMul(graphAllocator, dummyContext, addResult, dequant1)
+            val addDst = createDestinationTensor("quant_chain_add", GGMLType.F32, ne)
+            computeAdd(graphAllocator, dummyContext, dequant1, dequant2, addDst)
+            val mulDst = createDestinationTensor("quant_chain_mul", GGMLType.F32, ne)
+            computeMul(graphAllocator, dummyContext, addDst, dequant1, mulDst)
             
             // Quantize final result
-            val finalQuantized = quantizeTensor(graphAllocator, mulResult, GGMLType.Q8_0)
+            val finalQuantized = quantizeTensor(graphAllocator, mulDst, GGMLType.Q8_0)
             val finalDequantized = dequantizeTensor(graphAllocator, finalQuantized)
             
             val resultData = extractFloatData(finalDequantized)
@@ -260,8 +213,12 @@ class GGMLIntegrationTest {
             var result = tensors[0]
             for (i in 1 until tensors.size step 2) {
                 if (i + 1 < tensors.size) {
-                    val intermediate = computeAdd(graphAllocator, dummyContext, tensors[i], tensors[i + 1])
-                    result = computeMul(graphAllocator, dummyContext, result, intermediate)
+                    val addDst = createDestinationTensor("stress_add_$i", result.type, result.ne.copyOf())
+                    computeAdd(graphAllocator, dummyContext, tensors[i], tensors[i + 1], addDst)
+
+                    val mulDst = createDestinationTensor("stress_mul_$i", result.type, result.ne.copyOf())
+                    computeMul(graphAllocator, dummyContext, result, addDst, mulDst)
+                    result = mulDst
                 }
             }
             
@@ -287,13 +244,13 @@ class GGMLIntegrationTest {
         val inputTensor = createTensorWithData("input", GGMLType.F32, ne, inputData)
         
         try {
-            // Apply GELU first
-            val geluResult = computeGelu(graphAllocator, dummyContext, inputTensor)
+            val geluDst = createDestinationTensor("gelu_chain", GGMLType.F32, ne)
+            computeGelu(graphAllocator, dummyContext, inputTensor, geluDst)
             
-            // Then apply RELU
-            val reluResult = computeRelu(graphAllocator, dummyContext, geluResult)
+            val reluDst = createDestinationTensor("relu_chain", GGMLType.F32, ne)
+            computeRelu(graphAllocator, dummyContext, geluDst, reluDst)
             
-            val resultData = extractFloatData(reluResult)
+            val resultData = extractFloatData(reluDst)
             
             // GELU followed by RELU should be positive values (RELU clips negatives to 0)
             for (i in resultData.indices) {
@@ -323,23 +280,23 @@ class GGMLIntegrationTest {
         val epsilonTensor = createTensorWithData("eps", GGMLType.F32, ne, floatArrayOf(epsilon, epsilon, epsilon, epsilon))
         
         try {
-            // A^2
-            val aSquared = computeSqr(graphAllocator, dummyContext, tensorA)
-            
-            // B^2  
-            val bSquared = computeSqr(graphAllocator, dummyContext, tensorB)
-            
-            // A^2 + B^2
-            val sumSquares = computeAdd(graphAllocator, dummyContext, aSquared, bSquared)
-            
-            // C + epsilon
-            val cPlusEps = computeAdd(graphAllocator, dummyContext, tensorC, epsilonTensor)
-            
-            // (A^2 + B^2) / (C + epsilon)
-            val division = computeDiv(graphAllocator, dummyContext, sumSquares, cPlusEps)
-            
-            // sqrt(...)
-            val finalResult = computeSqrt(graphAllocator, dummyContext, division)
+            val aSquared = createDestinationTensor("complex_a_sq", GGMLType.F32, ne)
+            computeSqr(graphAllocator, dummyContext, tensorA, aSquared)
+
+            val bSquared = createDestinationTensor("complex_b_sq", GGMLType.F32, ne)
+            computeSqr(graphAllocator, dummyContext, tensorB, bSquared)
+
+            val sumSquares = createDestinationTensor("complex_sum_sq", GGMLType.F32, ne)
+            computeAdd(graphAllocator, dummyContext, aSquared, bSquared, sumSquares)
+
+            val cPlusEps = createDestinationTensor("complex_denom", GGMLType.F32, ne)
+            computeAdd(graphAllocator, dummyContext, tensorC, epsilonTensor, cPlusEps)
+
+            val division = createDestinationTensor("complex_div", GGMLType.F32, ne)
+            computeDiv(graphAllocator, dummyContext, sumSquares, cPlusEps, division)
+
+            val finalResult = createDestinationTensor("complex_sqrt", GGMLType.F32, ne)
+            computeSqrt(graphAllocator, dummyContext, division, finalResult)
             
             val resultData = extractFloatData(finalResult)
             
@@ -373,25 +330,31 @@ class GGMLIntegrationTest {
             val tensor1 = createTensorWithData("perf1_$size", GGMLType.F32, ne, data1)
             val tensor2 = createTensorWithData("perf2_$size", GGMLType.F32, ne, data2)
             
-            val startTime = System.currentTimeMillis()
+            val startMark = TimeSource.Monotonic.markNow()
             
             // Perform a series of operations
-            val add = computeAdd(graphAllocator, dummyContext, tensor1, tensor2)
-            val mul = computeMul(graphAllocator, dummyContext, add, tensor1)
-            val sub = computeSub(graphAllocator, dummyContext, mul, tensor2)
-            val neg = computeNeg(graphAllocator, dummyContext, sub)
+            val addDst = createDestinationTensor("perf_add_$size", GGMLType.F32, ne)
+            computeAdd(graphAllocator, dummyContext, tensor1, tensor2, addDst)
+
+            val mulDst = createDestinationTensor("perf_mul_$size", GGMLType.F32, ne)
+            computeMul(graphAllocator, dummyContext, addDst, tensor1, mulDst)
+
+            val subDst = createDestinationTensor("perf_sub_$size", GGMLType.F32, ne)
+            computeSub(graphAllocator, dummyContext, mulDst, tensor2, subDst)
+
+            val negDst = createDestinationTensor("perf_neg_$size", GGMLType.F32, ne)
+            computeNeg(graphAllocator, dummyContext, subDst, negDst)
             
-            val endTime = System.currentTimeMillis()
-            val duration = endTime - startTime
+            val duration = startMark.elapsedNow().inWholeMilliseconds
             
             // Extract final result to ensure computation happened
-            val resultData = extractFloatData(neg)
+            val resultData = extractFloatData(negDst)
             assertTrue(resultData.isNotEmpty(), "Performance test result should not be empty")
             
             println("Performance test size $size: ${duration}ms")
             
             // Performance should scale reasonably
-            assertTrue(duration < 1000, "Operations on $size elements should complete in reasonable time")
+            assertTrue(duration < 1000L, "Operations on $size elements should complete in reasonable time")
         }
     }
 
@@ -408,7 +371,8 @@ class GGMLIntegrationTest {
         
         // Test division by zero handling
         try {
-            val divisionResult = computeDiv(graphAllocator, dummyContext, normalTensor, zeroTensor)
+            val divisionResult = createDestinationTensor("error_div_dst", GGMLType.F32, ne)
+            computeDiv(graphAllocator, dummyContext, normalTensor, zeroTensor, divisionResult)
             val resultData = extractFloatData(divisionResult)
             
             // Should handle division by zero gracefully (infinity or NaN)
@@ -425,12 +389,11 @@ class GGMLIntegrationTest {
         val differentSizeTensor = createTensorWithData("different", GGMLType.F32, longArrayOf(6), 
                                                       floatArrayOf(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f))
         
-        try {
-            computeAdd(graphAllocator, dummyContext, normalTensor, differentSizeTensor)
-            fail("Should have thrown exception for dimension mismatch")
-        } catch (e: IllegalArgumentException) {
-            println("Dimension mismatch correctly caught: ${e.message}")
+        val mismatchDst = createDestinationTensor("mismatch_dst", GGMLType.F32, ne)
+        assertFailsWith<IllegalArgumentException> {
+            computeAdd(graphAllocator, dummyContext, normalTensor, differentSizeTensor, mismatchDst)
         }
+        println("Dimension mismatch correctly caught")
     }
 
     @Test 
@@ -447,10 +410,7 @@ class GGMLIntegrationTest {
         )
         
         // Test RMSNorm computation
-        val rmsNormResult = GGMLTensor(type = GGMLType.F32)
-        rmsNormResult.ne = input.ne.copyOf()
-        rmsNormResult.nb = calculateContiguousStrides(rmsNormResult.ne, rmsNormResult.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(rmsNormResult)
+        val rmsNormResult = createDestinationTensor("rms_norm_result", GGMLType.F32, input.ne.copyOf())
         computeRMSNorm(graphAllocator, dummyContext, input, 1e-6f, rmsNormResult)
         assertNotNull(rmsNormResult)
         assertEquals(hiddenSize.toLong(), rmsNormResult.ne[0])
@@ -474,10 +434,7 @@ class GGMLIntegrationTest {
             floatArrayOf(-2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 3.0f)
         )
         
-        val siluResult = GGMLTensor(type = GGMLType.F32)
-        siluResult.ne = activationInput.ne.copyOf()
-        siluResult.nb = calculateContiguousStrides(siluResult.ne, siluResult.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(siluResult)
+        val siluResult = createDestinationTensor("silu_result", GGMLType.F32, activationInput.ne.copyOf())
         computeSilu(graphAllocator, dummyContext, activationInput, siluResult)
         assertNotNull(siluResult)
         assertEquals(8L, siluResult.ne[0])
@@ -509,12 +466,11 @@ class GGMLIntegrationTest {
             FloatArray(inputDim * outputDim) { 0.01f * ((it % 7) - 3) }
         )
         
-        val matmulResult = GGMLTensor(type = GGMLType.F32)
-        matmulResult.ne[0] = outputDim.toLong()
-        matmulResult.ne[1] = seqLen.toLong()
-        for (i in 2 until GGML_MAX_DIMS) matmulResult.ne[i] = 1L
-        matmulResult.nb = calculateContiguousStrides(matmulResult.ne, matmulResult.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(matmulResult)
+        val matmulResult = createDestinationTensor(
+            "matmul_result",
+            GGMLType.F32,
+            longArrayOf(outputDim.toLong(), seqLen.toLong())
+        )
         computeMatMul(graphAllocator, dummyContext, weightTensor, inputTensor, matmulResult)
         assertNotNull(matmulResult)
         assertEquals(outputDim.toLong(), matmulResult.ne[0])
@@ -550,12 +506,11 @@ class GGMLIntegrationTest {
         
         // Compute attention scores: Q @ K^T (simplified - using existing matmul)
         // Note: This is a simplified test, real attention would need transpose and softmax
-        val attentionScores = GGMLTensor(type = GGMLType.F32)
-        attentionScores.ne[0] = 1L // query_seq_len
-        attentionScores.ne[1] = 3L // key_seq_len
-        for (i in 2 until GGML_MAX_DIMS) attentionScores.ne[i] = 1L
-        attentionScores.nb = calculateContiguousStrides(attentionScores.ne, attentionScores.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(attentionScores)
+        val attentionScores = createDestinationTensor(
+            "attention_scores",
+            GGMLType.F32,
+            longArrayOf(1L, 3L)
+        )
         computeMatMul(graphAllocator, dummyContext, queryTensor, keyTensor, attentionScores)
         assertNotNull(attentionScores)
         assertEquals(1L, attentionScores.ne[0]) // query_seq_len
@@ -571,10 +526,7 @@ class GGMLIntegrationTest {
             floatArrayOf(1.0f, 2.0f, 3.0f, 4.0f, 5.0f)
         )
         
-        val softmaxResult = GGMLTensor(type = GGMLType.F32)
-        softmaxResult.ne = logitsInput.ne.copyOf()
-        softmaxResult.nb = calculateContiguousStrides(softmaxResult.ne, softmaxResult.type, GGML_MAX_DIMS)
-        graphAllocator.allocateTensor(softmaxResult)
+        val softmaxResult = createDestinationTensor("softmax_result", GGMLType.F32, logitsInput.ne.copyOf())
         computeSoftMax(graphAllocator, dummyContext, logitsInput, softmaxResult)
         assertNotNull(softmaxResult)
         assertEquals(5L, softmaxResult.ne[0])

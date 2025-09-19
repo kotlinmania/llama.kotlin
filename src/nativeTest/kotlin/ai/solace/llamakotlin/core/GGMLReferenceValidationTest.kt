@@ -182,22 +182,12 @@ class GGMLReferenceValidationTest {
      */
     private fun createTensorFromFloatArray(name: String, type: GGMLType, data: FloatArray): GGMLTensor {
         val ne = longArrayOf(data.size.toLong())
-        val tensor = GGMLTensor(type = type, name = name)
-        tensor.ne = ne
-        
-        // Set strides
-        tensor.nb = ULongArray(GGML_MAX_DIMS) { 0uL }
-        tensor.nb[0] = type.byteSize
-        for (d in 1 until GGML_MAX_DIMS) {
-            tensor.nb[d] = tensor.nb[d-1] * ne.getOrElse(d-1) { 1L }.toULong()
-        }
-        
-        // Allocate memory
-        val byteSize = data.size.toULong() * type.byteSize
-        val allocatedTensor = graphAllocator.tensorAllocators[0].allocate(byteSize, type, name)
-        tensor.bufferId = allocatedTensor.bufferId
-        tensor.offset = allocatedTensor.offset
-        
+        val tensor = GGMLTestUtils.createStandardTestTensor(type, ne, name)
+        val byteSize = calculateTensorByteSize(type, tensor.ne).toInt()
+        val offset = graphAllocator.allocateTensorData(byteSize)
+        tensor.bufferId = 0
+        tensor.dataOffset = offset
+
         // Set data
         for (i in data.indices) {
             when (type) {
@@ -220,12 +210,21 @@ class GGMLReferenceValidationTest {
         for (i in 0 until size) {
             result[i] = when (tensor.type) {
                 GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
-                GGMLType.F16 -> halfToFloat(tensor.getHalf(graphAllocator, i))
+                GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
                 else -> tensor.getFloat(graphAllocator, i)
             }
         }
         
         return result
+    }
+
+    private fun allocateLike(reference: GGMLTensor, nameSuffix: String): GGMLTensor {
+        val tensor = GGMLTestUtils.createStandardTestTensor(reference.type, reference.ne.copyOf(), "${reference.name}_$nameSuffix")
+        val byteSize = calculateTensorByteSize(reference.type, tensor.ne).toInt()
+        val offset = graphAllocator.allocateTensorData(byteSize)
+        tensor.bufferId = 0
+        tensor.dataOffset = offset
+        return tensor
     }
 
     /**
@@ -240,46 +239,52 @@ class GGMLReferenceValidationTest {
                     val input1Size = testVector.metadata["input1_size"] as? Int ?: (testVector.inputData.size / 2)
                     val input1Data = testVector.inputData.sliceArray(0 until input1Size)
                     val input2Data = testVector.inputData.sliceArray(input1Size until testVector.inputData.size)
-                    
+
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
-                    val result = computeAdd(graphAllocator, dummyContext, tensor1, tensor2)
-                    extractFloatArray(result)
+                    val dst = allocateLike(tensor1, "add_dst")
+                    computeAdd(graphAllocator, dummyContext, tensor1, tensor2, dst)
+                    extractFloatArray(dst)
                 }
                 "MUL" -> {
                     val input1Size = testVector.inputData.size / 2
                     val input1Data = testVector.inputData.sliceArray(0 until input1Size)
                     val input2Data = testVector.inputData.sliceArray(input1Size until testVector.inputData.size)
-                    
+
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
-                    val result = computeMul(graphAllocator, dummyContext, tensor1, tensor2)
-                    extractFloatArray(result)
+                    val dst = allocateLike(tensor1, "mul_dst")
+                    computeMul(graphAllocator, dummyContext, tensor1, tensor2, dst)
+                    extractFloatArray(dst)
                 }
                 "SUB" -> {
                     val input1Size = testVector.inputData.size / 2
                     val input1Data = testVector.inputData.sliceArray(0 until input1Size)
                     val input2Data = testVector.inputData.sliceArray(input1Size until testVector.inputData.size)
-                    
+
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
-                    val result = computeSub(graphAllocator, dummyContext, tensor1, tensor2)
-                    extractFloatArray(result)
+                    val dst = allocateLike(tensor1, "sub_dst")
+                    computeSub(graphAllocator, dummyContext, tensor1, tensor2, dst)
+                    extractFloatArray(dst)
                 }
                 "NEG" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
-                    val result = computeNeg(graphAllocator, dummyContext, tensor)
-                    extractFloatArray(result)
+                    val dst = allocateLike(tensor, "neg_dst")
+                    computeNeg(graphAllocator, dummyContext, tensor, dst)
+                    extractFloatArray(dst)
                 }
                 "GELU" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
-                    val result = computeGelu(graphAllocator, dummyContext, tensor)
-                    extractFloatArray(result)
+                    val dst = allocateLike(tensor, "gelu_dst")
+                    computeGelu(graphAllocator, dummyContext, tensor, dst)
+                    extractFloatArray(dst)
                 }
                 "RELU" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
-                    val result = computeRelu(graphAllocator, dummyContext, tensor)
-                    extractFloatArray(result)
+                    val dst = allocateLike(tensor, "relu_dst")
+                    computeRelu(graphAllocator, dummyContext, tensor, dst)
+                    extractFloatArray(dst)
                 }
                 "QUANTIZE_DEQUANTIZE" -> {
                     val tensor = createTensorFromFloatArray("input", GGMLType.F32, testVector.inputData)
@@ -363,7 +368,7 @@ class GGMLReferenceValidationTest {
             results.add(result)
             
             val status = if (result.passed) "PASS" else "FAIL"
-            println("${testVector.name}\t${status}\t${"%.2e".format(result.maxError)}\t${"%.2e".format(result.meanError)}\t${"%.2e".format(result.rmse)}")
+            println("${testVector.name}\t${status}\t${GGMLUtilities.formatDouble(result.maxError)}\t${GGMLUtilities.formatDouble(result.meanError)}\t${GGMLUtilities.formatDouble(result.rmse)}")
             
             if (!result.passed) {
                 println("  └─ ${result.notes}")
@@ -392,7 +397,7 @@ class GGMLReferenceValidationTest {
             results.add(result)
             
             val status = if (result.passed) "PASS" else "FAIL"
-            println("${testVector.name}\t${status}\t${"%.4f".format(result.maxError)}\t${"%.4f".format(result.rmse)}\t${testVector.tolerance}")
+            println("${testVector.name}\t${status}\t${GGMLUtilities.formatDouble(result.maxError)}\t${GGMLUtilities.formatDouble(result.rmse)}\t${testVector.tolerance}")
             
             if (!result.passed && result.failedIndices.isNotEmpty()) {
                 println("  └─ Failed indices (first 10): ${result.failedIndices.take(10)}")
@@ -447,7 +452,7 @@ class GGMLReferenceValidationTest {
             val result = validateTestVector(testVector)
             val status = if (result.passed) "PASS" else "FAIL"
             
-            println("${testVector.name}: $status (Max Error: ${"%.2e".format(result.maxError)})")
+            println("${testVector.name}: $status (Max Error: ${GGMLUtilities.formatDouble(result.maxError)})")
             
             if (result.passed) {
                 passedCount++
@@ -471,11 +476,14 @@ class GGMLReferenceValidationTest {
         
         try {
             // Test NEG operation on both precisions
-            val f32Result = computeNeg(graphAllocator, dummyContext, f32Tensor)
-            val f16Result = computeNeg(graphAllocator, dummyContext, f16Tensor)
-            
-            val f32Output = extractFloatArray(f32Result)
-            val f16Output = extractFloatArray(f16Result)
+            val f32Dst = allocateLike(f32Tensor, "neg_dst")
+            val f16Dst = allocateLike(f16Tensor, "neg_dst")
+
+            computeNeg(graphAllocator, dummyContext, f32Tensor, f32Dst)
+            computeNeg(graphAllocator, dummyContext, f16Tensor, f16Dst)
+
+            val f32Output = extractFloatArray(f32Dst)
+            val f16Output = extractFloatArray(f16Dst)
             
             println("\n=== Cross-Precision Validation (NEG) ===")
             println("Input\tF32 Output\tF16 Output\tDifference")
@@ -516,8 +524,9 @@ class GGMLReferenceValidationTest {
         
         // Test ADD baseline
         try {
-            val addResult = computeAdd(graphAllocator, dummyContext, inputTensor, onesTensor)
-            val addOutput = extractFloatArray(addResult)
+            val addDst = allocateLike(inputTensor, "add_dst")
+            computeAdd(graphAllocator, dummyContext, inputTensor, onesTensor, addDst)
+            val addOutput = extractFloatArray(addDst)
             val expectedAdd = regressionTests["simple_add"]!!
             
             var addPassed = true
@@ -536,8 +545,9 @@ class GGMLReferenceValidationTest {
         
         // Test NEG baseline
         try {
-            val negResult = computeNeg(graphAllocator, dummyContext, inputTensor)
-            val negOutput = extractFloatArray(negResult)
+            val negDst = allocateLike(inputTensor, "neg_dst")
+            computeNeg(graphAllocator, dummyContext, inputTensor, negDst)
+            val negOutput = extractFloatArray(negDst)
             val expectedNeg = regressionTests["simple_neg"]!!
             
             var negPassed = true

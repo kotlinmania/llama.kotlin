@@ -12,9 +12,20 @@ class GGMLBitNet158SmokeTest {
         // Create a simple test setup
         val testBuffer = ByteArray(1024 * 1024) { 0 }
         val graphAllocator = GGMLGraphAllocator()
-        graphAllocator.buffers[0] = testBuffer
+        if (graphAllocator.buffers.isEmpty()) {
+            graphAllocator.buffers.add(testBuffer)
+        } else {
+            graphAllocator.buffers[0] = testBuffer
+        }
+        if (graphAllocator.tensorAllocators.isEmpty()) {
+            graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator(bufferSize = testBuffer.size.toULong()))
+        } else {
+            graphAllocator.tensorAllocators[0].reset(testBuffer.size.toULong())
+        }
+        resetAllocatorTracking(graphAllocator)
         graphAllocator.context = GGMLContext()
-        
+        var currentOffset = 0uL
+
         // Test data that should work well with ternary quantization
         val testData = floatArrayOf(
             -1.0f, 0.0f, 1.0f, -0.5f, 0.5f, -2.0f, 2.0f, 0.0f,
@@ -32,9 +43,11 @@ class GGMLBitNet158SmokeTest {
         f32Tensor.nb = calculateContiguousStrides(f32Tensor.ne, GGMLType.F32, f32Tensor.rank())
         
         val f32Size = calculateTensorByteSize(f32Tensor).toInt()
-        val f32Offset = graphAllocator.allocateTensorData(f32Size)
+        val alignment = 16uL
+        val f32Offset = ((currentOffset + (alignment - 1uL)) / alignment) * alignment
+        currentOffset = f32Offset + f32Size.toULong()
         f32Tensor.bufferId = 0
-        f32Tensor.dataOffset = f32Offset.toULong()
+        f32Tensor.dataOffset = f32Offset
         
         // Copy test data
         for (i in testData.indices) {

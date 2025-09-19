@@ -12,27 +12,32 @@ class GGMLOptimizationSmokeTest {
     
     @Test
     fun testBackendBasicFunctionality() {
-        val backend = GGMLCpuBackend(threadCount = 1)
-        
-        assertTrue(backend.initialize(), "Backend should initialize")
-        assertTrue(backend.isReady(), "Backend should be ready after initialization")
-        assertEquals(1, backend.getThreadCount(), "Thread count should match")
-        
-        backend.cleanup()
+        val backend = GGMLCpuBackend()
+        assertEquals("CPU", backend.getName())
+        assertTrue(backend.getGuid().isNotEmpty(), "Backend should expose a GUID")
+
+        val buffer = backend.allocBuffer(512uL)
+        assertNotNull(buffer, "CPU backend should allocate host buffer")
+
+        val opTensor = GGMLTensor(type = GGMLType.F32).apply { op = GGMLOp.ADD }
+        assertTrue(backend.supportsOp(opTensor), "CPU backend should report support for ADD")
+
+        buffer?.free()
+        backend.free()
     }
-    
+
     @Test
     fun testBackendManager() {
         val manager = GGMLBackendManager()
-        val backend = GGMLCpuBackend()
-        
-        assertTrue(manager.registerBackend(backend), "Backend registration should succeed")
-        assertNotNull(manager.getPrimaryBackend(), "Primary backend should be set")
-        assertEquals(1, manager.getBackends().size, "Should have one backend")
-        
+        val available = manager.getAvailableBackends()
+        assertTrue(available.contains("CPU"), "CPU backend should be available")
+
+        assertNotNull(manager.getPrimaryBackend(), "Primary backend should be set by default")
+        assertTrue(manager.getBackends().isNotEmpty(), "Backend manager should expose at least one backend")
+
         manager.cleanup()
     }
-    
+
     @Test
     fun testGraphOptimizer() {
         val context = GGMLContext()
@@ -47,9 +52,6 @@ class GGMLOptimizationSmokeTest {
     @Test
     fun testSchedulerCreation() {
         val backendManager = GGMLBackendManager()
-        val backend = GGMLCpuBackend()
-        backendManager.registerBackend(backend)
-        
         val scheduler = GGMLScheduler(backendManager, GGMLSchedulingStrategy.SEQUENTIAL)
         scheduler.setMaxWorkers(2)
         
@@ -64,7 +66,7 @@ class GGMLOptimizationSmokeTest {
     fun testDependencyTrackerBasic() {
         val tracker = GGMLDependencyTracker()
         val graph = createGraph(1)
-        
+
         // Test with empty graph
         tracker.buildDependencies(graph)
         assertTrue(tracker.getReadyNodes().isEmpty(), "Empty graph should have no ready nodes")

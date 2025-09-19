@@ -2,25 +2,23 @@ package ai.solace.llamakotlin.core
 
 import kotlin.math.abs
 import kotlin.test.*
+import kotlin.time.ExperimentalTime
+import kotlin.time.TimeSource
 
 /**
  * Performance microbenchmarks for quantized matmul operations.
  * Profiles all quantization combinations and measures performance improvements.
  */
+@OptIn(ExperimentalTime::class)
 class GGMLMatMulBenchmarkTest {
 
     private lateinit var graphAllocator: GGMLGraphAllocator
-    private lateinit var testBuffer: ByteArray
     private val bufferSize = 4 * 1024 * 1024 // 4MB for larger test matrices
 
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
-        testBuffer = ByteArray(bufferSize)
-        if (graphAllocator.buffers.isEmpty()) graphAllocator.buffers.add(null)
-        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator())
-        graphAllocator.buffers[0] = testBuffer
-        graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
+        val (allocator, _) = GGMLTestUtils.createTestAllocator(bufferSize)
+        graphAllocator = allocator
     }
 
     // Helper to create test matrices of various sizes
@@ -31,149 +29,17 @@ class GGMLMatMulBenchmarkTest {
         cols: Int,
         seed: Int = 42
     ): GGMLTensor {
-        val tensor = GGMLTensor(type = type)
-        tensor.name = name
-        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
-        tensor.ne[0] = cols.toLong()  // First dim is column count
-        tensor.ne[1] = rows.toLong()  // Second dim is row count
-
-        // Calculate strides
-        if (type.byteSize > 0uL) {
-            tensor.nb[0] = type.byteSize
-            for (d in 1 until GGML_MAX_DIMS) {
-                tensor.nb[d] = tensor.ne[d-1].toULong() * tensor.nb[d-1]
+        return when (type) {
+            GGMLType.F32 -> GGMLTestUtils.createF32Matrix(graphAllocator, name, rows, cols) { idx ->
+                val x = (seed + idx) % 127
+                (x - 63).toFloat() / 10.0f
             }
-        }
-
-        val numElements = (rows * cols).toLong()
-        
-        when (type) {
-            GGMLType.F32 -> {
-                // Create deterministic test data based on seed
-                val data = FloatArray(numElements.toInt()) { idx ->
-                    val x = (seed + idx) % 127
-                    (x - 63).toFloat() / 10.0f  // Range approximately -6.3 to +6.3
-                }
-                tensor.data = data
-            }
-            GGMLType.Q8_0 -> {
-                require(numElements % QK8_0 == 0) { "Q8_0 matrix elements must be divisible by $QK8_0" }
-                val f32Data = FloatArray(numElements.toInt()) { idx ->
-                    val x = (seed + idx) % 254
-                    (x - 127).toFloat()  // Range -127 to +127 for Q8_0
-                }
-                tensor.data = quantizeToQ80(f32Data)
-            }
-            GGMLType.Q4_0 -> {
-                require(numElements % QK4_0 == 0) { "Q4_0 matrix elements must be divisible by $QK4_0" }
-                val f32Data = FloatArray(numElements.toInt()) { idx ->
-                    val x = (seed + idx) % 16
-                    (x - 8).toFloat()  // Range -8 to +7 for Q4_0
-                }
-                tensor.data = quantizeToQ40(f32Data)
-            }
-            GGMLType.Q4_1 -> {
-                require(numElements % QK4_1 == 0) { "Q4_1 matrix elements must be divisible by $QK4_1" }
-                val f32Data = FloatArray(numElements.toInt()) { idx ->
-                    val x = (seed + idx) % 20
-                    x.toFloat()  // Range 0 to +19 for Q4_1
-                }
-                tensor.data = quantizeToQ41(f32Data)
+            GGMLType.Q8_0, GGMLType.Q4_0, GGMLType.Q4_1 -> GGMLTestUtils.createQuantizedMatrix(graphAllocator, name, type, rows, cols) { idx ->
+                val x = (seed + idx) % 127
+                (x - 63).toFloat() / 10.0f
             }
             else -> throw IllegalArgumentException("Unsupported type for benchmark: $type")
         }
-
-        return tensor
-    }
-
-    // Quantization helpers
-    private fun quantizeToQ80(f32Data: FloatArray): ByteArray {
-        val numElements = f32Data.size
-        val numBlocks = numElements / QK8_0
-        val blockSize = 2 + QK8_0  // F16 scale + 32 bytes
-        val result = ByteArray(numBlocks * blockSize)
-        
-        for (blockIdx in 0 until numBlocks) {
-            val startIdx = blockIdx * QK8_0
-            var absMax = 0.0f
-            for (i in startIdx until startIdx + QK8_0) {
-                absMax = maxOf(absMax, abs(f32Data[i]))
-            }
-            val scale = if (absMax == 0.0f) 1.0f else absMax / 127.0f
-            val invScale = 1.0f / scale
-            
-            // Write scale
-            result.setShortLe(blockIdx * blockSize, floatToHalf(scale))
-            
-            // Write quantized weights
-            val weightOffset = blockIdx * blockSize + 2
-            for (i in 0 until QK8_0) {
-                val quantValue = kotlin.math.round(f32Data[startIdx + i] * invScale).toInt().coerceIn(-128, 127)
-                result[weightOffset + i] = quantValue.toByte()
-            }
-        }
-        return result
-    }
-
-    private fun quantizeToQ40(f32Data: FloatArray): ByteArray {
-        val numElements = f32Data.size
-        val numBlocks = numElements / QK4_0
-        val blockSize = 2 + QK4_0 / 2  // F16 scale + 16 packed bytes
-        val result = ByteArray(numBlocks * blockSize)
-        
-        for (blockIdx in 0 until numBlocks) {
-            val startIdx = blockIdx * QK4_0
-            var absMax = 0.0f
-            for (i in startIdx until startIdx + QK4_0) {
-                absMax = maxOf(absMax, abs(f32Data[i]))
-            }
-            val scale = if (absMax == 0.0f) 1.0f else absMax / 8.0f
-            val invScale = 1.0f / scale
-            
-            // Write scale
-            result.setShortLe(blockIdx * blockSize, floatToHalf(scale))
-            
-            // Write quantized weights (packed)
-            val weightOffset = blockIdx * blockSize + 2
-            for (i in 0 until QK4_0 / 2) {
-                val q1 = kotlin.math.round(f32Data[startIdx + i*2] * invScale + 8.0f).toInt().coerceIn(0, 15)
-                val q2 = kotlin.math.round(f32Data[startIdx + i*2 + 1] * invScale + 8.0f).toInt().coerceIn(0, 15)
-                result[weightOffset + i] = ((q1 and 0x0F) or ((q2 and 0x0F) shl 4)).toByte()
-            }
-        }
-        return result
-    }
-
-    private fun quantizeToQ41(f32Data: FloatArray): ByteArray {
-        val numElements = f32Data.size
-        val numBlocks = numElements / QK4_1
-        val blockSize = 4 + QK4_1 / 2  // 2*F16 (scale+min) + 16 packed bytes
-        val result = ByteArray(numBlocks * blockSize)
-        
-        for (blockIdx in 0 until numBlocks) {
-            val startIdx = blockIdx * QK4_1
-            var minVal = f32Data[startIdx]
-            var maxVal = f32Data[startIdx]
-            for (i in startIdx until startIdx + QK4_1) {
-                minVal = minOf(minVal, f32Data[i])
-                maxVal = maxOf(maxVal, f32Data[i])
-            }
-            val scale = if (maxVal == minVal) 1.0f else (maxVal - minVal) / 15.0f
-            val invScale = 1.0f / scale
-            
-            // Write scale and min
-            result.setShortLe(blockIdx * blockSize, floatToHalf(scale))
-            result.setShortLe(blockIdx * blockSize + 2, floatToHalf(minVal))
-            
-            // Write quantized weights
-            val weightOffset = blockIdx * blockSize + 4
-            for (i in 0 until QK4_1 / 2) {
-                val q1 = kotlin.math.round((f32Data[startIdx + i*2] - minVal) * invScale).toInt().coerceIn(0, 15)
-                val q2 = kotlin.math.round((f32Data[startIdx + i*2 + 1] - minVal) * invScale).toInt().coerceIn(0, 15)
-                result[weightOffset + i] = ((q1 and 0x0F) or ((q2 and 0x0F) shl 4)).toByte()
-            }
-        }
-        return result
     }
 
     // Benchmarking helper
@@ -184,19 +50,25 @@ class GGMLMatMulBenchmarkTest {
         warmupRuns: Int = 5,
         benchmarkRuns: Int = 10
     ): Long {
-        // Warmup
+        val context = GGMLContext()
+        val dst = GGMLTestUtils.allocateMatMulResult(
+            graphAllocator,
+            "${name}_dst",
+            rows = tensorA.ne[1].toInt(),
+            cols = tensorB.ne[0].toInt()
+        )
+
         repeat(warmupRuns) {
-            computeMatMul(graphAllocator, GGMLContext(), tensorA, tensorB)
+            computeMatMul(graphAllocator, context, tensorA, tensorB, dst)
         }
-        
-        // Benchmark
-        val startTime = kotlin.system.getTimeNanos()
+
+        val start = TimeSource.Monotonic.markNow()
         repeat(benchmarkRuns) {
-            computeMatMul(graphAllocator, GGMLContext(), tensorA, tensorB)
+            computeMatMul(graphAllocator, context, tensorA, tensorB, dst)
         }
-        val totalTime = kotlin.system.getTimeNanos() - startTime
+        val totalTime = start.elapsedNow().inWholeNanoseconds
         val avgTime = totalTime / benchmarkRuns
-        
+
         println("$name: ${avgTime / 1_000_000}ms avg (${benchmarkRuns} runs)")
         return avgTime
     }
@@ -338,8 +210,14 @@ class GGMLMatMulBenchmarkTest {
         // Create reference F32 matrices
         val f32A = createTestMatrix("ref_a", GGMLType.F32, M, K, 123)
         val f32B = createTestMatrix("ref_b", GGMLType.F32, K, N, 456)
-        val reference = computeMatMul(graphAllocator, GGMLContext(), f32A, f32B)
-        val refData = reference.data as FloatArray
+        val reference = GGMLTestUtils.allocateMatMulResult(
+            graphAllocator,
+            "ref_result",
+            rows = f32A.ne[1].toInt(),
+            cols = f32B.ne[0].toInt()
+        )
+        computeMatMul(graphAllocator, GGMLContext(), f32A, f32B, reference)
+        val refData = GGMLTestUtils.extractFloatData(reference, graphAllocator)
         
         // Test quantized combinations
         val testCases = listOf(
@@ -358,8 +236,14 @@ class GGMLMatMulBenchmarkTest {
                 val testB = if (types.second == GGMLType.F32) f32B 
                           else createTestMatrix("test_b", types.second, K, N, 456)
                 
-                val result = computeMatMul(graphAllocator, GGMLContext(), testA, testB)
-                val resultData = result.data as FloatArray
+                val result = GGMLTestUtils.allocateMatMulResult(
+                    graphAllocator,
+                    "${name}_result",
+                    rows = f32A.ne[1].toInt(),
+                    cols = f32B.ne[0].toInt()
+                )
+                computeMatMul(graphAllocator, GGMLContext(), testA, testB, result)
+                val resultData = GGMLTestUtils.extractFloatData(result, graphAllocator)
                 
                 var maxError = 0.0f
                 var avgError = 0.0f
@@ -407,27 +291,27 @@ class GGMLMatMulBenchmarkTest {
         println("Single dot product timing (${iterations} iterations):")
         
         // F32 × Q8_0
-        var startTime = kotlin.system.getTimeNanos()
+        var startMark = TimeSource.Monotonic.markNow()
         repeat(iterations) {
             computeDotProductF32Q80(graphAllocator, f32Vec, q80Vec, 0, 0, K)
         }
-        val f32q80Time = (kotlin.system.getTimeNanos() - startTime) / iterations
+        val f32q80Time = startMark.elapsedNow().inWholeNanoseconds / iterations
         println("  F32×Q8_0: ${f32q80Time / 1000}µs per dot product")
         
         // Q8_0 × Q8_0
-        startTime = kotlin.system.getTimeNanos()
+        startMark = TimeSource.Monotonic.markNow()
         repeat(iterations) {
             computeDotProductQ80Q80(graphAllocator, q80Vec, q80Vec, 0, 0, K)
         }
-        val q80q80Time = (kotlin.system.getTimeNanos() - startTime) / iterations
+        val q80q80Time = startMark.elapsedNow().inWholeNanoseconds / iterations
         println("  Q8_0×Q8_0: ${q80q80Time / 1000}µs per dot product")
         
         // Q4_0 × Q4_0
-        startTime = kotlin.system.getTimeNanos()
+        startMark = TimeSource.Monotonic.markNow()
         repeat(iterations) {
             computeDotProductQ40Q40(graphAllocator, q40Vec, q40Vec, 0, 0, K)
         }
-        val q40q40Time = (kotlin.system.getTimeNanos() - startTime) / iterations
+        val q40q40Time = startMark.elapsedNow().inWholeNanoseconds / iterations
         println("  Q4_0×Q4_0: ${q40q40Time / 1000}µs per dot product")
         
         // Efficiency analysis

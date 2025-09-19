@@ -264,6 +264,10 @@ class GGMLTensor(
     var bufferId: Int = -1,
     var dataOffset: ULong = 0u
 ) {
+    var offset: ULong
+        get() = dataOffset
+        set(value) { dataOffset = value }
+
     fun isOutput(): Boolean = (this.flags and GGML_TENSOR_FLAG_OUTPUT) != 0
 
     /**

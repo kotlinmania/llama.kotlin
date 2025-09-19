@@ -162,11 +162,13 @@ class GGMLCpuBackend : GGMLBackend {
     }
     
     private val bufferType = GGMLCpuBufferType()
-    
+    private val runtimeConfig = GGMLCpuRuntimeConfig()
+    private val executor = GGMLCpuExecutor()
+
     override fun getGuid(): String = BACKEND_GUID
     
     override fun getName(): String = "CPU"
-    
+
     override fun free() {
         // Nothing to free for CPU backend
     }
@@ -174,16 +176,9 @@ class GGMLCpuBackend : GGMLBackend {
     override fun getDefaultBufferType(): GGMLBackendBufferType = bufferType
     
     override fun graphCompute(graph: GGMLCGraph): GGMLStatus {
-        return try {
-            // Use existing GGMLComputeOps to compute the graph
-            GGMLComputeOps.computeGraph(graph)
-            GGMLStatus.SUCCESS
-        } catch (e: Exception) {
-            println("GGMLCpuBackend: Error computing graph: ${e.message}")
-            GGMLStatus.FAILED
-        }
+        return executor.compute(graph, runtimeConfig)
     }
-    
+
     override fun supportsOp(tensor: GGMLTensor): Boolean {
         // CPU backend supports all operations that are implemented in GGMLComputeOps
         return when (tensor.op) {
@@ -231,4 +226,22 @@ class GGMLCpuBackend : GGMLBackend {
         // CPU backend doesn't need to offload operations - it's the fallback
         return false
     }
+
+    fun setThreadCount(threadCount: Int) {
+        runtimeConfig.threadCount = threadCount
+    }
+
+    fun getThreadCount(): Int = runtimeConfig.normalizedThreadCount()
+
+    fun setSchedulingStrategy(strategy: GGMLSchedulingStrategy) {
+        runtimeConfig.schedulingStrategy = strategy
+    }
+
+    fun getSchedulingStrategy(): GGMLSchedulingStrategy = runtimeConfig.schedulingStrategy
+
+    fun setUseDedicatedDispatcher(use: Boolean) {
+        runtimeConfig.useDedicatedDispatcher = use
+    }
+
+    fun isUsingDedicatedDispatcher(): Boolean = runtimeConfig.useDedicatedDispatcher
 }

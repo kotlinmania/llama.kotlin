@@ -1,8 +1,10 @@
 package ai.solace.llamakotlin.core
 
 import kotlin.math.*
-import kotlin.test.*
 import kotlin.random.Random
+import kotlin.test.*
+import kotlin.time.ExperimentalTime
+import kotlin.time.TimeSource
 
 /**
  * Enhanced quantization accuracy test suite with standardized datasets and error thresholds
@@ -174,7 +176,7 @@ class GGMLStandardizedQuantizationTest {
         for (i in 0 until size) {
             result[i] = when (tensor.type) {
                 GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
-                GGMLType.F16 -> halfToFloat(tensor.getHalf(graphAllocator, i))
+                GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
                 else -> tensor.getFloat(graphAllocator, i) // Try generic access
             }
         }
@@ -396,6 +398,7 @@ class GGMLStandardizedQuantizationTest {
     // --- Stress Tests ---
     
     @Test
+    @OptIn(ExperimentalTime::class)
     fun testLargeDatasetStress() {
         // Test with larger dataset to stress memory allocation and processing
         val largeSize = 2048
@@ -404,18 +407,18 @@ class GGMLStandardizedQuantizationTest {
         
         for (quantType in arrayOf(GGMLType.Q8_0, GGMLType.Q4_0, GGMLType.Q4_1)) {
             try {
-                val startTime = System.currentTimeMillis()
+                val mark = TimeSource.Monotonic.markNow()
                 val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, quantType)
                 val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
-                val endTime = System.currentTimeMillis()
-                
+                val elapsed = mark.elapsedNow().inWholeMilliseconds
+
                 val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
                 val metrics = calculateQuantizationMetrics(testData, dequantizedData)
-                
-                println("$quantType Large Dataset ($largeSize elements) - Time: ${endTime-startTime}ms, MSE: ${metrics.mse}")
-                
+
+                println("$quantType Large Dataset ($largeSize elements) - Time: ${elapsed}ms, MSE: ${metrics.mse}")
+
                 // Ensure performance is reasonable and accuracy maintained
-                assertTrue(endTime - startTime < 1000, "$quantType quantization took too long: ${endTime-startTime}ms")
+                assertTrue(elapsed < 1000L, "$quantType quantization took too long: ${elapsed}ms")
             } catch (e: Exception) {
                 println("$quantType large dataset test failed: ${e.message}")
             }
