@@ -48,7 +48,8 @@ fun testAdd(context: GGMLContext, graphAllocator: GGMLGraphAllocator) {
     println("Tensor b: [${bData.joinToString()}]")
 
     // Test optimized add operation
-    val c = computeAddRet(graphAllocator, context, a, b)
+    val c = graphAllocator.allocateTensor(GGMLType.F32, a.ne.copyOf())
+    computeAdd(graphAllocator, context, a, b, c)
     val cData = FloatArray(16) { idx -> c.getFloat(graphAllocator, idx % 4, idx / 4) }
     println("a + b: [${cData.take(16).joinToString()}]")
 
@@ -94,7 +95,8 @@ fun testMul(context: GGMLContext, graphAllocator: GGMLGraphAllocator) {
     println("Tensor b: [${bData.joinToString()}]")
 
     // Test optimized mul operation
-    val c = computeMulRet(graphAllocator, context, a, b)
+    val c = graphAllocator.allocateTensor(GGMLType.F32, a.ne.copyOf())
+    computeMul(graphAllocator, context, a, b, c)
     val cData = FloatArray(16) { idx -> c.getFloat(graphAllocator, idx % 4, idx / 4) }
     println("a * b: [${cData.take(16).joinToString()}]")
 
@@ -140,7 +142,8 @@ fun testMatMul(context: GGMLContext, graphAllocator: GGMLGraphAllocator) {
     println("Tensor b: [${bData.joinToString()}]")
 
     // Test optimized matMul operation
-    val c = computeMatMulRet(graphAllocator, context, a, b)
+    val c = graphAllocator.allocateTensor(GGMLType.F32, longArrayOf(4, 4))
+    computeMatMul(graphAllocator, context, a, b, c)
     val cData = FloatArray(16) { idx -> c.getFloat(graphAllocator, idx % 4, idx / 4) }
     println("a @ b: [${cData.take(16).joinToString()}]")
 

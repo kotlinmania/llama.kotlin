@@ -153,10 +153,12 @@ class GGMLStandardizedQuantizationTest {
             tensor.nb[d] = tensor.nb[d-1] * dims.getOrElse(d-1) { 1L }.toULong()
         }
         
-        val byteSize = data.size.toULong() * GGMLType.F32.byteSize
-        val allocatedTensor = graphAllocator.tensorAllocators[0].allocate(byteSize, GGMLType.F32, name)
-        tensor.bufferId = allocatedTensor.bufferId
-        tensor.offset = allocatedTensor.offset
+        val byteSize = data.size * GGMLType.F32.byteSize.toInt()
+        if (byteSize > 0) {
+            val offset = graphAllocator.allocateTensorData(byteSize)
+            tensor.bufferId = 0
+            tensor.offset = offset
+        }
         
         // Set data
         for (i in data.indices) {
@@ -193,8 +195,10 @@ class GGMLStandardizedQuantizationTest {
         
         // Quantize to Q8_0
         val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         assertEquals(GGMLType.Q8_0, quantizedTensor.type, "Quantization should produce Q8_0 tensor")
-        
+        println("Q8_0 quantized bufferId=${quantizedTensor.bufferId} offset=${quantizedTensor.dataOffset}")
+
         // Dequantize back to F32
         val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
         assertEquals(GGMLType.F32, dequantizedTensor.type, "Dequantization should produce F32 tensor")
@@ -218,6 +222,7 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("q8_0_random", testData)
         
         val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
@@ -234,6 +239,7 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("q8_0_edge", edgeCaseData)
         
         val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         
@@ -259,6 +265,7 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("q4_0_synthetic", testData)
         
         val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_0)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
@@ -277,6 +284,7 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("q4_0_multiblock", testData)
         
         val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_0)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
@@ -295,6 +303,7 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("q4_1_synthetic", testData)
         
         val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_1)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
@@ -312,6 +321,7 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("q4_1_small", testData)
         
         val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_1)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
@@ -336,6 +346,7 @@ class GGMLStandardizedQuantizationTest {
         for (quantType in quantTypes) {
             try {
                 val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, quantType)
+                GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
                 val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
                 val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
                 val metrics = calculateQuantizationMetrics(testData, dequantizedData)
@@ -376,6 +387,7 @@ class GGMLStandardizedQuantizationTest {
         val vec2Tensor = createF32TestTensor("dot_vec2", vec2Data)
         
         val vec1Q8_0 = quantizeTensor(graphAllocator, vec1Tensor, GGMLType.Q8_0)
+        GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, vec1Q8_0)
         
         try {
             // Compute quantized dot product (this would use internal dot product functions)
@@ -409,6 +421,7 @@ class GGMLStandardizedQuantizationTest {
             try {
                 val mark = TimeSource.Monotonic.markNow()
                 val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, quantType)
+                GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
                 val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
                 val elapsed = mark.elapsedNow().inWholeMilliseconds
 

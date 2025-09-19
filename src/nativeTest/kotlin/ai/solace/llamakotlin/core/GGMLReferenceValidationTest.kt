@@ -218,15 +218,6 @@ class GGMLReferenceValidationTest {
         return result
     }
 
-    private fun allocateLike(reference: GGMLTensor, nameSuffix: String): GGMLTensor {
-        val tensor = GGMLTestUtils.createStandardTestTensor(reference.type, reference.ne.copyOf(), "${reference.name}_$nameSuffix")
-        val byteSize = calculateTensorByteSize(reference.type, tensor.ne).toInt()
-        val offset = graphAllocator.allocateTensorData(byteSize)
-        tensor.bufferId = 0
-        tensor.dataOffset = offset
-        return tensor
-    }
-
     /**
      * Validate a single test vector against implementation
      */
@@ -242,7 +233,7 @@ class GGMLReferenceValidationTest {
 
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
-                    val dst = allocateLike(tensor1, "add_dst")
+                    val dst = graphAllocator.allocateLike(tensor1, "add_dst")
                     computeAdd(graphAllocator, dummyContext, tensor1, tensor2, dst)
                     extractFloatArray(dst)
                 }
@@ -253,7 +244,7 @@ class GGMLReferenceValidationTest {
 
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
-                    val dst = allocateLike(tensor1, "mul_dst")
+                    val dst = graphAllocator.allocateLike(tensor1, "mul_dst")
                     computeMul(graphAllocator, dummyContext, tensor1, tensor2, dst)
                     extractFloatArray(dst)
                 }
@@ -264,25 +255,25 @@ class GGMLReferenceValidationTest {
 
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
-                    val dst = allocateLike(tensor1, "sub_dst")
+                    val dst = graphAllocator.allocateLike(tensor1, "sub_dst")
                     computeSub(graphAllocator, dummyContext, tensor1, tensor2, dst)
                     extractFloatArray(dst)
                 }
                 "NEG" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
-                    val dst = allocateLike(tensor, "neg_dst")
+                    val dst = graphAllocator.allocateLike(tensor, "neg_dst")
                     computeNeg(graphAllocator, dummyContext, tensor, dst)
                     extractFloatArray(dst)
                 }
                 "GELU" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
-                    val dst = allocateLike(tensor, "gelu_dst")
+                    val dst = graphAllocator.allocateLike(tensor, "gelu_dst")
                     computeGelu(graphAllocator, dummyContext, tensor, dst)
                     extractFloatArray(dst)
                 }
                 "RELU" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
-                    val dst = allocateLike(tensor, "relu_dst")
+                    val dst = graphAllocator.allocateLike(tensor, "relu_dst")
                     computeRelu(graphAllocator, dummyContext, tensor, dst)
                     extractFloatArray(dst)
                 }
@@ -476,8 +467,8 @@ class GGMLReferenceValidationTest {
         
         try {
             // Test NEG operation on both precisions
-            val f32Dst = allocateLike(f32Tensor, "neg_dst")
-            val f16Dst = allocateLike(f16Tensor, "neg_dst")
+            val f32Dst = graphAllocator.allocateLike(f32Tensor, "neg_dst")
+            val f16Dst = graphAllocator.allocateLike(f16Tensor, "neg_dst")
 
             computeNeg(graphAllocator, dummyContext, f32Tensor, f32Dst)
             computeNeg(graphAllocator, dummyContext, f16Tensor, f16Dst)
@@ -524,7 +515,7 @@ class GGMLReferenceValidationTest {
         
         // Test ADD baseline
         try {
-            val addDst = allocateLike(inputTensor, "add_dst")
+            val addDst = graphAllocator.allocateLike(inputTensor, "add_dst")
             computeAdd(graphAllocator, dummyContext, inputTensor, onesTensor, addDst)
             val addOutput = extractFloatArray(addDst)
             val expectedAdd = regressionTests["simple_add"]!!
@@ -545,7 +536,7 @@ class GGMLReferenceValidationTest {
         
         // Test NEG baseline
         try {
-            val negDst = allocateLike(inputTensor, "neg_dst")
+            val negDst = graphAllocator.allocateLike(inputTensor, "neg_dst")
             computeNeg(graphAllocator, dummyContext, inputTensor, negDst)
             val negOutput = extractFloatArray(negDst)
             val expectedNeg = regressionTests["simple_neg"]!!

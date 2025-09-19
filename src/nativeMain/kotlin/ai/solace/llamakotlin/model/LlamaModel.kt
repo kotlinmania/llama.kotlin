@@ -139,8 +139,15 @@ class RMSNorm(
         graphAllocator: GGMLGraphAllocator,
         input: GGMLTensor
     ): GGMLTensor {
-        // Use the existing RMS norm implementation
-        return computeRMSNorm(graphAllocator, input, eps)
+        val result = GGMLTensor(type = input.type).apply {
+            ne = input.ne.copyOf()
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            op = GGMLOp.RMS_NORM
+            src[0] = input
+            graphAllocator.allocateTensor(this)
+        }
+        computeRMSNorm(graphAllocator, context, input, eps, result)
+        return result
     }
 }
 

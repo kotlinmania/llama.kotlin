@@ -52,6 +52,13 @@ fun calculateTotalSize(ne: LongArray): Int {
     return GGMLTensorUtils.calculateTotalSize(ne).toInt()
 }
 
+internal object GGMLDebugFlags {
+    /** When true, invoke [q80F32Logger] for each Q8_0 × F32 dot product element. */
+    var logQ80F32DotProducts: Boolean = false
+    /** Optional callback used by tests/tools to capture debugging information. */
+    var q80F32Logger: ((row: Int, col: Int, k: Int, blockIndex: Int, scale: Float, weight: Byte, f32: Float) -> Unit)? = null
+}
+
 /**
  * Computes the dot product of a row from a Q8_0 tensor and a column from an F32 tensor.
  * 
@@ -97,6 +104,9 @@ internal fun computeDotProductQ80F32(
         val qWeight = tensorQ80.getQ8_0Weight(graphAllocator, blockIndexQ80, itemInBlockQ80)
         val dequantizedQ80Value = scale * qWeight.toFloat()
         val f32Value = tensorF32.getFloat(graphAllocator, colIndexInF32, k)
+        if (GGMLDebugFlags.logQ80F32DotProducts) {
+            GGMLDebugFlags.q80F32Logger?.invoke(rowIndexInQ80, colIndexInF32, k, blockIndexQ80, scale, qWeight, f32Value)
+        }
         sumF32 += dequantizedQ80Value * f32Value
     }
     return sumF32
@@ -1163,134 +1173,6 @@ fun computeMul(
     }
 }
 
-// Temporary return-style wrappers to ease test migration
-fun computeAddRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    // Ensure allocation for dst in same buffer as sources if possible
-    val alloc = graphAllocator
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = alloc)
-    alloc.allocateGraph(tempGraph)
-    computeAdd(graphAllocator, context, a, b, dst)
-    return dst
-}
-
-fun computeAdd(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
-    computeAddRet(graphAllocator, context, a, b)
-
-fun computeMulRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val alloc = graphAllocator
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = alloc)
-    alloc.allocateGraph(tempGraph)
-    computeMul(graphAllocator, context, a, b, dst)
-    return dst
-}
-
-fun computeMul(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
-    computeMulRet(graphAllocator, context, a, b)
-
-fun computeSubRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeSub(graphAllocator, context, a, b, dst)
-    return dst
-}
-
-fun computeSub(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
-    computeSubRet(graphAllocator, context, a, b)
-
-fun computeNegRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeNeg(graphAllocator, context, a, dst)
-    return dst
-}
-
-fun computeNeg(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor =
-    computeNegRet(graphAllocator, context, a)
-
-fun computeGeluRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeGelu(graphAllocator, context, a, dst)
-    return dst
-}
-
-fun computeGelu(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor =
-    computeGeluRet(graphAllocator, context, a)
-
-fun computeReluRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeRelu(graphAllocator, context, a, dst)
-    return dst
-}
-
-fun computeRelu(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor =
-    computeReluRet(graphAllocator, context, a)
-
-fun computeDivRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeDiv(graphAllocator, context, a, b, dst)
-    return dst
-}
-
-fun computeDiv(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
-    computeDivRet(graphAllocator, context, a, b)
-
-fun computeMatMulRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = GGMLType.F32)
-    // infer output shape: (a.ne[1] rows, b.ne[0] cols) in our column-major convention (nb[0] stride by element)
-    dst.ne[0] = b.ne[0]
-    dst.ne[1] = a.ne[1]
-    for (i in 2 until GGML_MAX_DIMS) dst.ne[i] = 1
-    dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeMatMul(graphAllocator, context, a, b, dst)
-    return dst
-}
-
-fun computeMatMul(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
-    computeMatMulRet(graphAllocator, context, a, b)
-
-fun computeSqrRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeSqr(graphAllocator, context, a, dst)
-    return dst
-}
-
-fun computeSqr(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor =
-    computeSqrRet(graphAllocator, context, a)
-
-fun computeSqrtRet(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeSqrt(graphAllocator, context, a, dst)
-    return dst
-}
-
-fun computeSqrt(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor): GGMLTensor =
-    computeSqrtRet(graphAllocator, context, a)
-
 fun computeRepeatBack(
     graphAllocator: GGMLGraphAllocator,
     @Suppress("unused") context: GGMLContext,
@@ -1345,69 +1227,6 @@ fun computeRepeatBack(
         }
         else -> throw NotImplementedError("REPEAT_BACK not implemented for type ${dst.type}")
     }
-}
-
-fun computeRelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeRelu(graphAllocator, graphAllocator.context, a, dst)
-    return dst
-}
-
-fun computeGelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeGelu(graphAllocator, graphAllocator.context, a, dst)
-    return dst
-}
-
-fun computeSilu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeSilu(graphAllocator, graphAllocator.context, a, dst)
-    return dst
-}
-
-/**
- * Computes the SoftMax of tensor [a].
- * Applies the operation along the first dimension of each row, producing a tensor of the same shape and type.
- */
-fun computeSoftMax(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeSoftMax(graphAllocator, graphAllocator.context, a, dst)
-    return dst
-}
-
-fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, eps: Float): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    dst.ne = a.ne.copyOf(); dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeRMSNorm(graphAllocator, graphAllocator.context, a, eps, dst)
-    return dst
-}
-
-fun computeTranspose(graphAllocator: GGMLGraphAllocator, a: GGMLTensor): GGMLTensor {
-    val dst = GGMLTensor(type = a.type)
-    // Swap the first two dimensions for transpose
-    dst.ne = a.ne.copyOf()
-    dst.ne[0] = a.ne[1]  // Swap dimension 0 and 1
-    dst.ne[1] = a.ne[0]
-    dst.nb = calculateContiguousStrides(dst.ne, dst.type, dst.rank())
-    
-    val tempGraph = GGMLCGraph(size = 1, nodes = arrayOf(dst), grads = arrayOfNulls(1), leafs = arrayOfNulls(1), allocator = graphAllocator)
-    graphAllocator.allocateGraph(tempGraph)
-    computeTranspose(graphAllocator, graphAllocator.context, a, dst)
-    return dst
 }
 
 fun dequantizeTensor(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor): GGMLTensor {
@@ -2409,11 +2228,14 @@ private fun quantizeQ2_KBlock(blockValues: FloatArray, dest: ByteArray, destOffs
     val range = maxVal - minVal
     val d = if (range > 0.0f) range / 3.0f else 1.0f  // scale for quantized scales 
     val dmin = minVal // scale for quantized mins
-    
-    // Write super-block scales (d and dmin) at the end of the block
-    val dOffset = destOffset + QK_K/16 + QK_K/4
+
+    val dOffset = destOffset
+    val dminOffset = destOffset + 2
+    val scalesOffset = destOffset + 4
+    val quantsOffset = scalesOffset + QK_K / 16
+
     dest.setShortLe(dOffset, floatToHalf(d))
-    dest.setShortLe(dOffset + 2, floatToHalf(dmin))
+    dest.setShortLe(dminOffset, floatToHalf(dmin))
     
     // Quantize in 16-element sub-blocks
     for (subBlock in 0 until QK_K/16) {
@@ -2436,7 +2258,7 @@ private fun quantizeQ2_KBlock(blockValues: FloatArray, dest: ByteArray, destOffs
         
         // Pack scale and min into one byte (4 bits each)
         val scaleAndMin = (quantizedScale and 0x0F) or ((quantizedMin and 0x0F) shl 4)
-        dest[destOffset + subBlock] = scaleAndMin.toByte()
+        dest[scalesOffset + subBlock] = scaleAndMin.toByte()
         
         // Quantize the 16 values in this sub-block to 2 bits each (4 values per byte)
         for (i in 0 until 16 step 4) {
@@ -2451,7 +2273,8 @@ private fun quantizeQ2_KBlock(blockValues: FloatArray, dest: ByteArray, destOffs
                     packedByte = packedByte or ((quantizedValue and 0x03) shl (j * 2))
                 }
             }
-            dest[destOffset + QK_K/16 + (subBlock * 4) + (i / 4)] = packedByte.toByte()
+            val quantByteIndex = subBlock * (16 / 4) + (i / 4)
+            dest[quantsOffset + quantByteIndex] = packedByte.toByte()
         }
     }
 }

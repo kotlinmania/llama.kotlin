@@ -301,7 +301,15 @@ fun demonstrateLlamaModelArchitecture() {
         matrix.setFloat(allocator, 5.0f, 1, 1)
         matrix.setFloat(allocator, 6.0f, 2, 1)
         
-        val transposed = computeTranspose(allocator, matrix)
+        val transposed = GGMLTensor(type = matrix.type).apply {
+            ne = matrix.ne.copyOf()
+            val tmpDim0 = ne[0]
+            ne[0] = matrix.ne[1]
+            ne[1] = tmpDim0
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(transposed)
+        computeTranspose(allocator, context, matrix, transposed)
         kotlin.io.println("   ✓ Matrix transposed from (3x2) to (2x3)")
         
         // Verify transpose worked correctly
@@ -325,7 +333,12 @@ fun demonstrateLlamaModelArchitecture() {
             inputTensor.setFloat(allocator, (i + 1).toFloat(), i, 0)
         }
         
-        val normalized = computeRMSNorm(allocator, inputTensor, 1e-6f)
+        val normalized = GGMLTensor(type = inputTensor.type).apply {
+            ne = inputTensor.ne.copyOf()
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        allocator.allocateTensor(normalized)
+        computeRMSNorm(allocator, context, inputTensor, 1e-6f, normalized)
         
         // Verify normalization
         var sumSquared = 0.0f
@@ -452,4 +465,3 @@ fun demonstrateLlamaModelArchitecture() {
         e.printStackTrace()
     }
 }
-

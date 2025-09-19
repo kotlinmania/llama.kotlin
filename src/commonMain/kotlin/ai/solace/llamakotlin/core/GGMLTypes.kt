@@ -771,24 +771,19 @@ class GGMLTensor(
     }
     
     /**
-     * Retrieves a quantized scale value for a Q2_K sub-block (4 bits, packed 2 per byte).
+     * Retrieves the packed scale/min byte for a Q2_K sub-block (lower 4 bits = scale, upper 4 bits = min).
      */
     fun getQ2_KScale(graphAllocator: GGMLGraphAllocator, blockIndex: Int, scaleIndex: Int): Byte {
-        require(type == GGMLType.Q2_K) { "Tensor type must be Q2_K to get scale." }
+        require(type == GGMLType.Q2_K) { "Tensor type must be Q2_K to get scale/min." }
         require(scaleIndex >= 0 && scaleIndex < QK_K/16) { "scaleIndex $scaleIndex out of bounds for Q2_K scales" }
-        
+
         val blockByteOffset = blockIndex.toULong() * type.byteSize
-        // Scales start after d (F16) + dmin (F16) = 4 bytes
-        val finalByteOffset = dataOffset + blockByteOffset + 4uL + (scaleIndex / 2).toULong()
-        
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
-        val scaleByte = buffer[finalByteOffset.toInt()]
-        
-        return if (scaleIndex % 2 == 0) {
-            (scaleByte.toInt() and 0x0F).toByte()  // Lower 4 bits
-        } else {
-            ((scaleByte.toInt() shr 4) and 0x0F).toByte()  // Upper 4 bits
-        }
+        val scalesOffsetWithinBlock = 4uL + scaleIndex.toULong()
+        val finalByteOffset = dataOffset + blockByteOffset + scalesOffsetWithinBlock
+
+        val buffer = graphAllocator.buffers[bufferId]
+            ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        return buffer[finalByteOffset.toInt()]
     }
     
     /**

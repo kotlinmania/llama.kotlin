@@ -114,9 +114,16 @@ class LlamaAttention(
         } else {
             scaledScores
         }
-        
-        // Apply softmax using existing implementation
-        val attentionWeights = computeSoftMax(graphAllocator, maskedScores)
+
+        // Apply softmax using destination-based implementation
+        val attentionWeights = GGMLTensor(type = maskedScores.type).apply {
+            ne = maskedScores.ne.copyOf()
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            op = GGMLOp.SOFT_MAX
+            src[0] = maskedScores
+            graphAllocator.allocateTensor(this)
+        }
+        computeSoftMax(graphAllocator, context, maskedScores, attentionWeights)
         
         // Apply attention to values: attention_weights @ V
         val output = matmul(context, graphAllocator, attentionWeights, finalValue)
@@ -132,7 +139,21 @@ class LlamaAttention(
         graphAllocator: GGMLGraphAllocator,
         tensor: GGMLTensor
     ): GGMLTensor {
-        return computeTranspose(graphAllocator, tensor)
+        val shape = tensor.ne.copyOf()
+        val tmp = shape[0]
+        shape[0] = tensor.ne[1]
+        shape[1] = tmp
+
+        val result = GGMLTensor(type = tensor.type).apply {
+            ne = shape
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+            op = GGMLOp.TRANSPOSE
+            src[0] = tensor
+            graphAllocator.allocateTensor(this)
+        }
+
+        computeTranspose(graphAllocator, context, tensor, result)
+        return result
     }
 
     /**

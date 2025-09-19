@@ -129,7 +129,7 @@ This checklist is based on the current state of the Kotlin Native port of llama.
       - [x] `computeDotProductQ80Q80` for Q8_0 x Q8_0 operations
       - [x] `computeDotProductQ40Q40` for Q4_0 x Q4_0 operations  
       - [x] `computeDotProductQ41Q41` for Q4_1 x Q4_1 operations
-      - [x] `computeDotProductQ80Q40` for mixed Q8_0 x Q4_0 operations
+    - [x] `computeDotProductQ80Q40` for mixed Q8_0 x Q4_0 operations
     - [x] Integrated all optimizations into `computeMatMul` with proper type dispatch
     - [x] **Performance Testing & Validation**
       - [x] `GGMLMatMulOptimizationTest.kt` - Comprehensive accuracy validation comparing optimized vs fallback paths
@@ -138,6 +138,11 @@ This checklist is based on the current state of the Kotlin Native port of llama.
       - [x] Memory usage analysis and stress testing with large matrices
       - [x] Expected speedups: 2-5x for Q×Q operations, 1.5-3x for F32×Q operations
     - [x] **Documentation**: Created `MATMUL_OPTIMIZATION_SUMMARY.md` with comprehensive implementation details
+    - [ ] **Destination-API Regression Sweep (Sep 19, 2025)**
+      - [ ] Instrument `computeDotProductQ80F32` with a debug hook (guarded by a flag) to log block scales/weights for failing fixtures such as `GGMLComputeOpsTest.testComputeMatMulQ80xSF32`.
+      - [ ] Refactor the test allocator helpers into a resettable bump arena so every destination tensor receives a dedicated offset and the allocator mirrors production graph behaviour.
+      - [ ] Introduce a shared F32 baseline matmul reference in `GGMLTestUtils` and migrate quantized matmul tests to compare against it instead of ad-hoc oracles.
+      - [ ] Re-run the macOS arm64 suite with instrumentation enabled to confirm the Q8_0 × F32 path matches the reference implementation within tolerance once the above fixes land.
 
 ## Phase 3: CPU Backend Implementation
 

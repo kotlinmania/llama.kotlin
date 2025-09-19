@@ -1,5 +1,6 @@
 package ai.solace.llamakotlin.core
 
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
@@ -104,6 +105,10 @@ class GGMLComputeOpsTest {
             "Test tensor setup (offset $dataOffset + size $tensorByteSizeForCheck) for tensor ${tensor.name} " +
             "type ${type.name} dims ${dims.joinToString()} (effective ne: ${tensor.ne.joinToString()}) exceeds buffer capacity ($bufferSize).")
 
+        if (tensorByteSizeForCheck > 0uL) {
+            GGMLTestAllocatorState.registerManualAllocation(graphAllocator, dataOffset + tensorByteSizeForCheck)
+        }
+
         if (fillSequence) {
             val numElementsToFill = tensor.numElements().toInt()
             var currentValue = startValue.toFloat()
@@ -155,6 +160,24 @@ class GGMLComputeOpsTest {
         return tensor
     }
 
+    private fun allocateLike(source: GGMLTensor, suffix: String): GGMLTensor =
+        graphAllocator.allocateLike(source, suffix)
+
+    private fun allocateTensor(name: String, type: GGMLType, shape: LongArray): GGMLTensor =
+        GGMLTestUtils.allocateDestinationTensor(graphAllocator, name, type, shape)
+
+    private fun runUnaryOp(source: GGMLTensor, suffix: String, op: (GGMLTensor) -> Unit): GGMLTensor {
+        val dst = allocateLike(source, suffix)
+        op(dst)
+        return dst
+    }
+
+    private fun runBinaryOp(lhs: GGMLTensor, rhs: GGMLTensor, suffix: String, op: (GGMLTensor) -> Unit): GGMLTensor {
+        val dst = allocateLike(lhs, suffix)
+        op(dst)
+        return dst
+    }
+
     @Test
     fun dummyTestToEnsureSetup() {
         assertTrue(true, "Setup complete, dummy test runs.")
@@ -172,44 +195,19 @@ class GGMLComputeOpsTest {
         currentOffset += size1D
         val src1_1D = createAndInitTensor("src1_1D", GGMLType.F32, dims1D, currentOffset, fillSequence = true, startValue = 10.0f, step = 10.0f)
         currentOffset += size1D
-        val dst_1D = createAndInitTensor("dst_1D", GGMLType.F32, dims1D, currentOffset)
-        // currentOffset += size1D // Not strictly needed for dst if it's last for this sub-test
 
-    computeAddRet(graphAllocator, context, src0_1D, src1_1D).let { result ->
-            // The computeAdd currently returns a *new* tensor with its own data array.
-            // For this test to work as intended (testing results in graphAllocator's buffer),
-            // computeAdd should fill the data of a pre-allocated 'dst_1D' tensor.
-            // This requires a change in computeAdd's signature or behavior.
-            // Assuming computeAdd is modified to: computeAdd(..., dst: GGMLTensor)
-            // For now, let's assume computeAdd fills the 'dst_1D' if passed, or we check its return.
-            // The current structure of computeAdd returns a new tensor.
-            // Let's test based on the current behavior: it returns a new tensor whose data we check.
-            // This means dst_1D is not used by computeAdd. The result is a new tensor.
-            // We need to ensure the returned tensor's data (if it has its own) is correct.
-            // OR, that the computeAdd function writes its result into graphAllocator's buffer
-            // and sets up the 'result' tensor's bufferId and dataOffset correctly.
-            // The F32/F16 paths in computeAdd DO use setFloat/setHalf on the result tensor,
-            // which implies the result tensor should be pre-allocated in the graphAllocator buffer.
-            // So, the `result` from `computeAdd` should be `dst_1D` effectively.
-            // Let's make `dst_1D` the actual result of the operation.
-            // No, computeAdd creates a *new* result tensor. We check that new tensor.
-            // The `dst_1D` defined above is just for offset calculation.
+        val src0_1DInitial = FloatArray(dims1D[0].toInt()) { idx ->
+            src0_1D.getFloat(graphAllocator, idx)
         }
-         // Re-evaluate: computeAdd in GGMLOps.kt creates a result tensor BUT does not allocate its memory
-         // in graph allocator, instead it relies on GGMLComputeOps.computeAdd to fill its .data.
-         // GGMLComputeOps.computeAdd creates a NEW result tensor and fills its .data.
-         // This is messy. For these tests, let's assume the ops write to graphAllocator for F32/F16.
-         // The compute ops were refactored to use setFloat/setHalf on their result tensor.
-         // This result tensor's bufferId and dataOffset MUST be set correctly before calling setFloat/setHalf.
-         // The current computeAdd creates a result tensor, copies ne/nb, then calls setFloat/setHalf.
-         // This means the result tensor needs its bufferId/dataOffset pointing to graphAllocator memory.
-         // This is not done by createAndInitTensor for the dst tensor if fillSequence=false.
-         // The compute ops create their own GGMLTensor instance for result.
-         // This means we need to check the returned tensor.
+        val src1_1DInitial = FloatArray(dims1D[0].toInt()) { idx ->
+            src1_1D.getFloat(graphAllocator, idx)
+        }
 
-    val resultAdd1D = computeAddRet(graphAllocator, context, src0_1D, src1_1D)
+        val resultAdd1D = runBinaryOp(src0_1D, src1_1D, "add_f32_1d") { dst ->
+            computeAdd(graphAllocator, context, src0_1D, src1_1D, dst)
+        }
         for (i in 0 until dims1D[0].toInt()) {
-            val expected = src0_1D.getFloat(graphAllocator, i) + src1_1D.getFloat(graphAllocator, i)
+            val expected = src0_1DInitial[i] + src1_1DInitial[i]
             assertEquals(expected, resultAdd1D.getFloat(graphAllocator, i), "1D F32 Add mismatch at index $i")
         }
 
@@ -221,12 +219,23 @@ class GGMLComputeOpsTest {
         val src0_2D = createAndInitTensor("src0_2D", GGMLType.F32, dims2D, currentOffset, fillSequence = true, startValue = 1.0f, step = 0.5f)
         currentOffset += size2D
         val src1_2D = createAndInitTensor("src1_2D", GGMLType.F32, dims2D, currentOffset, fillSequence = true, startValue = 10.0f, step = 2.0f)
-        // currentOffset += size2D; // dst_2D not used in this test structure
+        // currentOffset += size2D; // dst is managed by runBinaryOp
 
-    val resultAdd2D = computeAddRet(graphAllocator, context, src0_2D, src1_2D)
-        for (r in 0 until dims2D[1].toInt()) { // rows
-            for (c in 0 until dims2D[0].toInt()) { // cols
-                val expected = src0_2D.getFloat(graphAllocator, c, r) + src1_2D.getFloat(graphAllocator, c, r)
+        val rows2D = dims2D[1].toInt()
+        val cols2D = dims2D[0].toInt()
+        val src0_2DInitial = Array(rows2D) { r ->
+            FloatArray(cols2D) { c -> src0_2D.getFloat(graphAllocator, c, r) }
+        }
+        val src1_2DInitial = Array(rows2D) { r ->
+            FloatArray(cols2D) { c -> src1_2D.getFloat(graphAllocator, c, r) }
+        }
+
+        val resultAdd2D = runBinaryOp(src0_2D, src1_2D, "add_f32_2d") { dst ->
+            computeAdd(graphAllocator, context, src0_2D, src1_2D, dst)
+        }
+        for (r in 0 until rows2D) { // rows
+            for (c in 0 until cols2D) { // cols
+                val expected = src0_2DInitial[r][c] + src1_2DInitial[r][c]
                 assertEquals(expected, resultAdd2D.getFloat(graphAllocator, c, r), "2D F32 Add mismatch at ($c, $r)")
             }
         }
@@ -250,11 +259,16 @@ class GGMLComputeOpsTest {
         for(i in src0Vals.indices) src0_1D.setHalf(graphAllocator, src0Vals[i], i)
         for(i in src1Vals.indices) src1_1D.setHalf(graphAllocator, src1Vals[i], i)
 
-    val resultAdd1D = computeAddRet(graphAllocator, context, src0_1D, src1_1D)
+        val resultAdd1D = runBinaryOp(src0_1D, src1_1D, "add_f16_1d") { dst ->
+            computeAdd(graphAllocator, context, src0_1D, src1_1D, dst)
+        }
         for (i in 0 until dims1D[0].toInt()) {
             val expectedF32 = src0Vals[i] + src1Vals[i]
             val expectedF16AsF32 = halfToFloat(floatToHalf(expectedF32))
-            assertEquals(expectedF16AsF32, resultAdd1D.getHalf(graphAllocator, i), "1D F16 Add mismatch at index $i. Expected(F16->F32): $expectedF16AsF32, Got: ${resultAdd1D.getHalf(graphAllocator, i)}")
+            val actual = resultAdd1D.getHalf(graphAllocator, i)
+            val tolerance = max(1e-3f, abs(expectedF16AsF32) * 1e-3f)
+            assertEquals(expectedF16AsF32, actual, tolerance,
+                "1D F16 Add mismatch at index $i. Expected(F16->F32): $expectedF16AsF32, Got: $actual")
         }
     }
 
@@ -269,9 +283,18 @@ class GGMLComputeOpsTest {
         currentOffset += size1D
         val src1_1D = createAndInitTensor("src1_MulF32", GGMLType.F32, dims1D, currentOffset, fillSequence = true, startValue = 2.0f, step = 0.5f)
 
-    val resultMul1D = computeMulRet(graphAllocator, context, src0_1D, src1_1D)
+        val src0_1DMulInitial = FloatArray(dims1D[0].toInt()) { idx ->
+            src0_1D.getFloat(graphAllocator, idx)
+        }
+        val src1_1DMulInitial = FloatArray(dims1D[0].toInt()) { idx ->
+            src1_1D.getFloat(graphAllocator, idx)
+        }
+
+        val resultMul1D = runBinaryOp(src0_1D, src1_1D, "mul_f16_dst") { dst ->
+            computeMul(graphAllocator, context, src0_1D, src1_1D, dst)
+        }
         for (i in 0 until dims1D[0].toInt()) {
-            val expected = src0_1D.getFloat(graphAllocator, i) * src1_1D.getFloat(graphAllocator, i)
+            val expected = src0_1DMulInitial[i] * src1_1DMulInitial[i]
             assertEquals(expected, resultMul1D.getFloat(graphAllocator, i), "1D F32 Mul mismatch at index $i")
         }
     }
@@ -293,7 +316,9 @@ class GGMLComputeOpsTest {
         for(i in src0Vals.indices) src0_1D.setHalf(graphAllocator, src0Vals[i], i)
         for(i in src1Vals.indices) src1_1D.setHalf(graphAllocator, src1Vals[i], i)
 
-    val resultMul1D = computeMulRet(graphAllocator, context, src0_1D, src1_1D)
+        val resultMul1D = runBinaryOp(src0_1D, src1_1D, "mul_f16_1d") { dst ->
+            computeMul(graphAllocator, context, src0_1D, src1_1D, dst)
+        }
         for (i in 0 until dims1D[0].toInt()) {
             val expectedF32 = src0Vals[i] * src1Vals[i]
             val expectedF16AsF32 = halfToFloat(floatToHalf(expectedF32))
@@ -336,27 +361,20 @@ class GGMLComputeOpsTest {
             }
         }
 
-        val resultTensor = computeMatMul(graphAllocator, context, src0, src1)
+        val resultTensor = allocateTensor("matmul_f32_dst", GGMLType.F32, longArrayOf(N1.toLong(), M0.toLong()))
+        computeMatMul(graphAllocator, context, src0, src1, resultTensor)
 
         assertEquals(GGMLType.F32, resultTensor.type, "Result type should be F32")
         // Result is M0 x N1 (2x2). ne = [cols, rows] -> ne = [2, 2]
         assertEquals(N1.toLong(), resultTensor.ne[0], "Result cols (ne[0]) mismatch")
         assertEquals(M0.toLong(), resultTensor.ne[1], "Result rows (ne[1]) mismatch")
 
-        // Expected result:
-        // (1*7 + 2*9 + 3*11) (1*8 + 2*10 + 3*12)
-        // (4*7 + 5*9 + 6*11) (4*8 + 5*10 + 6*12)
-        // = (7+18+33) (8+20+36) = (58) (64)
-        //   (28+45+66) (32+50+72) = (139) (154)
-        val expectedData = arrayOf(
-            floatArrayOf(58f, 64f),
-            floatArrayOf(139f, 154f)
-        )
-
-        for (r in 0 until M0) { // M0 rows
-            for (c in 0 until N1) { // N1 cols
-                assertEquals(expectedData[r][c], resultTensor.getFloat(graphAllocator, c, r),
-                             "F32xSF32 MatMul mismatch at result ($c, $r)")
+        val expectedBaseline = GGMLTestUtils.ReferenceMath.matMulBaselineF32(graphAllocator, src0, src1)
+        for (r in 0 until M0) {
+            for (c in 0 until N1) {
+                val expected = expectedBaseline[r * N1 + c]
+                val actual = resultTensor.getFloat(graphAllocator, c, r)
+                assertEquals(expected, actual, 1e-5f, "F32xSF32 MatMul mismatch at result ($c, $r)")
             }
         }
     }
@@ -366,12 +384,16 @@ class GGMLComputeOpsTest {
         val context = GGMLContext()
         var currentOffset = 0uL
 
-        // src0 (Q8_0): 2x3 matrix (M=2, K=3). ne = [K,M] = [3,2]
-        val M0 = 2; val K0 = 3
-        val src0F32Data = floatArrayOf(1f, 2f, 3f,  // Row 0
-                                       4f, 5f, 60f) // Row 1 (60f to ensure scale is not too small)
+        // src0 (Q8_0): 2 x QK8_0 matrix (M=2, K=QK8_0). ne = [K,M] = [QK8_0,2]
+        val M0 = 2
+        val K0 = QK8_0
+        val N1 = 2
+        val src0F32Data = FloatArray(M0 * K0) { idx ->
+            val row = idx / K0
+            val col = idx % K0
+            ((row + 1) * 0.12f) * (col - (K0 / 2))
+        }
 
-        // Create F32 tensor for quantization
         val tempF32Src0 = createAndInitTensor("tempF32Src0", GGMLType.F32, longArrayOf(K0.toLong(), M0.toLong()), currentOffset)
         currentOffset += calculateTensorByteSize(GGMLType.F32, tempF32Src0.ne)
         for (r in 0 until M0) {
@@ -379,46 +401,66 @@ class GGMLComputeOpsTest {
                 tempF32Src0.setFloat(graphAllocator, src0F32Data[r * K0 + c], c, r)
             }
         }
-        val q8Src0 = quantizeTensor(graphAllocator, tempF32Src0, GGMLType.Q8_0)
-        assertEquals(GGMLType.Q8_0, q8Src0.type)
-        assertEquals(K0.toLong(), q8Src0.ne[0])
-        assertEquals(M0.toLong(), q8Src0.ne[1])
+        val q8Quantized = quantizeTensor(graphAllocator, tempF32Src0, GGMLType.Q8_0)
+        assertEquals(GGMLType.Q8_0, q8Quantized.type)
+        assertEquals(K0.toLong(), q8Quantized.ne[0])
+        assertEquals(M0.toLong(), q8Quantized.ne[1])
 
+        val q8RawData = (q8Quantized.data as? ByteArray)
+            ?: error("Quantized tensor should expose ByteArray data for Q8_0")
+        val blockStrideBytes = SHORT_SIZE_BYTES + QK8_0
+        val firstScale = halfToFloat(q8RawData.getShortLe(0))
+        val secondScale = halfToFloat(q8RawData.getShortLe(blockStrideBytes))
+        assertTrue(firstScale.isFinite(), "First Q8_0 block scale should be finite")
+        assertTrue(secondScale.isFinite(), "Second Q8_0 block scale should be finite")
+        assertTrue(firstScale.absoluteValue < 10f, "Unexpectedly large first Q8_0 scale $firstScale")
+        assertTrue(secondScale.absoluteValue < 10f, "Unexpectedly large second Q8_0 scale $secondScale")
+        val q8Src0 = allocateTensor("q8_src0", GGMLType.Q8_0, longArrayOf(K0.toLong(), M0.toLong()))
+        graphAllocator.buffers[q8Src0.bufferId]?.let { buffer ->
+            q8RawData.copyInto(buffer, destinationOffset = q8Src0.dataOffset.toInt())
+        } ?: error("Test buffer not initialized for quantized tensor copy")
 
-        // src1 (F32): 3x2 matrix (K=3, N=2). ne = [N,K] = [2,3]
-        val K1 = 3; val N1 = 2
-        val src1F32Data = floatArrayOf(7f, 8f,    // Row 0
-                                     9f, 10f,   // Row 1
-                                     11f, 12f)  // Row 2
-        val src1F32 = createAndInitTensor("src1_MM_F32", GGMLType.F32, longArrayOf(N1.toLong(), K1.toLong()), currentOffset)
-        // currentOffset += calculateTensorByteSize(GGMLType.F32, src1F32.ne) // Not needed if last alloc
-        for (r in 0 until K1) {
+        val q8Dequant = dequantizeTensor(graphAllocator, q8Src0)
+        val q8DequantData = (q8Dequant.data as? FloatArray)
+            ?: error("Dequantized tensor should expose FloatArray data for Q8_0")
+        val maxAbsDequant = q8DequantData.maxOf { abs(it) }
+        assertTrue(maxAbsDequant < 10f, "Unexpectedly large dequantized Q8_0 magnitude $maxAbsDequant")
+
+        // src1 (F32): QK8_0 x 2 matrix (K=QK8_0, N=2). ne = [N,K] = [2,QK8_0]
+        val src1F32Data = FloatArray(K0 * N1) { idx ->
+            val row = idx / N1
+            val col = idx % N1
+            (col + 1) * 0.05f * (row + 1)
+        }
+        val src1F32 = createAndInitTensor("src1_MM_F32", GGMLType.F32, longArrayOf(N1.toLong(), K0.toLong()), currentOffset)
+        for (r in 0 until K0) {
             for (c in 0 until N1) {
                 src1F32.setFloat(graphAllocator, src1F32Data[r * N1 + c], c, r)
             }
         }
+        var maxAbsSrc1 = 0.0f
+        for (r in 0 until K0) {
+            for (c in 0 until N1) {
+                maxAbsSrc1 = max(maxAbsSrc1, abs(src1F32.getFloat(graphAllocator, c, r)))
+            }
+        }
+        assertTrue(maxAbsSrc1 < 10f, "Unexpectedly large F32 RHS magnitude $maxAbsSrc1")
 
-        // computeMatMul for Q8_0 x F32 should produce an F32 result
-        val resultTensor = computeMatMul(graphAllocator, context, q8Src0, src1F32)
+        val resultTensor = allocateTensor("matmul_q8_f32_dst", GGMLType.F32, longArrayOf(N1.toLong(), M0.toLong()))
+        computeMatMul(graphAllocator, context, q8Src0, src1F32, resultTensor)
 
         assertEquals(GGMLType.F32, resultTensor.type, "Result type should be F32 for Q8_0 x F32")
-        // Result is M0 x N1 (2x2). ne = [cols, rows] -> ne = [2, 2]
         assertEquals(N1.toLong(), resultTensor.ne[0], "Result cols (ne[0]) mismatch")
         assertEquals(M0.toLong(), resultTensor.ne[1], "Result rows (ne[1]) mismatch")
 
-        // Expected result from original F32 data:
-        // (1*7 + 2*9 + 3*11)   (1*8 + 2*10 + 3*12)   = (58)  (64)
-        // (4*7 + 5*9 + 60*11)  (4*8 + 5*10 + 60*12)  = (28+45+660) (32+50+720) = (733) (802)
-        val expectedData = arrayOf(
-            floatArrayOf(58f, 64f),
-            floatArrayOf(733f, 802f)
-        )
-
-        val delta = 2.0f // Allow some deviation due to Q8_0 quantization
-        for (r in 0 until M0) { // M0 rows
-            for (c in 0 until N1) { // N1 cols
-                assertEquals(expectedData[r][c], resultTensor.getFloat(graphAllocator, c, r), delta,
-                             "Q8_0xSF32 MatMul mismatch at result ($c, $r)")
+        val expectedData = GGMLTestUtils.ReferenceMath.matMulBaselineF32(graphAllocator, q8Src0, src1F32)
+        for (r in 0 until M0) {
+            for (c in 0 until N1) {
+                val expected = expectedData[r * N1 + c]
+                val actual = resultTensor.getFloat(graphAllocator, c, r)
+                val allowedError = max(0.1f, abs(expected) * 0.1f)
+                assertEquals(expected, actual, allowedError,
+                    "Q8_0 x F32 MatMul mismatch at ($c, $r). Expected approx $expected, got $actual")
             }
         }
     }
@@ -554,7 +596,9 @@ class GGMLComputeOpsTest {
         for(i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
 
-        val resultTensor = computeRelu(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "relu_dst") { dst ->
+            computeRelu(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for RELU F32")
@@ -571,7 +615,9 @@ class GGMLComputeOpsTest {
         val srcTensor = createAndInitTensor("relu_f16_src", GGMLType.F16, srcNe, dataOffset = 0uL)
         for(i in srcDataF32.indices) srcTensor.setHalf(graphAllocator, srcDataF32[i], i)
 
-        val resultTensor = computeRelu(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "relu_f16_dst") { dst ->
+            computeRelu(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F16, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for RELU F16")
@@ -592,7 +638,9 @@ class GGMLComputeOpsTest {
         val srcTensor = createAndInitTensor("gelu_f32_src", GGMLType.F32, srcNe, dataOffset = 0uL)
         for(i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
-        val resultTensor = computeGelu(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "gelu_dst") { dst ->
+            computeGelu(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for GELU F32")
@@ -612,7 +660,9 @@ class GGMLComputeOpsTest {
         val srcTensor = createAndInitTensor("gelu_f16_src", GGMLType.F16, srcNe, dataOffset = 0uL)
         for(i in srcDataF32.indices) srcTensor.setHalf(graphAllocator, srcDataF32[i], i)
 
-        val resultTensor = computeGelu(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "gelu_f16_dst") { dst ->
+            computeGelu(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F16, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for GELU F16")
@@ -635,7 +685,9 @@ class GGMLComputeOpsTest {
         for(i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
         // Assuming computeSilu exists and has signature (GGMLGraphAllocator, GGMLTensor) -> GGMLTensor
-        val resultTensor = computeSilu(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "silu_dst") { dst ->
+            computeSilu(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SILU F32")
@@ -655,7 +707,9 @@ class GGMLComputeOpsTest {
         val srcTensor = createAndInitTensor("silu_f16_src", GGMLType.F16, srcNe, dataOffset = 0uL)
         for(i in srcDataF32.indices) srcTensor.setHalf(graphAllocator, srcDataF32[i], i)
 
-        val resultTensor = computeSilu(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "silu_f16_dst") { dst ->
+            computeSilu(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F16, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SILU F16")
@@ -677,7 +731,9 @@ class GGMLComputeOpsTest {
         val srcTensor = createAndInitTensor("softmax_f32_src", GGMLType.F32, srcNe, dataOffset = 0uL)
         for (i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
-        val resultTensor = computeSoftMax(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "softmax_dst") { dst ->
+            computeSoftMax(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SoftMax F32")
@@ -699,7 +755,9 @@ class GGMLComputeOpsTest {
         val srcTensor = createAndInitTensor("softmax_f16_src", GGMLType.F16, srcNe, dataOffset = 0uL)
         for (i in srcDataF32.indices) srcTensor.setHalf(graphAllocator, srcDataF32[i], i)
 
-        val resultTensor = computeSoftMax(graphAllocator, srcTensor)
+        val resultTensor = runUnaryOp(srcTensor, "softmax_f16_dst") { dst ->
+            computeSoftMax(graphAllocator, dummyContext, srcTensor, dst)
+        }
 
         assertEquals(GGMLType.F16, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SoftMax F16")
@@ -727,7 +785,9 @@ class GGMLComputeOpsTest {
 
         val eps = 1e-5f
 
-        val resultTensor = computeRMSNorm(graphAllocator, srcTensor, eps)
+        val resultTensor = runUnaryOp(srcTensor, "rms_f32_dst") { dst ->
+            computeRMSNorm(graphAllocator, dummyContext, srcTensor, eps, dst)
+        }
 
         assertEquals(GGMLType.F32, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "RMSNorm F32 result dimensions mismatch")
@@ -752,7 +812,9 @@ class GGMLComputeOpsTest {
 
         val eps = 1e-5f
 
-        val resultTensor = computeRMSNorm(graphAllocator, srcTensor, eps)
+        val resultTensor = runUnaryOp(srcTensor, "rms_f16_dst") { dst ->
+            computeRMSNorm(graphAllocator, dummyContext, srcTensor, eps, dst)
+        }
 
         assertEquals(GGMLType.F16, resultTensor.type)
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "RMSNorm F16 result dimensions mismatch")
@@ -862,7 +924,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("add_i32_src1", GGMLType.I32, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setInt(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeAdd(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "add_i32_dst") { dst ->
+            computeAdd(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I32, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsIntArray(resultTensor, graphAllocator)
@@ -884,7 +948,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("add_i16_src1", GGMLType.I16, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setShort(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeAdd(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "add_i16_dst") { dst ->
+            computeAdd(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I16, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsShortArray(resultTensor, graphAllocator)
@@ -906,7 +972,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("add_i8_src1", GGMLType.I8, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setByte(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeAdd(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "add_i8_dst") { dst ->
+            computeAdd(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I8, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsByteArray(resultTensor, graphAllocator)
@@ -928,7 +996,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("add_i64_src1", GGMLType.I64, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setLong(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeAdd(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "add_i64_dst") { dst ->
+            computeAdd(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I64, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsLongArray(resultTensor, graphAllocator)
@@ -950,7 +1020,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("mul_i32_src1", GGMLType.I32, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setInt(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeMul(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "mul_i32_dst") { dst ->
+            computeMul(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I32, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsIntArray(resultTensor, graphAllocator)
@@ -972,7 +1044,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("mul_i16_src1", GGMLType.I16, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setShort(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeMul(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "mul_i16_dst") { dst ->
+            computeMul(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I16, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsShortArray(resultTensor, graphAllocator)
@@ -994,7 +1068,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("mul_i8_src1", GGMLType.I8, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setByte(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeMul(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "mul_i8_dst") { dst ->
+            computeMul(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I8, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsByteArray(resultTensor, graphAllocator)
@@ -1016,7 +1092,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("mul_i64_src1", GGMLType.I64, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setLong(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeMul(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "mul_i64_dst") { dst ->
+            computeMul(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I64, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsLongArray(resultTensor, graphAllocator)
@@ -1039,7 +1117,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("sub_i32_src1", GGMLType.I32, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setInt(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeSub(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "sub_i32_dst") { dst ->
+            computeSub(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I32, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsIntArray(resultTensor, graphAllocator)
@@ -1061,7 +1141,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("sub_i16_src1", GGMLType.I16, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setShort(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeSub(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "sub_i16_dst") { dst ->
+            computeSub(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I16, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsShortArray(resultTensor, graphAllocator)
@@ -1083,7 +1165,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("sub_i8_src1", GGMLType.I8, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setByte(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeSub(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "sub_i8_dst") { dst ->
+            computeSub(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I8, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsByteArray(resultTensor, graphAllocator)
@@ -1105,7 +1189,9 @@ class GGMLComputeOpsTest {
         val src1 = createAndInitTensor("sub_i64_src1", GGMLType.I64, srcNe, dataOffset = currentOffset)
         for(i in src1Data.indices) src1.setLong(graphAllocator, src1Data[i], i)
 
-        val resultTensor = computeSub(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "sub_i64_dst") { dst ->
+            computeSub(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I64, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsLongArray(resultTensor, graphAllocator)
@@ -1131,7 +1217,9 @@ class GGMLComputeOpsTest {
         currentOffset += calculateTensorByteSize(GGMLType.I32, srcNe)
 
 
-        val resultTensor = computeDiv(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "div_i32_dst") { dst ->
+            computeDiv(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I32, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsIntArray(resultTensor, graphAllocator)
@@ -1142,7 +1230,8 @@ class GGMLComputeOpsTest {
         val src1DivByZero = createAndInitTensor("div_i32_src1_div_zero", GGMLType.I32, srcNe, dataOffset = currentOffset)
         for(i in src1DivByZeroData.indices) src1DivByZero.setInt(graphAllocator, src1DivByZeroData[i], i)
         assertFailsWith<ArithmeticException>("DIV I32 by zero should throw ArithmeticException") {
-            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero)
+            val dst = allocateLike(src0, "div_i32_fail")
+            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero, dst)
         }
     }
 
@@ -1163,7 +1252,9 @@ class GGMLComputeOpsTest {
         for(i in src1Data.indices) src1.setShort(graphAllocator, src1Data[i], i)
         currentOffset += calculateTensorByteSize(GGMLType.I16, srcNe)
 
-        val resultTensor = computeDiv(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "div_i16_dst") { dst ->
+            computeDiv(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I16, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsShortArray(resultTensor, graphAllocator)
@@ -1174,7 +1265,8 @@ class GGMLComputeOpsTest {
         val src1DivByZero = createAndInitTensor("div_i16_src1_div_zero", GGMLType.I16, srcNe, dataOffset = currentOffset)
         for(i in src1DivByZeroData.indices) src1DivByZero.setShort(graphAllocator, src1DivByZeroData[i], i)
         assertFailsWith<ArithmeticException>("DIV I16 by zero should throw ArithmeticException") {
-            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero)
+            val dst = allocateLike(src0, "div_i16_fail")
+            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero, dst)
         }
     }
 
@@ -1196,7 +1288,9 @@ class GGMLComputeOpsTest {
         for(i in src1Data.indices) src1.setByte(graphAllocator, src1Data[i], i)
         currentOffset += calculateTensorByteSize(GGMLType.I8, srcNe)
 
-        val resultTensor = computeDiv(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "div_i8_dst") { dst ->
+            computeDiv(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I8, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsByteArray(resultTensor, graphAllocator)
@@ -1207,7 +1301,8 @@ class GGMLComputeOpsTest {
         val src1DivByZero = createAndInitTensor("div_i8_src1_div_zero", GGMLType.I8, srcNe, dataOffset = currentOffset)
         for(i in src1DivByZeroData.indices) src1DivByZero.setByte(graphAllocator, src1DivByZeroData[i], i)
         assertFailsWith<ArithmeticException>("DIV I8 by zero should throw ArithmeticException") {
-            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero)
+            val dst = allocateLike(src0, "div_i8_fail")
+            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero, dst)
         }
     }
 
@@ -1228,7 +1323,9 @@ class GGMLComputeOpsTest {
         for(i in src1Data.indices) src1.setLong(graphAllocator, src1Data[i], i)
         currentOffset += calculateTensorByteSize(GGMLType.I64, srcNe)
 
-        val resultTensor = computeDiv(graphAllocator, dummyContext, src0, src1)
+        val resultTensor = runBinaryOp(src0, src1, "div_i64_dst") { dst ->
+            computeDiv(graphAllocator, dummyContext, src0, src1, dst)
+        }
         assertEquals(GGMLType.I64, resultTensor.type)
         assertTrue(src0.ne.contentEquals(resultTensor.ne))
         val resultData = getTensorDataAsLongArray(resultTensor, graphAllocator)
@@ -1239,7 +1336,8 @@ class GGMLComputeOpsTest {
         val src1DivByZero = createAndInitTensor("div_i64_src1_div_zero", GGMLType.I64, srcNe, dataOffset = currentOffset)
         for(i in src1DivByZeroData.indices) src1DivByZero.setLong(graphAllocator, src1DivByZeroData[i], i)
         assertFailsWith<ArithmeticException>("DIV I64 by zero should throw ArithmeticException") {
-            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero)
+            val dst = allocateLike(src0, "div_i64_fail")
+            computeDiv(graphAllocator, dummyContext, src0, src1DivByZero, dst)
         }
     }
 }

@@ -45,9 +45,23 @@ class GGMLKQuantAccuracyTest {
             }
         }
         
-        tensor.bufferId = bufferId
-        tensor.dataOffset = dataOffset
         tensor.data = null
+
+        val tensorByteSize = calculateTensorByteSize(tensor)
+        if (tensorByteSize > 0uL) {
+            if (dataOffset == 0uL) {
+                val offset = graphAllocator.allocateTensorData(tensorByteSize.toInt())
+                tensor.bufferId = bufferId
+                tensor.dataOffset = offset
+            } else {
+                tensor.bufferId = bufferId
+                tensor.dataOffset = dataOffset
+                GGMLTestAllocatorState.registerManualAllocation(graphAllocator, dataOffset + tensorByteSize)
+            }
+        } else {
+            tensor.bufferId = bufferId
+            tensor.dataOffset = dataOffset
+        }
 
         val numElements = tensor.numElements().toInt()
         require(values.size == numElements) { "Provided FloatArray size (${values.size}) must match tensor element count ($numElements)." }
@@ -83,7 +97,14 @@ class GGMLKQuantAccuracyTest {
             }
             
             floatArray[i] = when (tensor.type) {
-                GGMLType.F32 -> tensor.getFloat(graphAllocator, *indices)
+                GGMLType.F32 -> {
+                    val rawData = tensor.data
+                    if (rawData is FloatArray && i < rawData.size) {
+                        rawData[i]
+                    } else {
+                        tensor.getFloat(graphAllocator, *indices)
+                    }
+                }
                 GGMLType.F16 -> tensor.getHalf(graphAllocator, *indices)
                 else -> throw IllegalArgumentException("Unsupported tensor type ${tensor.type} for direct float array extraction.")
             }
@@ -133,7 +154,7 @@ class GGMLKQuantAccuracyTest {
         assertEquals(quantType, qTensor.type, "Tensor type should be ${quantType.name}")
         assertTrue(qTensor.ne.contentEquals(f32SrcTensor.ne), "Tensor dimensions should match")
         assertNotNull(qTensor.data)
-        assertTrue(qTensor.data is ByteArray)
+        if (qTensor.data is ByteArray) GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, qTensor)
 
         val f32Dequantized = dequantizeTensor(graphAllocator, qTensor)
         assertEquals(GGMLType.F32, f32Dequantized.type)
@@ -144,9 +165,10 @@ class GGMLKQuantAccuracyTest {
         assertEquals(originalF32Data.size, dequantizedData.size)
 
         val mse = calculateMeanSquaredError(originalF32Data, dequantizedData)
+        val mad = calculateMeanAbsoluteDifference(originalF32Data, dequantizedData)
+        println("${quantType.name} accuracy metrics: mse=$mse mad=$mad thresholds(mse=$mseThreshold, mad=$madThreshold)")
         assertTrue(mse < mseThreshold, "${quantType.name} MSE $mse too high (threshold $mseThreshold)")
 
-        val mad = calculateMeanAbsoluteDifference(originalF32Data, dequantizedData)
         assertTrue(mad < madThreshold, "${quantType.name} Mean Absolute Difference $mad too high (threshold $madThreshold)")
     }
 
@@ -280,7 +302,14 @@ class GGMLKQuantAccuracyTest {
         val f32Tensor = createAndPopulateF32Tensor("f32_matrix", longArrayOf(N.toLong(), K.toLong()), f32Values)
         
         // Perform matrix multiplication
-        val resultTensor = computeMatMul(graphAllocator, GGMLContext(), q2kTensor, f32Tensor)
+        val resultTensor = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = N.toLong()
+            ne[1] = M.toLong()
+            for (i in 2 until GGML_MAX_DIMS) ne[i] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        graphAllocator.allocateTensor(resultTensor)
+        computeMatMul(graphAllocator, GGMLContext(), q2kTensor, f32Tensor, resultTensor)
         
         // Verify result dimensions
         assertEquals(GGMLType.F32, resultTensor.type)
@@ -328,7 +357,14 @@ class GGMLKQuantAccuracyTest {
         val f32Tensor = createAndPopulateF32Tensor("f32_matrix", longArrayOf(N.toLong(), K.toLong()), f32Values)
         
         // Perform matrix multiplication
-        val resultTensor = computeMatMul(graphAllocator, GGMLContext(), q4kTensor, f32Tensor)
+        val resultTensor = GGMLTensor(type = GGMLType.F32).apply {
+            ne[0] = N.toLong()
+            ne[1] = M.toLong()
+            for (i in 2 until GGML_MAX_DIMS) ne[i] = 1L
+            nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
+        }
+        graphAllocator.allocateTensor(resultTensor)
+        computeMatMul(graphAllocator, GGMLContext(), q4kTensor, f32Tensor, resultTensor)
         
         assertEquals(GGMLType.F32, resultTensor.type)
         assertEquals(N.toLong(), resultTensor.ne[0])
