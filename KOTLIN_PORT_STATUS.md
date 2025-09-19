@@ -73,6 +73,7 @@ The project has made substantial progress across multiple development phases. He
 - **Primary ByteArray buffer**: Efficient allocation within reserved space
 - **Tensor usage tracking**: Automatic memory freeing and reuse logic
 - **Dynamic allocation**: Efficient memory management within graphs
+- **Single-path allocation API**: `allocateGraph` / `reserveGraph` now route through shared helper logic to prevent divergent code paths and keep destination-based semantics consistent (Sep 19, 2025)
 
 ### Comprehensive Quantization Ecosystem  
 - **BitNet 1.58**: Ternary quantization with base-3 packing (10 bytes/block)

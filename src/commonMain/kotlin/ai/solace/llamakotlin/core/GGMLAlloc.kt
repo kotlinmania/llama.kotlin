@@ -410,12 +410,18 @@ class GGMLGraphAllocator {
             allocator.reset()
         }
 
+        fun allocateIfNeeded(tensor: GGMLTensor?) {
+            if (tensor == null) return
+            val usage = tensorUsageMap[tensor] ?: return
+            if (usage.bufferId != -1 || usage.ownsMemory) return
+            if (tensor.data == null && !ggml_is_view(tensor)) {
+                allocateTensor(tensor, 0)
+            }
+        }
+
         // Allocate memory for leaf nodes
         for (i in 0 until graph.nLeafs) {
-            val leaf = graph.leafs[i] ?: continue
-            if (leaf.data == null && !ggml_is_view(leaf)) {
-                allocateTensor(leaf, 0)
-            }
+            allocateIfNeeded(graph.leafs[i])
         }
 
         // Allocate memory for internal nodes
@@ -424,16 +430,11 @@ class GGMLGraphAllocator {
 
             // Allocate memory for source tensors if needed
             for (j in 0 until GGML_MAX_SRC) {
-                val src = node.src[j] ?: continue
-                if (src.data == null && !ggml_is_view(src)) {
-                    allocateTensor(src, 0)
-                }
+                allocateIfNeeded(node.src[j])
             }
 
             // Allocate memory for the node itself
-            if (node.data == null && !ggml_is_view(node)) {
-                allocateTensor(node, 0) // Current node (child) gets its memory
-            }
+            allocateIfNeeded(node)
 
             // After node is allocated (and potentially reused parent's memory),
             // check if any of its parents can be freed.
@@ -661,29 +662,29 @@ class GGMLGraphAllocator {
             allocator.reset()
         }
 
+        val reserved = mutableSetOf<GGMLTensor>()
+
+        fun reserveIfNeeded(tensor: GGMLTensor?) {
+            if (tensor == null) return
+            if (!reserved.add(tensor)) return
+            if (tensor.data == null && !ggml_is_view(tensor)) {
+                reserveTensor(tensor, 0)
+            }
+        }
+
         // Calculate memory requirements for leaf nodes
         for (i in 0 until graph.nLeafs) {
-            val leaf = graph.leafs[i] ?: continue
-            if (leaf.data == null && !ggml_is_view(leaf)) {
-                reserveTensor(leaf, 0)
-            }
+            reserveIfNeeded(graph.leafs[i])
         }
 
         // Calculate memory requirements for internal nodes
         for (i in 0 until graph.nNodes) {
-            val node = graph.nodes[i] ?: continue
+            val node = graph.nodes[i]
+            reserveIfNeeded(node)
 
             // Calculate memory requirements for source tensors if needed
             for (j in 0 until GGML_MAX_SRC) {
-                val src = node.src[j] ?: continue
-                if (src.data == null && !ggml_is_view(src)) {
-                    reserveTensor(src, 0)
-                }
-            }
-
-            // Calculate memory requirements for the node itself
-            if (node.data == null && !ggml_is_view(node)) {
-                reserveTensor(node, 0)
+                reserveIfNeeded(node?.src?.get(j))
             }
         }
 

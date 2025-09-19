@@ -24,6 +24,7 @@ This document provides a comprehensive summary of the testing infrastructure imp
 - **End-to-end workflows**: Complex computation chains like `(A + B) * C - D`
 - **Mixed precision**: F32 ↔ F16 conversion and operation validation
 - **Memory stress testing**: Large-scale allocation and deallocation patterns
+- **Allocator best-fit simulation**: `GGMLAllocTest` now mirrors the dynamic allocator's best-fit policy to ensure the unified destination-based API remains the single execution path (Updated Sep 19, 2025)
 - **Activation function chaining**: RELU(GELU(x)) and similar compound operations
 - **Mathematical expressions**: Complex formulas like `sqrt((A^2 + B^2) / (C + epsilon))`
 

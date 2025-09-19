@@ -45,6 +45,7 @@ This checklist is based on the current state of the Kotlin Native port of llama.
       - [x] Added `canBeInplace` property to `GGMLOp` to identify suitable operations.
       - [x] `GGMLGraphAllocator.allocateTensor` now attempts inplace allocation by reusing eligible parent tensor memory.
       - [x] Implemented memory freeing logic within `GGMLGraphAllocator.allocateGraph` to deallocate memory of tensors (and view sources) once they are no longer referenced.
+      - [x] Consolidated graph allocation and reservation through shared `allocateIfNeeded` / `reserveIfNeeded` helpers to preserve a single allocator API path (Sep 19, 2025).
 
 - [x] Implement Basic Tensor Operations
   - [x] Implement tensor creation functions (createTensor, createTensor1D, createTensor2D)
