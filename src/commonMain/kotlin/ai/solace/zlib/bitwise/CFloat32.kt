@@ -49,6 +49,20 @@ value class CFloat32 private constructor(private val bits: Int) {
         return wrapped
     }
 
+    fun plusExact(other: CFloat32): CFloat32 {
+        val res = Float32Math.addPos(this.value, other.value)
+        val wrapped = fromFloat(res)
+        CFloatTrace.log("plusExact", bits, other.bits, wrapped.bits)
+        return wrapped
+    }
+
+    fun plusExact(other: Float): CFloat32 {
+        val res = Float32Math.addPos(this.value, other)
+        val wrapped = fromFloat(res)
+        CFloatTrace.log("plusExactF", bits, other.toRawBits(), wrapped.bits)
+        return wrapped
+    }
+
     operator fun div(other: CFloat32): CFloat32 = binary("div", other.bits) { a, b -> a / b }
 
     operator fun div(other: Float): CFloat32 = unary("divF", other) { a, b -> a / b }

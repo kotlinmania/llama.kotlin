@@ -11,10 +11,16 @@ object Float32Math {
     private const val EXP_MASK  = 0x7F800000.toInt()
     private const val FRAC_MASK = 0x007FFFFF
     private const val EXP_BIAS  = 127
+    private const val IMPLICIT_BIT = 1 shl 23
+    private const val TYPE_WIDTH = 24 + 3 // 24 significand bits plus R/G/S
 
     private const val CANONICAL_NAN = 0x7FC00000.toInt()
 
     fun mul(a: Float, b: Float): Float = Float.fromBits(mulBits(a.toRawBits(), b.toRawBits()))
+
+    fun add(a: Float, b: Float): Float = Float.fromBits(addBits(a.toRawBits(), b.toRawBits()))
+
+    fun sub(a: Float, b: Float): Float = Float.fromBits(subBits(a.toRawBits(), b.toRawBits()))
 
     fun mulBits(aBits: Int, bBits: Int): Int {
         val aExp = (aBits ushr 23) and 0xFF
@@ -145,5 +151,147 @@ object Float32Math {
         }
         return n
     }
-}
+    // NOTE: Minimal positive-only add for our quant accumulations.
+    // Assumes a,b are finite and non-negative. Returns IEEE-754 round-to-nearest-even.
+    // Positive-only fast path used in some accumulator experiments; for
+    // now, defer to host Float addition to match Kotlin's behavior exactly.
+    fun addPos(a: Float, b: Float): Float = a + b
 
+    // Full IEEE-754 float32 addition with round-to-nearest, ties-to-even,
+    // transliterated from LLVM compiler-rt fp_add_impl.inc for binary32.
+    fun addBits(aBitsIn: Int, bBitsIn: Int): Int {
+        var aRep = aBitsIn
+        var bRep = bBitsIn
+        val aAbs = aRep and 0x7FFFFFFF.toInt()
+        val bAbs = bRep and 0x7FFFFFFF.toInt()
+
+        // Detect zero/inf/NaN ranges quickly like LLVM (abs - 1 >= inf - 1)
+        if ((aAbs - 1 >= EXP_MASK - 1) || (bAbs - 1 >= EXP_MASK - 1)) {
+            // NaNs
+            if (aAbs > EXP_MASK) return aRep or 0x00400000 // quietBit
+            if (bAbs > EXP_MASK) return bRep or 0x00400000
+            // Infinities
+            if (aAbs == EXP_MASK) {
+                if ((aRep xor bRep) == SIGN_MASK) return 0x7FC00000.toInt() // qNaN
+                return aRep
+            }
+            if (bAbs == EXP_MASK) return bRep
+            // Zeros
+            if (aAbs == 0) {
+                if (bAbs == 0) return aRep and bRep // sign of +0 + -0 is +0 by AND
+                return bRep
+            }
+            if (bAbs == 0) return aRep
+        }
+
+        // Ensure |a| >= |b|
+        if (bAbs > aAbs) {
+            val t = aRep; aRep = bRep; bRep = t
+        }
+
+        var aExp = (aRep ushr 23) and 0xFF
+        var bExp = (bRep ushr 23) and 0xFF
+        var aSig = (aRep and FRAC_MASK).toLong()
+        var bSig = (bRep and FRAC_MASK).toLong()
+
+        // Normalize denormals
+        if (aExp == 0) {
+            val norm = normalizeSig(aSig)
+            aSig = norm.first
+            aExp = norm.second
+        }
+        if (bExp == 0) {
+            val norm = normalizeSig(bSig)
+            bSig = norm.first
+            bExp = norm.second
+        }
+
+        // Sign of result is sign of larger magnitude (a)
+        val resultSign = aRep and SIGN_MASK
+        val subtraction = ((aRep xor bRep) and SIGN_MASK) != 0
+
+        // Add implicit bit and shift by 3 to get R/G/S room
+        aSig = ((aSig or IMPLICIT_BIT.toLong()) shl 3)
+        bSig = ((bSig or IMPLICIT_BIT.toLong()) shl 3)
+
+        // Align b by exponent diff with sticky
+        val align = aExp - bExp
+        if (align != 0) {
+            if (align < TYPE_WIDTH) {
+                val sticky = ((bSig shl (TYPE_WIDTH - align)) != 0L)
+                bSig = (bSig ushr align) or if (sticky) 1L else 0L
+            } else {
+                bSig = 1 // sticky only
+            }
+        }
+
+        if (subtraction) {
+            aSig -= bSig
+            if (aSig == 0L) return 0 // +0 on exact cancel
+            val threshold = (IMPLICIT_BIT.toLong() shl 3)
+            if (aSig < threshold) {
+                // left-normalize
+                var shift = (aSig.countLeadingZeroBits() - threshold.countLeadingZeroBits())
+                if (shift > 0) {
+                    aSig = aSig shl shift
+                    aExp -= shift
+                }
+            }
+        } else {
+            aSig += bSig
+            // carry into bit (implicitBit<<4)? then shift right with sticky
+            if ((aSig and (IMPLICIT_BIT.toLong() shl 4)) != 0L) {
+                val sticky = (aSig and 1L) != 0L
+                aSig = (aSig ushr 1) or (if (sticky) 1L else 0L)
+                aExp += 1
+            }
+        }
+
+        // Overflow to infinity
+        if (aExp >= 0xFF) return EXP_MASK or resultSign
+
+        // Subnormal before rounding
+        if (aExp <= 0) {
+            val shift = 1 - aExp
+            val sticky = if (shift < TYPE_WIDTH) ((aSig shl (TYPE_WIDTH - shift)) != 0L) else (aSig != 0L)
+            aSig = (aSig ushr shift) or (if (sticky) 1L else 0L)
+            aExp = 0
+        }
+
+        val roundGuardSticky = (aSig and 0x7).toInt()
+        var result = ((aSig ushr 3) and FRAC_MASK.toLong()).toInt()
+        result = result or (aExp shl 23)
+        result = result or resultSign
+
+        // Final rounding: nearest, ties-to-even
+        if (roundGuardSticky > 0x4) {
+            result += 1
+        } else if (roundGuardSticky == 0x4) {
+            if ((result and 1) != 0) result += 1
+        }
+
+        // Handle rounding overflow into exponent
+        if ((result and EXP_MASK) == EXP_MASK && (result and FRAC_MASK) == 0) {
+            // became infinity
+            return (result and (SIGN_MASK or EXP_MASK))
+        }
+        return result
+    }
+
+    fun subBits(aBits: Int, bBits: Int): Int {
+        val flipped = bBits xor SIGN_MASK
+        return addBits(aBits, flipped)
+    }
+    private fun normalizeSig(fracIn: Long): Pair<Long, Int> {
+        var sig = fracIn
+        if (sig == 0L) return 0L to 0
+        var shift = 0
+        val implicit = IMPLICIT_BIT.toLong()
+        while ((sig and implicit) == 0L) {
+            sig = sig shl 1
+            shift++
+        }
+        // Return new significand with implicit bit set (still at bit23), exponent = 1 - shift
+        return sig to (1 - shift)
+    }
+}

@@ -2660,7 +2660,7 @@ private fun makeQkx2QuantsCFloat(
 ): Q2QuantStats {
     var minVal = x[xOffset]
     var maxVal = minVal
-    var sumW = ai.solace.zlib.bitwise.CFloat32.fromFloat(weights[0])
+        var sumW = ai.solace.zlib.bitwise.CFloat32.fromFloat(weights[0])
         var sumX = ai.solace.zlib.bitwise.CFloat32.ZERO
     for (i in 1 until n) {
         val xi = x[xOffset + i]
@@ -2731,8 +2731,12 @@ private fun makeQkx2QuantsCFloat(
             }
         }
         // Denominator in float32: (sum_w * sum_l2) - (sum_l * sum_l)
-        val pA = (sumW * sumL2)
-        val pB = (sumL * sumL)
+        val pA = ai.solace.zlib.bitwise.CFloat32.fromBits(
+            ai.solace.zlib.bitwise.Float32Math.mulBits(sumW.toBits(), sumL2.toBits())
+        )
+        val pB = ai.solace.zlib.bitwise.CFloat32.fromBits(
+            ai.solace.zlib.bitwise.Float32Math.mulBits(sumL.toBits(), sumL.toBits())
+        )
         var D = (pA - pB).toFloat()
         var useDoubleDen = false
         var Ddouble = 0.0
@@ -2760,13 +2764,21 @@ private fun makeQkx2QuantsCFloat(
             println("cf32 subBlock=12 step=$step codes=${codes.joinToString()} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} D=${if (useDoubleDen) Ddouble else D.toDouble()}")
         }
         if (D > 0f || useDoubleDen) {
-            val nScaleDD = (sumW * sumXL) - (sumX * sumL)
-            val nMinDD = (sumL2 * sumX) - (sumL * sumXL)
-            val nScale = nScaleDD.toFloat()
-            val nMin = nMinDD.toFloat()
-            val denom = if (useDoubleDen) Ddouble else D.toDouble()
-            var scaleCand = (nScale.toDouble() / denom).toFloat()
-            var minCand = (nMin.toDouble() / denom).toFloat()
+            val nScaleF = run {
+                val a = ai.solace.zlib.bitwise.Float32Math.mul(sumW.toFloat(), sumXL.toFloat())
+                val b = ai.solace.zlib.bitwise.Float32Math.mul(sumX.toFloat(), sumL.toFloat())
+                (a - b)
+            }
+            val nMinF = run {
+                val a = ai.solace.zlib.bitwise.Float32Math.mul(sumL2.toFloat(), sumX.toFloat())
+                val b = ai.solace.zlib.bitwise.Float32Math.mul(sumL.toFloat(), sumXL.toFloat())
+                (a - b)
+            }
+            val nScale = nScaleF
+            val nMin = nMinF
+            val denom = if (useDoubleDen) Ddouble.toFloat() else D
+            var scaleCand = nScale / denom
+            var minCand = nMin / denom
             if (minIndex == 12 && (step == 1 || step == 2)) {
                 println("cf32 subBlock=12 step=$step D=$D nScale=${nScale} nMin=${nMin} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} sumX=${sumX.toFloat()} sumXL=${sumXL.toFloat()}")
             }
