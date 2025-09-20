@@ -1,5 +1,6 @@
 package ai.solace.llamakotlin.core
 
+import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.test.*
@@ -18,6 +19,7 @@ class GGMLKQuantAccuracyTest {
         if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator())
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
+        GGMLTestAllocatorState.bind(graphAllocator, bufferSize.toULong())
     }
 
     private fun createAndPopulateF32Tensor(
@@ -153,8 +155,22 @@ class GGMLKQuantAccuracyTest {
         val qTensor = quantizeTensor(graphAllocator, f32SrcTensor, quantType)
         assertEquals(quantType, qTensor.type, "Tensor type should be ${quantType.name}")
         assertTrue(qTensor.ne.contentEquals(f32SrcTensor.ne), "Tensor dimensions should match")
+        val rawBytes = (qTensor.data as? ByteArray)?.copyOf()
         assertNotNull(qTensor.data)
         if (qTensor.data is ByteArray) GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, qTensor)
+
+        if (quantType == GGMLType.Q2_K && rawBytes != null) {
+            val blockSize = QK_K / 16 + QK_K / 4 + 4
+            val block = rawBytes.copyOf(blockSize)
+            fun Byte.toHex() = this.toUByte().toString(16).padStart(2, '0')
+            val scalesHex = block.take(QK_K / 16).joinToString(" ") { it.toHex() }
+            val qsHex = block.drop(QK_K / 16).take(QK_K / 4).joinToString(" ") { it.toHex() }
+            val dShort = block.getShortLe(QK_K / 16 + QK_K / 4)
+            val dminShort = block.getShortLe(QK_K / 16 + QK_K / 4 + 2)
+            println("Q2_K raw block d=$dShort dmin=$dminShort")
+            println("scales: $scalesHex")
+            println("qs: $qsHex")
+        }
 
         val f32Dequantized = dequantizeTensor(graphAllocator, qTensor)
         assertEquals(GGMLType.F32, f32Dequantized.type)

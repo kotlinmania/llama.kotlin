@@ -9,9 +9,14 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
 import ai.solace.llamakotlin.core.simd.GGMLSimd
+import ai.solace.zlib.bitwise.BitShiftEngine
+import ai.solace.zlib.bitwise.BitShiftMode
+import ai.solace.zlib.bitwise.BitwiseOps
+import ai.solace.zlib.bitwise.DoubleDouble
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.round
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES
 
@@ -1523,26 +1528,19 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
             val blockByteSize = targetType.byteSize.toInt()
             val resArr = ByteArray(numBlocks * blockByteSize)
             result.data = resArr
-            
-            var currentElementIndex = 0
-            for (blockNum in 0 until numBlocks) {
-                // Gather QK_K elements for this block
-                val blockValues = FloatArray(QK_K)
-                for (i in 0 until QK_K) {
-                    // Convert flat index to multidimensional indices
-                    val flatIdx = currentElementIndex++
-                    var tempIdx = flatIdx.toLong()
-                    val indices = IntArray(GGML_MAX_DIMS)
-                    for (dim in 0 until GGML_MAX_DIMS) {
-                        if (tensorF32.ne[dim] > 0) {
-                            indices[dim] = (tempIdx % tensorF32.ne[dim]).toInt()
-                            tempIdx /= tensorF32.ne[dim]
-                        }
-                    }
-                    blockValues[i] = tensorF32.getFloat(graphAllocator, *indices)
+
+            val scratch = Q2KScratch()
+            val blockValues = FloatArray(QK_K)
+            var destOffset = 0
+            var filled = 0
+            applyNDIter(tensorF32, numElements) { _, indices ->
+                val idx = filled % QK_K
+                blockValues[idx] = tensorF32.getFloat(graphAllocator, *indices)
+                filled++
+                if (idx == QK_K - 1) {
+                    quantizeQ2KBlock(blockValues, resArr, destOffset, scratch)
+                    destOffset += blockByteSize
                 }
-                
-                quantizeQ2_KBlock(blockValues, resArr, blockNum * blockByteSize)
             }
         }
         GGMLType.Q3_K -> {
@@ -2213,72 +2211,551 @@ fun computeDiv(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
  * Q2_K structure: scales[QK_K/16], qs[QK_K/4], d (F16), dmin (F16)
  * Effectively 2.625 bits per weight
  */
-private fun quantizeQ2_KBlock(blockValues: FloatArray, dest: ByteArray, destOffset: Int) {
-    require(blockValues.size == QK_K) { "Q2_K block must have $QK_K values" }
-    
-    // Find overall min/max for the block
-    var minVal = Float.POSITIVE_INFINITY
-    var maxVal = Float.NEGATIVE_INFINITY
-    for (value in blockValues) {
-        minVal = minOf(minVal, value)
-        maxVal = maxOf(maxVal, value)
-    }
-    
-    // Calculate super-block scales
-    val range = maxVal - minVal
-    val d = if (range > 0.0f) range / 3.0f else 1.0f  // scale for quantized scales 
-    val dmin = minVal // scale for quantized mins
+private val BIT_SHIFT_ENGINE_8 = BitShiftEngine(BitShiftMode.ARITHMETIC, 8)
 
-    val dOffset = destOffset
-    val dminOffset = destOffset + 2
-    val scalesOffset = destOffset + 4
-    val quantsOffset = scalesOffset + QK_K / 16
+private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: Int, scratch: Q2KScratch) {
+    require(values.size == QK_K) { "Q2_K block must have $QK_K values" }
 
-    dest.setShortLe(dOffset, floatToHalf(d))
-    dest.setShortLe(dminOffset, floatToHalf(dmin))
-    
-    // Quantize in 16-element sub-blocks
-    for (subBlock in 0 until QK_K/16) {
-        val subBlockStart = subBlock * 16
-        val subBlockEnd = subBlockStart + 16
-        
-        // Find min/max for this sub-block
-        var subMin = Float.POSITIVE_INFINITY
-        var subMax = Float.NEGATIVE_INFINITY
-        for (i in subBlockStart until subBlockEnd) {
-            subMin = minOf(subMin, blockValues[i])
-            subMax = maxOf(subMax, blockValues[i])
+    val l = scratch.quants
+    val lAux = scratch.aux
+    val weights = scratch.weights
+    val mins = scratch.mins
+    val scales = scratch.scales
+
+    var maxScale = 0.0f
+    var maxMin = 0.0f
+
+    for (subBlock in 0 until QK_K / 16) {
+        val base = subBlock * 16
+        for (i in 0 until 16) {
+            weights[i] = abs(values[base + i])
         }
-        
-        // Calculate and store quantized scale and min for this sub-block
-        val subRange = subMax - subMin
-        val scale = if (subRange > 0.0f) subRange / 3.0f else 1.0f
-        val quantizedScale = round((scale / d) * 15.0f).toInt().coerceIn(0, 15)
-        val quantizedMin = round((subMin - dmin) / d).toInt().coerceIn(0, 15)
-        
-        // Pack scale and min into one byte (4 bits each)
-        val scaleAndMin = (quantizedScale and 0x0F) or ((quantizedMin and 0x0F) shl 4)
-        dest[scalesOffset + subBlock] = scaleAndMin.toByte()
-        
-        // Quantize the 16 values in this sub-block to 2 bits each (4 values per byte)
-        for (i in 0 until 16 step 4) {
-            val globalIdx = subBlockStart + i
-            var packedByte = 0
-            for (j in 0 until 4) {
-                if (globalIdx + j < blockValues.size) {
-                    val value = blockValues[globalIdx + j]
-                    val quantizedValue = if (subRange > 0.0f) {
-                        round(((value - subMin) / subRange) * 3.0f).toInt().coerceIn(0, 3)
-                    } else 0
-                    packedByte = packedByte or ((quantizedValue and 0x03) shl (j * 2))
-                }
-            }
-            val quantByteIndex = subBlock * (16 / 4) + (i / 4)
-            dest[quantsOffset + quantByteIndex] = packedByte.toByte()
+        val stats = makeQkx2QuantsCFloat(
+            n = 16,
+            nmax = 3,
+            x = values,
+            xOffset = base,
+            weights = weights,
+            lDest = l,
+            lOffset = base,
+            mins = mins,
+            minIndex = subBlock,
+            lAux = lAux,
+            rmin = -0.5f,
+            rdelta = 0.1f,
+            nstep = 15,
+            useMAD = true
+        )
+        scales[subBlock] = stats.scale
+        if (subBlock == 12) {
+            println("stats scale subBlock12=${stats.scale}")
+        }
+        if (stats.scale > maxScale) maxScale = stats.scale
+        if (stats.min > maxMin) maxMin = stats.min
+    }
+
+    val scalesOffset = destOffset
+    val quantsOffset = destOffset + QK_K / 16
+    val dOffset = quantsOffset + QK_K / 4
+    val dminOffset = dOffset + SHORT_SIZE_BYTES
+
+    val dHalf = if (maxScale > 0.0f) {
+        val iscale = 15.0f / maxScale
+        for (subBlock in 0 until QK_K / 16) {
+            val quantized = nearestIntFloat(iscale * scales[subBlock]).coerceIn(0, 15)
+            dest[scalesOffset + subBlock] = quantized.toByte()
+        }
+        floatToHalf(maxScale / 15.0f)
+    } else {
+        for (subBlock in 0 until QK_K / 16) dest[scalesOffset + subBlock] = 0
+        floatToHalf(0.0f)
+    }
+    dest.setShortLe(dOffset, dHalf)
+
+    val dminHalf = if (maxMin > 0.0f) {
+        val iscale = 15.0f / maxMin
+        for (subBlock in 0 until QK_K / 16) {
+            val existing = dest[scalesOffset + subBlock].toInt() and 0x0F
+            val quantized = nearestIntFloat(iscale * mins[subBlock]).coerceIn(0, 15)
+            dest[scalesOffset + subBlock] = (existing or (quantized shl 4)).toByte()
+        }
+        floatToHalf(maxMin / 15.0f)
+    } else {
+        floatToHalf(0.0f)
+    }
+    dest.setShortLe(dminOffset, dminHalf)
+
+    val dBase = halfToFloat(dHalf)
+    val dmBase = halfToFloat(dminHalf)
+
+    for (subBlock in 0 until QK_K / 16) {
+        val scaleByte = dest[scalesOffset + subBlock].toInt() and 0xFF
+        val scaleLow = scaleByte and 0x0F
+        val scaleHigh = scaleByte ushr 4
+        val dScale = dBase * scaleLow
+        val base = subBlock * 16
+        if (dScale == 0.0f) {
+            for (lane in 0 until 16) l[base + lane] = 0
+            continue
+        }
+        val dm = dmBase * scaleHigh
+        for (lane in 0 until 16) {
+            val value = values[base + lane]
+            val quantized = nearestIntFloat((value + dm) / dScale).coerceIn(0, 3)
+            l[base + lane] = quantized.toByte()
+        }
+
+        for (group in 0 until QK_K / 64) {
+            val idx0 = base + group * 4
+            val v0 = BitwiseOps.byteToUnsignedInt(l[idx0]) and 0x03
+            val v1 = BitwiseOps.byteToUnsignedInt(l[idx0 + 1]) and 0x03
+            val v2 = BitwiseOps.byteToUnsignedInt(l[idx0 + 2]) and 0x03
+            val v3 = BitwiseOps.byteToUnsignedInt(l[idx0 + 3]) and 0x03
+
+            val combined = BitwiseOps.orArithmeticGeneral(
+                BitwiseOps.orArithmeticGeneral(v0, BIT_SHIFT_ENGINE_8.leftShift(v1.toLong(), 2).value.toInt()),
+                BitwiseOps.orArithmeticGeneral(
+                    BIT_SHIFT_ENGINE_8.leftShift(v2.toLong(), 4).value.toInt(),
+                    BIT_SHIFT_ENGINE_8.leftShift(v3.toLong(), 6).value.toInt()
+                )
+            )
+            dest[quantsOffset + subBlock * (QK_K / 64) + group] = (combined and 0xFF).toByte()
         }
     }
 }
 
+private data class Q2QuantStats(val scale: Float, val min: Float)
+
+// C-compatible implementation following ggml's make_qkx2_quants for K-quants
+// DoubleDouble-based variant to retain residuals in degenerate steps
+private fun makeQkx2QuantsDD(
+    n: Int,
+    nmax: Int,
+    x: FloatArray,
+    xOffset: Int,
+    weights: FloatArray,
+    lDest: ByteArray,
+    lOffset: Int,
+    mins: FloatArray,
+    minIndex: Int,
+    lAux: ByteArray,
+    rmin: Float,
+    rdelta: Float,
+    nstep: Int,
+    useMAD: Boolean
+): Q2QuantStats {
+    var minVal = x[xOffset]
+    var maxVal = minVal
+    var sumW = weights[0]
+    var sumX = sumW * x[xOffset]
+    for (i in 1 until n) {
+        val xi = x[xOffset + i]
+        if (xi < minVal) minVal = xi
+        if (xi > maxVal) maxVal = xi
+        val w = weights[i]
+        sumW += w
+        sumX += w * xi
+    }
+    if (minVal > 0f) minVal = 0f
+    if (maxVal == minVal) {
+        for (i in 0 until n) lDest[lOffset + i] = 0
+        mins[minIndex] = -minVal
+        return Q2QuantStats(scale = 0f, min = -minVal)
+    }
+
+    var iscale = nmax.toFloat() / (maxVal - minVal)
+    var scale = 1f / iscale
+    var bestMetric = 0f
+    for (i in 0 until n) {
+        val xi = x[xOffset + i]
+        val l = nearestIntFloat(iscale * (xi - minVal)).coerceIn(0, nmax)
+        lDest[lOffset + i] = l.toByte()
+        var diff = scale * l + minVal - xi
+        diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
+        val w = weights[i]
+        bestMetric += w * diff
+    }
+    if (nstep < 1) {
+        mins[minIndex] = -minVal
+        return Q2QuantStats(scale = scale, min = -minVal)
+    }
+
+    for (step in 0..nstep) {
+        iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
+        var sumL = 0f
+        var sumL2 = 0f
+        var sumXL = 0f
+        for (i in 0 until n) {
+            val xi = x[xOffset + i]
+            var l = nearestIntFloat(iscale * (xi - minVal))
+            l = l.coerceIn(0, nmax)
+            lAux[i] = l.toByte()
+            val w = weights[i]
+            val lf = l.toFloat()
+            sumL += w * lf
+            sumL2 += w * lf * lf
+            sumXL += w * lf * xi
+        }
+        if (minIndex == 12 && step == 0) {
+            val codes = IntArray(n) { lAux[it].toInt() and 0xFF }
+            println("compat subBlock=12 step=0 codes=${codes.joinToString()}")
+        }
+        val D = sumW * sumL2 - sumL * sumL
+        if (minIndex == 12 && step == 0) {
+            println("compat subBlock=12 step=0 sumW=$sumW sumL=$sumL sumL2=$sumL2 D=$D")
+        }
+        if (D > 0f) {
+            var scaleCand = (sumW * sumXL - sumX * sumL) / D
+            var minCand = (sumL2 * sumX - sumL * sumXL) / D
+            if (minCand > 0f) {
+                minCand = 0f
+                scaleCand = sumXL / sumL2
+            }
+            var metric = 0f
+            for (i in 0 until n) {
+                val xi = x[xOffset + i]
+                val li = (lAux[i].toInt() and 0xFF).toFloat()
+                var diff = scaleCand * li + minCand - xi
+                diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
+                val w = weights[i]
+                metric += w * diff
+            }
+            if (metric < bestMetric) {
+                for (i in 0 until n) lDest[lOffset + i] = lAux[i]
+                bestMetric = metric
+                scale = scaleCand
+                minVal = minCand
+            }
+        }
+    }
+
+    mins[minIndex] = -minVal
+    return Q2QuantStats(scale = scale, min = -minVal)
+}
+
+private fun makeQkx2QuantsRef(
+    n: Int,
+    nmax: Int,
+    x: FloatArray,
+    xOffset: Int,
+    weights: FloatArray,
+    lDest: ByteArray,
+    lOffset: Int,
+    mins: FloatArray,
+    minIndex: Int,
+    lAux: ByteArray,
+    rmin: Float,
+    rdelta: Float,
+    nstep: Int,
+    useMAD: Boolean
+): Q2QuantStats {
+    var minVal = x[xOffset].toDouble()
+    var maxVal = minVal
+    var sumW = DoubleDouble.fromDouble(weights[0].toDouble())
+    var sumX = DoubleDouble.fromDouble(0.0).addProduct(weights[0].toDouble(), x[xOffset].toDouble())
+    for (i in 1 until n) {
+        val xi = x[xOffset + i].toDouble()
+        if (xi < minVal) minVal = xi
+        if (xi > maxVal) maxVal = xi
+        val w = weights[i].toDouble()
+        sumW = sumW + w
+        sumX = sumX.addProduct(w, xi)
+    }
+    if (minVal > 0.0) minVal = 0.0
+    if (maxVal == minVal) {
+        for (i in 0 until n) lDest[lOffset + i] = 0
+        mins[minIndex] = (-minVal).toFloat()
+        return Q2QuantStats(scale = 0f, min = (-minVal).toFloat())
+    }
+
+    var iscale = nmax.toDouble() / (maxVal - minVal)
+    var scale = 1.0 / iscale
+    var bestMetric = 0.0
+    for (i in 0 until n) {
+        val xi = x[xOffset + i].toDouble()
+        val l = nearestIntFloat((iscale * (xi - minVal)).toFloat()).coerceIn(0, nmax)
+        lDest[lOffset + i] = l.toByte()
+        val diff = scale * l + minVal - xi
+        val penalty = if (useMAD) abs(diff) else diff * diff
+        bestMetric += weights[i].toDouble() * penalty
+    }
+    if (nstep < 1) {
+        mins[minIndex] = (-minVal).toFloat()
+        return Q2QuantStats(scale = scale.toFloat(), min = (-minVal).toFloat())
+    }
+
+    for (step in 0..nstep) {
+        iscale = (rmin + rdelta * step + nmax).toDouble() / (maxVal - minVal)
+        var sumL = DoubleDouble.fromDouble(0.0)
+        var sumL2 = DoubleDouble.fromDouble(0.0)
+        var sumXL = DoubleDouble.fromDouble(0.0)
+        for (i in 0 until n) {
+            val xi = x[xOffset + i].toDouble()
+            val l = nearestIntFloat((iscale * (xi - minVal)).toFloat()).coerceIn(0, nmax)
+            lAux[i] = l.toByte()
+            val w = weights[i].toDouble()
+            val lf = l.toDouble()
+            sumL = sumL.addProduct(w, lf)
+            sumL2 = sumL2.addProduct(w, lf * lf)
+            sumXL = sumXL.addProduct(w, lf * xi)
+        }
+        if (minIndex == 12 && step == 0) {
+            println("sumW=${sumW.hi}+${sumW.lo} sumL=${sumL.hi}+${sumL.lo} sumL2=${sumL2.hi}+${sumL2.lo}")
+        }
+        val denominatorDD = ai.solace.zlib.bitwise.DoubleDouble.fms(sumW, sumL2, sumL, sumL)
+        if (minIndex == 12 && step == 0) {
+            println("denDD hi=${denominatorDD.hi} lo=${denominatorDD.lo}")
+        }
+        val denominator = denominatorDD.toDouble()
+        if (denominator <= 0.0) continue
+
+        var scaleCand = ai.solace.zlib.bitwise.DoubleDouble.fms(sumW, sumXL, sumX, sumL).toDouble() / denominator
+        var minCand = ai.solace.zlib.bitwise.DoubleDouble.fms(sumL2, sumX, sumL, sumXL).toDouble() / denominator
+        if (minCand > 0.0) {
+            minCand = 0.0
+            scaleCand = sumXL.toDouble() / sumL2.toDouble()
+        }
+        var metric = 0.0
+        for (i in 0 until n) {
+            val xi = x[xOffset + i].toDouble()
+            val li = (lAux[i].toInt() and 0xFF).toDouble()
+            val diff = scaleCand * li + minCand - xi
+            val penalty = if (useMAD) abs(diff) else diff * diff
+            metric += weights[i].toDouble() * penalty
+        }
+        if (metric < bestMetric) {
+            for (i in 0 until n) lDest[lOffset + i] = lAux[i]
+            bestMetric = metric
+            scale = scaleCand
+            minVal = minCand
+        }
+    }
+
+    mins[minIndex] = (-minVal).toFloat()
+    return Q2QuantStats(scale = scale.toFloat(), min = (-minVal).toFloat())
+}
+
+// C-compatible float32 implementation following ggml's make_qkx2_quants
+private fun makeQkx2QuantsCompat(
+    n: Int,
+    nmax: Int,
+    x: FloatArray,
+    xOffset: Int,
+    weights: FloatArray,
+    lDest: ByteArray,
+    lOffset: Int,
+    mins: FloatArray,
+    minIndex: Int,
+    lAux: ByteArray,
+    rmin: Float,
+    rdelta: Float,
+    nstep: Int,
+    useMAD: Boolean
+): Q2QuantStats {
+    var minVal = x[xOffset]
+    var maxVal = minVal
+    var sumW = weights[0]
+    var sumX = sumW * x[xOffset]
+    for (i in 1 until n) {
+        val xi = x[xOffset + i]
+        if (xi < minVal) minVal = xi
+        if (xi > maxVal) maxVal = xi
+        val w = weights[i]
+        sumW += w
+        sumX += w * xi
+    }
+    if (minVal > 0f) minVal = 0f
+    if (maxVal == minVal) {
+        for (i in 0 until n) lDest[lOffset + i] = 0
+        mins[minIndex] = -minVal
+        return Q2QuantStats(scale = 0f, min = -minVal)
+    }
+
+    var iscale = nmax.toFloat() / (maxVal - minVal)
+    var scale = 1f / iscale
+    var bestMetric = 0f
+    for (i in 0 until n) {
+        val xi = x[xOffset + i]
+        val l = nearestIntFloat(iscale * (xi - minVal)).coerceIn(0, nmax)
+        lDest[lOffset + i] = l.toByte()
+        var diff = scale * l + minVal - xi
+        diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
+        val w = weights[i]
+        bestMetric += w * diff
+    }
+    if (nstep < 1) {
+        mins[minIndex] = -minVal
+        return Q2QuantStats(scale = scale, min = -minVal)
+    }
+
+    for (step in 0..nstep) {
+        iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
+        var sumL = 0f
+        var sumL2 = 0f
+        var sumXL = 0f
+        for (i in 0 until n) {
+            val xi = x[xOffset + i]
+            var l = nearestIntFloat(iscale * (xi - minVal))
+            l = l.coerceIn(0, nmax)
+            lAux[i] = l.toByte()
+            val w = weights[i]
+            val lf = l.toFloat()
+            sumL += w * lf
+            sumL2 += w * lf * lf
+            sumXL += w * lf * xi
+        }
+        val D = sumW * sumL2 - sumL * sumL
+        if (minIndex == 12 && step == 0) {
+            val codes = IntArray(n) { lAux[it].toInt() and 0xFF }
+            println("compat subBlock=12 step=0 codes=${codes.joinToString()} sumW=$sumW sumL=$sumL sumL2=$sumL2 D=$D")
+        }
+        if (D > 0f) {
+            var scaleCand = (sumW * sumXL - sumX * sumL) / D
+            var minCand = (sumL2 * sumX - sumL * sumXL) / D
+            if (minCand > 0f) {
+                minCand = 0f
+                scaleCand = sumXL / sumL2
+            }
+            var metric = 0f
+            for (i in 0 until n) {
+                val xi = x[xOffset + i]
+                val li = (lAux[i].toInt() and 0xFF).toFloat()
+                var diff = scaleCand * li + minCand - xi
+                diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
+                val w = weights[i]
+                metric += w * diff
+            }
+            if (metric < bestMetric) {
+                for (i in 0 until n) lDest[lOffset + i] = lAux[i]
+                bestMetric = metric
+                scale = scaleCand
+                minVal = minCand
+            }
+        }
+    }
+
+    mins[minIndex] = -minVal
+    return Q2QuantStats(scale = scale, min = -minVal)
+}
+
+// Variant that accumulates in CFloat32 to simulate C single-precision rounding strictly
+private fun makeQkx2QuantsCFloat(
+    n: Int,
+    nmax: Int,
+    x: FloatArray,
+    xOffset: Int,
+    weights: FloatArray,
+    lDest: ByteArray,
+    lOffset: Int,
+    mins: FloatArray,
+    minIndex: Int,
+    lAux: ByteArray,
+    rmin: Float,
+    rdelta: Float,
+    nstep: Int,
+    useMAD: Boolean
+): Q2QuantStats {
+    var minVal = x[xOffset]
+    var maxVal = minVal
+    var sumW = ai.solace.zlib.bitwise.CFloat32.fromFloat(weights[0])
+    var sumX = ai.solace.zlib.bitwise.CFloat32.fromFloat((weights[0] * x[xOffset]))
+    for (i in 1 until n) {
+        val xi = x[xOffset + i]
+        if (xi < minVal) minVal = xi
+        if (xi > maxVal) maxVal = xi
+        val w = weights[i]
+        sumW = sumW + w
+        sumX = sumX + (w * xi)
+    }
+    if (minVal > 0f) minVal = 0f
+    if (maxVal == minVal) {
+        for (i in 0 until n) lDest[lOffset + i] = 0
+        mins[minIndex] = -minVal
+        return Q2QuantStats(scale = 0f, min = -minVal)
+    }
+
+    var iscale = nmax.toFloat() / (maxVal - minVal)
+    var scale = (1f / iscale)
+    var bestMetric = ai.solace.zlib.bitwise.CFloat32.fromFloat(0f)
+    for (i in 0 until n) {
+        val xi = x[xOffset + i]
+        val l = nearestIntFloat(iscale * (xi - minVal)).coerceIn(0, nmax)
+        lDest[lOffset + i] = l.toByte()
+        val diff = (scale * l + minVal - xi)
+        val penalty = if (useMAD) kotlin.math.abs(diff) else diff * diff
+        bestMetric = bestMetric + (weights[i] * penalty)
+    }
+    if (nstep < 1) {
+        mins[minIndex] = -minVal
+        return Q2QuantStats(scale = scale, min = -minVal)
+    }
+
+    for (step in 0..nstep) {
+        iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
+        var sumL = ai.solace.zlib.bitwise.CFloat32.ZERO
+        var sumL2 = ai.solace.zlib.bitwise.CFloat32.ZERO
+        var sumXL = ai.solace.zlib.bitwise.CFloat32.ZERO
+        for (i in 0 until n) {
+            val xi = x[xOffset + i]
+            var l = nearestIntFloat(iscale * (xi - minVal))
+            l = l.coerceIn(0, nmax)
+            lAux[i] = l.toByte()
+            val w = weights[i]
+            val lf = l.toFloat()
+            sumL = sumL + (w * lf)
+            sumL2 = sumL2 + (w * lf * lf)
+            sumXL = sumXL + (w * lf * xi)
+        }
+        val D = (sumW.toFloat() * sumL2.toFloat() - sumL.toFloat() * sumL.toFloat())
+        if (minIndex == 12 && step == 0) {
+            val codes = IntArray(n) { lAux[it].toInt() and 0xFF }
+            println("cf32 subBlock=12 step=0 codes=${codes.joinToString()} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} D=$D")
+        }
+        if (D > 0f) {
+            var scaleCand = (sumW.toFloat() * sumXL.toFloat() - sumX.toFloat() * sumL.toFloat()) / D
+            var minCand = (sumL2.toFloat() * sumX.toFloat() - sumL.toFloat() * sumXL.toFloat()) / D
+            if (minCand > 0f) {
+                minCand = 0f
+                scaleCand = sumXL.toFloat() / sumL2.toFloat()
+            }
+            var metric = ai.solace.zlib.bitwise.CFloat32.ZERO
+            for (i in 0 until n) {
+                val xi = x[xOffset + i]
+                val li = (lAux[i].toInt() and 0xFF).toFloat()
+                val diff = (scaleCand * li + minCand - xi)
+                val penalty = if (useMAD) kotlin.math.abs(diff) else diff * diff
+                metric = metric + (weights[i] * penalty)
+            }
+            if (metric.toFloat() < bestMetric.toFloat()) {
+                for (i in 0 until n) lDest[lOffset + i] = lAux[i]
+                bestMetric = metric
+                scale = scaleCand
+                minVal = minCand
+            }
+        }
+    }
+
+    mins[minIndex] = -minVal
+    return Q2QuantStats(scale = scale, min = -minVal)
+}
+
+private class Q2KScratch(
+    val quants: ByteArray = ByteArray(QK_K),
+    val aux: ByteArray = ByteArray(16),
+    val weights: FloatArray = FloatArray(16),
+    val mins: FloatArray = FloatArray(QK_K / 16),
+    val scales: FloatArray = FloatArray(QK_K / 16)
+)
+
+private fun nearestIntFloat(value: Float): Int {
+    if (!value.isFinite()) return 0
+    if (value > 4_194_303.0f || value < -4_194_303.0f) {
+        return value.roundToInt()
+    }
+    val adjusted = value + 12582912.0f
+    val bits = adjusted.toRawBits()
+    return (bits and 0x007FFFFF) - 0x00400000
+}
 /**
  * Quantizes a block of QK_K float values to Q3_K format.
  * Q3_K structure: hmask[QK_K/8], qs[QK_K/4], scales[12], d (F16)

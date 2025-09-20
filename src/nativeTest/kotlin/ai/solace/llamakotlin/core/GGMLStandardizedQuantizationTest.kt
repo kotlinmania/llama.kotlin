@@ -57,6 +57,7 @@ class GGMLStandardizedQuantizationTest {
 
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
+        GGMLTestAllocatorState.bind(graphAllocator, bufferSize.toULong())
     }
 
     /**
@@ -146,11 +147,12 @@ class GGMLStandardizedQuantizationTest {
     private fun createF32TestTensor(name: String, data: FloatArray): GGMLTensor {
         val dims = longArrayOf(data.size.toLong())
         val tensor = GGMLTensor(type = GGMLType.F32, name = name)
-        tensor.ne = dims
+        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+        tensor.ne[0] = dims[0]
         tensor.nb = ULongArray(GGML_MAX_DIMS) { 0uL }
         tensor.nb[0] = GGMLType.F32.byteSize
         for (d in 1 until GGML_MAX_DIMS) {
-            tensor.nb[d] = tensor.nb[d-1] * dims.getOrElse(d-1) { 1L }.toULong()
+            tensor.nb[d] = tensor.nb[d-1] * tensor.ne.getOrElse(d-1) { 1L }.toULong()
         }
         
         val byteSize = data.size * GGMLType.F32.byteSize.toInt()
@@ -177,7 +179,10 @@ class GGMLStandardizedQuantizationTest {
         
         for (i in 0 until size) {
             result[i] = when (tensor.type) {
-                GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
+                GGMLType.F32 -> {
+                    val raw = tensor.data
+                    if (raw is FloatArray && i < raw.size) raw[i] else tensor.getFloat(graphAllocator, i)
+                }
                 GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
                 else -> tensor.getFloat(graphAllocator, i) // Try generic access
             }
@@ -193,8 +198,12 @@ class GGMLStandardizedQuantizationTest {
         val testData = generateSyntheticData(512) // Large enough for multiple blocks
         val originalTensor = createF32TestTensor("q8_0_synthetic", testData)
         
-        // Quantize to Q8_0
-        val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+        val quantizedTensor = try {
+            quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+        } catch (t: Throwable) {
+            println("Q8_0 quantization failed: size=${testData.size} message=${t.message}")
+            throw t
+        }
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
         assertEquals(GGMLType.Q8_0, quantizedTensor.type, "Quantization should produce Q8_0 tensor")
         println("Q8_0 quantized bufferId=${quantizedTensor.bufferId} offset=${quantizedTensor.dataOffset}")

@@ -794,6 +794,8 @@ object GGMLTestUtils {
                     t
                 )
             }
+
+            tensor.data = null
         }
 
         private fun ensureBuffer(
