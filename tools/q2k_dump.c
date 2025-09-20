@@ -133,10 +133,19 @@ int main(void) {
     float scales[QK_K/16];
 
     FILE *txt = fopen("build/q2k-diagnostics/q2k-c.txt", "w");
+    FILE *vals = fopen("build/q2k-diagnostics/q2k-values.txt", "w");
     if (!txt) {
         perror("fopen txt");
         return 1;
     }
+
+    for (int i = 0; i < QK_K; ++i) {
+        fprintf(txt, "% .8f ", values[i]);
+        if ((i % 8) == 7) fprintf(txt, "\n");
+        fprintf(vals, "% .8f\n", values[i]);
+    }
+    fclose(vals);
+    fprintf(txt, "\n");
 
     for (int j = 0; j < QK_K/16; ++j) {
         for (int l = 0; l < 16; ++l) {
@@ -194,7 +203,6 @@ int main(void) {
     debug_make_qkx2_quants_subblock(values + 16*1);
     debug_make_qkx2_quants_subblock(values + 16*11);
     debug_make_qkx2_quants_subblock(values + 16*12);
-    debug_make_qkx2_quants_subblock(values + 16*13);
     debug_make_qkx2_quants_subblock(values + 16*14);
 
     return 0;

@@ -2247,6 +2247,9 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
             useMAD = true
         )
         scales[subBlock] = stats.scale
+        if (Q2KDiagnosticsRecorder.enabled && (subBlock == 0 || subBlock == 12)) {
+            println("kotlin scale[subBlock=$subBlock]=${stats.scale} min=${stats.min}")
+        }
         if (subBlock == 12) {
             println("stats scale subBlock12=${stats.scale}")
         }
@@ -2658,14 +2661,18 @@ private fun makeQkx2QuantsCFloat(
     var minVal = x[xOffset]
     var maxVal = minVal
     var sumW = ai.solace.zlib.bitwise.CFloat32.fromFloat(weights[0])
-    var sumX = ai.solace.zlib.bitwise.CFloat32.fromFloat((weights[0] * x[xOffset]))
+    var sumX = ai.solace.zlib.bitwise.CFloat32.ZERO
     for (i in 1 until n) {
         val xi = x[xOffset + i]
         if (xi < minVal) minVal = xi
         if (xi > maxVal) maxVal = xi
         val w = weights[i]
         sumW = sumW + w
-        sumX = sumX + (w * xi)
+        // sumX += (w * xi) using separate mul then add (C-like)
+        run {
+            val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * xi
+            sumX = sumX + prod
+        }
     }
     if (minVal > 0f) minVal = 0f
     if (maxVal == minVal) {
@@ -2689,6 +2696,9 @@ private fun makeQkx2QuantsCFloat(
         mins[minIndex] = -minVal
         return Q2QuantStats(scale = scale, min = -minVal)
     }
+    if (minIndex == 12) {
+        println("cf32 subBlock=12 init bestMad=${bestMetric.toFloat()} scale=$scale min=$minVal")
+    }
 
     for (step in 0..nstep) {
         iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
@@ -2702,18 +2712,64 @@ private fun makeQkx2QuantsCFloat(
             lAux[i] = l.toByte()
             val w = weights[i]
             val lf = l.toFloat()
-            sumL = sumL + (w * lf)
-            sumL2 = sumL2 + (w * lf * lf)
-            sumXL = sumXL + (w * lf * xi)
+            // sumL += (w * l)
+            run {
+                val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * lf
+                sumL = sumL + prod
+            }
+            // sumL2 += (w * (l*l)) with l*l in integer then converted
+            run {
+                val l2i = l * l
+                val prod2 = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * l2i.toFloat()
+                sumL2 = sumL2 + prod2
+            }
+            // sumXL += ((w * l) * x)
+            run {
+                val wl = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * lf
+                val wlx = wl * xi
+                sumXL = sumXL + wlx
+            }
         }
-        val D = (sumW.toFloat() * sumL2.toFloat() - sumL.toFloat() * sumL.toFloat())
-        if (minIndex == 12 && step == 0) {
+        // Denominator in float32: (sum_w * sum_l2) - (sum_l * sum_l)
+        val pA = (sumW * sumL2)
+        val pB = (sumL * sumL)
+        var D = (pA - pB).toFloat()
+        var useDoubleDen = false
+        var Ddouble = 0.0
+        if (D == 0f && step == 0) {
+            val first = lAux[0].toInt() and 0xFF
+            var allEq = true
+            for (ii in 1 until n) {
+                if ((lAux[ii].toInt() and 0xFF) != first) { allEq = false; break }
+            }
+            if (allEq) {
+                val ddd = ai.solace.zlib.bitwise.DoubleDouble.fms(
+                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumW.toFloat()),
+                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumL2.toFloat()),
+                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumL.toFloat()),
+                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumL.toFloat())
+                )
+                Ddouble = ddd.toDouble()
+                if (Ddouble > 0.0) {
+                    useDoubleDen = true
+                }
+            }
+        }
+        if (minIndex == 12 && (step == 0 || step == 1 || step == 2)) {
             val codes = IntArray(n) { lAux[it].toInt() and 0xFF }
-            println("cf32 subBlock=12 step=0 codes=${codes.joinToString()} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} D=$D")
+            println("cf32 subBlock=12 step=$step codes=${codes.joinToString()} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} D=${if (useDoubleDen) Ddouble else D.toDouble()}")
         }
-        if (D > 0f) {
-            var scaleCand = (sumW.toFloat() * sumXL.toFloat() - sumX.toFloat() * sumL.toFloat()) / D
-            var minCand = (sumL2.toFloat() * sumX.toFloat() - sumL.toFloat() * sumXL.toFloat()) / D
+        if (D > 0f || useDoubleDen) {
+            val nScaleDD = (sumW * sumXL) - (sumX * sumL)
+            val nMinDD = (sumL2 * sumX) - (sumL * sumXL)
+            val nScale = nScaleDD.toFloat()
+            val nMin = nMinDD.toFloat()
+            val denom = if (useDoubleDen) Ddouble else D.toDouble()
+            var scaleCand = (nScale.toDouble() / denom).toFloat()
+            var minCand = (nMin.toDouble() / denom).toFloat()
+            if (minIndex == 12 && (step == 1 || step == 2)) {
+                println("cf32 subBlock=12 step=$step D=$D nScale=${nScale} nMin=${nMin} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} sumX=${sumX.toFloat()} sumXL=${sumXL.toFloat()}")
+            }
             if (minCand > 0f) {
                 minCand = 0f
                 scaleCand = sumXL.toFloat() / sumL2.toFloat()
@@ -2726,6 +2782,9 @@ private fun makeQkx2QuantsCFloat(
                 val penalty = if (useMAD) kotlin.math.abs(diff) else diff * diff
                 metric = metric + (weights[i] * penalty)
             }
+            if (minIndex == 12 && (step == 0 || step == 1 || step == 2)) {
+                println("cf32 subBlock=12 step=$step metric=${metric.toFloat()} best=${bestMetric.toFloat()} scaleCand=$scaleCand minCand=$minCand")
+            }
             if (metric.toFloat() < bestMetric.toFloat()) {
                 for (i in 0 until n) lDest[lOffset + i] = lAux[i]
                 bestMetric = metric
@@ -2737,6 +2796,15 @@ private fun makeQkx2QuantsCFloat(
 
     mins[minIndex] = -minVal
     return Q2QuantStats(scale = scale, min = -minVal)
+}
+
+private fun nextUpFloat(x: Float): Float {
+    if (x.isNaN()) return x
+    if (x == Float.POSITIVE_INFINITY) return x
+    if (x == 0f) return Float.fromBits(1) // smallest subnormal
+    val bits = x.toRawBits()
+    val next = if (x > 0f) bits + 1 else bits - 1
+    return Float.fromBits(next)
 }
 
 private class Q2KScratch(

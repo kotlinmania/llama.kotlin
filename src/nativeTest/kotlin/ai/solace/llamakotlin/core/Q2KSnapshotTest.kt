@@ -13,6 +13,7 @@ import kotlinx.cinterop.usePinned
 import platform.posix.fclose
 import platform.posix.fflush
 import platform.posix.fopen
+import platform.posix.fread
 import platform.posix.fputs
 import platform.posix.fwrite
 import platform.posix.system
@@ -25,11 +26,6 @@ class Q2KSnapshotTest {
             .toByteArray()
     }
 
-    private val referenceBlock: ByteArray = hexToByteArray(
-        """
-            0b 09 06 44 a3 e2 f0 e2 b3 54 05 09 0f 0b 09 06 ff ff bf 7f 6f 2b 2b 2b 1b 1b 1b 1b 07 47 47 87 3f 3f 2f 2f 2b 2b 1b 1b 57 57 47 46 46 82 82 82 e4 e4 e4 e4 e9 e9 e9 e9 ea ea ee ee af af af af f8 f8 f8 f9 f9 f9 f9 bd be be be be bf bf 7f 7f 43 2c 0b 30
-        """
-    )
 
     @Test
     fun q2KQuantizationMatchesReferenceBlock() {
@@ -41,9 +37,7 @@ class Q2KSnapshotTest {
         graphAllocator.tensorAllocators[0].reset(buffer.size.toULong())
         GGMLTestAllocatorState.bind(graphAllocator, buffer.size.toULong())
 
-        val values = FloatArray(QK_K) { idx ->
-            0.1f + 2.0f * cos(idx.toFloat() * 0.03f)
-        }
+        val values = Q2KReferenceInputs.C_VALUES.copyOf()
 
         val tensor = GGMLTensor(GGMLType.F32)
         tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
@@ -72,15 +66,17 @@ class Q2KSnapshotTest {
         dumpRecordedFloats("build/q2k-diagnostics/q2k-kotlin-floats.txt")
         dumpTrace("build/q2k-diagnostics/q2k-kotlin-trace.txt")
 
-        val actualHex = data.joinToString(separator = " ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-        val expectedHex = referenceBlock.joinToString(separator = " ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-        println("Actual Q2_K block: $actualHex")
-        println("Expected Q2_K block: $expectedHex")
-        val mismatched = referenceBlock.indices.filter { referenceBlock[it] != data[it] }
-        println("Mismatched indices: $mismatched")
+        // Build and run the C reference tool, then compare exact bytes
+        val cc = "clang -std=c11 -O2 -Iggml/src -Iggml/include tools/q2k_dump.c -lm -o build/q2k_dump"
+        val rc1 = system(cc)
+        assertEquals(0, rc1, "Failed to compile q2k_dump.c: $cc")
+        val rc2 = system("./build/q2k_dump")
+        assertEquals(0, rc2, "Failed to run q2k_dump")
 
-        assertEquals(referenceBlock.size, data.size)
-        assertContentEquals(referenceBlock, data)
+        // Read the C-generated block
+        val cref = readBinary("build/q2k-diagnostics/q2k-c.bin")
+        assertEquals(cref.size, data.size)
+        assertContentEquals(cref, data)
     }
 
     private fun writeBinary(path: String, bytes: ByteArray) {
@@ -151,5 +147,23 @@ class Q2KSnapshotTest {
         }
         fflush(file)
         fclose(file)
+    }
+
+    private fun readBinary(path: String): ByteArray {
+        val file = fopen(path, "rb") ?: error("Failed to open $path")
+        memScoped {
+            // simple read: file is small
+            val buf = ByteArray(1024)
+            val out = ArrayList<Byte>()
+            buf.usePinned {
+                var read = fread(it.addressOf(0), 1uL, buf.size.toULong(), file)
+                while (read.toLong() > 0) {
+                    for (i in 0 until read.toInt()) out.add(buf[i])
+                    read = fread(it.addressOf(0), 1uL, buf.size.toULong(), file)
+                }
+            }
+            fclose(file)
+            return out.toByteArray()
+        }
     }
 }
