@@ -34,6 +34,21 @@ value class CFloat32 private constructor(private val bits: Int) {
 
     operator fun times(other: Float): CFloat32 = unary("timesF", other) { a, b -> a * b }
 
+    // Bit-true float32 multiply using software IEEE-754 rounding.
+    fun timesExact(other: CFloat32): CFloat32 {
+        val resBits = Float32Math.mulBits(this.bits, other.bits)
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("timesExact", bits, other.bits, wrapped.bits)
+        return wrapped
+    }
+
+    fun timesExact(other: Float): CFloat32 {
+        val resBits = Float32Math.mulBits(this.bits, other.toRawBits())
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("timesExactF", bits, other.toRawBits(), wrapped.bits)
+        return wrapped
+    }
+
     operator fun div(other: CFloat32): CFloat32 = binary("div", other.bits) { a, b -> a / b }
 
     operator fun div(other: Float): CFloat32 = unary("divF", other) { a, b -> a / b }
@@ -54,16 +69,16 @@ value class CFloat32 private constructor(private val bits: Int) {
         return wrapped
     }
 
-    private inline fun binary(opName: String, rhsBits: Int, op: (Double, Double) -> Double): CFloat32 {
-        val result = op(value.toDouble(), Float.fromBits(rhsBits).toDouble()).toFloat()
+    private inline fun binary(opName: String, rhsBits: Int, op: (Float, Float) -> Float): CFloat32 {
+        val result: Float = op(value, Float.fromBits(rhsBits))
         val wrapped = fromFloat(result)
         CFloatTrace.log(opName, bits, rhsBits, wrapped.bits)
         return wrapped
     }
 
-    private inline fun unary(opName: String, other: Float?, op: (Double, Double) -> Double): CFloat32 {
+    private inline fun unary(opName: String, other: Float?, op: (Float, Float) -> Float): CFloat32 {
         val rhsVal = other ?: 0f
-        val result = op(value.toDouble(), rhsVal.toDouble()).toFloat()
+        val result: Float = op(value, rhsVal)
         val wrapped = fromFloat(result)
         CFloatTrace.log(opName, bits, other?.toRawBits(), wrapped.bits)
         return wrapped

@@ -2661,7 +2661,7 @@ private fun makeQkx2QuantsCFloat(
     var minVal = x[xOffset]
     var maxVal = minVal
     var sumW = ai.solace.zlib.bitwise.CFloat32.fromFloat(weights[0])
-    var sumX = ai.solace.zlib.bitwise.CFloat32.ZERO
+        var sumX = ai.solace.zlib.bitwise.CFloat32.ZERO
     for (i in 1 until n) {
         val xi = x[xOffset + i]
         if (xi < minVal) minVal = xi
@@ -2670,7 +2670,7 @@ private fun makeQkx2QuantsCFloat(
         sumW = sumW + w
         // sumX += (w * xi) using separate mul then add (C-like)
         run {
-            val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * xi
+            val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(xi)
             sumX = sumX + prod
         }
     }
@@ -2714,19 +2714,19 @@ private fun makeQkx2QuantsCFloat(
             val lf = l.toFloat()
             // sumL += (w * l)
             run {
-                val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * lf
+                val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(lf)
                 sumL = sumL + prod
             }
             // sumL2 += (w * (l*l)) with l*l in integer then converted
             run {
                 val l2i = l * l
-                val prod2 = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * l2i.toFloat()
+                val prod2 = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(l2i.toFloat())
                 sumL2 = sumL2 + prod2
             }
             // sumXL += ((w * l) * x)
             run {
-                val wl = ai.solace.zlib.bitwise.CFloat32.fromFloat(w) * lf
-                val wlx = wl * xi
+                val wl = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(lf)
+                val wlx = wl.timesExact(xi)
                 sumXL = sumXL + wlx
             }
         }
