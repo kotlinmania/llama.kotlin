@@ -1,6 +1,12 @@
 # Kotlin/Native SIMD Port Plan
 
+Updated: 2025‑09‑21
+
+This plan now coexists with the KLang numeric core (pure‑Kotlin soft‑float + 16‑bit limb engine). KLang guarantees bit‑exact IEEE‑754 semantics; SIMD is an opt‑in accelerator layered on top. All correctness must hold on the scalar path first, then SIMD paths are enabled behind the same API.
+
 ## Status Summary
+- KLang added: `CFloat32` division matches compiler‑rt; HPC16x4/x8 limb types landed to support Float64 later.
+- SIMD scaffolding present: `core/simd/GGMLSimd.kt` hosts initial F32 helpers and scalar fallbacks.
 - Kotlin/Native exposes LLVM vector types via `kotlinx.cinterop.Vector128` (and related helpers), giving us direct access to SIMD loads, stores, and arithmetic in pure Kotlin code.[^1]
 - Higher-level conveniences (`vectorOf`, typed load/store helpers) exist for building and manipulating these vectors, but reductions and shuffles still require manual composition.[^2]
 - Coroutine dispatchers can already cap parallelism per graph execution using `Dispatchers.Default.limitedParallelism(...)`, and we can opt into a dedicated thread-pool dispatcher when we need to reserve CPU cores for SIMD-heavy kernels.[^3]
@@ -44,6 +50,10 @@
 4. **Phase 4 – Coverage & Cleanup**
    - Optional support for BF16/AVX512 paths (guarded by platform checks).
    - Documentation updates summarizing benchmark gains and architecture support matrix.
+
+Current timeline adjustments (reflecting KLang work):
+- Float SIMD enablement follows after Float32 `mulBits`/`sqrtBits` are exact; quant SIMD follows Q2_K parity.
+
 
 ## Risks & Mitigations
 - **API Stability:** `newFixedThreadPoolContext` is marked delicate; we confine its usage behind a configuration flag and keep `Dispatchers.Default` as the default path.[^3]
