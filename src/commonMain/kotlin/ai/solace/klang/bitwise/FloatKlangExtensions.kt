@@ -11,3 +11,5 @@ operator fun Float.minus(rhs: CFloat32): CFloat32 =
 operator fun Float.times(rhs: CFloat32): CFloat32 =
     CFloat32.fromBits(Float32Math.mulBits(this.toRawBits(), rhs.toBits()))
 
+operator fun Float.div(rhs: CFloat32): CFloat32 =
+    CFloat32.fromBits(Float32Math.divBits(this.toRawBits(), rhs.toBits()))

@@ -12,10 +12,11 @@ class FloatKlangExtensionsTest {
         val sum = a + b
         val diff = a - b
         val prod = a * b
+        val quot = a / b
 
         assertEquals((2.5f + 1.25f).toRawBits(), sum.toFloat().toRawBits())
         assertEquals((2.5f - 1.25f).toRawBits(), diff.toFloat().toRawBits())
         assertEquals((2.5f * 1.25f).toRawBits(), prod.toFloat().toRawBits())
+        assertEquals((2.5f / 1.25f).toRawBits(), quot.toFloat().toRawBits())
     }
 }
-
