@@ -26,119 +26,85 @@ object Float32Math {
     fun div(a: Float, b: Float): Float = Float.fromBits(divBits(a.toRawBits(), b.toRawBits()))
 
     fun mulBits(aBits: Int, bBits: Int): Int {
-        val aExp = (aBits ushr 23) and 0xFF
-        val bExp = (bBits ushr 23) and 0xFF
-        val aFrac = aBits and FRAC_MASK
-        val bFrac = bBits and FRAC_MASK
+        val aExponent = (aBits ushr 23) and 0xFF
+        val bExponent = (bBits ushr 23) and 0xFF
+        var aSignificand = aBits and FRAC_MASK
+        var bSignificand = bBits and FRAC_MASK
+        val productSign = (aBits xor bBits) and SIGN_MASK
+        var scale = 0
 
-        val aSign = (aBits ushr 31) and 1
-        val bSign = (bBits ushr 31) and 1
-        val outSign = aSign xor bSign
+        // Special-case ladder (compiler-rt style)
+        val maxExpMinus1 = (0xFF - 1).toUInt()
+        if ((aExponent - 1).toUInt() >= maxExpMinus1 || (bExponent - 1).toUInt() >= maxExpMinus1) {
+            val aAbs = aBits and 0x7FFFFFFF.toInt()
+            val bAbs = bBits and 0x7FFFFFFF.toInt()
+            // NaNs
+            if (aAbs > EXP_MASK) return aBits or 0x00400000
+            if (bAbs > EXP_MASK) return bBits or 0x00400000
+            // Infinities
+            if (aAbs == EXP_MASK) return if (bAbs != 0) productSign or EXP_MASK else 0x7FC00000.toInt()
+            if (bAbs == EXP_MASK) return if (aAbs != 0) productSign or EXP_MASK else 0x7FC00000.toInt()
+            // Zeros
+            if (aAbs == 0) return productSign
+            if (bAbs == 0) return productSign
+            // Denormals: normalize and accumulate scale
+            if (aAbs < IMPLICIT_BIT) {
+                val (ns, sc) = normalizeForMul(aSignificand)
+                aSignificand = ns
+                scale += sc
+            }
+            if (bAbs < IMPLICIT_BIT) {
+                val (ns, sc) = normalizeForMul(bSignificand)
+                bSignificand = ns
+                scale += sc
+            }
+        }
 
-        // NaNs
-        val aNaN = aExp == 0xFF && aFrac != 0
-        val bNaN = bExp == 0xFF && bFrac != 0
-        if (aNaN || bNaN) return CANONICAL_NAN
+        // Add implicit bit
+        aSignificand = aSignificand or IMPLICIT_BIT
+        bSignificand = bSignificand or IMPLICIT_BIT
 
-        // Infinities and zeros
-        val aInf = aExp == 0xFF && aFrac == 0
-        val bInf = bExp == 0xFF && bFrac == 0
-        val aZero = aExp == 0 && aFrac == 0
-        val bZero = bExp == 0 && bFrac == 0
+        // wideMultiply(aSignificand, bSignificand << exponentBits)
+        val exponentBits = 8
+        val aU = aSignificand.toLong() and 0xFFFF_FFFFL
+        val bShift = (bSignificand.toLong() and 0xFFFF_FFFFL) shl exponentBits
+        val full = aU * bShift
+        var productHi = ((full ushr 32) and 0xFFFF_FFFFL).toInt()
+        var productLo = (full and 0xFFFF_FFFFL).toInt()
 
-        if ((aInf && bZero) || (bInf && aZero)) return CANONICAL_NAN
-        if (aInf || bInf) return (outSign shl 31) or EXP_MASK // infinity
-        if (aZero || bZero) return (outSign shl 31) // signed zero
+        var productExponent = aExponent + bExponent - EXP_BIAS + scale
 
-        // Build 24-bit significands and effective exponents
-        var sigA: Long
-        var sigB: Long
-        var eA = aExp
-        var eB = bExp
-
-        if (aExp == 0) {
-            // subnormal: exponent = -126, significand = frac, normalize
-            sigA = aFrac.toLong()
-            var shift = clz24(sigA)
-            if (shift == 24) return (outSign shl 31) // shouldn't happen after zero check
-            sigA = sigA shl shift
-            eA = 1 - shift // will become: eA_eff = -126 - (shift-1); we encode below
+        // Normalize
+        if ((productHi and IMPLICIT_BIT) != 0) {
+            productExponent += 1
         } else {
-            sigA = (1L shl 23) or aFrac.toLong()
+            val s = wideLeftShift1(productHi, productLo)
+            productHi = s.first
+            productLo = s.second
         }
 
-        if (bExp == 0) {
-            sigB = bFrac.toLong()
-            var shift = clz24(sigB)
-            if (shift == 24) return (outSign shl 31)
-            sigB = sigB shl shift
-            eB = 1 - shift
+        // Overflow → infinity
+        if (productExponent >= 0xFF) return productSign or EXP_MASK
+
+        if (productExponent <= 0) {
+            val shift = 1 - productExponent
+            if (shift >= 32) return productSign
+            val s = wideRightShiftWithSticky(productHi, productLo, shift)
+            productHi = s.first
+            productLo = s.second
         } else {
-            sigB = (1L shl 23) or bFrac.toLong()
+            productHi = (productHi and FRAC_MASK) or ((productExponent and 0xFF) shl 23)
         }
 
-        // Effective unbiased exponents
-        val eAeff = if (aExp == 0) (1 - EXP_BIAS) + (eA - 1) else (aExp - EXP_BIAS)
-        val eBeff = if (bExp == 0) (1 - EXP_BIAS) + (eB - 1) else (bExp - EXP_BIAS)
+        // Insert sign
+        productHi = productHi or productSign
 
-        // 24x24 -> 48-bit product
-        val prod: Long = sigA * sigB // up to 48 bits
-
-        // Normalize: target 24-bit significand with leading 1 at bit 23
-        val topBit47 = (prod ushr 47) and 1L
-        val shift = if (topBit47 == 1L) 24 else 23
-        var signif: Long = prod ushr shift // top 24 bits
-        var remainder: Long = prod and ((1L shl shift) - 1)
-
-        var exp = eAeff + eBeff + if (topBit47 == 1L) 1 else 0
-
-        // Round to nearest, ties to even
-        val guard = (remainder ushr (shift - 1)) and 1L
-        val sticky = remainder and ((1L shl (shift - 1)) - 1)
-        val lsb = signif and 1L
-        if (guard == 1L && (sticky != 0L || lsb == 1L)) {
-            signif += 1
-            if (signif == (1L shl 24)) {
-                // carry-out renormalization
-                signif = 1L shl 23
-                exp += 1
-            }
-        }
-
-        // Handle overflow to infinity
-        var biasedExp = exp + EXP_BIAS
-        if (biasedExp >= 0xFF) {
-            return (outSign shl 31) or EXP_MASK
-        }
-
-        // Handle subnormal/underflow
-        if (biasedExp <= 0) {
-            // shift right to create subnormal significand
-            val rshift = (1 - biasedExp).coerceAtMost(31)
-            // include the implicit 1 for normals
-            var sig = signif
-            // Compose a 24-bit value with rounding while shifting to subnormal
-            var extra = 0L
-            if (rshift >= 24) {
-                extra = sig
-                sig = 0
-            } else {
-                extra = sig and ((1L shl rshift) - 1)
-                sig = sig ushr rshift
-            }
-            // Round when shifting to subnormal
-            val extraGuard = (extra ushr (rshift - 1).coerceAtLeast(0)) and 1L
-            val extraSticky = extra and ((1L shl (rshift - 1).coerceAtLeast(0)) - 1)
-            val lsb2 = sig and 1L
-            if (rshift > 0 && extraGuard == 1L && (extraSticky != 0L || lsb2 == 1L)) {
-                sig += 1
-            }
-            val frac = (sig and FRAC_MASK.toLong()).toInt()
-            return (outSign shl 31) or frac
-        }
-
-        val frac = ((signif and FRAC_MASK.toLong()).toInt())
-        return (outSign shl 31) or (biasedExp shl 23) or frac
+        // Final rounding: nearest, ties-to-even
+        val loU = productLo.toUInt()
+        val signBitU = 0x80000000u
+        if (loU > signBitU) productHi += 1
+        if (loU == signBitU) productHi += (productHi and 1)
+        return productHi
     }
 
     // Count leading zeros in a 24-bit value (bits in positions 23..0). Returns 24 if zero.
@@ -153,6 +119,51 @@ object Float32Math {
             bit = bit ushr 1
         }
         return n
+    }
+    // Normalize for multiply: set implicit bit, return (newSig, scaleAdj)
+    private fun normalizeForMul(sigIn: Int): Pair<Int, Int> {
+        var sig = sigIn and FRAC_MASK
+        if (sig == 0) return 0 to 0
+        var shift = 0
+        while ((sig and IMPLICIT_BIT) == 0 && shift < 24) {
+            sig = sig shl 1
+            shift++
+        }
+        val scale = 1 - shift
+        return sig to scale
+    }
+
+    private fun wideLeftShift1(hi: Int, lo: Int): Pair<Int, Int> {
+        val full = ((hi.toLong() and 0xFFFF_FFFFL) shl 32) or (lo.toLong() and 0xFFFF_FFFFL)
+        val shifted = full shl 1
+        val newHi = ((shifted ushr 32) and 0xFFFF_FFFFL).toInt()
+        val newLo = (shifted and 0xFFFF_FFFFL).toInt()
+        return newHi to newLo
+    }
+
+    private fun wideRightShiftWithSticky(hiIn: Int, loIn: Int, count: Int): Pair<Int, Int> {
+        var hi = hiIn
+        var lo = loIn
+        var sticky = false
+        if (count == 0) return hi to lo
+        if (count < 32) {
+            val dropped = lo and ((1 shl count) - 1)
+            sticky = dropped != 0
+            val newLo = (hi shl (32 - count)) or (lo ushr count)
+            val newHi = hi ushr count
+            lo = newLo
+            hi = newHi
+        } else {
+            val k = count - 32
+            val droppedLow = lo != 0
+            val droppedHigh = if (k == 0) 0 else (hi and ((1 shl k) - 1))
+            sticky = droppedLow || droppedHigh != 0
+            val newLo = if (k == 0) hi else (hi ushr k)
+            lo = newLo
+            hi = 0
+        }
+        if (sticky) lo = lo or 1
+        return hi to lo
     }
     // NOTE: Minimal positive-only add for our quant accumulations.
     // Assumes a,b are finite and non-negative. Returns IEEE-754 round-to-nearest-even.
