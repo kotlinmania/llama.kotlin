@@ -89,6 +89,30 @@ object Float32Math {
         return ((exp and 0xFF) shl 23) or frac
     }
 
+    // __fixsfsi: float32 -> signed int32 (round toward zero), no range checking
+    fun floatToInt(a: Float): Int = floatToIntBits(a.toRawBits())
+    fun floatToUInt(a: Float): UInt = floatToUIntBits(a.toRawBits()).toUInt()
+
+    fun floatToIntBits(aBits: Int): Int {
+        val aAbs = aBits and 0x7FFFFFFF.toInt()
+        val e = ((aAbs ushr 23) and 0xFF) - EXP_BIAS
+        if (e < 0) return 0
+        var r = ((aAbs and FRAC_MASK) or IMPLICIT_BIT).toLong()
+        if (e > 23) r = r shl (e - 23) else r = r ushr (23 - e)
+        val s = if ((aBits and SIGN_MASK) != 0) -1 else 0
+        return ((r.toInt()) xor s) - s
+    }
+
+    // __fixunssfsi: float32 -> unsigned int32 (round toward zero), negatives become 0; no range checking
+    fun floatToUIntBits(aBits: Int): Int {
+        if ((aBits and SIGN_MASK) != 0) return 0
+        val aAbs = aBits and 0x7FFFFFFF.toInt()
+        val e = ((aAbs ushr 23) and 0xFF) - EXP_BIAS
+        if (e < 0) return 0
+        var r = ((aAbs and FRAC_MASK) or IMPLICIT_BIT).toLong()
+        if (e > 23) r = r shl (e - 23) else r = r ushr (23 - e)
+        return r.toInt()
+    }
     // sqrtf: IEEE‑754 sqrt for float32 using LLVM libc FPUtil algorithm
     fun sqrtBits(aBits: Int): Int {
         val sign = aBits and SIGN_MASK
