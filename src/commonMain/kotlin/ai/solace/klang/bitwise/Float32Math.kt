@@ -25,6 +25,70 @@ object Float32Math {
 
     fun div(a: Float, b: Float): Float = Float.fromBits(divBits(a.toRawBits(), b.toRawBits()))
 
+    // Integer conversions (compiler-rt style, nearest-even rounding where applicable)
+    fun intToFloat(a: Int): Float = Float.fromBits(intToFloatBits(a))
+    fun uintToFloat(a: UInt): Float = Float.fromBits(uintToFloatBits(a))
+
+    // __floatsisf: 32-bit signed int -> float32
+    fun intToFloatBits(a: Int): Int {
+        if (a == 0) return 0
+        val sign = if (a < 0) SIGN_MASK else 0
+        // Work in unsigned magnitude using Long to avoid overflow on Int.MIN_VALUE
+        var v = if (a < 0) (-(a.toLong())) else a.toLong()
+        // Find highest set bit index n (0..31)
+        var n = 63 - v.countLeadingZeroBits()
+        // Build exponent
+        var exp = n + EXP_BIAS
+        // Compose fraction with rounding to nearest-even
+        var frac: Int
+        if (n <= 23) {
+            frac = ((v shl (23 - n)) and FRAC_MASK.toLong()).toInt()
+            // no rounding bits
+        } else {
+            val shift = n - 23
+            val shifted = v ushr shift
+            frac = (shifted and FRAC_MASK.toLong()).toInt()
+            val guard = ((v ushr (shift - 1)) and 1L).toInt()
+            val sticky = if (shift > 1) (v and ((1L shl (shift - 1)) - 1L)) != 0L else false
+            if (guard == 1 && (sticky || (frac and 1) == 1)) {
+                frac += 1
+                if (frac > FRAC_MASK) {
+                    // Carry into implicit bit -> renormalize
+                    frac = 0
+                    exp += 1
+                }
+            }
+        }
+        // Pack
+        return sign or ((exp and 0xFF) shl 23) or frac
+    }
+
+    // __floatunsisf: 32-bit unsigned int -> float32
+    fun uintToFloatBits(a: UInt): Int {
+        if (a == 0u) return 0
+        val v = a.toLong() and 0xFFFF_FFFFL
+        var n = 63 - v.countLeadingZeroBits()
+        var exp = n + EXP_BIAS
+        var frac: Int
+        if (n <= 23) {
+            frac = ((v shl (23 - n)) and FRAC_MASK.toLong()).toInt()
+        } else {
+            val shift = n - 23
+            val shifted = v ushr shift
+            frac = (shifted and FRAC_MASK.toLong()).toInt()
+            val guard = ((v ushr (shift - 1)) and 1L).toInt()
+            val sticky = if (shift > 1) (v and ((1L shl (shift - 1)) - 1L)) != 0L else false
+            if (guard == 1 && (sticky || (frac and 1) == 1)) {
+                frac += 1
+                if (frac > FRAC_MASK) {
+                    frac = 0
+                    exp += 1
+                }
+            }
+        }
+        return ((exp and 0xFF) shl 23) or frac
+    }
+
     fun mulBits(aBits: Int, bBits: Int): Int {
         val aExponent = (aBits ushr 23) and 0xFF
         val bExponent = (bBits ushr 23) and 0xFF
