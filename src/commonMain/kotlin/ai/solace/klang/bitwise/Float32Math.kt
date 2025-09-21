@@ -634,7 +634,7 @@ object Float32Math {
 
         // Produce 27-bit quotient (24+R/G/S) by scaling numerator
         // q = ((sa << (3+24)) / sb), so that top 24+3 bits are in quotient
-        val SHIFT_NUM = 27 // 24 + 3
+        val SHIFT_NUM = 26 // 23 + 3; ensures (quo>>3)/2^23 ~= sa/sb
         var num = sa shl SHIFT_NUM
         var quo = if (sb != 0L) num / sb else 0L
         var rem = if (sb != 0L) num % sb else 0L

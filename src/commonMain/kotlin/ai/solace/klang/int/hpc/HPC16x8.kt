@@ -91,23 +91,81 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
         fun zero(): HPC16x8 = HPC16x8(UShortArray(8) { 0u })
 
         fun mul64x64To128(a: HPC16x4, b: HPC16x4): HPC16x8 {
-            val base = 65536u
-            val acc = UIntArray(16) { 0u }
+            val res = UIntArray(8) { 0u }
             for (i in 0..3) {
-                val ai = a.limb(i).toUInt()
                 var carry = 0u
+                val ai = a.limb(i).toUInt()
                 for (j in 0..3) {
                     val idx = i + j
-                    val prod = ai * b.limb(j).toUInt() + acc[idx].toUInt() + carry
-                    acc[idx] = prod and 0xFFFFu
-                    carry = prod shr 16
+                    val sum = ai * b.limb(j).toUInt() + res[idx] + carry
+                    res[idx] = sum and 0xFFFFu
+                    carry = sum shr 16
                 }
-                acc[i + 4] = (acc[i + 4] + carry) and 0xFFFFu
+                // propagate remaining carry
+                var k = i + 4
+                while (carry != 0u && k < 8) {
+                    val sum = res[k] + carry
+                    res[k] = sum and 0xFFFFu
+                    carry = sum shr 16
+                    k++
+                }
             }
-            val limbs = UShortArray(8)
-            for (i in 0..7) limbs[i] = acc[i].toUShort()
-            return HPC16x8(limbs)
+            val out = UShortArray(8) { i -> res[i].toUShort() }
+            return HPC16x8(out)
+        }
+
+        private fun toULong64(x: HPC16x4): ULong {
+            var v = 0uL
+            for (i in 3 downTo 0) {
+                v = (v shl 16) or x.limb(i).toULong()
+            }
+            return v
+        }
+
+        fun ofLimbsLE(l0: UShort, l1: UShort, l2: UShort, l3: UShort, l4: UShort, l5: UShort, l6: UShort, l7: UShort): HPC16x8 =
+            HPC16x8(ushortArrayOf(l0, l1, l2, l3, l4, l5, l6, l7))
+
+        private fun hiLoULong(x: HPC16x8): Pair<ULong, ULong> {
+            var lo = 0uL
+            for (i in 3 downTo 0) lo = (lo shl 16) or x.limb(i).toULong()
+            var hi = 0uL
+            for (i in 7 downTo 4) hi = (hi shl 16) or x.limb(i).toULong()
+            return hi to lo
+        }
+
+        private fun fromULong64(v: ULong): HPC16x4 = HPC16x4.fromULong(v)
+
+        /**
+         * Divide 128-bit numerator by 64-bit divisor, returning 64-bit quotient and remainder.
+         * Precondition: divisor != 0 and hi < divisor (so quotient fits in 64 bits).
+         */
+        fun div128by64(num: HPC16x8, den: HPC16x4): Pair<HPC16x4, HPC16x4> {
+            val (hi, lo) = hiLoULong(num)
+            val d = toULong64(den)
+            require(d != 0uL) { "division by zero" }
+            require(hi < d) { "128/64 quotient exceeds 64 bits (hi >= divisor)" }
+            var rem = 0uL
+            // consume hi bits (do not record quotient bits; they would exceed 64-bit quotient range)
+            var i = 63
+            while (i >= 0) {
+                val carry = (hi shr i) and 1uL
+                // rem < d and d >= 2^63 holds in our typical use; but to be safe, do 128-safe step using conditional add without overflow
+                rem = (rem shl 1) or carry
+                if (rem >= d) rem -= d
+                i -= 1
+            }
+            var q = 0uL
+            i = 63
+            while (i >= 0) {
+                val carry = (lo shr i) and 1uL
+                rem = (rem shl 1) or carry
+                if (rem >= d) {
+                    rem -= d
+                    q = q or (1uL shl i)
+                }
+                i -= 1
+            }
+            return fromULong64(q) to fromULong64(rem)
         }
     }
 }
-
