@@ -113,6 +113,115 @@ object Float32Math {
         if (e > 23) r = r shl (e - 23) else r = r ushr (23 - e)
         return r.toInt()
     }
+
+    // ---- Float32 <-> Float64 (Double) conversions ----
+    // float32 -> float64 (extendsfdf2)
+    fun floatToDouble(f: Float): Double = Double.fromBits(floatToDoubleBits(f.toRawBits()))
+    fun floatToDoubleBits(fBits: Int): Long {
+        val sign = (fBits.toLong() and 0x80000000L) shl 32
+        val exp = (fBits ushr 23) and 0xFF
+        val frac = fBits and FRAC_MASK
+        if (exp == 0xFF) {
+            // Inf/NaN
+            val dExp = 0x7FFL shl 52
+            val dFrac = if (frac != 0) 0x0008_0000_0000_0000L else 0L // canonical qNaN
+            return sign or dExp or dFrac
+        }
+        if (exp == 0) {
+            if (frac == 0) return sign // signed zero
+            // subnormal: normalize mantissa
+            var m = frac
+            var shift = 0
+            while ((m and IMPLICIT_BIT) == 0) { m = m shl 1; shift++ }
+            m = m and FRAC_MASK
+            val eUnb = -126 - shift
+            val dExp = ((eUnb + 1023).toLong() and 0x7FF) shl 52
+            val dFrac = (m.toLong() shl (52 - 23))
+            return sign or dExp or dFrac
+        }
+        // normal
+        val eUnb = exp - 127
+        val dExp = ((eUnb + 1023).toLong() and 0x7FF) shl 52
+        val dFrac = (frac.toLong() shl (52 - 23))
+        return sign or dExp or dFrac
+    }
+
+    // float64 -> float32 (truncdfsf2) with nearest-even rounding
+    fun doubleToFloat(d: Double): Float = Float.fromBits(doubleToFloatBits(d.toRawBits()))
+    fun doubleToFloatBits(dBits: Long): Int {
+        val sign = ((dBits ushr 32) and 0x80000000L).toInt()
+        val exp = ((dBits ushr 52) and 0x7FF).toInt()
+        val frac = dBits and 0x000F_FFFF_FFFF_FFFFL
+        if (exp == 0x7FF) {
+            // Inf/NaN
+            val fExp = 0xFF shl 23
+            val fFrac = if (frac != 0L) 0x0040_0000 else 0
+            return sign or fExp or fFrac
+        }
+        if (exp == 0) {
+            if (frac == 0L) return sign // signed zero
+            // subnormal double: normalize mantissa
+            var m = frac
+            var eUnb = -1022
+            while ((m and (1L shl 52)) == 0L) {
+                m = m shl 1
+                eUnb -= 1
+            }
+            // Now treat as normal with m having implicit 1 at bit 52
+            return packDoubleToFloat(sign, eUnb, m and ((1L shl 52) - 1))
+        }
+        // normal
+        val eUnb = exp - 1023
+        val m = (1L shl 52) or frac
+        return packDoubleToFloat(sign, eUnb, m and ((1L shl 52) - 1))
+    }
+
+    private fun packDoubleToFloat(sign: Int, eUnb: Int, mantNoImplicit: Long): Int {
+        // m = implicit1<<52 | mantNoImplicit already accounted by caller
+        var m = mantNoImplicit or (1L shl 52)
+        var E = eUnb + 127
+        // Normal range
+        if (E >= 0xFF) return sign or (0xFF shl 23) // overflow -> inf
+        if (E > 0) {
+            // shift right by 29 to get 24-bit (1+23) with rounding
+            val shift = 52 - 23 // 29
+            val mant24 = (m ushr shift).toInt()
+            val rem = m and ((1L shl shift) - 1)
+            val guard = (rem ushr (shift - 1)) and 1L
+            val sticky = rem and ((1L shl (shift - 1)) - 1)
+            var frac = mant24 and FRAC_MASK
+            var expField = E shl 23
+            // rounding
+            if (guard == 1L && (sticky != 0L || (frac and 1) == 1)) {
+                frac += 1
+                if (frac > FRAC_MASK) {
+                    // carry into implicit bit
+                    frac = 0
+                    E += 1
+                    if (E >= 0xFF) return sign or (0xFF shl 23)
+                    expField = E shl 23
+                }
+            }
+            return sign or expField or frac
+        }
+        // Subnormal or underflow
+        // shift = 30 - E (see derivation); E <= 0
+        val shift = 30 - E
+        if (shift >= 53) return sign // underflow to zero
+        var mant = (m ushr (shift)).toInt()
+        val rem = m and ((1L shl shift) - 1)
+        val guard = (rem ushr (shift - 1)) and 1L
+        val sticky = rem and ((1L shl (shift - 1)) - 1)
+        var frac = mant and FRAC_MASK
+        if (guard == 1L && (sticky != 0L || (frac and 1) == 1)) {
+            frac += 1
+            if (frac > FRAC_MASK) {
+                // becomes smallest normal
+                return sign or (1 shl 23) // exp=1, frac=0 with sign already applied later; adjust:
+            }
+        }
+        return sign or frac
+    }
     // sqrtf: IEEE‑754 sqrt for float32 using LLVM libc FPUtil algorithm
     fun sqrtBits(aBits: Int): Int {
         val sign = aBits and SIGN_MASK
