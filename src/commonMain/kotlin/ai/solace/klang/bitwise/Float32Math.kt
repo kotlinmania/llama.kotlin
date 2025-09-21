@@ -89,6 +89,89 @@ object Float32Math {
         return ((exp and 0xFF) shl 23) or frac
     }
 
+    // sqrtf: IEEE‑754 sqrt for float32 using LLVM libc FPUtil algorithm
+    fun sqrtBits(aBits: Int): Int {
+        val sign = aBits and SIGN_MASK
+        val exp = (aBits ushr 23) and 0xFF
+        val frac = aBits and FRAC_MASK
+
+        // NaN / Inf ladder
+        if (exp == 0xFF) {
+            return if (frac != 0) {
+                // NaN -> canonical qNaN
+                CANONICAL_NAN
+            } else {
+                // Infinity
+                if (sign != 0) CANONICAL_NAN else aBits // -Inf -> NaN, +Inf -> +Inf
+            }
+        }
+        // Zeros: preserve sign of zero
+        if ((aBits and 0x7FFFFFFF.toInt()) == 0) return aBits
+        // Negative inputs (non-zero): NaN
+        if (sign != 0) return CANONICAL_NAN
+
+        // Extract unbiased exponent and mantissa
+        var xExp = exp - EXP_BIAS
+        var xMant = frac.toUInt()
+        val One: UInt = (1u shl 23)
+
+        // Normalize subnormals and add hidden bit for normals
+        if (exp == 0) {
+            // For subnormals, set exponent to the position of the implicit 1 then normalize mantissa
+            xExp += 1 // let xExp be the correct exponent of One bit before normalize
+            // Shift mantissa until implicit bit appears
+            // Equivalent to internal::normalize<float>(xExp, xMant)
+            var m = xMant
+            // Binary search steps not necessary; simple loop is fine here
+            while (m < One) {
+                m = m shl 1
+                xExp -= 1
+            }
+            xMant = m
+        } else {
+            xMant = xMant or One
+        }
+
+        // Ensure exponent is even. If odd, shift mantissa left by 1 and decrement exponent.
+        if ((xExp and 1) != 0) {
+            xExp -= 1
+            xMant = xMant shl 1
+        }
+
+        // Shift‑and‑add square root for mantissa in fixed‑point (1.xx with One as 1.0)
+        var y: UInt = One // y starts at 1.0 in fixed point
+        var r: UInt = (xMant - One) // initial residue
+        var current = One shr 1
+        while (current != 0u) {
+            r = r shl 1
+            val tmp = (y shl 1) + current // 2*y(n-1) + 2^(-n-1)
+            if (r >= tmp) {
+                r -= tmp
+                y += current
+            }
+            current = current shr 1
+        }
+        // Extra iteration for rounding decision
+        val lsb = (y and 1u) != 0u
+        var rb = false
+        r = r shl 2
+        var tmp = (y shl 2) + 1u
+        if (r >= tmp) {
+            r -= tmp
+            rb = true
+        }
+
+        // Pack exponent (divide by 2 and bias)
+        val outExp = ((xExp shr 1) + EXP_BIAS) and 0xFF
+        var outMant: UInt = (y - One) // remove hidden bit
+        var outBits = ((outExp shl 23) or (outMant.toInt() and FRAC_MASK))
+        // Round to nearest, ties‑to‑even
+        if (rb && (lsb || (r != 0u))) {
+            outBits += 1
+        }
+        return outBits
+    }
+
     fun mulBits(aBits: Int, bBits: Int): Int {
         val aExponent = (aBits ushr 23) and 0xFF
         val bExponent = (bBits ushr 23) and 0xFF
