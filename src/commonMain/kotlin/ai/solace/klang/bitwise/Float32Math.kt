@@ -1,4 +1,4 @@
-package ai.solace.zlib.bitwise
+package ai.solace.klang.bitwise
 
 import kotlin.math.abs
 
@@ -15,12 +15,15 @@ object Float32Math {
     private const val TYPE_WIDTH = 24 + 3 // 24 significand bits plus R/G/S
 
     private const val CANONICAL_NAN = 0x7FC00000.toInt()
+    private val SHIFT64 = BitShiftEngine(BitShiftMode.ARITHMETIC, 64)
 
     fun mul(a: Float, b: Float): Float = Float.fromBits(mulBits(a.toRawBits(), b.toRawBits()))
 
     fun add(a: Float, b: Float): Float = Float.fromBits(addBits(a.toRawBits(), b.toRawBits()))
 
     fun sub(a: Float, b: Float): Float = Float.fromBits(subBits(a.toRawBits(), b.toRawBits()))
+
+    fun div(a: Float, b: Float): Float = Float.fromBits(divBits(a.toRawBits(), b.toRawBits()))
 
     fun mulBits(aBits: Int, bBits: Int): Int {
         val aExp = (aBits ushr 23) and 0xFF
@@ -218,8 +221,8 @@ object Float32Math {
         val align = aExp - bExp
         if (align != 0) {
             if (align < TYPE_WIDTH) {
-                val sticky = ((bSig shl (TYPE_WIDTH - align)) != 0L)
-                bSig = (bSig ushr align) or if (sticky) 1L else 0L
+                val sticky = (SHIFT64.leftShift(bSig, TYPE_WIDTH - align).value != 0L)
+                bSig = SHIFT64.rightShift(bSig, align).value or if (sticky) 1L else 0L
             } else {
                 bSig = 1 // sticky only
             }
@@ -229,13 +232,9 @@ object Float32Math {
             aSig -= bSig
             if (aSig == 0L) return 0 // +0 on exact cancel
             val threshold = (IMPLICIT_BIT.toLong() shl 3)
-            if (aSig < threshold) {
-                // left-normalize
-                var shift = (aSig.countLeadingZeroBits() - threshold.countLeadingZeroBits())
-                if (shift > 0) {
-                    aSig = aSig shl shift
-                    aExp -= shift
-                }
+            while ((aSig and threshold) == 0L && aExp > 0) {
+                aSig = aSig shl 1
+                aExp -= 1
             }
         } else {
             aSig += bSig
@@ -253,8 +252,8 @@ object Float32Math {
         // Subnormal before rounding
         if (aExp <= 0) {
             val shift = 1 - aExp
-            val sticky = if (shift < TYPE_WIDTH) ((aSig shl (TYPE_WIDTH - shift)) != 0L) else (aSig != 0L)
-            aSig = (aSig ushr shift) or (if (sticky) 1L else 0L)
+            val sticky = if (shift < TYPE_WIDTH) (SHIFT64.leftShift(aSig, TYPE_WIDTH - shift).value != 0L) else (aSig != 0L)
+            aSig = SHIFT64.rightShift(aSig, shift).value or (if (sticky) 1L else 0L)
             aExp = 0
         }
 
@@ -281,6 +280,185 @@ object Float32Math {
     fun subBits(aBits: Int, bBits: Int): Int {
         val flipped = bBits xor SIGN_MASK
         return addBits(aBits, flipped)
+    }
+
+    // IEEE-754 float32 divide (nearest, ties-to-even), transliterated in spirit from
+    // compiler-rt fp_div_impl.inc. Uses 24-bit significands with an extra R/G/S lane (<<3).
+    fun divBits(aBits: Int, bBits: Int): Int {
+        val aSign = aBits and SIGN_MASK
+        val bSign = bBits and SIGN_MASK
+        val sign = aSign xor bSign
+
+        val aAbs = aBits and 0x7FFFFFFF.toInt()
+        val bAbs = bBits and 0x7FFFFFFF.toInt()
+
+        val aExp = (aBits ushr 23) and 0xFF
+        val bExp = (bBits ushr 23) and 0xFF
+        val aFrac = aBits and FRAC_MASK
+        val bFrac = bBits and FRAC_MASK
+
+        // NaNs
+        val aNaN = aExp == 0xFF && aFrac != 0
+        val bNaN = bExp == 0xFF && bFrac != 0
+        if (aNaN) return (aBits or 0x00400000)
+        if (bNaN) return (bBits or 0x00400000)
+
+        // Infinities and zeros
+        val aInf = aExp == 0xFF && aFrac == 0
+        val bInf = bExp == 0xFF && bFrac == 0
+        val aZero = aExp == 0 && aFrac == 0
+        val bZero = bExp == 0 && bFrac == 0
+
+        // Cases
+        if (aInf && bInf) return CANONICAL_NAN
+        if (aInf) return sign or EXP_MASK
+        if (bInf) return sign // zero with sign
+        if (aZero && bZero) return CANONICAL_NAN
+        if (bZero) return sign or EXP_MASK
+        if (aZero) return sign // signed zero
+
+        // Normalize significands
+        var ea = aExp
+        var eb = bExp
+        var sa = aFrac.toLong()
+        var sb = bFrac.toLong()
+        if (ea == 0) {
+            val norm = normalizeSig(sa)
+            sa = norm.first
+            ea = norm.second
+        }
+        if (eb == 0) {
+            val norm = normalizeSig(sb)
+            sb = norm.first
+            eb = norm.second
+        }
+
+        // Add implicit bit
+        sa = sa or IMPLICIT_BIT.toLong()
+        sb = sb or IMPLICIT_BIT.toLong()
+
+        // Compute exponent; adjust if mantissa ratio < 1 (sa < sb)
+        var exp = ea - eb + EXP_BIAS
+        if (sa < sb) exp -= 1
+
+        // Produce 27-bit quotient (24+R/G/S) by scaling numerator
+        // q = ((sa << (3+24)) / sb), so that top 24+3 bits are in quotient
+        val SHIFT_NUM = 27 // 24 + 3
+        var num = sa shl SHIFT_NUM
+        var quo = if (sb != 0L) num / sb else 0L
+        var rem = if (sb != 0L) num % sb else 0L
+
+        // Normalize quotient around [IMPLICIT_BIT<<3, (IMPLICIT_BIT<<4))
+        val topThreshold = (IMPLICIT_BIT.toLong() shl 3)
+        if (quo > (topThreshold shl 1)) {
+            // Too large: shift right one, increment exponent
+            val sticky = (quo and 1L) != 0L || rem != 0L
+            quo = (quo ushr 1) or if (sticky) 1L else 0L
+            exp += 1
+        } else if (quo < topThreshold) {
+            // Too small: shift left until threshold reached, decrement exponent
+            while (quo < topThreshold) {
+                quo = quo shl 1
+                exp -= 1
+            }
+        }
+
+        // Handle overflow
+        if (exp >= 0xFF) return sign or EXP_MASK
+        // Subnormal pack before rounding
+        if (exp <= 0) {
+            val shift = 1 - exp
+            val sticky = SHIFT64.leftShift(quo, shift).value != 0L || rem != 0L
+            quo = SHIFT64.rightShift(quo, shift).value or if (sticky) 1L else 0L
+            exp = 0
+        }
+
+        // Rounding (nearest, ties-to-even) using R/G/S
+        val rgs = (quo and 0x7).toInt()
+        var result = ((quo ushr 3) and FRAC_MASK.toLong()).toInt()
+        result = result or (exp shl 23)
+        result = result or sign
+        // Merge remainder into sticky for rounding decision
+        val more = if (rem != 0L) 1 else 0
+        val rgsAdj = rgs or more
+        if (rgsAdj > 0x4) {
+            result += 1
+        } else if (rgsAdj == 0x4) {
+            if ((result and 1) != 0) result += 1
+        }
+        // Handle rounding overflow
+        if ((result and EXP_MASK) == EXP_MASK && (result and FRAC_MASK) == 0) {
+            return (sign or EXP_MASK)
+        }
+        return result
+    }
+
+    // ---- Classification and utility ops ----
+    fun isNaNBits(bits: Int): Boolean {
+        val exp = bits and EXP_MASK
+        val frac = bits and FRAC_MASK
+        return exp == EXP_MASK && frac != 0
+    }
+
+    fun isInfBits(bits: Int): Boolean = (bits and EXP_MASK) == EXP_MASK && (bits and FRAC_MASK) == 0
+
+    fun isZeroBits(bits: Int): Boolean = (bits and 0x7FFFFFFF.toInt()) == 0
+
+    fun isNegativeBits(bits: Int): Boolean = (bits and SIGN_MASK) != 0
+
+    fun isSubnormalBits(bits: Int): Boolean {
+        val exp = (bits and EXP_MASK) ushr 23
+        val frac = bits and FRAC_MASK
+        return exp == 0 && frac != 0
+    }
+
+    fun isNormalBits(bits: Int): Boolean {
+        val exp = (bits and EXP_MASK) ushr 23
+        return exp in 1..254
+    }
+
+    fun isSignalingNaNBits(bits: Int): Boolean {
+        val exp = (bits and EXP_MASK) ushr 23
+        val frac = bits and FRAC_MASK
+        val quietBit = 0x00400000
+        return exp == 0xFF && frac != 0 && (frac and quietBit) == 0
+    }
+
+    fun copysign(a: Float, b: Float): Float = Float.fromBits(copysignBits(a.toRawBits(), b.toRawBits()))
+
+    fun copysignBits(aBits: Int, bBits: Int): Int = (aBits and 0x7FFFFFFF.toInt()) or (bBits and SIGN_MASK)
+
+    fun fmin(a: Float, b: Float): Float = Float.fromBits(fminBits(a.toRawBits(), b.toRawBits()))
+    fun fmax(a: Float, b: Float): Float = Float.fromBits(fmaxBits(a.toRawBits(), b.toRawBits()))
+
+    fun fminBits(aBits: Int, bBits: Int): Int {
+        val aNaN = isNaNBits(aBits)
+        val bNaN = isNaNBits(bBits)
+        if (aNaN && bNaN) return CANONICAL_NAN
+        if (aNaN) return bBits
+        if (bNaN) return aBits
+        if (isZeroBits(aBits) && isZeroBits(bBits)) {
+            // If either is negative zero, return negative zero
+            return if (isNegativeBits(aBits or bBits)) SIGN_MASK else 0
+        }
+        val a = Float.fromBits(aBits)
+        val b = Float.fromBits(bBits)
+        return if (a < b) aBits else bBits
+    }
+
+    fun fmaxBits(aBits: Int, bBits: Int): Int {
+        val aNaN = isNaNBits(aBits)
+        val bNaN = isNaNBits(bBits)
+        if (aNaN && bNaN) return CANONICAL_NAN
+        if (aNaN) return bBits
+        if (bNaN) return aBits
+        if (isZeroBits(aBits) && isZeroBits(bBits)) {
+            // If either is positive zero, return positive zero
+            return if (!isNegativeBits(aBits and bBits)) 0 else SIGN_MASK
+        }
+        val a = Float.fromBits(aBits)
+        val b = Float.fromBits(bBits)
+        return if (a > b) aBits else bBits
     }
     private fun normalizeSig(fracIn: Long): Pair<Long, Int> {
         var sig = fracIn

@@ -1,5 +1,5 @@
 @file:Suppress("unused", "UNUSED_PARAMETER")
-package ai.solace.zlib.bitwise
+package ai.solace.klang.bitwise
 
 /**
  * BitShiftEngine - Unified interface for bit shift operations with configurable implementation

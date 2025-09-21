@@ -1,4 +1,4 @@
-package ai.solace.zlib.bitwise
+package ai.solace.klang.bitwise
 
 import kotlin.concurrent.Volatile
 

@@ -1,7 +1,7 @@
 @file:Suppress("unused", "UNUSED_PARAMETER")
-package ai.solace.zlib.bitwise
+package ai.solace.klang.bitwise
 
-import ai.solace.zlib.common.ZlibLogger
+import ai.solace.klang.common.ZlibLogger
 
 /**
  * ArithmeticBitwiseOps - Configurable arithmetic-only bitwise operations for cross-platform compatibility

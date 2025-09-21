@@ -1,4 +1,4 @@
-package ai.solace.zlib.bitwise
+package ai.solace.klang.bitwise
 
 import kotlin.math.abs
 import kotlin.jvm.JvmInline
@@ -22,17 +22,47 @@ value class CFloat32 private constructor(private val bits: Int) {
 
     operator fun unaryMinus(): CFloat32 = fromFloat(-value)
 
-    operator fun plus(other: CFloat32): CFloat32 = binary("plus", other.bits) { a, b -> a + b }
+    operator fun plus(other: CFloat32): CFloat32 {
+        val resBits = Float32Math.addBits(this.bits, other.bits)
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("plus", bits, other.bits, wrapped.bits)
+        return wrapped
+    }
 
-    operator fun plus(other: Float): CFloat32 = unary("plusF", other) { a, b -> a + b }
+    operator fun plus(other: Float): CFloat32 {
+        val resBits = Float32Math.addBits(this.bits, other.toRawBits())
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("plusF", bits, other.toRawBits(), wrapped.bits)
+        return wrapped
+    }
 
-    operator fun minus(other: CFloat32): CFloat32 = binary("minus", other.bits) { a, b -> a - b }
+    operator fun minus(other: CFloat32): CFloat32 {
+        val resBits = Float32Math.subBits(this.bits, other.bits)
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("minus", bits, other.bits, wrapped.bits)
+        return wrapped
+    }
 
-    operator fun minus(other: Float): CFloat32 = unary("minusF", other) { a, b -> a - b }
+    operator fun minus(other: Float): CFloat32 {
+        val resBits = Float32Math.subBits(this.bits, other.toRawBits())
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("minusF", bits, other.toRawBits(), wrapped.bits)
+        return wrapped
+    }
 
-    operator fun times(other: CFloat32): CFloat32 = binary("times", other.bits) { a, b -> a * b }
+    operator fun times(other: CFloat32): CFloat32 {
+        val resBits = Float32Math.mulBits(this.bits, other.bits)
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("times", bits, other.bits, wrapped.bits)
+        return wrapped
+    }
 
-    operator fun times(other: Float): CFloat32 = unary("timesF", other) { a, b -> a * b }
+    operator fun times(other: Float): CFloat32 {
+        val resBits = Float32Math.mulBits(this.bits, other.toRawBits())
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("timesF", bits, other.toRawBits(), wrapped.bits)
+        return wrapped
+    }
 
     // Bit-true float32 multiply using software IEEE-754 rounding.
     fun timesExact(other: CFloat32): CFloat32 {
@@ -63,9 +93,19 @@ value class CFloat32 private constructor(private val bits: Int) {
         return wrapped
     }
 
-    operator fun div(other: CFloat32): CFloat32 = binary("div", other.bits) { a, b -> a / b }
+    operator fun div(other: CFloat32): CFloat32 {
+        val resBits = Float32Math.divBits(this.bits, other.bits)
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("div", bits, other.bits, wrapped.bits)
+        return wrapped
+    }
 
-    operator fun div(other: Float): CFloat32 = unary("divF", other) { a, b -> a / b }
+    operator fun div(other: Float): CFloat32 {
+        val resBits = Float32Math.divBits(this.bits, other.toRawBits())
+        val wrapped = fromBits(resBits)
+        CFloatTrace.log("divF", bits, other.toRawBits(), wrapped.bits)
+        return wrapped
+    }
 
     fun abs(): CFloat32 = unary("abs", null) { a, _ -> abs(a) }
 

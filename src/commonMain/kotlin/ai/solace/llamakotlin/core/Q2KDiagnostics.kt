@@ -1,6 +1,6 @@
 package ai.solace.llamakotlin.core
 
-import ai.solace.zlib.bitwise.CFloatTrace
+import ai.solace.klang.bitwise.CFloatTrace
 
 internal object Q2KDiagnosticsRecorder {
     data class SubBlockEntry(

@@ -1,6 +1,6 @@
 @file:Suppress("ktlint:standard:property-naming")
 
-package ai.solace.zlib.common
+package ai.solace.klang.common
 
 import java.io.File
 import java.time.LocalDateTime

@@ -1,6 +1,6 @@
 @file:Suppress("unused", "UNUSED_PARAMETER", "ktlint:standard:indent")
 
-package ai.solace.zlib.bitwise
+package ai.solace.klang.bitwise
 
 /**
  * BitwiseOps - A library for efficient bitwise operations in Kotlin Multiplatform

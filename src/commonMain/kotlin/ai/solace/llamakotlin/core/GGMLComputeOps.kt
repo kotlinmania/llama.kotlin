@@ -9,10 +9,10 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
 import ai.solace.llamakotlin.core.simd.GGMLSimd
-import ai.solace.zlib.bitwise.BitShiftEngine
-import ai.solace.zlib.bitwise.BitShiftMode
-import ai.solace.zlib.bitwise.BitwiseOps
-import ai.solace.zlib.bitwise.DoubleDouble
+import ai.solace.klang.bitwise.BitShiftEngine
+import ai.solace.klang.bitwise.BitShiftMode
+import ai.solace.klang.bitwise.BitwiseOps
+import ai.solace.klang.bitwise.DoubleDouble
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.round
@@ -2505,15 +2505,15 @@ private fun makeQkx2QuantsRef(
         if (minIndex == 12 && step == 0) {
             println("sumW=${sumW.hi}+${sumW.lo} sumL=${sumL.hi}+${sumL.lo} sumL2=${sumL2.hi}+${sumL2.lo}")
         }
-        val denominatorDD = ai.solace.zlib.bitwise.DoubleDouble.fms(sumW, sumL2, sumL, sumL)
+        val denominatorDD = ai.solace.klang.bitwise.DoubleDouble.fms(sumW, sumL2, sumL, sumL)
         if (minIndex == 12 && step == 0) {
             println("denDD hi=${denominatorDD.hi} lo=${denominatorDD.lo}")
         }
         val denominator = denominatorDD.toDouble()
         if (denominator <= 0.0) continue
 
-        var scaleCand = ai.solace.zlib.bitwise.DoubleDouble.fms(sumW, sumXL, sumX, sumL).toDouble() / denominator
-        var minCand = ai.solace.zlib.bitwise.DoubleDouble.fms(sumL2, sumX, sumL, sumXL).toDouble() / denominator
+        var scaleCand = ai.solace.klang.bitwise.DoubleDouble.fms(sumW, sumXL, sumX, sumL).toDouble() / denominator
+        var minCand = ai.solace.klang.bitwise.DoubleDouble.fms(sumL2, sumX, sumL, sumXL).toDouble() / denominator
         if (minCand > 0.0) {
             minCand = 0.0
             scaleCand = sumXL.toDouble() / sumL2.toDouble()
@@ -2660,8 +2660,8 @@ private fun makeQkx2QuantsCFloat(
 ): Q2QuantStats {
     var minVal = x[xOffset]
     var maxVal = minVal
-        var sumW = ai.solace.zlib.bitwise.CFloat32.fromFloat(weights[0])
-        var sumX = ai.solace.zlib.bitwise.CFloat32.ZERO
+        var sumW = ai.solace.klang.bitwise.CFloat32.fromFloat(weights[0])
+        var sumX = ai.solace.klang.bitwise.CFloat32.ZERO
     for (i in 1 until n) {
         val xi = x[xOffset + i]
         if (xi < minVal) minVal = xi
@@ -2670,7 +2670,7 @@ private fun makeQkx2QuantsCFloat(
         sumW = sumW + w
         // sumX += (w * xi) using separate mul then add (C-like)
         run {
-            val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(xi)
+            val prod = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(xi)
             sumX = sumX + prod
         }
     }
@@ -2683,7 +2683,7 @@ private fun makeQkx2QuantsCFloat(
 
     var iscale = nmax.toFloat() / (maxVal - minVal)
     var scale = (1f / iscale)
-    var bestMetric = ai.solace.zlib.bitwise.CFloat32.fromFloat(0f)
+    var bestMetric = ai.solace.klang.bitwise.CFloat32.fromFloat(0f)
     for (i in 0 until n) {
         val xi = x[xOffset + i]
         val l = nearestIntFloat(iscale * (xi - minVal)).coerceIn(0, nmax)
@@ -2702,9 +2702,9 @@ private fun makeQkx2QuantsCFloat(
 
     for (step in 0..nstep) {
         iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
-        var sumL = ai.solace.zlib.bitwise.CFloat32.ZERO
-        var sumL2 = ai.solace.zlib.bitwise.CFloat32.ZERO
-        var sumXL = ai.solace.zlib.bitwise.CFloat32.ZERO
+        var sumL = ai.solace.klang.bitwise.CFloat32.ZERO
+        var sumL2 = ai.solace.klang.bitwise.CFloat32.ZERO
+        var sumXL = ai.solace.klang.bitwise.CFloat32.ZERO
         for (i in 0 until n) {
             val xi = x[xOffset + i]
             var l = nearestIntFloat(iscale * (xi - minVal))
@@ -2714,28 +2714,28 @@ private fun makeQkx2QuantsCFloat(
             val lf = l.toFloat()
             // sumL += (w * l)
             run {
-                val prod = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(lf)
+                val prod = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(lf)
                 sumL = sumL + prod
             }
             // sumL2 += (w * (l*l)) with l*l in integer then converted
             run {
                 val l2i = l * l
-                val prod2 = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(l2i.toFloat())
+                val prod2 = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(l2i.toFloat())
                 sumL2 = sumL2 + prod2
             }
             // sumXL += ((w * l) * x)
             run {
-                val wl = ai.solace.zlib.bitwise.CFloat32.fromFloat(w).timesExact(lf)
+                val wl = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(lf)
                 val wlx = wl.timesExact(xi)
                 sumXL = sumXL + wlx
             }
         }
         // Denominator in float32: (sum_w * sum_l2) - (sum_l * sum_l)
-        val pA = ai.solace.zlib.bitwise.CFloat32.fromBits(
-            ai.solace.zlib.bitwise.Float32Math.mulBits(sumW.toBits(), sumL2.toBits())
+        val pA = ai.solace.klang.bitwise.CFloat32.fromBits(
+            ai.solace.klang.bitwise.Float32Math.mulBits(sumW.toBits(), sumL2.toBits())
         )
-        val pB = ai.solace.zlib.bitwise.CFloat32.fromBits(
-            ai.solace.zlib.bitwise.Float32Math.mulBits(sumL.toBits(), sumL.toBits())
+        val pB = ai.solace.klang.bitwise.CFloat32.fromBits(
+            ai.solace.klang.bitwise.Float32Math.mulBits(sumL.toBits(), sumL.toBits())
         )
         var D = (pA - pB).toFloat()
         var useDoubleDen = false
@@ -2747,11 +2747,11 @@ private fun makeQkx2QuantsCFloat(
                 if ((lAux[ii].toInt() and 0xFF) != first) { allEq = false; break }
             }
             if (allEq) {
-                val ddd = ai.solace.zlib.bitwise.DoubleDouble.fms(
-                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumW.toFloat()),
-                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumL2.toFloat()),
-                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumL.toFloat()),
-                    ai.solace.zlib.bitwise.DoubleDouble.fromFloat(sumL.toFloat())
+                val ddd = ai.solace.klang.bitwise.DoubleDouble.fms(
+                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumW.toFloat()),
+                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumL2.toFloat()),
+                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumL.toFloat()),
+                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumL.toFloat())
                 )
                 Ddouble = ddd.toDouble()
                 if (Ddouble > 0.0) {
@@ -2765,13 +2765,13 @@ private fun makeQkx2QuantsCFloat(
         }
         if (D > 0f || useDoubleDen) {
             val nScaleF = run {
-                val a = ai.solace.zlib.bitwise.Float32Math.mul(sumW.toFloat(), sumXL.toFloat())
-                val b = ai.solace.zlib.bitwise.Float32Math.mul(sumX.toFloat(), sumL.toFloat())
+                val a = ai.solace.klang.bitwise.Float32Math.mul(sumW.toFloat(), sumXL.toFloat())
+                val b = ai.solace.klang.bitwise.Float32Math.mul(sumX.toFloat(), sumL.toFloat())
                 (a - b)
             }
             val nMinF = run {
-                val a = ai.solace.zlib.bitwise.Float32Math.mul(sumL2.toFloat(), sumX.toFloat())
-                val b = ai.solace.zlib.bitwise.Float32Math.mul(sumL.toFloat(), sumXL.toFloat())
+                val a = ai.solace.klang.bitwise.Float32Math.mul(sumL2.toFloat(), sumX.toFloat())
+                val b = ai.solace.klang.bitwise.Float32Math.mul(sumL.toFloat(), sumXL.toFloat())
                 (a - b)
             }
             val nScale = nScaleF
@@ -2786,7 +2786,7 @@ private fun makeQkx2QuantsCFloat(
                 minCand = 0f
                 scaleCand = sumXL.toFloat() / sumL2.toFloat()
             }
-            var metric = ai.solace.zlib.bitwise.CFloat32.ZERO
+            var metric = ai.solace.klang.bitwise.CFloat32.ZERO
             for (i in 0 until n) {
                 val xi = x[xOffset + i]
                 val li = (lAux[i].toInt() and 0xFF).toFloat()
