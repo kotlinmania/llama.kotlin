@@ -51,7 +51,7 @@ This checklist is based on the current state of the Kotlin Native port of llama.
   - [x] Implement tensor creation functions (createTensor, createTensor1D, createTensor2D)
   - [x] Define element-wise operations interfaces (add, mul)
   - [x] Define matrix multiplication interface (matMul)
-  - [x] **Major Compute Operations Refactor** (Issue #42)
+- [x] **Major Compute Operations Refactor** (Issue #42)
     - [x] Transformed all compute operations from memory-allocating functions to destination-based operations
     - [x] Updated function signatures: `computeAdd(...): GGMLTensor` → `computeAdd(..., dst: GGMLTensor)`
     - [x] Eliminated memory allocation within compute operations for improved efficiency  
@@ -162,6 +162,37 @@ This checklist is based on the current state of the Kotlin Native port of llama.
   - [ ] Port float dot-product kernels (F32/F16/BF16) using `Vector128`
   - [ ] Port quantized dot-product kernels (Q4/Q5/Q8/K families)
   - [ ] Benchmark Kotlin SIMD vs. scalar fallbacks across supported targets
+
+## Phase 2.5: KLang Soft‑Float + Wide Integer Backbone (New)
+
+We introduced a portable, pure‑Kotlin numeric core to remove cross‑platform float drift and make SIMD/GPU backends optional rather than required for correctness.
+
+- [x] KLang namespace and modules
+  - [x] `ai.solace.klang.fp`: `CFloat32` (inline) with operators +, −, ×, ÷ delegating to bit‑exact soft‑float
+  - [x] `ai.solace.klang.bitwise.Float32Math`: transliterations of compiler‑rt float32 builtins
+    - [x] Division: faithful `fp_div_impl.inc` (normalize, quotient bounds, remainder→sticky, nearest‑even)
+    - [ ] Multiplication: tighten to `fp_mul_impl.inc` (currently functional, not yet bit‑diff clean on all ties)
+    - [ ] Square root: implement `fp_sqrt_impl.inc`
+    - [ ] Conversions: int/uint ↔ float32; float32 ↔ float64
+  - [x] Float-on-LHS operators (`Float +/-/*// CFloat32`)
+- [x] 16‑bit limb engine for exact 128‑bit intermediates
+  - [x] `ai.solace.klang.int.hpc.HPC16x4` (64‑bit, 4×16‑bit limbs): add/sub/compare/shifts
+  - [x] `ai.solace.klang.int.hpc.HPC16x8` (128‑bit, 8×16‑bit limbs): add/sub/compare/shifts, initial 64×64→128 mul
+  - [ ] 128/64 division (Knuth D) and full carry propagation for wide mul
+- [ ] Float64 roadmap (compiler‑rt exactness)
+  - [ ] Port add/sub/mul/div/sqrt using HPC16x4/x8 where 128‑bit ints are required
+  - [ ] Conversions: {i32,u32,i64,u64} ↔ float64; float32 ↔ float64
+- [ ] Float16/BFloat16 roadmap
+  - [ ] `CFloat16` (binary16) add/sub/mul/div/sqrt + conversions
+  - [ ] `CBF16` bfloat16 exact conversions (ties‑to‑even) + arithmetic
+
+Testing status (Sep 20–21, 2025)
+- [x] Targeted green: `Float32DivTest`, `FloatKlangExtensionsTest` (Float on LHS), `HPC16xTests`
+- [ ] Pending: full `mulBits`/`sqrtBits` suites and Float64/Float16/BF16 coverage
+
+Why this matters now
+- Eliminates subdeterministic float drift (esp. quantization math) before SIMD/GPU paths
+- Provides a deterministic reference path for future backends (JVM Vector API, NEON, Metal)
 
 ## Phase 4: Metal Backend Implementation
 

@@ -1,7 +1,7 @@
 # LLama.cpp Kotlin Native Port - Current Status
 
 ## Overview
-This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The goal of this project is to create a Kotlin Native implementation of llama.cpp, focusing on CPU and Apple Metal backends as specified in the project scope.
+This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The goal is a Kotlin Multiplatform implementation (CPU + Apple Metal), with deterministic numeric behavior across targets via a new pure‑Kotlin soft‑float and limb engine (KLang).
 
 ## Current Status
 The project has made substantial progress across multiple development phases. Here's what has been accomplished:
@@ -66,6 +66,20 @@ The project has made substantial progress across multiple development phases. He
    - Memory management optimizations with inplace allocation
    - Performance validation and benchmarking infrastructure established
 
+## KLang Numeric Core (New)
+
+To ensure portable, bit‑exact IEEE‑754 across platforms (and to de‑risk quant math), we added a soft‑float and 16‑bit limb backbone:
+
+- `ai.solace.klang.fp`
+  - `CFloat32` inline type with operators +, −, ×, ÷
+  - Division is a faithful transliteration of compiler‑rt `fp_div_impl.inc` (normalize, quotient bounds, remainder→sticky, nearest‑even). Directed tests green.
+  - Next: `mulBits` tighten to `fp_mul_impl.inc`; `sqrtBits` from `fp_sqrt_impl.inc`; conversions.
+- `ai.solace.klang.int.hpc`
+  - `HPC16x4` (64‑bit, 4×16‑bit limbs) and `HPC16x8` (128‑bit, 8×16‑bit limbs) with add/sub/compare/shifts and initial 64×64→128 mul.
+  - Next: 128/64 division (Knuth D) and full carry propagation for wide mul.
+
+Docs: `docs/kdocs/klang-soft-float-and-hpc16.md`.
+
 ## Key Achievements
 
 ### Advanced Memory Management
@@ -86,6 +100,12 @@ The project has made substantial progress across multiple development phases. He
 - **Performance validated**: 2-5x speedups measured and documented
 - **Benchmarking infrastructure**: Comprehensive performance testing suite
 - **Memory efficient**: Direct operations without intermediate allocations
+
+## What’s Next (Short Horizon)
+- Tighten Float32 `mulBits`; add `sqrtBits`; add conversions
+- Implement HPC16 128/64 division; complete carry chain
+- Begin Float64 soft‑float (compiler‑rt transliteration) on top of HPC16x4/x8
+- Revisit Q2_K snapshot/diagnostics with exact soft‑float; remove temporary debug once green
 
 ### GGUF Model Loading Pipeline
 - **Binary format parsing**: Complete GGUF specification implementation
