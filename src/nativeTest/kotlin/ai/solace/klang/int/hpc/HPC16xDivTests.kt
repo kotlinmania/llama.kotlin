@@ -68,4 +68,8 @@ class HPC16xDivTests {
             assertTrue(r.toULong() < denU)
         }
     }
+
+    // Note: full Knuth-D randomized property tests will be enabled once the full base-2^16
+    // implementation lands for all divisors. The current division is validated on selected
+    // cases and power-of-two divisors.
 }

@@ -8,6 +8,11 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
 
     fun copy(): HPC16x8 = HPC16x8(limbs.copyOf())
 
+    // Operators for convenience
+    operator fun div(den: HPC16x4): HPC16x4 = divRem(den).first
+    operator fun rem(den: HPC16x4): HPC16x4 = divRem(den).second
+    fun divRem(den: HPC16x4): Pair<HPC16x4, HPC16x4> = div128by64(this, den)
+
     fun limb(i: Int): UShort = limbs[i]
 
     fun add(other: HPC16x8): Pair<HPC16x8, UShort> {
@@ -135,37 +140,61 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
 
         private fun fromULong64(v: ULong): HPC16x4 = HPC16x4.fromULong(v)
 
-        /**
-         * Divide 128-bit numerator by 64-bit divisor, returning 64-bit quotient and remainder.
-         * Precondition: divisor != 0 and hi < divisor (so quotient fits in 64 bits).
-         */
+        /** 128/64 division with bitwise long division under precondition hi < divisor. */
         fun div128by64(num: HPC16x8, den: HPC16x4): Pair<HPC16x4, HPC16x4> {
             val (hi, lo) = hiLoULong(num)
             val d = toULong64(den)
             require(d != 0uL) { "division by zero" }
             require(hi < d) { "128/64 quotient exceeds 64 bits (hi >= divisor)" }
             var rem = 0uL
-            // consume hi bits (do not record quotient bits; they would exceed 64-bit quotient range)
-            var i = 63
-            while (i >= 0) {
+            // accumulate hi bits
+            for (i in 63 downTo 0) {
                 val carry = (hi shr i) and 1uL
-                // rem < d and d >= 2^63 holds in our typical use; but to be safe, do 128-safe step using conditional add without overflow
                 rem = (rem shl 1) or carry
                 if (rem >= d) rem -= d
-                i -= 1
             }
             var q = 0uL
-            i = 63
-            while (i >= 0) {
+            for (i in 63 downTo 0) {
                 val carry = (lo shr i) and 1uL
                 rem = (rem shl 1) or carry
                 if (rem >= d) {
                     rem -= d
                     q = q or (1uL shl i)
                 }
-                i -= 1
             }
             return fromULong64(q) to fromULong64(rem)
+        }
+
+        private fun clz16(xIn: Int): Int {
+            var x = xIn and 0xFFFF
+            if (x == 0) return 16
+            var n = 0
+            var bit = 1 shl 15
+            while ((x and bit) == 0) { n++; bit = bit ushr 1 }
+            return n
+        }
+
+        private fun lshiftBase(a: IntArray, len: Int, s: Int) {
+            if (s == 0) return
+            var carry = 0
+            for (i in 0 until len) {
+                val cur = a[i] and 0xFFFF
+                val v = ((cur shl s) or carry) and 0x1FFFFF
+                a[i] = v and 0xFFFF
+                carry = (cur ushr (16 - s)) and ((1 shl s) - 1)
+            }
+            a[len] = carry and 0xFFFF
+        }
+
+        private fun rshiftBase(a: IntArray, len: Int, s: Int) {
+            if (s == 0) return
+            var carry = 0
+            for (i in len - 1 downTo 0) {
+                val cur = a[i] and 0xFFFF
+                val v = ((cur ushr s) or (carry shl (16 - s))) and 0xFFFF
+                carry = cur and ((1 shl s) - 1)
+                a[i] = v
+            }
         }
     }
 }

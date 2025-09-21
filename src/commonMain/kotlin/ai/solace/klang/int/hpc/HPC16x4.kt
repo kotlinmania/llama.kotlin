@@ -1,10 +1,12 @@
 package ai.solace.klang.int.hpc
 
+import ai.solace.klang.bitwise.ArrayBitShifts
+
 /**
  * HPC16x4: 64-bit unsigned integer stored as 4 little-endian 16-bit limbs.
  * Limb 0 is least significant 16 bits.
  */
-class HPC16x4 private constructor(private val limbs: UShortArray) {
+class HPC16x4 internal constructor(private val limbs: UShortArray) {
     init {
         require(limbs.size == 4)
     }
@@ -59,30 +61,20 @@ class HPC16x4 private constructor(private val limbs: UShortArray) {
     fun shlBits(k: Int): Pair<HPC16x4, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val out = UShortArray(4)
-        var carry = 0u
-        for (i in 0..3) {
-            val cur = limbs[i].toUInt()
-            val v = (cur shl k) or carry
-            out[i] = (v and 0xFFFFu).toUShort()
-            carry = (cur shr (16 - k)) and ((1u shl k) - 1u)
-        }
-        return HPC16x4(out) to carry.toUShort()
+        val out = IntArray(4) { limbs[it].toInt() and 0xFFFF }
+        val res = ArrayBitShifts.shl16LEInPlace(out, 0, 4, k)
+        val arr = UShortArray(4) { i -> (out[i] and 0xFFFF).toUShort() }
+        return HPC16x4(arr) to (res.carryOut and 0xFFFF).toUShort()
     }
 
     /** right shift by k bits, 0 <= k < 16 */
     fun shrBits(k: Int): Pair<HPC16x4, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val out = UShortArray(4)
-        var carry = 0u
-        for (i in 3 downTo 0) {
-            val cur = limbs[i].toUInt()
-            val v = (cur shr k) or (carry shl (16 - k))
-            out[i] = (v and 0xFFFFu).toUShort()
-            carry = cur and ((1u shl k) - 1u)
-        }
-        return HPC16x4(out) to carry.toUShort()
+        val out = IntArray(4) { limbs[it].toInt() and 0xFFFF }
+        val res = ArrayBitShifts.rsh16LEInPlace(out, 0, 4, k)
+        val arr = UShortArray(4) { i -> (out[i] and 0xFFFF).toUShort() }
+        return HPC16x4(arr) to (res.carryOut and 0xFFFF).toUShort()
     }
 
     fun shlWords(words: Int): HPC16x4 {
@@ -105,6 +97,7 @@ class HPC16x4 private constructor(private val limbs: UShortArray) {
 
     companion object {
         fun zero(): HPC16x4 = HPC16x4(ushortArrayOf(0u, 0u, 0u, 0u))
+        fun ofLimbsLE(l0: UShort, l1: UShort, l2: UShort, l3: UShort): HPC16x4 = HPC16x4(ushortArrayOf(l0,l1,l2,l3))
         fun fromULong(v: ULong): HPC16x4 {
             val a = UShortArray(4)
             var x = v
@@ -116,4 +109,3 @@ class HPC16x4 private constructor(private val limbs: UShortArray) {
         }
     }
 }
-
