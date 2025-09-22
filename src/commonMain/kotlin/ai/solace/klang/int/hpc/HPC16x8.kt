@@ -49,29 +49,19 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
     fun shlBits(k: Int): Pair<HPC16x8, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val out = UShortArray(8)
-        var carry = 0u
-        for (i in 0..7) {
-            val cur = limbs[i].toUInt()
-            val v = (cur shl k) or carry
-            out[i] = (v and 0xFFFFu).toUShort()
-            carry = (cur shr (16 - k)) and ((1u shl k) - 1u)
-        }
-        return HPC16x8(out) to carry.toUShort()
+        val arr = IntArray(8) { limbs[it].toInt() and 0xFFFF }
+        val res = ai.solace.klang.bitwise.ArrayBitShifts.shl16LEInPlace(arr, 0, 8, k)
+        val out = UShortArray(8) { i -> (arr[i] and 0xFFFF).toUShort() }
+        return HPC16x8(out) to (res.carryOut and 0xFFFF).toUShort()
     }
 
     fun shrBits(k: Int): Pair<HPC16x8, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val out = UShortArray(8)
-        var carry = 0u
-        for (i in 7 downTo 0) {
-            val cur = limbs[i].toUInt()
-            val v = (cur shr k) or (carry shl (16 - k))
-            out[i] = (v and 0xFFFFu).toUShort()
-            carry = cur and ((1u shl k) - 1u)
-        }
-        return HPC16x8(out) to carry.toUShort()
+        val arr = IntArray(8) { limbs[it].toInt() and 0xFFFF }
+        val res = ai.solace.klang.bitwise.ArrayBitShifts.rsh16LEInPlace(arr, 0, 8, k)
+        val out = UShortArray(8) { i -> (arr[i] and 0xFFFF).toUShort() }
+        return HPC16x8(out) to (res.carryOut and 0xFFFF).toUShort()
     }
 
     fun shlWords(words: Int): HPC16x8 {

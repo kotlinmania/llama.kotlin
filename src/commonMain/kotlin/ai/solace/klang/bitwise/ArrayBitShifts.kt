@@ -7,9 +7,10 @@ package ai.solace.klang.bitwise
  */
 object ArrayBitShifts {
     data class ShiftResult(val carryOut: Int, val sticky: Boolean)
-    private val eng16Native = BitShiftEngine(BitShiftMode.NATIVE, 16)
     private val eng16Arith = BitShiftEngine(BitShiftMode.ARITHMETIC, 16)
     private val eng16 get() = eng16Arith
+    private val a16 = ArithmeticBitwiseOps(16)
+    private val a32 = ArithmeticBitwiseOps.BITS_32
 
     /**
      * In-place left shift of a little-endian IntArray of 16-bit limbs: a[from .. from+len-1].
@@ -23,10 +24,16 @@ object ArrayBitShifts {
         for (i in from until from + len) {
             val cur = (a[i] and 0xFFFF).toLong()
             val rs = eng16.leftShift(cur, s)
-            val low = (rs.value.toInt() and 0xFFFF) or (carry and ((1 shl s) - 1))
-            a[i] = low and 0xFFFF
+            val lowShifted = a16.normalize(rs.value).toInt()
+            // mask = (1 << s) - 1 via arithmetic-only
+            val pow2s = a32.leftShift(1L, s).toInt()
+            val mask = (pow2s - 1).coerceAtLeast(0)
+            val carryLow = if (mask == 0) 0 else (carry % (mask + 1))
+            val combined = BitwiseOps.orArithmetic(lowShifted, carryLow)
+            a[i] = (combined % 65536)
             // bits shifted out from cur become new carry
-            carry = (rs.carry.toInt() and ((1 shl s) - 1))
+            val carryMask = mask
+            carry = if (carryMask == 0) 0 else (rs.carry.toInt() % (carryMask + 1))
         }
         return ShiftResult(carry and 0xFFFF, sticky)
     }
@@ -44,11 +51,17 @@ object ArrayBitShifts {
         for (i in from + len - 1 downTo from) {
             val cur = (a[i] and 0xFFFF).toLong()
             val rs = eng16.unsignedRightShift(cur, s)
-            val out = (rs.value.toInt() and 0xFFFF) or (nextCarry shl (16 - s))
-            val dropped = (cur.toInt() and ((1 shl s) - 1))
+            val lowPart = a16.normalize(rs.value).toInt()
+            // compute nextCarry * 2^(16-s) arithmetically
+            val shiftHi = 16 - s
+            val highPart = if (shiftHi == 0) nextCarry % 65536 else a32.leftShift(nextCarry.toLong(), shiftHi).toInt()
+            val out = BitwiseOps.orArithmeticGeneral(lowPart, highPart)
+            // dropped = cur % 2^s
+            val pow2s = a32.leftShift(1L, s).toInt()
+            val dropped = if (s == 0) 0 else (cur.toInt() % pow2s)
             if (i == from) carryOut = dropped
             sticky = sticky or (dropped != 0)
-            a[i] = out and 0xFFFF
+            a[i] = (out % 65536)
             nextCarry = dropped
         }
         return ShiftResult(carryOut and 0xFFFF, sticky)
