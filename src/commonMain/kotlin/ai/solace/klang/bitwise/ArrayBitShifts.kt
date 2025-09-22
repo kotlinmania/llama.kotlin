@@ -18,6 +18,7 @@ object ArrayBitShifts {
     fun shl16LEInPlace(a: IntArray, from: Int, len: Int, s: Int, carryIn: Int = 0): ShiftResult {
         require(s in 0..15) { "s must be in 0..15" }
         if (len <= 0 || s == 0) return ShiftResult(carryIn and 0xFFFF, false)
+        val before = if (ArrayShiftTrace.enabled) IntArray(len) { a[from + it] and 0xFFFF } else IntArray(0)
         var carry = carryIn and 0xFFFF
         var sticky = false
         for (i in from until from + len) {
@@ -28,7 +29,12 @@ object ArrayBitShifts {
             // bits shifted out from cur become new carry
             carry = (rs.carry.toInt() and ((1 shl s) - 1))
         }
-        return ShiftResult(carry and 0xFFFF, sticky)
+        val res = ShiftResult(carry and 0xFFFF, sticky)
+        if (ArrayShiftTrace.enabled) {
+            val after = IntArray(len) { a[from + it] and 0xFFFF }
+            ArrayShiftTrace.record("shl16", s, from, len, before, after, res.carryOut, res.sticky)
+        }
+        return res
     }
 
     /**
@@ -38,6 +44,7 @@ object ArrayBitShifts {
     fun rsh16LEInPlace(a: IntArray, from: Int, len: Int, s: Int): ShiftResult {
         require(s in 0..15) { "s must be in 0..15" }
         if (len <= 0 || s == 0) return ShiftResult(0, false)
+        val before = if (ArrayShiftTrace.enabled) IntArray(len) { a[from + it] and 0xFFFF } else IntArray(0)
         var nextCarry = 0
         var sticky = false
         var carryOut = 0
@@ -51,24 +58,39 @@ object ArrayBitShifts {
             a[i] = out and 0xFFFF
             nextCarry = dropped
         }
-        return ShiftResult(carryOut and 0xFFFF, sticky)
+        val res = ShiftResult(carryOut and 0xFFFF, sticky)
+        if (ArrayShiftTrace.enabled) {
+            val after = IntArray(len) { a[from + it] and 0xFFFF }
+            ArrayShiftTrace.record("rsh16", s, from, len, before, after, res.carryOut, res.sticky)
+        }
+        return res
     }
 
     /** Word-shift (multiple of 16 bits) left in-place for 16-bit limbs. */
     fun shl16LEWordsInPlace(a: IntArray, from: Int, len: Int, words: Int) {
         if (words <= 0) return
+        val before = if (ArrayShiftTrace.enabled) IntArray(len) { a[from + it] and 0xFFFF } else IntArray(0)
         for (i in (from + len - 1) downTo (from + words)) {
             a[i] = a[i - words] and 0xFFFF
         }
         for (i in from until from + words) a[i] = 0
+        if (ArrayShiftTrace.enabled) {
+            val after = IntArray(len) { a[from + it] and 0xFFFF }
+            ArrayShiftTrace.record("shl16w", words, from, len, before, after, 0, false)
+        }
     }
 
     /** Word-shift (multiple of 16 bits) right in-place for 16-bit limbs. */
     fun rsh16LEWordsInPlace(a: IntArray, from: Int, len: Int, words: Int) {
         if (words <= 0) return
+        val before = if (ArrayShiftTrace.enabled) IntArray(len) { a[from + it] and 0xFFFF } else IntArray(0)
         for (i in from until from + len - words) {
             a[i] = a[i + words] and 0xFFFF
         }
         for (i in (from + len - words) until (from + len)) a[i] = 0
+        if (ArrayShiftTrace.enabled) {
+            val after = IntArray(len) { a[from + it] and 0xFFFF }
+            ArrayShiftTrace.record("rsh16w", words, from, len, before, after, 0, false)
+        }
     }
 }
