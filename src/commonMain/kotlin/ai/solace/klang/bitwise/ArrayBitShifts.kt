@@ -12,7 +12,8 @@ object ArrayBitShifts {
     private val a16 = ArithmeticBitwiseOps(16)
     private val a32 = ArithmeticBitwiseOps.BITS_32
     private const val BASE16: Int = 65536
-    private const val VECTOR_THRESHOLD: Int = 64
+    // Use vector-friendly 3-pass even for small limb windows like HPC16x8 (8 limbs)
+    private const val VECTOR_THRESHOLD: Int = 8
 
     /**
      * In-place left shift of a little-endian IntArray of 16-bit limbs: a[from .. from+len-1].

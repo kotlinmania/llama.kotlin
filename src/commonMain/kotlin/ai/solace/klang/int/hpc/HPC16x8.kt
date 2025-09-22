@@ -164,27 +164,6 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
             return n
         }
 
-        private fun lshiftBase(a: IntArray, len: Int, s: Int) {
-            if (s == 0) return
-            var carry = 0
-            for (i in 0 until len) {
-                val cur = a[i] and 0xFFFF
-                val v = ((cur shl s) or carry) and 0x1FFFFF
-                a[i] = v and 0xFFFF
-                carry = (cur ushr (16 - s)) and ((1 shl s) - 1)
-            }
-            a[len] = carry and 0xFFFF
-        }
-
-        private fun rshiftBase(a: IntArray, len: Int, s: Int) {
-            if (s == 0) return
-            var carry = 0
-            for (i in len - 1 downTo 0) {
-                val cur = a[i] and 0xFFFF
-                val v = ((cur ushr s) or (carry shl (16 - s))) and 0xFFFF
-                carry = cur and ((1 shl s) - 1)
-                a[i] = v
-            }
-        }
+        // Note: all limb shifts must route through ArrayBitShifts/BitShiftEngine.
     }
 }
