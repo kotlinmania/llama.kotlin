@@ -61,9 +61,10 @@ class HPC16x4 internal constructor(private val limbs: UShortArray) {
     fun shlBits(k: Int): Pair<HPC16x4, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val out = IntArray(4) { limbs[it].toInt() and 0xFFFF }
-        val res = ArrayBitShifts.shl16LEInPlace(out, 0, 4, k)
-        val arr = UShortArray(4) { i -> (out[i] and 0xFFFF).toUShort() }
+        val buf = ai.solace.klang.buffer.LimbBuffer.allocate(4)
+        for (i in 0..3) buf.setU16(i, limbs[i].toInt() and 0xFFFF)
+        val res = ArrayBitShifts.shl16LEInPlace(buf, 0, 4, k)
+        val arr = UShortArray(4) { i -> buf.getU16(i).toUShort() }
         return HPC16x4(arr) to (res.carryOut and 0xFFFF).toUShort()
     }
 
@@ -71,9 +72,10 @@ class HPC16x4 internal constructor(private val limbs: UShortArray) {
     fun shrBits(k: Int): Pair<HPC16x4, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val out = IntArray(4) { limbs[it].toInt() and 0xFFFF }
-        val res = ArrayBitShifts.rsh16LEInPlace(out, 0, 4, k)
-        val arr = UShortArray(4) { i -> (out[i] and 0xFFFF).toUShort() }
+        val buf = ai.solace.klang.buffer.LimbBuffer.allocate(4)
+        for (i in 0..3) buf.setU16(i, limbs[i].toInt() and 0xFFFF)
+        val res = ArrayBitShifts.rsh16LEInPlace(buf, 0, 4, k)
+        val arr = UShortArray(4) { i -> buf.getU16(i).toUShort() }
         return HPC16x4(arr) to (res.carryOut and 0xFFFF).toUShort()
     }
 

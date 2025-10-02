@@ -1,6 +1,6 @@
 @file:Suppress("unused", "UNUSED_PARAMETER", "ktlint:standard:indent")
 
-package ai.solace.klang.bitwise
+package ai.solace.zlib.bitwise
 
 /**
  * BitwiseOps - A library for efficient bitwise operations in Kotlin Multiplatform
@@ -18,16 +18,16 @@ package ai.solace.klang.bitwise
  * This class now integrates with BitShiftEngine for configurable operation modes.
  */
 object BitwiseOps {
-        // Default engines use global mode
-        private val defaultEngine32 get() = BitShiftEngine(BitShiftConfig.defaultMode, 32)
+        // Default engines for common operations (arithmetic-only for portability)
+        private val defaultEngine32 = BitShiftEngine(BitShiftMode.ARITHMETIC, 32)
 
-        @Suppress("unused")
-        private val defaultEngine16 get() = BitShiftEngine(BitShiftConfig.defaultMode, 16)
+        @Suppress("unused") // TODO(detekt): remove if truly unused
+        private val defaultEngine16 = BitShiftEngine(BitShiftMode.ARITHMETIC, 16)
 
-        @Suppress("unused")
-        private val defaultEngine8 get() = BitShiftEngine(BitShiftConfig.defaultMode, 8)
+        @Suppress("unused") // TODO(detekt): remove if truly unused
+        private val defaultEngine8 = BitShiftEngine(BitShiftMode.ARITHMETIC, 8)
 
-        private val defaultEngine64 get() = BitShiftEngine(BitShiftConfig.defaultMode, 64)
+        private val defaultEngine64 = BitShiftEngine(BitShiftMode.ARITHMETIC, 64)
 
         /**
          * Creates a bit mask with the specified number of bits set to 1

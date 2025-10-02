@@ -1,4 +1,6 @@
 package ai.solace.klang.bitwise
+import ai.solace.klang.buffer.LimbBuffer
+import kotlinx.coroutines.*
 
 /**
  * Array-wide bit shifts for limb arrays (little-endian) with optional sticky tracking.
@@ -7,13 +9,17 @@ package ai.solace.klang.bitwise
  */
 object ArrayBitShifts {
     data class ShiftResult(val carryOut: Int, val sticky: Boolean)
-    private val eng16Arith = BitShiftEngine(BitShiftMode.ARITHMETIC, 16)
-    private val eng16 get() = eng16Arith
+    private val eng16 get() = BitShiftEngine(BitShiftConfig.defaultMode, 16)
     private val a16 = ArithmeticBitwiseOps(16)
     private val a32 = ArithmeticBitwiseOps.BITS_32
     private const val BASE16: Int = 65536
     // Use vector-friendly 3-pass even for small limb windows like HPC16x8 (8 limbs)
     private const val VECTOR_THRESHOLD: Int = 8
+    // Heuristics for parallel fanout
+    private const val MIN_PAR_CHUNK: Int = 8192
+
+    // Coroutines (multiplatform)
+    private val dispatcher = Dispatchers.Default
 
     /**
      * In-place left shift of a little-endian IntArray of 16-bit limbs: a[from .. from+len-1].
@@ -42,26 +48,111 @@ object ArrayBitShifts {
         return ShiftResult(carry and 0xFFFF, sticky)
     }
 
+    /**
+     * Parallel 3-pass left shift using coroutines. Works best for large arrays (len >= ~64K).
+     * Splits work into chunks; Pass A computes lo/hi locally, Pass C merges with neighbor hi.
+     * Returns carryOut (upper s bits of last limb). Sticky is currently false (left shift).
+     */
+    fun shl16LEInPlaceParallel(
+        a: IntArray,
+        from: Int,
+        len: Int,
+        s: Int,
+        carryIn: Int = 0,
+        parallelism: Int = 0,
+    ): ShiftResult {
+        require(s in 0..15) { "s must be in 0..15" }
+        if (len <= 0 || s == 0) return ShiftResult(carryIn and 0xFFFF, false)
+        val pow2s = ShiftTables16.POW2[s]
+        val mask16 = ShiftTables16.MASK16
+        val pow2_16_minus_s = ShiftTables16.POW2[16 - s]
+        val maskLowS = (pow2s - 1).coerceAtLeast(0)
+
+        val lo = IntArray(len)
+        val hi = IntArray(len)
+
+        fun decideChunks(n: Int): Int {
+            if (n < MIN_PAR_CHUNK) return 1
+            val target = if (parallelism > 0) parallelism else 4
+            val maxChunks = target.coerceAtMost(8)
+            val bySize = (n / MIN_PAR_CHUNK).coerceAtLeast(1)
+            return bySize.coerceAtMost(maxChunks)
+        }
+
+        val chunks = decideChunks(len)
+        if (chunks == 1) {
+            // Fall back to scalar 3-pass (still cache-friendly)
+            return shl16ThreePass(a, from, len, s, carryIn)
+        }
+
+        val boundaries = IntArray(chunks)
+
+        runBlocking {
+            val chunkSize = (len + chunks - 1) / chunks
+            // Pass A+B: compute lo and hi
+            coroutineScope {
+                for (ck in 0 until chunks) {
+                    val start = ck * chunkSize
+                    val end = minOf(len, start + chunkSize)
+                    if (start >= end) continue
+                    launch(context = dispatcher) {
+                        var i = start
+                        while (i < end) {
+                            val v = a[from + i] and mask16
+                            lo[i] = (v * pow2s) and mask16
+                            hi[i] = (v / pow2_16_minus_s) and mask16
+                            i++
+                        }
+                        boundaries[ck] = hi[end - 1]
+                    }
+                }
+            }
+            // Pass C: merge with neighbor hi (requires one boundary per chunk)
+            val carryInNorm = if (maskLowS == 0) 0 else (carryIn % (maskLowS + 1))
+            coroutineScope {
+                for (ck in 0 until chunks) {
+                    val start = ck * chunkSize
+                    val end = minOf(len, start + chunkSize)
+                    if (start >= end) continue
+                    launch(context = dispatcher) {
+                        var i = start
+                        var neighbor = if (i == 0) carryInNorm else {
+                            if (i == start) boundaries[ck - 1] else hi[i - 1]
+                        }
+                        while (i < end) {
+                            if (i != start) neighbor = hi[i - 1]
+                            val combined = BitwiseOps.orArithmeticGeneral(lo[i], neighbor)
+                            a[from + i] = combined % BASE16
+                            i++
+                        }
+                    }
+                }
+            }
+        }
+
+        val carryOut = (hi[len - 1] and maskLowS) and 0xFFFF
+        return ShiftResult(carryOut, false)
+    }
+
     // 3-pass left shift for better auto-vectorization
     private fun shl16ThreePass(a: IntArray, from: Int, len: Int, s: Int, carryIn: Int): ShiftResult {
         val lo = IntArray(len)
         val hi = IntArray(len)
-        val pow2s = a32.leftShift(1L, s).toInt()
-        val mask16 = BASE16 - 1
+        val pow2s = ShiftTables16.POW2[s]
+        val mask16 = ShiftTables16.MASK16
 
         // Pass A: lo = (val * 2^s) mod 2^16
         var idx = 0
         while (idx < len) {
             val v = a[from + idx] and mask16
-            val prod = (v.toLong() * pow2s.toLong())
-            lo[idx] = (prod % BASE16).toInt()
+            lo[idx] = (v * pow2s) and mask16
             idx++
         }
         // Pass B: hi = floor(val / 2^(16-s)) (top s bits moved to low)
         idx = 0
         while (idx < len) {
             val v = a[from + idx] and mask16
-            hi[idx] = a16.rightShift(v.toLong(), 16 - s).toInt() and mask16
+            hi[idx] = (v / ShiftTables16.POW2[16 - s]) and mask16
             idx++
         }
         // Pass C: combine with neighbor carry; carryIn feeds element 0
@@ -143,6 +234,88 @@ object ArrayBitShifts {
         return ShiftResult(carryOut and 0xFFFF, sticky)
     }
 
+    /**
+     * Parallel 3-pass right shift using coroutines. Returns carryOut (low s bits dropped from limb 0)
+     * and sticky (OR of all dropped bits across limbs).
+     */
+    fun rsh16LEInPlaceParallel(
+        a: IntArray,
+        from: Int,
+        len: Int,
+        s: Int,
+        parallelism: Int = 0,
+    ): ShiftResult {
+        require(s in 0..15) { "s must be in 0..15" }
+        if (len <= 0 || s == 0) return ShiftResult(0, false)
+
+        fun decideChunks(n: Int): Int {
+            if (n < MIN_PAR_CHUNK) return 1
+            val target = if (parallelism > 0) parallelism else 4
+            val maxChunks = target.coerceAtMost(8)
+            val bySize = (n / MIN_PAR_CHUNK).coerceAtLeast(1)
+            return bySize.coerceAtMost(maxChunks)
+        }
+        val chunks = decideChunks(len)
+        if (chunks == 1) return rsh16ThreePass(a, from, len, s)
+
+        val hi = IntArray(len)
+        val dropped = IntArray(len)
+        val mask16 = BASE16 - 1
+        val pow2s = ArithmeticBitwiseOps.BITS_32.leftShift(1L, s).toInt()
+        val pow2_16_minus_s = ArithmeticBitwiseOps.BITS_32.leftShift(1L, 16 - s).toInt()
+        val firstDroppedPerChunk = IntArray(chunks)
+
+        runBlocking {
+            val chunkSize = (len + chunks - 1) / chunks
+            // Pass A+B: hi and dropped
+            coroutineScope {
+                for (ck in 0 until chunks) {
+                    val start = ck * chunkSize
+                    val end = minOf(len, start + chunkSize)
+                    if (start >= end) continue
+                    launch(context = dispatcher) {
+                        var i = start
+                        while (i < end) {
+                            val v = a[from + i] and mask16
+                            hi[i] = ArithmeticBitwiseOps.BITS_32.rightShift(v.toLong(), s).toInt() and mask16
+                            dropped[i] = if (s == 0) 0 else (v % pow2s)
+                            i++
+                        }
+                        firstDroppedPerChunk[ck] = dropped[start]
+                    }
+                }
+            }
+            // Pass C: combine; need dropped[i+1] or firstDropped of next chunk
+            coroutineScope {
+                for (ck in 0 until chunks) {
+                    val start = ck * chunkSize
+                    val end = minOf(len, start + chunkSize)
+                    if (start >= end) continue
+                    val nextChunkFirst = if (ck + 1 < chunks) firstDroppedPerChunk[ck + 1] else 0
+                    launch(context = dispatcher) {
+                        var i = start
+                        while (i < end) {
+                            val neighbor = if (i + 1 < end) {
+                                ((dropped[i + 1].toLong() * pow2_16_minus_s) % BASE16).toInt()
+                            } else {
+                                ((nextChunkFirst.toLong() * pow2_16_minus_s) % BASE16).toInt()
+                            }
+                            val combined = BitwiseOps.orArithmeticGeneral(hi[i], neighbor)
+                            a[from + i] = combined % BASE16
+                            i++
+                        }
+                    }
+                }
+            }
+        }
+        // Aggregate carry/sticky from dropped[]
+        val carryOut = if (len > 0) dropped[0] and 0xFFFF else 0
+        var sticky = false
+        var i = 0
+        while (i < len) { sticky = sticky or (dropped[i] != 0); i++ }
+        return ShiftResult(carryOut, sticky)
+    }
+
     /** Word-shift (multiple of 16 bits) left in-place for 16-bit limbs. */
     fun shl16LEWordsInPlace(a: IntArray, from: Int, len: Int, words: Int) {
         if (words <= 0) return
@@ -159,5 +332,20 @@ object ArrayBitShifts {
             a[i] = a[i + words] and 0xFFFF
         }
         for (i in (from + len - words) until (from + len)) a[i] = 0
+    }
+
+    // LimbBuffer overloads (operate directly on packed LE bytes)
+    fun shl16LEInPlace(buf: LimbBuffer, fromLimb: Int, len: Int, s: Int, carryIn: Int = 0): ShiftResult {
+        val tmp = IntArray(len) { i -> buf.getU16(fromLimb + i) }
+        val res = shl16LEInPlace(tmp, 0, len, s, carryIn)
+        for (i in 0 until len) buf.setU16(fromLimb + i, tmp[i])
+        return res
+    }
+
+    fun rsh16LEInPlace(buf: LimbBuffer, fromLimb: Int, len: Int, s: Int): ShiftResult {
+        val tmp = IntArray(len) { i -> buf.getU16(fromLimb + i) }
+        val res = rsh16LEInPlace(tmp, 0, len, s)
+        for (i in 0 until len) buf.setU16(fromLimb + i, tmp[i])
+        return res
     }
 }

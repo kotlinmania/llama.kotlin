@@ -49,18 +49,20 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
     fun shlBits(k: Int): Pair<HPC16x8, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val arr = IntArray(8) { limbs[it].toInt() and 0xFFFF }
-        val res = ai.solace.klang.bitwise.ArrayBitShifts.shl16LEInPlace(arr, 0, 8, k)
-        val out = UShortArray(8) { i -> (arr[i] and 0xFFFF).toUShort() }
+        val buf = ai.solace.klang.buffer.LimbBuffer.allocate(8)
+        for (i in 0..7) buf.setU16(i, limb(i).toInt() and 0xFFFF)
+        val res = ai.solace.klang.bitwise.ArrayBitShifts.shl16LEInPlace(buf, 0, 8, k)
+        val out = UShortArray(8) { i -> buf.getU16(i).toUShort() }
         return HPC16x8(out) to (res.carryOut and 0xFFFF).toUShort()
     }
 
     fun shrBits(k: Int): Pair<HPC16x8, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val arr = IntArray(8) { limbs[it].toInt() and 0xFFFF }
-        val res = ai.solace.klang.bitwise.ArrayBitShifts.rsh16LEInPlace(arr, 0, 8, k)
-        val out = UShortArray(8) { i -> (arr[i] and 0xFFFF).toUShort() }
+        val buf = ai.solace.klang.buffer.LimbBuffer.allocate(8)
+        for (i in 0..7) buf.setU16(i, limb(i).toInt() and 0xFFFF)
+        val res = ai.solace.klang.bitwise.ArrayBitShifts.rsh16LEInPlace(buf, 0, 8, k)
+        val out = UShortArray(8) { i -> buf.getU16(i).toUShort() }
         return HPC16x8(out) to (res.carryOut and 0xFFFF).toUShort()
     }
 
@@ -112,7 +114,7 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
         private fun toULong64(x: HPC16x4): ULong {
             var v = 0uL
             for (i in 3 downTo 0) {
-                v = (v shl 16) or x.limb(i).toULong()
+                v = v * 65536u + (x.limb(i).toULong() and 0xFFFFu)
             }
             return v
         }
@@ -122,47 +124,135 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
 
         private fun hiLoULong(x: HPC16x8): Pair<ULong, ULong> {
             var lo = 0uL
-            for (i in 3 downTo 0) lo = (lo shl 16) or x.limb(i).toULong()
+            for (i in 3 downTo 0) lo = lo * 65536u + (x.limb(i).toULong() and 0xFFFFu)
             var hi = 0uL
-            for (i in 7 downTo 4) hi = (hi shl 16) or x.limb(i).toULong()
+            for (i in 7 downTo 4) hi = hi * 65536u + (x.limb(i).toULong() and 0xFFFFu)
             return hi to lo
         }
 
         private fun fromULong64(v: ULong): HPC16x4 = HPC16x4.fromULong(v)
 
-        /** 128/64 division with bitwise long division under precondition hi < divisor. */
+        /** 128/64 division (Knuth D, base 2^16). */
         fun div128by64(num: HPC16x8, den: HPC16x4): Pair<HPC16x4, HPC16x4> {
-            val (hi, lo) = hiLoULong(num)
-            val d = toULong64(den)
-            require(d != 0uL) { "division by zero" }
-            require(hi < d) { "128/64 quotient exceeds 64 bits (hi >= divisor)" }
-            var rem = 0uL
-            // accumulate hi bits
-            for (i in 63 downTo 0) {
-                val carry = (hi shr i) and 1uL
-                rem = (rem shl 1) or carry
-                if (rem >= d) rem -= d
+            val U = IntArray(9) { 0 }
+            val V = IntArray(4) { 0 }
+            for (i in 0..7) U[i] = num.limb(i).toInt() and 0xFFFF
+            for (i in 0..3) V[i] = den.limb(i).toInt() and 0xFFFF
+            require((V[0] or V[1] or V[2] or V[3]) != 0) { "division by zero" }
+
+            var n = 4
+            while (n > 1 && V[n - 1] == 0) n--
+            val m = 8 - n
+
+            fun clz16_arith(x0: Int): Int {
+                var x = x0 and 0xFFFF
+                if (x == 0) return 16
+                var s = 0
+                while (x < 32768 && s < 15) { x *= 2; s++ }
+                return s
             }
-            var q = 0uL
-            for (i in 63 downTo 0) {
-                val carry = (lo shr i) and 1uL
-                rem = (rem shl 1) or carry
-                if (rem >= d) {
-                    rem -= d
-                    q = q or (1uL shl i)
+            val s = clz16_arith(V[n - 1]).coerceIn(0, 15)
+            if (s > 0) {
+                val uRes = ai.solace.klang.bitwise.ArrayBitShifts.shl16LEInPlace(U, 0, m + n, s)
+                ai.solace.klang.bitwise.ArrayBitShifts.shl16LEInPlace(V, 0, n, s)
+                U[m + n] = uRes.carryOut and 0xFFFF
+            }
+
+            val Q = IntArray(m) { 0 }
+            val base = 65536
+            for (j in (m - 1) downTo 0) {
+                val ujn = U[j + n]
+                val ujn1 = U[j + n - 1]
+                val ujn2 = if (n >= 2) U[j + n - 2] else 0
+                val vn1 = V[n - 1]
+                val vn2 = if (n >= 2) V[n - 2] else 0
+
+                var numHi = ujn.toLong() * base + ujn1.toLong()
+                var qhat = if (vn1 != 0) numHi / vn1.toLong() else (base - 1).toLong()
+                var rhat = if (vn1 != 0) numHi % vn1.toLong() else ujn1.toLong()
+                if (qhat >= base) { qhat = (base - 1).toLong(); rhat = numHi - qhat * vn1.toLong() }
+
+                while (n >= 2 && qhat * vn2.toLong() > rhat * base + ujn2.toLong()) {
+                    qhat -= 1
+                    rhat += vn1.toLong()
+                    if (rhat >= base) break
+                }
+
+                var carry = 0L
+                var borrow = 0
+                for (i in 0 until n) {
+                    val p = qhat * V[i].toLong() + carry
+                    carry = p / base
+                    val low = (p % base).toInt()
+                    var t = U[j + i] - low - borrow
+                    if (t < 0) { t += base; borrow = 1 } else borrow = 0
+                    U[j + i] = t and 0xFFFF
+                }
+                var tTop = U[j + n] - carry.toInt() - borrow
+                val negative = tTop < 0
+                U[j + n] = (tTop % base + base) % base
+
+                if (negative) {
+                    qhat -= 1
+                    var c = 0
+                    for (i in 0 until n) {
+                        val sum = U[j + i] + V[i] + c
+                        U[j + i] = sum % base
+                        c = sum / base
+                    }
+                    tTop = U[j + n] + c
+                    U[j + n] = tTop % base
+                }
+                Q[j] = (qhat % base).toInt() and 0xFFFF
+            }
+
+            val R = IntArray(n) { U[it] }
+            if (s > 0) ai.solace.klang.bitwise.ArrayBitShifts.rsh16LEInPlace(R, 0, n, s)
+
+            val qOut = UShortArray(4) { i -> ((if (i < m) Q[i] else 0) and 0xFFFF).toUShort() }
+            if (m > 4) {
+                for (k in 4 until m) require(Q[k] == 0) { "quotient exceeds 64 bits for 128/64 division" }
+            }
+            val rOut = UShortArray(4) { i -> ((if (i < n) R[i] else 0) and 0xFFFF).toUShort() }
+            val qRes = HPC16x4(qOut)
+            val rRes = HPC16x4(rOut)
+            // Debug recomposition check (throws on mismatch)
+            run {
+                val prod = mul64x64To128(qRes, den)
+                val arr = UShortArray(8) { prod.limb(it) }
+                var carryU = 0u
+                for (i in 0..3) {
+                    val sum = arr[i].toUInt() + rRes.limb(i).toUInt() + carryU
+                    arr[i] = (sum and 0xFFFFu).toUShort()
+                    carryU = sum shr 16
+                }
+                var idx = 4
+                while (carryU != 0u && idx < 8) {
+                    val sum = arr[idx].toUInt() + carryU
+                    arr[idx] = (sum and 0xFFFFu).toUShort()
+                    carryU = sum shr 16
+                    idx++
+                }
+                var mismatch = false
+                for (i in 0..7) if (arr[i] != num.limb(i)) { mismatch = true; break }
+                if (mismatch) {
+                    fun limb4(a: HPC16x8, i: Int) = a.limb(i).toString(16).padStart(4, '0')
+                    val msg = StringBuilder().apply {
+                        append("KnuthD recomposition mismatch\n")
+                        append("den=0x").append(den.toULong().toString(16)).append('\n')
+                        append("q=0x").append(qRes.toULong().toString(16)).append(" r=0x").append(rRes.toULong().toString(16)).append('\n')
+                        append("num    = [").append(limb4(num,7)).append(' ').append(limb4(num,6)).append(' ').append(limb4(num,5)).append(' ').append(limb4(num,4)).append(" | ")
+                            .append(limb4(num,3)).append(' ').append(limb4(num,2)).append(' ').append(limb4(num,1)).append(' ').append(limb4(num,0)).append("]\n")
+                        append("recomp = [").append(arr[7].toString(16).padStart(4,'0')).append(' ').append(arr[6].toString(16).padStart(4,'0')).append(' ').append(arr[5].toString(16).padStart(4,'0')).append(' ').append(arr[4].toString(16).padStart(4,'0')).append(" | ")
+                            .append(arr[3].toString(16).padStart(4,'0')).append(' ').append(arr[2].toString(16).padStart(4,'0')).append(' ').append(arr[1].toString(16).padStart(4,'0')).append(' ').append(arr[0].toString(16).padStart(4,'0')).append("]\n")
+                    }.toString()
+                    throw IllegalStateException(msg)
                 }
             }
-            return fromULong64(q) to fromULong64(rem)
+            return qRes to rRes
         }
 
-        private fun clz16(xIn: Int): Int {
-            var x = xIn and 0xFFFF
-            if (x == 0) return 16
-            var n = 0
-            var bit = 1 shl 15
-            while ((x and bit) == 0) { n++; bit = bit ushr 1 }
-            return n
-        }
+        // (removed raw clz16; normalization uses arithmetic-only clz)
 
         // Note: all limb shifts must route through ArrayBitShifts/BitShiftEngine.
     }
