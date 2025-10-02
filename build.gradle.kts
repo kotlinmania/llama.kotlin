@@ -201,6 +201,43 @@ tasks.register<DisasmSummaryTask>("disasmSummaryLinuxX64") {
     outFile.set(disasmDir.get().file("bench-linuxX64.summary.txt"))
 }
 
+val hostOs = System.getProperty("os.name")
+val hostArch = System.getProperty("os.arch")
+val swarBenchTarget = when {
+    hostOs == "Mac OS X" && hostArch == "aarch64" -> "macosArm64"
+    hostOs == "Mac OS X" -> "macosX64"
+    hostOs.startsWith("Linux") -> "linuxX64"
+    hostOs.startsWith("Windows") -> "mingwX64"
+    else -> null
+}
+
+if (swarBenchTarget != null) {
+    val targetCapitalized = swarBenchTarget.replaceFirstChar { ch ->
+        if (ch.isLowerCase()) ch.titlecase(java.util.Locale.ROOT) else ch.toString()
+    }
+    val benchBinary = layout.buildDirectory.file("bin/$swarBenchTarget/benchReleaseExecutable/bench.kexe")
+
+    tasks.register<Exec>("runSwarBench") {
+        group = "bench"
+        description = "Run SWAR average benchmark suite on $swarBenchTarget"
+        dependsOn("linkBenchReleaseExecutable$targetCapitalized")
+        commandLine(benchBinary.get().asFile.absolutePath, "--swar-avg")
+    }
+
+    tasks.register<Exec>("runSwarBenchParallel") {
+        group = "bench"
+        description = "Run parallel SWAR average benchmark suite on $swarBenchTarget"
+        dependsOn("linkBenchReleaseExecutable$targetCapitalized")
+        commandLine(benchBinary.get().asFile.absolutePath, "--swar-avg-par")
+    }
+
+    tasks.register("runAllSwarBenches") {
+        group = "bench"
+        description = "Run SWAR benchmark suites (serial + parallel) on $swarBenchTarget"
+        dependsOn("runSwarBench", "runSwarBenchParallel")
+    }
+}
+
 // Native test compilation re-enabled for model integration testing
 // tasks.configureEach {
 //     if (
