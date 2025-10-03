@@ -1,3 +1,5 @@
+import java.util.Locale
+
 plugins {
     kotlin("multiplatform") version "2.2.20"
     kotlin("plugin.serialization") version "2.2.20"
@@ -213,7 +215,7 @@ val swarBenchTarget = when {
 
 if (swarBenchTarget != null) {
     val targetCapitalized = swarBenchTarget.replaceFirstChar { ch ->
-        if (ch.isLowerCase()) ch.titlecase(java.util.Locale.ROOT) else ch.toString()
+        if (ch.isLowerCase()) ch.titlecase(Locale.ROOT) else ch.toString()
     }
     val benchBinary = layout.buildDirectory.file("bin/$swarBenchTarget/benchReleaseExecutable/bench.kexe")
 
