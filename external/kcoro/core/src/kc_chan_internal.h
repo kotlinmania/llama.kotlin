@@ -26,6 +26,8 @@ struct kc_waiter {
     struct kc_waiter *next;
     unsigned long magic;
     int freed;
+    void **recv_ptr_slot;
+    size_t *recv_len_slot;
 };
 
 struct kc_chan {
@@ -135,6 +137,8 @@ static inline struct kc_waiter* kc_waiter_new_coro(enum kc_select_clause_kind ki
     w->next = NULL;
     w->magic = 0xCAFEBABEUL;
     w->freed = 0;
+    w->recv_ptr_slot = NULL;
+    w->recv_len_slot = NULL;
     return w;
 }
 
