@@ -1,6 +1,11 @@
 package ai.solace.klang.bitwise
 import ai.solace.klang.buffer.LimbBuffer
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Array-wide bit shifts for limb arrays (little-endian) with optional sticky tracking.
@@ -87,7 +92,7 @@ object ArrayBitShifts {
 
         val boundaries = IntArray(chunks)
 
-        runBlocking {
+        runBlocking(context = dispatcher) {
             val chunkSize = (len + chunks - 1) / chunks
             // Pass A+B: compute lo and hi
             coroutineScope {
@@ -265,7 +270,7 @@ object ArrayBitShifts {
         val pow2_16_minus_s = ArithmeticBitwiseOps.BITS_32.leftShift(1L, 16 - s).toInt()
         val firstDroppedPerChunk = IntArray(chunks)
 
-        runBlocking {
+        runBlocking(context = dispatcher) {
             val chunkSize = (len + chunks - 1) / chunks
             // Pass A+B: hi and dropped
             coroutineScope {

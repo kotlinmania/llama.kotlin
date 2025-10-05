@@ -126,7 +126,7 @@ class GGMLDynTensorAllocator {
     var freeBlocks = mutableListOf<FreeBlock>()
 
     // Maximum size allocated
-    var maxSize: ULong = 0u
+    private var maxSizeInternal: ULong = 0u
 
     /**
      * Creates a new dynamic tensor allocator.
@@ -153,7 +153,7 @@ class GGMLDynTensorAllocator {
         var bestFitBlock = -1
         var bestFitSize = ULong.MAX_VALUE
 
-        for (i in 0 until freeBlocks.size - 1) {
+        for (i in freeBlocks.indices) {
             val block = freeBlocks[i]
             if (block.size >= alignedSize && block.size <= bestFitSize) {
                 bestFitBlock = i
@@ -183,7 +183,7 @@ class GGMLDynTensorAllocator {
         }
 
         // Update the maximum size
-        maxSize = maxOf(maxSize, offset + alignedSize)
+        maxSizeInternal = maxOf(maxSizeInternal, offset + alignedSize)
 
         return offset
     }
@@ -247,7 +247,7 @@ class GGMLDynTensorAllocator {
     fun reset(bufferSize: ULong? = null) {
         freeBlocks.clear()
         freeBlocks.add(FreeBlock(0u, bufferSize ?: (ULong.MAX_VALUE / 2u))) // Restrict maximum size to half ULong.MAX_VALUE to avoid overflows
-        maxSize = 0u
+        maxSizeInternal = 0u
     }
 
     /**
@@ -256,7 +256,7 @@ class GGMLDynTensorAllocator {
      * @return The maximum size allocated
      */
     fun getMaxSize(): ULong {
-        return maxSize
+        return maxSizeInternal
     }
 }
 

@@ -5,7 +5,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -77,7 +76,7 @@ internal class GGMLCpuExecutor {
     ) {
         val parallelism = maxBatchSize.coerceAtLeast(1)
         val dispatcher = selectDispatcher(parallelism, config.useDedicatedDispatcher)
-        runBlocking(dispatcher) {
+        runBlocking(context = dispatcher) {
             while (!tracker.isComplete()) {
                 val ready = tracker.getReadyNodes()
                 if (ready.isEmpty()) {
@@ -112,23 +111,9 @@ internal class GGMLCpuExecutor {
     }
 
     private fun selectDispatcher(parallelism: Int, dedicated: Boolean): kotlinx.coroutines.CoroutineDispatcher {
-        return if (dedicated) {
-            dedicatedDispatcher(parallelism)
-        } else {
-            Dispatchers.Default.limitedParallelism(parallelism)
+        if (dedicated) {
+            throw UnsupportedOperationException("Dedicated dispatcher is not implemented yet")
         }
-    }
-
-    @OptIn(DelicateCoroutinesApi::class)
-    private fun dedicatedDispatcher(parallelism: Int): kotlinx.coroutines.CoroutineDispatcher {
-        val poolSize = parallelism.coerceIn(1, MAX_DEDICATED_THREADS)
-        return dispatcherCache.getOrPut(poolSize) {
-            newFixedThreadPoolContext(poolSize, "ggml-cpu-$poolSize")
-        }
-    }
-
-    companion object {
-        private const val MAX_DEDICATED_THREADS = 32
-        private val dispatcherCache = mutableMapOf<Int, kotlinx.coroutines.CoroutineDispatcher>()
+        return Dispatchers.Default.limitedParallelism(parallelism)
     }
 }

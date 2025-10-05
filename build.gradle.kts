@@ -1,4 +1,9 @@
 import java.util.Locale
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.jetbrains.kotlin.gradle.tasks.CInteropProcess
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
+import org.jetbrains.kotlin.konan.target.KonanTarget
+import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
 
 plugins {
     kotlin("multiplatform") version "2.2.20"
@@ -12,6 +17,57 @@ version = "0.1.0"
 
 repositories {
     mavenCentral()
+}
+
+// ---------------------------------------------------------------------------
+// Native coroutine runtimes (kcoro C and C++ variants)
+// ---------------------------------------------------------------------------
+
+val kcoroLib = layout.projectDirectory.file("external/kcoro/core/build/lib/libkcoro.a")
+
+val buildKcoro by tasks.registering(Exec::class) {
+    group = "kcoro"
+    description = "Build kcoro C static library"
+    workingDir = file("external/kcoro/core")
+    commandLine("make")
+    inputs.dir("external/kcoro/core/src")
+    inputs.dir("external/kcoro/arch")
+    inputs.file("external/kcoro/core/Makefile")
+    outputs.file(kcoroLib)
+}
+
+val kcoroCppBuildDir = layout.buildDirectory.dir("kcoro_cpp")
+val kcoroCppLib = kcoroCppBuildDir.map { it.file("libkcoro_cpp.a") }
+
+val configureKcoroCpp by tasks.registering(Exec::class) {
+    group = "kcoro"
+    description = "Configure kcoro C++ build"
+    commandLine(
+        "cmake",
+        "-S",
+        "external/kcoro_cpp",
+        "-B",
+        kcoroCppBuildDir.get().asFile.absolutePath,
+        "-DCMAKE_BUILD_TYPE=Release"
+    )
+    inputs.file("external/kcoro_cpp/CMakeLists.txt")
+    outputs.file(kcoroCppBuildDir.map { it.file("CMakeCache.txt") })
+}
+
+val buildKcoroCpp by tasks.registering(Exec::class) {
+    group = "kcoro"
+    description = "Build kcoro C++ static library"
+    dependsOn(configureKcoroCpp)
+    commandLine(
+        "cmake",
+        "--build",
+        kcoroCppBuildDir.get().asFile.absolutePath,
+        "--config",
+        "Release"
+    )
+    inputs.dir("external/kcoro_cpp/src")
+    inputs.dir("external/kcoro_cpp/arch")
+    outputs.file(kcoroCppLib)
 }
 
 kotlin {
@@ -61,6 +117,47 @@ kotlin {
         binaries.library()
         browser()
         nodejs()
+        compilerOptions {
+            target.set("es2015")
+            freeCompilerArgs.add("-Xes-long-as-bigint")
+        }
+    }
+
+    targets.withType<KotlinNativeTarget>().configureEach {
+        if (konanTarget == KonanTarget.MACOS_ARM64) {
+            val mainCompilation = compilations["main"]
+            val kcoroInclude = layout.projectDirectory.dir("external/kcoro/include")
+            val kcoroCppInclude = layout.projectDirectory.dir("external/kcoro_cpp/include")
+            val cinteropInclude = layout.projectDirectory.dir("src/nativeInterop/cinterop")
+            val kcoroLibDir = layout.projectDirectory.dir("external/kcoro/core/build/lib")
+            val kcoroCppLibDirProvider = layout.buildDirectory.dir("kcoro_cpp")
+
+            mainCompilation.cinterops.create("kcoro") {
+                definitionFile = file("src/nativeInterop/cinterop/kcoro.def")
+                compilerOpts("-I${kcoroInclude.asFile.absolutePath}")
+            }
+
+            mainCompilation.cinterops.create("kcoro_cpp") {
+                definitionFile = file("src/nativeInterop/cinterop/kcoro_cpp.def")
+                compilerOpts(
+                    "-I${kcoroCppInclude.asFile.absolutePath}",
+                    "-I${cinteropInclude.asFile.absolutePath}"
+                )
+            }
+
+            binaries.all {
+                linkTaskProvider.configure {
+                    dependsOn(buildKcoro, buildKcoroCpp)
+                }
+                linkerOpts(
+                    "-L${kcoroLibDir.asFile.absolutePath}",
+                    "-L${kcoroCppLibDirProvider.get().asFile.absolutePath}",
+                    "-lkcoro",
+                    "-lkcoro_cpp",
+                    "-lc++"
+                )
+            }
+        }
     }
 
     sourceSets {
@@ -115,6 +212,12 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test-js:1.10.2")
             }
         }
+    }
+}
+
+tasks.withType<KotlinNativeTest>().configureEach {
+    if (name == "macosArm64Test") {
+        args = args + "--ktest_logger=SIMPLE"
     }
 }
 
@@ -193,6 +296,13 @@ tasks.register<DisasmSummaryTask>("disasmSummaryMacosArm64") {
     dependsOn("disasmBenchMacosArm64")
     asmFile.set(disasmDir.get().file("bench-macosArm64.asm"))
     outFile.set(disasmDir.get().file("bench-macosArm64.summary.txt"))
+}
+
+tasks.withType<CInteropProcess>().configureEach {
+    when {
+        name.contains("Kcoro_cpp", ignoreCase = true) -> dependsOn(buildKcoroCpp)
+        name.contains("Kcoro", ignoreCase = true) -> dependsOn(buildKcoro)
+    }
 }
 
 tasks.register<DisasmSummaryTask>("disasmSummaryLinuxX64") {

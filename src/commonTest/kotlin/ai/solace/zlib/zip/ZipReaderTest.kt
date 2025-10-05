@@ -89,6 +89,10 @@ class ZipReaderTest {
 
     @Test
     fun testListAndExtractStored() {
+        if (!supportsZipFileIO) {
+            println("Skipping ZipReaderTest on platform without filesystem support")
+            return
+        }
         val data = "hello world".encodeToByteArray()
         val zipBytes = makeStoredZipSingle("test.txt", data)
         val fs: FileSystem = SystemFileSystem

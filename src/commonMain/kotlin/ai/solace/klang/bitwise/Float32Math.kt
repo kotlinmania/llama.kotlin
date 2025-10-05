@@ -628,9 +628,8 @@ object Float32Math {
         sa = sa or IMPLICIT_BIT.toLong()
         sb = sb or IMPLICIT_BIT.toLong()
 
-        // Compute exponent; adjust if mantissa ratio < 1 (sa < sb)
+        // Compute exponent (will be further adjusted during normalization)
         var exp = ea - eb + EXP_BIAS
-        if (sa < sb) exp -= 1
 
         // Produce 27-bit quotient (24+R/G/S) by scaling numerator
         // q = ((sa << (3+24)) / sb), so that top 24+3 bits are in quotient
