@@ -6,7 +6,7 @@
 CC ?= gcc
 
 # Subdirectory paths
-CORE_DIR := user
+CORE_DIR := core
 IPC_POSIX_DIR := ipc/posix
 CHANMON_DIR := lab/tui/chanmon
 EXAMPLES_DIR := examples

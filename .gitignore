@@ -18,6 +18,10 @@
 *.o
 *.so
 *.tmp
+*.dSYM/
+
+# Local lab binaries
+external/kcoro/lab/lab_waiter_token
 
 # IDE / OS
 

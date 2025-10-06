@@ -56,10 +56,12 @@ clean:
 
 .PHONY: prekill kill-tests
 prekill:
-	@$(if $(filter 1,$(KILL_BEFORE)),bash $(PREKILL),true)
+@if [ "$(KILL_BEFORE)" = "1" ] && [ -x $(PREKILL) ]; then \
+  bash $(PREKILL); \
+fi
 
 kill-tests:
-	@bash $(PREKILL)
+	@if [ -x $(PREKILL) ]; then bash $(PREKILL); fi
 
 # Verify library freshness: fails if any source newer than built archive
 .PHONY: verify-fresh
