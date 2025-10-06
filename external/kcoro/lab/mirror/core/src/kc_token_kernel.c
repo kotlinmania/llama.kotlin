@@ -7,6 +7,7 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sched.h>
 
 #include "kcoro_core.h"
 #include "kcoro_port.h"
@@ -36,6 +37,12 @@ typedef struct kc_token_freelist {
     kc_token_block *head;
 } kc_token_freelist;
 
+enum {
+    KC_TOKEN_INIT_UNINITIALIZED = 0,
+    KC_TOKEN_INIT_IN_PROGRESS   = 1,
+    KC_TOKEN_INIT_READY         = 2,
+};
+
 static struct {
     atomic_uint_fast64_t next_id;
     kc_token_bucket     *buckets;
@@ -46,6 +53,7 @@ static struct {
     .next_id = ATOMIC_VAR_INIT(1),
     .buckets = NULL,
     .bucket_count = 0,
+    .initialized = ATOMIC_VAR_INIT(KC_TOKEN_INIT_UNINITIALIZED),
 };
 
 static void freelist_init(kc_token_freelist *fl)
@@ -165,29 +173,47 @@ static kc_token_block *bucket_remove(kc_token_id_t id)
 
 int kc_token_kernel_global_init(void)
 {
-    int expected = 0;
-    if (!atomic_compare_exchange_strong(&g_kernel.initialized, &expected, 1)) {
-        return 0; // already initialized
+    for (;;) {
+        int state = atomic_load_explicit(&g_kernel.initialized, memory_order_acquire);
+        if (state == KC_TOKEN_INIT_READY) {
+            return 0;
+        }
+        if (state == KC_TOKEN_INIT_UNINITIALIZED) {
+            int expected = KC_TOKEN_INIT_UNINITIALIZED;
+            if (atomic_compare_exchange_strong_explicit(&g_kernel.initialized,
+                                                        &expected,
+                                                        KC_TOKEN_INIT_IN_PROGRESS,
+                                                        memory_order_acq_rel,
+                                                        memory_order_acquire)) {
+                freelist_init(&g_kernel.freelist);
+                int rc = bucket_init_many(KC_TOKEN_KERNEL_BUCKETS);
+                if (rc != 0) {
+                    freelist_destroy(&g_kernel.freelist);
+                    atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_UNINITIALIZED, memory_order_release);
+                    return rc;
+                }
+                atomic_store_explicit(&g_kernel.next_id, 1, memory_order_relaxed);
+                atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_READY, memory_order_release);
+                return 0;
+            }
+            continue; /* another thread raced us; re-read state */
+        }
+        /* Another thread is initializing. Yield until ready or reset. */
+        while (atomic_load_explicit(&g_kernel.initialized, memory_order_acquire) == KC_TOKEN_INIT_IN_PROGRESS) {
+            sched_yield();
+        }
+        /* Loop will re-check state and either observe READY or retry initialization. */
     }
-    freelist_init(&g_kernel.freelist);
-    int rc = bucket_init_many(KC_TOKEN_KERNEL_BUCKETS);
-    if (rc != 0) {
-        freelist_destroy(&g_kernel.freelist);
-        atomic_store(&g_kernel.initialized, 0);
-        return rc;
-    }
-    atomic_store(&g_kernel.next_id, 1);
-    return 0;
 }
 
 void kc_token_kernel_global_shutdown(void)
 {
-    if (!atomic_load(&g_kernel.initialized)) {
+    if (atomic_load_explicit(&g_kernel.initialized, memory_order_acquire) != KC_TOKEN_INIT_READY) {
         return;
     }
     bucket_destroy_many();
     freelist_destroy(&g_kernel.freelist);
-    atomic_store(&g_kernel.initialized, 0);
+    atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_UNINITIALIZED, memory_order_release);
 }
 
 static kc_token_id_t next_token_id(void)

@@ -101,3 +101,21 @@ Tonight was all about proof, not polish. We set out to thread the BizTalk-style 
 ---
 
 That’s tonight’s brain dump. Next entry should capture the channel callback rotary, minimal scheduler removal, and the first meaningful benchmarks under the zero-spin design. Stay tuned.
+
+## 2025-10-06 — Late-Night Follow Up
+
+- Hardened `kc_token_kernel_global_init()` so the `initialized` flag only flips to ready *after* the freelist and hash buckets are built. Previous logic marked the kernel as initialized during setup, letting a racing thread dereference `g_kernel.buckets == NULL`. The new three-state flag (UNINITIALIZED → IN_PROGRESS → READY) spins on `sched_yield()` until the allocator finishes or retries.
+- The shutdown path now checks for READY explicitly and resets the flag with release ordering, allowing subsequent initializations if the lab tears the kernel down between demos.
+- Re-ran the usual harness (`make -C external/kcoro/lab/mirror/core all`, `lab_simple_park_demo`, `lab_token_kernel_demo`) to confirm the rendezvous path still wakes correctly after the memory-ordering tweak.
+
+Next: wire `kc_chan_select_register_{recv,send}` into the ticket queues so select clauses ride the same callback flow without touching the old waiter lists.
+
+## 2025-10-06 — Select Integration Pass 1
+
+- Introduced select-aware pending nodes in `kc_chan.c`. Rendezvous pointer sends/receives now store select clauses in the token queues instead of the legacy waiter lists, but they still complete by calling `kc_select_try_complete` before dispatching the callback.
+- Pending nodes carry either a published ticket (direct coroutine) or a `(kc_select_t*, clause)` pair (select). The send/recv fast paths branch accordingly: direct waiters still wake via `kc_token_kernel_callback`; select clauses copy into the clause buffer, complete the select, and queue the waiter through `kc_chan_schedule_wake`.
+- Updated cancellation/close paths to scrub the new queues and invoke `kc_token_kernel_cancel` only for entries that actually published tickets. Select clauses (ticket id 0) are simply freed and bump rendezvous cancel counters.
+- `kc_chan_select_register_{recv,send}` now appends rendezvous pointer clauses to the pending queues rather than the wait lists, keeping the coroutine parked with zero spinning.
+- Rebuilt the mirror core and reran `lab_simple_park_demo` / `lab_token_kernel_demo` to confirm no regressions.
+
+Next: extend the same pending-path logic to buffered modes (or gracefully fall back), then adapt the benchmarks to exercise the callback-driven rendezvous.

@@ -36,11 +36,15 @@ struct kc_pending_send {
     struct kc_pending_send *next;
     struct kc_chan_ptrmsg   msg;
     kc_ticket               ticket;
+    kc_select_t            *sel;
+    int                     clause_index;
 };
 
 struct kc_pending_recv {
     struct kc_pending_recv *next;
     kc_ticket              ticket;
+    kc_select_t           *sel;
+    int                    clause_index;
 };
 
 static inline void pending_send_append(struct kc_chan *ch, struct kc_pending_send *node)
@@ -647,6 +651,21 @@ int kc_chan_select_register_recv(kc_chan_t *c, kc_select_t *sel, int clause_inde
             kc_wake_list_schedule(&wakes);
             return KC_EPIPE;
         }
+        if (ch->ptr_mode) {
+            struct kc_pending_recv *node = (struct kc_pending_recv*)calloc(1, sizeof(*node));
+            if (!node) {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_wake_list_schedule(&wakes);
+                return -ENOMEM;
+            }
+            node->sel = sel;
+            node->clause_index = clause_index;
+            node->ticket.id = 0;
+            pending_recv_append(ch, node);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_wake_list_schedule(&wakes);
+            return KC_EAGAIN;
+        }
     } else { /* buffered/unlimited */
         if (ch->count > 0) {
             size_t h = kc_ring_idx(ch, ch->head);
@@ -739,6 +758,22 @@ int kc_chan_select_register_send(kc_chan_t *c, kc_select_t *sel, int clause_inde
             kc_wake_list_schedule(&wakes);
             return 0;
         }
+        if (ch->ptr_mode) {
+            struct kc_pending_send *node = (struct kc_pending_send*)calloc(1, sizeof(*node));
+            if (!node) {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_wake_list_schedule(&wakes);
+                return -ENOMEM;
+            }
+            if (src) memcpy(&node->msg, src, sizeof(node->msg));
+            node->sel = sel;
+            node->clause_index = clause_index;
+            node->ticket.id = 0;
+            pending_send_append(ch, node);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_wake_list_schedule(&wakes);
+            return KC_EAGAIN;
+        }
     } else { /* buffered/unlimited */
         if (ch->count < ch->capacity || ch->kind == KC_UNLIMITED) {
             if (ch->count == ch->capacity && ch->kind == KC_UNLIMITED) {
@@ -819,6 +854,46 @@ void kc_chan_select_cancel(kc_chan_t *c, kc_select_t *sel, int clause_index, enu
         }
     }
 
+    struct kc_pending_recv **pr_head = &ch->token_recv_head;
+    struct kc_pending_recv **pr_tail = &ch->token_recv_tail;
+    struct kc_pending_recv *pr_prev = NULL;
+    struct kc_pending_recv *pr_cur = *pr_head;
+    while (pr_cur) {
+        int match = (pr_cur->sel == sel && pr_cur->clause_index == clause_index && kind == KC_SELECT_CLAUSE_RECV);
+        if (match) {
+            struct kc_pending_recv *dead = pr_cur;
+            if (pr_prev) pr_prev->next = pr_cur->next; else *pr_head = pr_cur->next;
+            pr_cur = pr_cur->next;
+            if (dead == *pr_tail) *pr_tail = pr_prev;
+            if (dead->ticket.id) kc_token_kernel_cancel(dead->ticket, KC_ECANCELED);
+            if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
+            free(dead);
+        } else {
+            pr_prev = pr_cur;
+            pr_cur = pr_cur->next;
+        }
+    }
+
+    struct kc_pending_send **ps_head = &ch->token_send_head;
+    struct kc_pending_send **ps_tail = &ch->token_send_tail;
+    struct kc_pending_send *ps_prev = NULL;
+    struct kc_pending_send *ps_cur = *ps_head;
+    while (ps_cur) {
+        int match = (ps_cur->sel == sel && ps_cur->clause_index == clause_index && kind == KC_SELECT_CLAUSE_SEND);
+        if (match) {
+            struct kc_pending_send *dead = ps_cur;
+            if (ps_prev) ps_prev->next = ps_cur->next; else *ps_head = ps_cur->next;
+            ps_cur = ps_cur->next;
+            if (dead == *ps_tail) *ps_tail = ps_prev;
+            if (dead->ticket.id) kc_token_kernel_cancel(dead->ticket, KC_ECANCELED);
+            if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
+            free(dead);
+        } else {
+            ps_prev = ps_cur;
+            ps_cur = ps_cur->next;
+        }
+    }
+
     KC_MUTEX_UNLOCK(&ch->mu);
 }
 
@@ -882,13 +957,17 @@ void kc_chan_close(kc_chan_t *c)
 
     while (cancel_send_head) {
         struct kc_pending_send *next = cancel_send_head->next;
-        kc_token_kernel_cancel(cancel_send_head->ticket, KC_EPIPE);
+        if (cancel_send_head->ticket.id) {
+            kc_token_kernel_cancel(cancel_send_head->ticket, KC_EPIPE);
+        }
         free(cancel_send_head);
         cancel_send_head = next;
     }
     while (cancel_recv_head) {
         struct kc_pending_recv *next = cancel_recv_head->next;
-        kc_token_kernel_cancel(cancel_recv_head->ticket, KC_EPIPE);
+        if (cancel_recv_head->ticket.id) {
+            kc_token_kernel_cancel(cancel_recv_head->ticket, KC_EPIPE);
+        }
         free(cancel_recv_head);
         cancel_recv_head = next;
     }
@@ -1483,6 +1562,36 @@ again_send_ptr:
     if (ch->kind == KC_RENDEZVOUS) {
         struct kc_pending_recv *pending = pending_recv_pop(ch);
         if (pending) {
+            if (pending->sel) {
+                kc_select_t *sel = pending->sel;
+                int clause = pending->clause_index;
+                struct kc_chan_ptrmsg dst_msg = { .ptr = ptr, .len = len };
+                kc_chan_update_send_stats_len_locked(ch, len);
+                kc_chan_update_recv_stats_len_locked(ch, len);
+                ch->rv_matches++;
+                void *dst = kc_select_recv_buffer(sel, clause);
+                int result = 0;
+                if (dst) {
+                    memcpy(dst, &dst_msg, sizeof(dst_msg));
+                } else {
+                    result = KC_ECANCELED;
+                }
+                if (result == KC_ECANCELED && ch->kind == KC_RENDEZVOUS) {
+                    ch->rv_cancels++;
+                }
+                int completed = kc_select_try_complete(sel, clause, result);
+                kcoro_t *co = completed ? kc_select_waiter(sel) : NULL;
+                if (co) kcoro_retain(co);
+                KC_MUTEX_UNLOCK(&ch->mu);
+                if (co) {
+                    struct kc_wake wake = { .co = co, .sel = sel };
+                    kc_chan_schedule_wake(wake);
+                }
+                free(pending);
+                kc_waiter_token_reset(&send_token);
+                return (result == 0) ? 0 : result;
+            }
+            /* Direct coroutine waiter */
             ch->rv_matches++;
             kc_chan_update_send_stats_len_locked(ch, len);
             kc_chan_update_recv_stats_len_locked(ch, len);
@@ -1507,6 +1616,8 @@ again_send_ptr:
                 }
                 node->msg = msg;
                 node->ticket = ticket;
+                node->sel = NULL;
+                node->clause_index = -1;
                 pending_send_append(ch, node);
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kcoro_park();
@@ -1656,9 +1767,26 @@ again_recv_ptr:
                 ch->rv_matches++;
                 kc_chan_update_send_stats_len_locked(ch, tmp.len);
                 kc_chan_update_recv_stats_len_locked(ch, tmp.len);
-                KC_MUTEX_UNLOCK(&ch->mu);
                 *out_ptr = tmp.ptr;
                 *out_len = tmp.len;
+
+                if (pending->sel) {
+                    kc_select_t *sel = pending->sel;
+                    int clause = pending->clause_index;
+                    int completed = kc_select_try_complete(sel, clause, 0);
+                    kcoro_t *co = completed ? kc_select_waiter(sel) : NULL;
+                    if (co) kcoro_retain(co);
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    if (co) {
+                        struct kc_wake wake = { .co = co, .sel = sel };
+                        kc_chan_schedule_wake(wake);
+                    }
+                    free(pending);
+                    kc_waiter_token_reset(&recv_token);
+                    return 0;
+                }
+
+                KC_MUTEX_UNLOCK(&ch->mu);
                 kc_payload ack = { .ptr = NULL, .len = 0, .status = 0 };
                 kc_token_kernel_callback(pending->ticket, ack);
                 free(pending);
@@ -1708,6 +1836,8 @@ again_recv_ptr:
                     return KC_EAGAIN;
                 }
                 node->ticket = ticket;
+                node->sel = NULL;
+                node->clause_index = -1;
                 pending_recv_append(ch, node);
                 struct kc_wake wake_sender = {0};
                 if (ch->wq_send_head != NULL) {
