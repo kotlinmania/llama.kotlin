@@ -1,7 +1,7 @@
 # Makefile for kcoro Lab Experiments
 
 CC ?= gcc
-CFLAGS += -O2 -Wall -Wextra -std=c11 -I../include -pthread -g
+CFLAGS += -O2 -Wall -Wextra -std=c11 -I../include -Imirror/include -pthread -g
 LDFLAGS += -pthread
 
 # Select architecture-specific assembly
@@ -23,7 +23,7 @@ OBJDIR := build/obj
 
 .PHONY: all clean
 
-all: $(BINDIR)/lab_minimal_switch $(BINDIR)/lab_stack_test $(BINDIR)/lab_debug_setup $(BINDIR)/lab_waiter_token $(BINDIR)/lab_token_vm $(BINDIR)/lab_token_vm_bench tui-monitor
+all: $(BINDIR)/lab_minimal_switch $(BINDIR)/lab_stack_test $(BINDIR)/lab_debug_setup $(BINDIR)/lab_waiter_token $(BINDIR)/lab_token_vm $(BINDIR)/lab_token_vm_bench $(BINDIR)/lab_token_vm_mirror $(BINDIR)/lab_token_kernel_demo $(BINDIR)/lab_simple_park_demo tui-monitor
 
 $(BINDIR) $(OBJDIR):
 	@mkdir -p $@
@@ -43,13 +43,28 @@ $(BINDIR)/lab_waiter_token: $(OBJDIR)/lab_waiter_token.o | $(BINDIR)
 	$(CC) -o $@ $^ $(LDFLAGS)
 	@echo "Built $@ - Rendezvous token prototype"
 
-$(BINDIR)/lab_token_vm: $(OBJDIR)/token_vm_resume.o | $(BINDIR)
+$(BINDIR)/lab_token_vm: $(OBJDIR)/token_vm_demo.o $(OBJDIR)/token_vm_resume.o $(OBJDIR)/token_vm_apply.o | $(BINDIR)
 	$(CC) -o $@ $^ $(LDFLAGS)
 	@echo "Built $@ - Token VM resume prototype"
 
-$(BINDIR)/lab_token_vm_bench: $(OBJDIR)/token_vm_bench.o $(OBJDIR)/token_vm_resume.o | $(BINDIR)
+$(BINDIR)/lab_token_vm_bench: $(OBJDIR)/token_vm_bench.o $(OBJDIR)/token_vm_resume.o $(OBJDIR)/token_vm_apply.o | $(BINDIR)
 	$(CC) -o $@ $^ $(LDFLAGS)
 	@echo "Built $@ - Token VM throughput bench"
+
+$(BINDIR)/lab_token_vm_mirror: $(OBJDIR)/token_vm_mirror.o $(OBJDIR)/token_vm_resume.o $(OBJDIR)/token_vm_apply.o | $(BINDIR)
+	$(CC) -o $@ $^ $(LDFLAGS)
+	@echo "Built $@ - Token VM coroutine mirror"
+
+$(BINDIR)/lab_token_kernel_demo: $(OBJDIR)/token_kernel_demo.o mirror/core/build/lib/libkcoro.a | $(BINDIR)
+	$(CC) -o $@ $^ $(LDFLAGS)
+	@echo "Built $@ - Token kernel demo"
+
+$(BINDIR)/lab_simple_park_demo: $(OBJDIR)/simple_park_demo.o mirror/core/build/lib/libkcoro.a | $(BINDIR)
+	$(CC) -o $@ $^ $(LDFLAGS)
+	@echo "Built $@ - Simple park/resume demo"
+
+mirror/core/build/lib/libkcoro.a:
+	$(MAKE) -C mirror/core all KILL_BEFORE=0
 
 # Build the debug setup lab
 $(BINDIR)/lab_debug_setup: $(OBJDIR)/lab_debug_setup.o $(OBJDIR)/kc_ctx_switch.o | $(BINDIR)
@@ -70,6 +85,21 @@ $(OBJDIR)/token_vm_resume.o: token_vm_resume.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/token_vm_bench.o: token_vm_bench.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/token_vm_mirror.o: token_vm_mirror.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/token_vm_apply.o: token_vm_apply.S | $(OBJDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/token_vm_demo.o: token_vm_demo.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/token_kernel_demo.o: token_kernel_demo.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/simple_park_demo.o: simple_park_demo.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # legacy compatibility experiment removed from active builds

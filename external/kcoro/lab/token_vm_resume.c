@@ -58,58 +58,26 @@ static void dump_machine_registers(void)
 }
 
 // Interpreter ----------------------------------------------------------------
-void kc_vm_execute(const kc_token *tokens, kc_vm_state *state)
+void *kc_vm_execute(const kc_token *tokens, uint64_t *regs)
 {
     const kc_token *pc = tokens;
     for (;;) {
         switch (pc->op) {
         case KC_OP_LOAD_IMM:
             if (pc->dst < KC_REG_MAX) {
-                state->gpr[pc->dst] = pc->imm;
+                regs[pc->dst] = pc->imm;
+            }
+            break;
+        case KC_OP_LOAD_MEM:
+            if (pc->dst < KC_REG_MAX && pc->imm) {
+                regs[pc->dst] = *(const uint64_t *)(uintptr_t)pc->imm;
             }
             break;
         case KC_OP_END:
-#if defined(__aarch64__)
-        {
-            register uint64_t x19 __asm__("x19") = state->gpr[KC_REG_X19];
-            register uint64_t x20 __asm__("x20") = state->gpr[KC_REG_X20];
-            register uint64_t x21 __asm__("x21") = state->gpr[KC_REG_X21];
-            register uint64_t x22 __asm__("x22") = state->gpr[KC_REG_X22];
-            register uint64_t x23 __asm__("x23") = state->gpr[KC_REG_X23];
-            register uint64_t x24 __asm__("x24") = state->gpr[KC_REG_X24];
-            register uint64_t x25 __asm__("x25") = state->gpr[KC_REG_X25];
-            register uint64_t x26 __asm__("x26") = state->gpr[KC_REG_X26];
-            register uint64_t x27 __asm__("x27") = state->gpr[KC_REG_X27];
-            register uint64_t x28 __asm__("x28") = state->gpr[KC_REG_X28];
-            (void)x19; (void)x20; (void)x21; (void)x22; (void)x23;
-            (void)x24; (void)x25; (void)x26; (void)x27; (void)x28;
-            void (*fn)(void) = (void (*)(void))pc->imm;
-            __asm__ volatile("" :: "r"(x19), "r"(x20), "r"(x21), "r"(x22),
-                                   "r"(x23), "r"(x24), "r"(x25), "r"(x26),
-                                   "r"(x27), "r"(x28));
-            fn();
-        }
-#elif defined(__x86_64__)
-        {
-            register uint64_t r12 __asm__("r12") = state->gpr[KC_REG_R12];
-            register uint64_t r13 __asm__("r13") = state->gpr[KC_REG_R13];
-            register uint64_t r14 __asm__("r14") = state->gpr[KC_REG_R14];
-            register uint64_t r15 __asm__("r15") = state->gpr[KC_REG_R15];
-            register uint64_t rbx __asm__("rbx") = state->gpr[KC_REG_RBX];
-            register uint64_t rbp __asm__("rbp") = state->gpr[KC_REG_RBP];
-            (void)r12; (void)r13; (void)r14; (void)r15; (void)rbx; (void)rbp;
-            void (*fn)(void) = (void (*)(void))pc->imm;
-            __asm__ volatile("" :: "r"(r12), "r"(r13), "r"(r14), "r"(r15),
-                                   "r"(rbx), "r"(rbp));
-            fn();
-        }
-#else
-            ((void (*)(void))pc->imm)();
-#endif
-            return;
+            return (void *)(uintptr_t)pc->imm;
         default:
             fprintf(stderr, "unknown opcode %u\n", pc->op);
-            return;
+            return NULL;
         }
         pc++;
     }
@@ -124,8 +92,21 @@ void demo_target(void)
 
 int kc_token_vm_run_demo(void)
 {
-    kc_vm_state state;
-    memset(&state, 0, sizeof(state));
+    uint64_t regs[KC_REG_MAX];
+    memset(regs, 0, sizeof(regs));
+#if defined(__aarch64__)
+    uint64_t cur_sp, cur_fp;
+    __asm__ volatile("mov %0, sp" : "=r"(cur_sp));
+    __asm__ volatile("mov %0, x29" : "=r"(cur_fp));
+    regs[KC_REG_SP] = cur_sp;
+    regs[KC_REG_FP] = cur_fp;
+#elif defined(__x86_64__)
+    uint64_t cur_sp, cur_bp;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(cur_sp));
+    __asm__ volatile("mov %%rbp, %0" : "=r"(cur_bp));
+    regs[KC_REG_SP] = cur_sp;
+    regs[KC_REG_FP] = cur_bp;
+#endif
 
     const kc_token program[] = {
 #if defined(__aarch64__)
@@ -146,9 +127,10 @@ int kc_token_vm_run_demo(void)
     };
 
     printf("[vm] staging coroutine context via token stream...\n");
-    kc_vm_execute(program, &state);
+    void *fn = kc_vm_execute(program, regs);
+    if (fn) {
+        kc_vm_apply(regs, fn);
+    }
 
     return 0;
 }
-
-void kc_vm_execute(const kc_token *tokens, kc_vm_state *state);

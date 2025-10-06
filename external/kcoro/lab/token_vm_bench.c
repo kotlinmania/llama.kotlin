@@ -33,14 +33,25 @@ static inline uint64_t cycles_freq_hz(void) {
 #endif
 }
 
-int kc_token_vm_run_demo(void);
 static void bench_target(void) { }
-void kc_vm_execute(const kc_token *tokens, kc_vm_state *state);
 
 int main(void)
 {
-    kc_vm_state state;
-    memset(&state, 0, sizeof(state));
+    uint64_t regs[KC_REG_MAX];
+    memset(regs, 0, sizeof(regs));
+#if defined(__aarch64__)
+    uint64_t cur_sp, cur_fp;
+    __asm__ volatile("mov %0, sp" : "=r"(cur_sp));
+    __asm__ volatile("mov %0, x29" : "=r"(cur_fp));
+    regs[KC_REG_SP] = cur_sp;
+    regs[KC_REG_FP] = cur_fp;
+#elif defined(__x86_64__)
+    uint64_t cur_sp, cur_bp;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(cur_sp));
+    __asm__ volatile("mov %%rbp, %0" : "=r"(cur_bp));
+    regs[KC_REG_SP] = cur_sp;
+    regs[KC_REG_FP] = cur_bp;
+#endif
 
     const kc_token program[] = {
 #if defined(__aarch64__)
@@ -65,7 +76,8 @@ int main(void)
     uint64_t start_cycles = cycles_now();
     struct timespec ts_start; clock_gettime(CLOCK_MONOTONIC_RAW, &ts_start);
     for (uint64_t i = 0; i < iterations; ++i) {
-        kc_vm_execute(program, &state);
+        void *fn = kc_vm_execute(program, regs);
+        if (fn) kc_vm_apply(regs, fn);
     }
     struct timespec ts_end; clock_gettime(CLOCK_MONOTONIC_RAW, &ts_end);
     uint64_t end_cycles = cycles_now();
