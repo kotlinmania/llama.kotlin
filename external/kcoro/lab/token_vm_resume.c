@@ -7,51 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
-// Opcodes -----------------------------------------------------------------
-typedef enum {
-    KC_OP_LOAD_IMM = 0,
-    KC_OP_END      = 1,
-} kc_opcode;
-
-typedef struct {
-    uint8_t   op;
-    uint8_t   dst;   // logical register index
-    uint16_t  flags;
-    uint64_t  imm;   // immediate / pointer
-} kc_token;
-
-// Logical register mapping (subset of callee saved registers)
-#if defined(__aarch64__)
-enum {
-    KC_REG_X19 = 0,
-    KC_REG_X20,
-    KC_REG_X21,
-    KC_REG_X22,
-    KC_REG_X23,
-    KC_REG_X24,
-    KC_REG_X25,
-    KC_REG_X26,
-    KC_REG_X27,
-    KC_REG_X28,
-    KC_REG_MAX
-};
-#elif defined(__x86_64__)
-enum {
-    KC_REG_R12 = 0,
-    KC_REG_R13,
-    KC_REG_R14,
-    KC_REG_R15,
-    KC_REG_RBX,
-    KC_REG_RBP,
-    KC_REG_MAX
-};
-#else
-enum { KC_REG_MAX = 1 };
-#endif
-
-typedef struct {
-    uint64_t gpr[KC_REG_MAX];
-} kc_vm_state;
+#include "token_vm.h"
 
 // Helper that prints the "live" machine registers.
 static void dump_machine_registers(void)
@@ -102,7 +58,7 @@ static void dump_machine_registers(void)
 }
 
 // Interpreter ----------------------------------------------------------------
-static void kc_vm_execute(const kc_token *tokens, kc_vm_state *state)
+void kc_vm_execute(const kc_token *tokens, kc_vm_state *state)
 {
     const kc_token *pc = tokens;
     for (;;) {
@@ -160,13 +116,13 @@ static void kc_vm_execute(const kc_token *tokens, kc_vm_state *state)
 }
 
 // Demo target that prints the logical state and a live register dump.
-static void demo_target(void)
+void demo_target(void)
 {
     printf("[target] executing with live register state:\n");
     dump_machine_registers();
 }
 
-int main(void)
+int kc_token_vm_run_demo(void)
 {
     kc_vm_state state;
     memset(&state, 0, sizeof(state));
@@ -194,3 +150,5 @@ int main(void)
 
     return 0;
 }
+
+void kc_vm_execute(const kc_token *tokens, kc_vm_state *state);

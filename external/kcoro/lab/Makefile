@@ -23,7 +23,7 @@ OBJDIR := build/obj
 
 .PHONY: all clean
 
-all: $(BINDIR)/lab_minimal_switch $(BINDIR)/lab_stack_test $(BINDIR)/lab_debug_setup $(BINDIR)/lab_waiter_token $(BINDIR)/lab_token_vm tui-monitor
+all: $(BINDIR)/lab_minimal_switch $(BINDIR)/lab_stack_test $(BINDIR)/lab_debug_setup $(BINDIR)/lab_waiter_token $(BINDIR)/lab_token_vm $(BINDIR)/lab_token_vm_bench tui-monitor
 
 $(BINDIR) $(OBJDIR):
 	@mkdir -p $@
@@ -47,6 +47,10 @@ $(BINDIR)/lab_token_vm: $(OBJDIR)/token_vm_resume.o | $(BINDIR)
 	$(CC) -o $@ $^ $(LDFLAGS)
 	@echo "Built $@ - Token VM resume prototype"
 
+$(BINDIR)/lab_token_vm_bench: $(OBJDIR)/token_vm_bench.o $(OBJDIR)/token_vm_resume.o | $(BINDIR)
+	$(CC) -o $@ $^ $(LDFLAGS)
+	@echo "Built $@ - Token VM throughput bench"
+
 # Build the debug setup lab
 $(BINDIR)/lab_debug_setup: $(OBJDIR)/lab_debug_setup.o $(OBJDIR)/kc_ctx_switch.o | $(BINDIR)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -63,6 +67,9 @@ $(OBJDIR)/lab_waiter_token.o: lab_waiter_token.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/token_vm_resume.o: token_vm_resume.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/token_vm_bench.o: token_vm_bench.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # legacy compatibility experiment removed from active builds
