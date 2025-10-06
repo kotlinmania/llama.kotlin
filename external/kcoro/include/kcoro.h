@@ -327,6 +327,11 @@ struct kc_chan_snapshot {
     unsigned long zref_received;
     unsigned long zref_aborted_close;
 
+    /* Rendezvous counters */
+    unsigned long rv_matches;
+    unsigned long rv_cancels;
+    unsigned long rv_zdesc_matches;
+
     /* Derived */
     double        duration_sec;
 };
@@ -349,9 +354,12 @@ struct kc_chan_rate_sample {
     unsigned long delta_bytes_sent;
     unsigned long delta_bytes_recv;
     unsigned long delta_send_eagain;
-    unsigned long delta_recv_eagain;
-    unsigned long delta_send_epipe;
-    unsigned long delta_recv_epipe;
+   unsigned long delta_recv_eagain;
+   unsigned long delta_send_epipe;
+   unsigned long delta_recv_epipe;
+    unsigned long delta_rv_matches;
+    unsigned long delta_rv_cancels;
+    unsigned long delta_rv_zdesc_matches;
     double        interval_sec;     /* effective interval (>=1e-6 when deltas>0) */
     double        sends_per_sec;
     double        recvs_per_sec;

@@ -118,6 +118,11 @@ struct kc_chan {
     const struct kc_zcopy_backend_ops *zc_ops; /* vtable */
     void           *zc_priv;    /* backend per-channel state */
     int             zc_backend_id; /* registry id */
+
+    /* Rendezvous metrics */
+    unsigned long   rv_matches;
+    unsigned long   rv_cancels;
+    unsigned long   rv_zdesc_matches;
 };
 
 static inline long kc_now_ns(void)

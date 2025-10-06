@@ -379,6 +379,8 @@ again:
     if (ch->zref_ready) {
         d->addr = ch->zref_ptr; d->len = ch->zref_len; ch->zref_ready=0; ch->zref_ptr=NULL; ch->zref_len=0;
         ch->zref_received++; ch->zref_last_consumed_epoch = ch->zref_epoch;
+        ch->rv_matches++;
+        ch->rv_zdesc_matches++;
         kc_chan_update_recv_stats_len_locked(ch, d->len);
         /* Wake first parked zref sender */
         kcoro_t *wake_co = NULL;

@@ -350,6 +350,7 @@ static int kc_chan_select_deliver_recv_locked(struct kc_chan *ch, struct kc_wait
     void *dst = kc_select_recv_buffer(sel, w->clause_index);
     if (!dst) {
         rc = KC_ECANCELED;
+        if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
     } else if (ch->kind == KC_CONFLATED) {
         if (ch->has_value) {
             memcpy(dst, ch->slot, ch->elem_sz);
@@ -366,6 +367,7 @@ static int kc_chan_select_deliver_recv_locked(struct kc_chan *ch, struct kc_wait
         if (ch->has_value) {
             memcpy(dst, ch->slot, ch->elem_sz);
             ch->has_value = 0;
+            ch->rv_matches++;
             kc_chan_update_recv_stats_locked(ch);
             if (consumed_out) *consumed_out = 1;
         } else if (ch->closed) {
@@ -586,6 +588,7 @@ int kc_chan_select_register_recv(kc_chan_t *c, kc_select_t *sel, int clause_inde
             if (dst) {
                 memcpy(dst, ch->slot, ch->elem_sz);
                 ch->has_value = 0;
+                ch->rv_matches++;
                 /* Complete select for immediate rendezvous value */
                 if (kc_select_try_complete(sel, clause_index, 0)) {
                     kcoro_t *co = kc_select_waiter(sel);
@@ -597,6 +600,7 @@ int kc_chan_select_register_recv(kc_chan_t *c, kc_select_t *sel, int clause_inde
                 }
             } else {
                 result = KC_ECANCELED;
+                ch->rv_cancels++;
             }
             struct kc_wake send_wake = kc_chan_wake_send_locked(ch);
             kc_wake_list_append(&wakes, send_wake);
@@ -773,6 +777,7 @@ void kc_chan_select_cancel(kc_chan_t *c, kc_select_t *sel, int clause_index, enu
                 cur = cur->next;
                 if (dead == *tail) *tail = prev;
                 kc_waiter_dispose(dead);
+                if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
             } else {
                 prev = cur;
                 cur = cur->next;
@@ -814,6 +819,7 @@ void kc_chan_close(kc_chan_t *c)
                 kc_wake_list_append(&wakes, wake);
             }
         }
+        if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
         kc_waiter_dispose(w);
     }
     while ((w = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail)) != NULL) {
@@ -829,6 +835,7 @@ void kc_chan_close(kc_chan_t *c)
                 kc_wake_list_append(&wakes, wake);
             }
         }
+        if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
         kc_waiter_dispose(w);
     }
     KC_MUTEX_UNLOCK(&ch->mu);
@@ -1026,6 +1033,7 @@ again_recv:
         if (rc == 0 && ch->has_value) {
             memcpy(out, ch->slot, ch->elem_sz);
             ch->has_value = 0;
+            ch->rv_matches++;
             kc_chan_update_recv_stats_locked(ch);
             KC_COND_SIGNAL(&ch->cv_send);
             wake_send = kc_chan_wake_send_locked(ch);
@@ -1272,6 +1280,7 @@ int kc_chan_snapshot(kc_chan_t *c, struct kc_chan_snapshot *out) {
     out->capabilities = ch->capabilities;
     out->closed = ch->closed;
     out->zref_mode = ch->zref_mode;
+    out->ptr_mode = ch->ptr_mode;
     out->total_sends = ch->total_sends;
     out->total_recvs = ch->total_recvs;
     out->total_bytes_sent = ch->total_bytes_sent;
@@ -1287,6 +1296,9 @@ int kc_chan_snapshot(kc_chan_t *c, struct kc_chan_snapshot *out) {
     out->zref_sent = ch->zref_sent;
     out->zref_received = ch->zref_received;
     out->zref_aborted_close = ch->zref_aborted_close;
+    out->rv_matches = ch->rv_matches;
+    out->rv_cancels = ch->rv_cancels;
+    out->rv_zdesc_matches = ch->rv_zdesc_matches;
     if (ch->first_op_time_ns && ch->last_op_time_ns > ch->first_op_time_ns) {
         long dur = ch->last_op_time_ns - ch->first_op_time_ns;
         out->duration_sec = (double)dur / 1e9;
@@ -1314,6 +1326,9 @@ int kc_chan_compute_rate(const struct kc_chan_snapshot *prev,
     out->delta_recv_eagain = curr->recv_eagain - prev->recv_eagain;
     out->delta_send_epipe  = curr->send_epipe  - prev->send_epipe;
     out->delta_recv_epipe  = curr->recv_epipe  - prev->recv_epipe;
+    out->delta_rv_matches = curr->rv_matches - prev->rv_matches;
+    out->delta_rv_cancels = curr->rv_cancels - prev->rv_cancels;
+    out->delta_rv_zdesc_matches = curr->rv_zdesc_matches - prev->rv_zdesc_matches;
     /* Determine time interval: prefer difference in duration_sec if prev had
      * a valid base; otherwise use curr->duration_sec; fallback microsecond. */
     double base_prev = prev->duration_sec;
@@ -1324,7 +1339,10 @@ int kc_chan_compute_rate(const struct kc_chan_snapshot *prev,
     } else if (base_curr > 0.0) {
         interval = base_curr;
     }
-    if (interval <= 0.0 && (ds || dr || dbs || dbr)) interval = 1e-6; /* minimal */
+    if (interval <= 0.0 && (ds || dr || dbs || dbr ||
+                            out->delta_rv_matches || out->delta_rv_cancels || out->delta_rv_zdesc_matches)) {
+        interval = 1e-6; /* minimal */
+    }
     out->interval_sec = interval;
     if (interval > 0.0) {
         out->sends_per_sec = ds / interval;
@@ -1560,6 +1578,7 @@ again_recv_ptr:
                 ch->has_value = 0;
                 *out_ptr = tmp.ptr;
                 *out_len = tmp.len;
+                ch->rv_matches++;
                 kc_chan_update_recv_stats_len_locked(ch, tmp.len);
                 KC_COND_SIGNAL(&ch->cv_send);
                 wake_send = kc_chan_wake_send_locked(ch);
