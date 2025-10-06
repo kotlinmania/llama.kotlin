@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-struct kc_channel;
+struct kc_chan;
 struct kcoro;
 
 typedef uint64_t kc_token_id_t;
@@ -22,18 +22,18 @@ typedef struct kc_payload {
 
 typedef struct kc_ticket {
     kc_token_id_t      id;
-    struct kc_channel *channel;
+    struct kc_chan *channel;
 } kc_ticket;
 
 int kc_token_kernel_global_init(void);
 void kc_token_kernel_global_shutdown(void);
 
-kc_ticket kc_token_kernel_publish_send(struct kc_channel *ch,
+kc_ticket kc_token_kernel_publish_send(struct kc_chan *ch,
                                        void *ptr,
                                        size_t len,
                                        void (*resume_pc)(void));
 
-kc_ticket kc_token_kernel_publish_recv(struct kc_channel *ch,
+kc_ticket kc_token_kernel_publish_recv(struct kc_chan *ch,
                                        void (*resume_pc)(void));
 
 void kc_token_kernel_callback(kc_ticket ticket, kc_payload payload);

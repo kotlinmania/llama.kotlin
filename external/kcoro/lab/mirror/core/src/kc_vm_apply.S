@@ -14,7 +14,7 @@ _kc_vm_capture:
     str x26, [x0, #0x38]
     str x27, [x0, #0x40]
     str x28, [x0, #0x48]
-    str x30, [x0, #0x68]
+    str x1,  [x0, #0x68]
     mov x9, sp
     str x9, [x0, #0x70]
     str x29, [x0, #0x78]

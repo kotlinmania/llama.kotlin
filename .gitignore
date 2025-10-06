@@ -146,3 +146,15 @@ poetry.toml
 
 # Embedded projects
 ember-ml-kotlin/
+
+# Tools archives
+.tools/
+tools/longarray_shift_probe.c
+tools/kotlin-native-macos-aarch64-1.9.24.zip
+tools/kotlin-native-prebuilt-macos-aarch64-2.2.20/
+tools/kotlin-native-prebuilt-macos-aarch64-2.2.20.tar.gz
+tools/kotlin-native-samples/
+tools/kotlinx-coroutines-core/
+tools/kotlinx-coroutines-core-macosarm64-1.9.0.klib
+tools/kotlinx.coroutines/
+.github/copilot-instructions.md

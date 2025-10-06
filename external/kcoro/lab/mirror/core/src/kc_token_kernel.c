@@ -19,7 +19,7 @@ typedef struct kc_token_block kc_token_block;
 
 struct kc_token_block {
     kc_token_block    *next_hash;
-    struct kc_channel *channel;
+    struct kc_chan    *channel;
     kcoro_t           *owner_co;
     kc_payload         payload;
     void              (*resume_pc)(void);
@@ -195,7 +195,7 @@ static kc_token_id_t next_token_id(void)
     return atomic_fetch_add_explicit(&g_kernel.next_id, 1, memory_order_relaxed);
 }
 
-static kc_ticket publish_common(struct kc_channel *ch,
+static kc_ticket publish_common(struct kc_chan *ch,
                                 const kc_payload *initial_payload,
                                 void (*resume_pc)(void))
 {
@@ -230,7 +230,7 @@ static kc_ticket publish_common(struct kc_channel *ch,
     return ticket;
 }
 
-kc_ticket kc_token_kernel_publish_send(struct kc_channel *ch,
+kc_ticket kc_token_kernel_publish_send(struct kc_chan *ch,
                                        void *ptr,
                                        size_t len,
                                        void (*resume_pc)(void))
@@ -239,7 +239,7 @@ kc_ticket kc_token_kernel_publish_send(struct kc_channel *ch,
     return publish_common(ch, &payload, resume_pc);
 }
 
-kc_ticket kc_token_kernel_publish_recv(struct kc_channel *ch,
+kc_ticket kc_token_kernel_publish_recv(struct kc_chan *ch,
                                        void (*resume_pc)(void))
 {
     return publish_common(ch, NULL, resume_pc);

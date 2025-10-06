@@ -329,13 +329,6 @@ if (swarBenchTarget != null) {
     }
     val benchBinary = layout.buildDirectory.file("bin/$swarBenchTarget/benchReleaseExecutable/bench.kexe")
 
-    tasks.register<Exec>("runSwarBench") {
-        group = "bench"
-        description = "Run SWAR average benchmark suite on $swarBenchTarget"
-        dependsOn("linkBenchReleaseExecutable$targetCapitalized")
-        commandLine(benchBinary.get().asFile.absolutePath, "--swar-avg")
-    }
-
     tasks.register<Exec>("runSwarBenchParallel") {
         group = "bench"
         description = "Run parallel SWAR average benchmark suite on $swarBenchTarget"
@@ -345,8 +338,8 @@ if (swarBenchTarget != null) {
 
     tasks.register("runAllSwarBenches") {
         group = "bench"
-        description = "Run SWAR benchmark suites (serial + parallel) on $swarBenchTarget"
-        dependsOn("runSwarBench", "runSwarBenchParallel")
+        description = "Run SWAR benchmark suite (parallel) on $swarBenchTarget"
+        dependsOn("runSwarBenchParallel")
     }
 }
 

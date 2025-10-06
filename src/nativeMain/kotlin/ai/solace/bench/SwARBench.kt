@@ -4,6 +4,9 @@ import ai.solace.klang.bitwise.SwAR
 import kotlin.time.TimeSource
 import kotlinx.coroutines.*
 
+// Serial SWAR bench archived (2025-10-06) under archive/bench/SwARBenchSerial.kt. Only the
+// parallel suite remains in active use.
+
 private fun checksumIntArray(a: IntArray): Long {
     var s = 0L
     for (v in a) s = (s * 131 + (v and -1)) and 0x7FFF_FFFFL
@@ -42,138 +45,6 @@ private fun emitCsv(
     val gbpsFmt = ((gbps * 1000.0).toLong() / 1000.0)
     val gbeffFmt = ((gbeff * 1000.0).toLong() / 1000.0)
     println("$variant,$sz,$iters,$ns,$gbpsFmt,$gbeffFmt,$checksum")
-}
-
-internal fun runSwarAvgBenchSuite() {
-    println("variant,size,iters,ns,GBps,GBps_eff,checksum")
-    val sizes = listOf(8, 64, 4096, 262144)
-    fun itersFor(size: Int) = when {
-        size <= 64 -> 200_000
-        size <= 4096 -> 50_000
-        else -> 2_000
-    }
-    for (sz in sizes) {
-        val (a0, b0) = genPacks(sz)
-        // SWAR u8 trunc
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.avgU8Trunc(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("swar-u8-trunc", sz, iters, ns, checksumIntArray(out))
-        }
-        // SWAR u8 trunc (arithmetic-only shift step)
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.avgU8TruncArith(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("swar-u8-trunc-arith", sz, iters, ns, checksumIntArray(out))
-        }
-        // Scalar per-byte trunc (baseline)
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.refAvgU8Trunc(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("scalar-u8-trunc", sz, iters, ns, checksumIntArray(out))
-        }
-        // SWAR u8 round
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.avgU8Round(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("swar-u8-round", sz, iters, ns, checksumIntArray(out))
-        }
-        // SWAR u8 round (arithmetic-only shift step)
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.avgU8RoundArith(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("swar-u8-round-arith", sz, iters, ns, checksumIntArray(out))
-        }
-        // Scalar u8 round
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.refAvgU8Round(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("scalar-u8-round", sz, iters, ns, checksumIntArray(out))
-        }
-        // LUT variants
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.avgU8TruncLutArith(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("swar-u8-trunc-lut-arith", sz, iters, ns, checksumIntArray(out))
-        }
-        run {
-            val iters = itersFor(sz)
-            val out = IntArray(sz)
-            val t0 = TimeSource.Monotonic.markNow()
-            repeat(iters) {
-                var i = 0
-                while (i < sz) {
-                    out[i] = SwAR.avgU8RoundLutArith(a0[i], b0[i])
-                    i++
-                }
-            }
-            val ns = t0.elapsedNow().inWholeNanoseconds
-            emitCsv("swar-u8-round-lut-arith", sz, iters, ns, checksumIntArray(out))
-        }
-    }
 }
 
 internal fun runSwarAvgBenchSuiteParallel() {

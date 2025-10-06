@@ -78,3 +78,19 @@ I sat down today to write the handoff I wish I had found when I opened this tree
 
 ## Final Words for the Next Pair of Hands
 Kotlin earned the 22 GB/s trophy by eliminating side flags and trusting a single state machine. Our C port is poised to do the same once the rendezvous cell exists and cancellation hooks are first-class. This plan gets us there: fix the build harness, replace ad-hoc booleans with tokens, fold rendezvous into the slot engine, and surface metrics so chanmon can prove parity. When that’s done, the scheduler and zero-copy specialists can tune their layers knowing the foundation is as sharp as the ARM64 switcher.
+
+---
+
+## 2025-10-06 Night Run — Token VM Mirror & BizTalk Analogies
+
+I took the BizTalk cue and pushed the lab one layer closer to the “allocation table” dream. Instead of spraying context switches everywhere, the token interpreter now just stamps register tickets and hands them to a dedicated resume stub—think of it as a miniature record in a channel allocation table. The AArch64 implementation lives in `external/kcoro/lab/token_vm_apply.S`: it loads x19–x28 from the staged table, branches to the trampoline, then restores the caller’s callee-saved registers so the scheduler stays untouched. On the benchmark (`external/kcoro/lab/build/lab_token_vm_bench`) that new resume path hits ~168.76 M resumes/sec (~5.93 cycles/resume) on the M3 Pro—roughly double the earlier C-only interpreter.
+
+To make the concept tangible I also cloned a kcoro “mirror” inside the lab (`token_vm_mirror.c`). It is a deliberately tiny scheduler: a ready queue, a pointer-only channel with zero-copy semantics, and two producers + two consumers trading 1 KB descriptors. With the new resume stub the mirror chews through 2,000 messages (1,000 per consumer) without touching a memcpy, printing:
+
+```
+consumer[0] received=1000 sum=499500
+consumer[1] received=1000 sum=499500
+total received=2000 total sum=999000
+```
+
+The BizTalk analogy paid off. Treating each coroutine as a “record” in a RAM-backed allocation table lets us slot tokens (register tickets) and descriptors side by side. Blocking producers simply yield while their records stay resident; when consumers drain the queue the scheduler requeues the waiting records without copying payloads. The next step is to graft the real kcoro channel code onto this lab skeleton so the same ticketing system drives rendezvous send/recv in production.

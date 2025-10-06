@@ -106,7 +106,6 @@ private fun usage() {
     println("  --engine-left-native : run engine-based left shift with NATIVE mode")
     println("  --engine-right-native: run engine-based right shift with NATIVE mode")
     println("  --masks          : run arithmetic mask vs bitwise (left shift) bench")
-    println("  --swar-avg       : run SWAR average (u8) vs scalar bench")
     println("  --swar-avg-par   : run SWAR arithmetic-only (u8) parallel bench")
     println("  --all            : run all benches in sequence")
 }
@@ -125,14 +124,13 @@ fun main(args: Array<String>) {
         "--engine-left-par" -> runShiftSuiteParallel()
         "--engine-right-par" -> runRightShiftSuiteParallel()
         "--masks" -> runMaskBenchSuite()
-        "--swar-avg" -> runSwarAvgBenchSuite()
         "--swar-avg-par" -> runSwarAvgBenchSuiteParallel()
         "--all" -> {
             runHexStringShiftBenchSuite()
             runShiftSuite()
             runRightShiftSuite()
             runMaskBenchSuite()
-            runSwarAvgBenchSuite()
+            runSwarAvgBenchSuiteParallel()
         }
         else -> usage()
     }
