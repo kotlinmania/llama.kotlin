@@ -22,6 +22,7 @@
 
 # Local lab binaries
 external/kcoro/lab/lab_waiter_token
+external/kcoro/lab/lab_token_vm
 external/kcoro/tests/bench_chan_metrics
 external/kcoro/tests/bench_chan_metrics.d
 
