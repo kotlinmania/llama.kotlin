@@ -475,7 +475,6 @@ static struct kc_wake kc_chan_wake_recv_locked(struct kc_chan *ch)
         struct kc_waiter *w = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail);
         if (!w) return wake;
         if (w->kind == KC_WAITER_CORO) {
-            fprintf(stderr, "[wake_recv] coroutine waiter co=%p\n", (void*)w->co);
             wake.co = w->co;
             if (wake.co) kcoro_retain(wake.co);
             kc_waiter_dispose(w);
@@ -503,7 +502,6 @@ static struct kc_wake kc_chan_wake_send_locked(struct kc_chan *ch)
         struct kc_waiter *w = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
         if (!w) return wake;
         if (w->kind == KC_WAITER_CORO) {
-            fprintf(stderr, "[wake_send] coroutine waiter co=%p\n", (void*)w->co);
             wake.co = w->co;
             if (wake.co) kcoro_retain(wake.co);
             kc_waiter_dispose(w);
@@ -1395,10 +1393,8 @@ again_send_ptr:
                 struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
                 if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
                 kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
-                fprintf(stderr, "[send] park waiter co=%p\n", (void*)kcoro_current());
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kcoro_park();
-                fprintf(stderr, "[send] resume after park\n");
                 goto again_send_ptr;
             }
             KC_MUTEX_UNLOCK(&ch->mu);
@@ -1406,13 +1402,11 @@ again_send_ptr:
             kcoro_yield();
             goto again_send_ptr;
         }
-        fprintf(stderr, "[send] found waiting recv\n");
         memcpy(ch->slot, &msg, sizeof(msg));
         ch->has_value = 1;
         kc_chan_update_send_stats_len_locked(ch, len);
         KC_COND_SIGNAL(&ch->cv_recv);
         wake_recv = kc_chan_wake_recv_locked(ch);
-        fprintf(stderr, "[send] delivered rendezvous\n");
         KC_MUTEX_UNLOCK(&ch->mu);
         kc_chan_schedule_wake(wake_recv);
         return 0;
@@ -1531,11 +1525,7 @@ again_recv_ptr:
 
     /* Rendezvous: consume from slot when present */
     if (ch->kind == KC_RENDEZVOUS) {
-        struct kc_waiter *pending_waiter = NULL;
         for (;;) {
-            if (pending_waiter && pending_waiter->freed) {
-                pending_waiter = NULL;
-            }
             if (ch->has_value) {
                 struct kc_chan_ptrmsg tmp;
                 memcpy(&tmp, ch->slot, sizeof(tmp));
@@ -1547,7 +1537,7 @@ again_recv_ptr:
                 wake_send = kc_chan_wake_send_locked(ch);
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_send);
-                pending_waiter = NULL;
+                waiter_enqueued = 0;
                 return 0;
             }
             if (ch->closed) {
@@ -1559,21 +1549,21 @@ again_recv_ptr:
                     struct kc_wake wake_sender = kc_chan_wake_send_locked(ch);
                     KC_MUTEX_UNLOCK(&ch->mu);
                     kc_chan_schedule_wake(wake_sender);
-                    KC_MUTEX_LOCK(&ch->mu);
-                    continue;
+                    goto again_recv_ptr;
                 }
                 ch->recv_eagain++;
                 KC_MUTEX_UNLOCK(&ch->mu);
                 return KC_EAGAIN;
             }
             if (timeout_ms < 0) {
-                if (!pending_waiter) {
-                    pending_waiter = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
-                    if (!pending_waiter) {
+                if (!waiter_enqueued) {
+                    struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
+                    if (!w) {
                         KC_MUTEX_UNLOCK(&ch->mu);
                         return -ENOMEM;
                     }
-                    kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, pending_waiter);
+                    kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
+                    waiter_enqueued = 1;
                 }
                 struct kc_wake wake_sender = {0};
                 if (ch->wq_send_head != NULL) {
@@ -1581,9 +1571,8 @@ again_recv_ptr:
                 }
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_sender);
-                kcoro_yield();
-                KC_MUTEX_LOCK(&ch->mu);
-                continue;
+                kcoro_park();
+                goto again_recv_ptr;
             }
             /* timeout_ms > 0 */
             struct kc_wake wake_sender = {0};
@@ -1594,7 +1583,7 @@ again_recv_ptr:
             kc_chan_schedule_wake(wake_sender);
             if (kc_now_ns() >= deadline_ns) { ch->recv_etime++; return KC_ETIME; }
             kcoro_yield();
-            KC_MUTEX_LOCK(&ch->mu);
+            goto again_recv_ptr;
         }
     }
 
