@@ -224,6 +224,26 @@ static void kc_wake_list_schedule(struct kc_wake_list *list)
     list->count = 0;
 }
 
+static int kc_waiter_token_ensure_enqueued(struct kc_waiter_token *token,
+                                           struct kc_chan *ch,
+                                           enum kc_select_clause_kind clause)
+{
+    if (kc_waiter_token_is_enqueued(token)) {
+        return 0;
+    }
+    struct kc_waiter *w = kc_waiter_new_coro(clause);
+    if (!w) {
+        return -ENOMEM;
+    }
+    if (clause == KC_SELECT_CLAUSE_SEND) {
+        kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
+    } else {
+        kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
+    }
+    token->status = KC_WAITER_TOKEN_ENQUEUED;
+    return 0;
+}
+
 /* use kc_waiter_new_coro from kc_chan_internal.h */
 
 static struct kc_waiter* kc_waiter_new_select(kc_select_t *sel, int clause_index, enum kc_select_clause_kind kind)
@@ -1368,6 +1388,9 @@ int kc_chan_send_ptr(kc_chan_t *c, void *ptr, size_t len, long timeout_ms)
     long deadline_ns = 0; const int timed = (timeout_ms > 0);
     if (timed) deadline_ns = kc_now_ns() + timeout_ms * 1000000L;
 
+    struct kc_waiter_token send_token;
+    kc_waiter_token_reset(&send_token);
+
 again_send_ptr:
     KC_MUTEX_LOCK(&ch->mu);
     if (ch->closed) { ch->send_epipe++; KC_MUTEX_UNLOCK(&ch->mu); return KC_EPIPE; }
@@ -1382,6 +1405,7 @@ again_send_ptr:
         wake_recv = kc_chan_wake_recv_locked(ch);
         KC_MUTEX_UNLOCK(&ch->mu);
         kc_chan_schedule_wake(wake_recv);
+        kc_waiter_token_reset(&send_token);
         return 0;
     }
 
@@ -1390,11 +1414,11 @@ again_send_ptr:
         if (ch->wq_recv_head == NULL || ch->has_value) {
             if (timeout_ms == 0) { ch->send_eagain++; KC_MUTEX_UNLOCK(&ch->mu); return KC_EAGAIN; }
             if (timeout_ms < 0) {
-                struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
-                if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
-                kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
+                int ensure_rc = kc_waiter_token_ensure_enqueued(&send_token, ch, KC_SELECT_CLAUSE_SEND);
+                if (ensure_rc != 0) { KC_MUTEX_UNLOCK(&ch->mu); return ensure_rc; }
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kcoro_park();
+                kc_waiter_token_reset(&send_token);
                 goto again_send_ptr;
             }
             KC_MUTEX_UNLOCK(&ch->mu);
@@ -1456,6 +1480,7 @@ again_send_ptr:
     wake_recv = kc_chan_wake_recv_locked(ch);
     KC_MUTEX_UNLOCK(&ch->mu);
     kc_chan_schedule_wake(wake_recv);
+    kc_waiter_token_reset(&send_token);
     return 0;
 }
 
@@ -1481,6 +1506,9 @@ int kc_chan_recv_ptr(kc_chan_t *c, void **out_ptr, size_t *out_len, long timeout
 
     long deadline_ns = 0; const int timed = (timeout_ms > 0);
     if (timed) deadline_ns = kc_now_ns() + timeout_ms * 1000000L;
+
+    struct kc_waiter_token recv_token;
+    kc_waiter_token_reset(&recv_token);
 
 again_recv_ptr:
     KC_MUTEX_LOCK(&ch->mu);
@@ -1537,11 +1565,12 @@ again_recv_ptr:
                 wake_send = kc_chan_wake_send_locked(ch);
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_send);
-                waiter_enqueued = 0;
+                kc_waiter_token_reset(&recv_token);
                 return 0;
             }
             if (ch->closed) {
                 KC_MUTEX_UNLOCK(&ch->mu);
+                kc_waiter_token_reset(&recv_token);
                 return KC_EPIPE;
             }
             if (timeout_ms == 0) {
@@ -1553,17 +1582,14 @@ again_recv_ptr:
                 }
                 ch->recv_eagain++;
                 KC_MUTEX_UNLOCK(&ch->mu);
+                kc_waiter_token_reset(&recv_token);
                 return KC_EAGAIN;
             }
             if (timeout_ms < 0) {
-                if (!waiter_enqueued) {
-                    struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
-                    if (!w) {
-                        KC_MUTEX_UNLOCK(&ch->mu);
-                        return -ENOMEM;
-                    }
-                    kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
-                    waiter_enqueued = 1;
+                int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV);
+                if (ensure_rc != 0) {
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    return ensure_rc;
                 }
                 struct kc_wake wake_sender = {0};
                 if (ch->wq_send_head != NULL) {
@@ -1572,6 +1598,7 @@ again_recv_ptr:
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_sender);
                 kcoro_park();
+                kc_waiter_token_reset(&recv_token);
                 goto again_recv_ptr;
             }
             /* timeout_ms > 0 */
@@ -1581,7 +1608,7 @@ again_recv_ptr:
             }
             KC_MUTEX_UNLOCK(&ch->mu);
             kc_chan_schedule_wake(wake_sender);
-            if (kc_now_ns() >= deadline_ns) { ch->recv_etime++; return KC_ETIME; }
+            if (kc_now_ns() >= deadline_ns) { ch->recv_etime++; kc_waiter_token_reset(&recv_token); return KC_ETIME; }
             kcoro_yield();
             goto again_recv_ptr;
         }

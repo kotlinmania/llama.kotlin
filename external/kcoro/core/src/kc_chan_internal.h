@@ -30,6 +30,25 @@ struct kc_waiter {
     size_t *recv_len_slot;
 };
 
+enum kc_waiter_token_status {
+    KC_WAITER_TOKEN_INIT = 0,
+    KC_WAITER_TOKEN_ENQUEUED = 1,
+};
+
+struct kc_waiter_token {
+    enum kc_waiter_token_status status;
+};
+
+static inline void kc_waiter_token_reset(struct kc_waiter_token *token)
+{
+    if (token) token->status = KC_WAITER_TOKEN_INIT;
+}
+
+static inline int kc_waiter_token_is_enqueued(const struct kc_waiter_token *token)
+{
+    return token && token->status == KC_WAITER_TOKEN_ENQUEUED;
+}
+
 struct kc_chan {
     KC_MUTEX_T mu;
     KC_COND_T  cv_send;
