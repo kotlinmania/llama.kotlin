@@ -3,6 +3,8 @@ package ai.solace.bench
 // Engine-based benchmark: use ArrayBitShifts/BitShiftEngine for apples-to-apples comparison.
 import ai.solace.klang.bitwise.ArrayBitShifts
 import kotlin.time.TimeSource
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
 
 private fun Double.toStringAsFixed3(): String {
     val v = this
@@ -107,10 +109,15 @@ private fun usage() {
     println("  --engine-right-native: run engine-based right shift with NATIVE mode")
     println("  --masks          : run arithmetic mask vs bitwise (left shift) bench")
     println("  --swar-avg-par   : run SWAR arithmetic-only (u8) parallel bench")
+    println("  --swar-stream    : run SWAR stream/tile channel bench")
     println("  --all            : run all benches in sequence")
 }
 
-fun main(args: Array<String>) {
+fun main(args: Array<String>) = runBlocking {
+    benchMain(args)
+}
+
+private suspend fun benchMain(args: Array<String>) {
     if (args.isEmpty()) {
         usage()
         return
@@ -125,6 +132,7 @@ fun main(args: Array<String>) {
         "--engine-right-par" -> runRightShiftSuiteParallel()
         "--masks" -> runMaskBenchSuite()
         "--swar-avg-par" -> runSwarAvgBenchSuiteParallel()
+        "--swar-stream" -> runSwarAvgStreamBench()
         "--all" -> {
             runHexStringShiftBenchSuite()
             runShiftSuite()
@@ -146,7 +154,7 @@ private fun runRightShiftSuiteWithMode(mode: ai.solace.klang.bitwise.BitShiftMod
 
 // ===== Parallel variants =====
 
-private fun benchLeftEngineIntArrayParallel(c: BenchCase, iters: Int): Triple<Long, Double, Long> {
+private suspend fun benchLeftEngineIntArrayParallel(c: BenchCase, iters: Int): Triple<Long, Double, Long> {
     val a = IntArray(c.size) { (it * 23 + 7) and 0xFFFF }
     var carry = 0
     val t0 = TimeSource.Monotonic.markNow()
@@ -160,7 +168,7 @@ private fun benchLeftEngineIntArrayParallel(c: BenchCase, iters: Int): Triple<Lo
     return Triple(ns, gbps, (checksumInt(a) + carry) and 0x7FFF_FFFFL)
 }
 
-private fun runShiftSuiteParallel() {
+private suspend fun runShiftSuiteParallel() {
     val sizes = listOf(8, 64, 4096, 262144)
     val shifts = listOf(1, 5, 8, 13, 15)
     fun itersFor(size: Int): Int = when {
@@ -177,7 +185,7 @@ private fun runShiftSuiteParallel() {
     }
 }
 
-private fun benchRightEngineIntArrayParallel(c: BenchCase, iters: Int): Triple<Long, Double, Long> {
+private suspend fun benchRightEngineIntArrayParallel(c: BenchCase, iters: Int): Triple<Long, Double, Long> {
     val a = IntArray(c.size) { (it * 23 + 7) and 0xFFFF }
     var carry = 0
     val t0 = TimeSource.Monotonic.markNow()
@@ -191,7 +199,7 @@ private fun benchRightEngineIntArrayParallel(c: BenchCase, iters: Int): Triple<L
     return Triple(ns, gbps, (checksumInt(a) + carry) and 0x7FFF_FFFFL)
 }
 
-private fun runRightShiftSuiteParallel() {
+private suspend fun runRightShiftSuiteParallel() {
     val sizes = listOf(8, 64, 4096, 262144)
     val shifts = listOf(1, 5, 8, 13, 15)
     fun itersFor(size: Int): Int = when {

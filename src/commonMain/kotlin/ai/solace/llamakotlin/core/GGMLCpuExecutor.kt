@@ -1,11 +1,5 @@
 package ai.solace.llamakotlin.core
 
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.runBlocking
 
 /**
  * Runtime configuration for the CPU backend. Developers can tweak threading and scheduling
@@ -74,46 +68,31 @@ internal class GGMLCpuExecutor {
         maxBatchSize: Int,
         config: GGMLCpuRuntimeConfig
     ) {
-        val parallelism = maxBatchSize.coerceAtLeast(1)
-        val dispatcher = selectDispatcher(parallelism, config.useDedicatedDispatcher)
-        runBlocking(context = dispatcher) {
-            while (!tracker.isComplete()) {
-                val ready = tracker.getReadyNodes()
-                if (ready.isEmpty()) {
-                    throw IllegalStateException("No ready nodes but graph not complete (possible cycle)")
-                }
+        while (!tracker.isComplete()) {
+            val ready = tracker.getReadyNodes()
+            if (ready.isEmpty()) {
+                throw IllegalStateException("No ready nodes but graph not complete (possible cycle)")
+            }
 
-                val batches = if (ready.size <= maxBatchSize) {
-                    listOf(ready)
-                } else {
-                    ready.chunked(maxBatchSize)
-                }
+            val batches = if (ready.size <= maxBatchSize) {
+                listOf(ready)
+            } else {
+                ready.chunked(maxBatchSize)
+            }
 
-                batches.forEach { batch ->
-                    val completed = processBatch(allocator, batch)
-                    completed.forEach { tracker.markCompleted(it) }
-                }
+            batches.forEach { batch ->
+                processBatchSync(allocator, batch)
+                batch.forEach { tracker.markCompleted(it) }
             }
         }
     }
 
-    private suspend fun processBatch(
+    private fun processBatchSync(
         allocator: GGMLGraphAllocator,
         batch: List<GGMLTensor>
-    ): List<GGMLTensor> = coroutineScope {
-        val jobs = batch.map { tensor ->
-            async {
-                GGMLComputeOps.computeNode(allocator, tensor)
-                tensor
-            }
+    ) {
+        batch.forEach { tensor ->
+            GGMLComputeOps.computeNode(allocator, tensor)
         }
-        jobs.awaitAll()
-    }
-
-    private fun selectDispatcher(parallelism: Int, dedicated: Boolean): kotlinx.coroutines.CoroutineDispatcher {
-        if (dedicated) {
-            throw UnsupportedOperationException("Dedicated dispatcher is not implemented yet")
-        }
-        return Dispatchers.Default.limitedParallelism(parallelism)
     }
 }

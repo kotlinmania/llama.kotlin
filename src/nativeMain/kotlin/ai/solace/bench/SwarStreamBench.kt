@@ -3,14 +3,16 @@ package ai.solace.bench
 import ai.solace.klang.bitwise.SwAR
 import kotlin.math.min
 import kotlin.time.TimeSource
-import kotlinx.coroutines.Channel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
-internal fun runSwarAvgStreamBench(workerCount: Int = Runtime.getRuntime().availableProcessors()) {
+private const val DEFAULT_STREAM_WORKERS = 8
+
+internal suspend fun runSwarAvgStreamBench(workerCount: Int = DEFAULT_STREAM_WORKERS) {
     println("variant,size,iters,ns,GBps,checksum,workers")
     val sizes = listOf(8, 64, 4096, 262144)
     fun itersFor(size: Int) = when {
@@ -20,11 +22,11 @@ internal fun runSwarAvgStreamBench(workerCount: Int = Runtime.getRuntime().avail
     }
     for (sz in sizes) {
         val iters = itersFor(sz)
-        val (a0, b0) = genPacks(sz)
+        val (a0, b0) = genStreamPacks(sz)
         val out = IntArray(sz)
         val dispatcher = Dispatchers.Default
         val t0 = TimeSource.Monotonic.markNow()
-        runBlocking {
+        coroutineScope {
             val tileChannel = Channel<Int>(capacity = min(sz, 1024))
             val workerChannels = List(workerCount) { Channel<Int>(capacity = min(sz, 1024)) }
 
@@ -61,9 +63,35 @@ internal fun runSwarAvgStreamBench(workerCount: Int = Runtime.getRuntime().avail
             workers.joinAll()
         }
         val ns = t0.elapsedNow().inWholeNanoseconds
-        val gbps = (sz * q8LogicalBytesPerBlock * iters / 1e9) / (ns.toDouble() / 1e9)
-        val checksum = checksumIntArray(out)
+        val gbps = (sz * STREAM_LOGICAL_BYTES_PER_PACK * iters / 1e9) / (ns.toDouble() / 1e9)
+        val checksum = checksumStream(out)
         val gbpsFmt = ((gbps * 1000.0).toLong() / 1000.0)
         println("swar-u8-trunc-stream,$sz,$iters,$ns,$gbpsFmt,$checksum,$workerCount")
     }
+}
+
+private const val STREAM_LOGICAL_BYTES_PER_PACK = 8.0
+
+private fun genStreamPacks(size: Int): Pair<IntArray, IntArray> {
+    val a = IntArray(size) { i ->
+        val b0 = (i * 17 + 5) and 0xFF
+        val b1 = (i * 29 + 7) and 0xFF
+        val b2 = (i * 43 + 11) and 0xFF
+        val b3 = (i * 61 + 13) and 0xFF
+        b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
+    }
+    val b = IntArray(size) { i ->
+        val b0 = (i * 31 + 3) and 0xFF
+        val b1 = (i * 37 + 9) and 0xFF
+        val b2 = (i * 19 + 15) and 0xFF
+        val b3 = (i * 23 + 21) and 0xFF
+        b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
+    }
+    return a to b
+}
+
+private fun checksumStream(a: IntArray): Long {
+    var s = 0L
+    for (v in a) s = (s * 131 + (v and -1)) and 0x7FFF_FFFFL
+    return s
 }

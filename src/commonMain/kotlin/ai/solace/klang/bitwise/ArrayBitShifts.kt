@@ -1,11 +1,8 @@
 package ai.solace.klang.bitwise
 import ai.solace.klang.buffer.LimbBuffer
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /**
  * Array-wide bit shifts for limb arrays (little-endian) with optional sticky tracking.
@@ -58,7 +55,7 @@ object ArrayBitShifts {
      * Splits work into chunks; Pass A computes lo/hi locally, Pass C merges with neighbor hi.
      * Returns carryOut (upper s bits of last limb). Sticky is currently false (left shift).
      */
-    fun shl16LEInPlaceParallel(
+    suspend fun shl16LEInPlaceParallel(
         a: IntArray,
         from: Int,
         len: Int,
@@ -92,44 +89,42 @@ object ArrayBitShifts {
 
         val boundaries = IntArray(chunks)
 
-        runBlocking(context = dispatcher) {
-            val chunkSize = (len + chunks - 1) / chunks
-            // Pass A+B: compute lo and hi
-            coroutineScope {
-                for (ck in 0 until chunks) {
-                    val start = ck * chunkSize
-                    val end = minOf(len, start + chunkSize)
-                    if (start >= end) continue
-                    launch(context = dispatcher) {
-                        var i = start
-                        while (i < end) {
-                            val v = a[from + i] and mask16
-                            lo[i] = (v * pow2s) and mask16
-                            hi[i] = (v / pow2_16_minus_s) and mask16
-                            i++
-                        }
-                        boundaries[ck] = hi[end - 1]
+        val chunkSize = (len + chunks - 1) / chunks
+        // Pass A+B: compute lo and hi
+        coroutineScope {
+            for (ck in 0 until chunks) {
+                val start = ck * chunkSize
+                val end = minOf(len, start + chunkSize)
+                if (start >= end) continue
+                launch(context = dispatcher) {
+                    var i = start
+                    while (i < end) {
+                        val v = a[from + i] and mask16
+                        lo[i] = (v * pow2s) and mask16
+                        hi[i] = (v / pow2_16_minus_s) and mask16
+                        i++
                     }
+                    boundaries[ck] = hi[end - 1]
                 }
             }
-            // Pass C: merge with neighbor hi (requires one boundary per chunk)
-            val carryInNorm = if (maskLowS == 0) 0 else (carryIn % (maskLowS + 1))
-            coroutineScope {
-                for (ck in 0 until chunks) {
-                    val start = ck * chunkSize
-                    val end = minOf(len, start + chunkSize)
-                    if (start >= end) continue
-                    launch(context = dispatcher) {
-                        var i = start
-                        var neighbor = if (i == 0) carryInNorm else {
-                            if (i == start) boundaries[ck - 1] else hi[i - 1]
-                        }
-                        while (i < end) {
-                            if (i != start) neighbor = hi[i - 1]
-                            val combined = BitwiseOps.orArithmeticGeneral(lo[i], neighbor)
-                            a[from + i] = combined % BASE16
-                            i++
-                        }
+        }
+        // Pass C: merge with neighbor hi (requires one boundary per chunk)
+        val carryInNorm = if (maskLowS == 0) 0 else (carryIn % (maskLowS + 1))
+        coroutineScope {
+            for (ck in 0 until chunks) {
+                val start = ck * chunkSize
+                val end = minOf(len, start + chunkSize)
+                if (start >= end) continue
+                launch(context = dispatcher) {
+                    var i = start
+                    var neighbor = if (i == 0) carryInNorm else {
+                        if (i == start) boundaries[ck - 1] else hi[i - 1]
+                    }
+                    while (i < end) {
+                        if (i != start) neighbor = hi[i - 1]
+                        val combined = BitwiseOps.orArithmeticGeneral(lo[i], neighbor)
+                        a[from + i] = combined % BASE16
+                        i++
                     }
                 }
             }
@@ -243,7 +238,7 @@ object ArrayBitShifts {
      * Parallel 3-pass right shift using coroutines. Returns carryOut (low s bits dropped from limb 0)
      * and sticky (OR of all dropped bits across limbs).
      */
-    fun rsh16LEInPlaceParallel(
+    suspend fun rsh16LEInPlaceParallel(
         a: IntArray,
         from: Int,
         len: Int,
@@ -270,45 +265,43 @@ object ArrayBitShifts {
         val pow2_16_minus_s = ArithmeticBitwiseOps.BITS_32.leftShift(1L, 16 - s).toInt()
         val firstDroppedPerChunk = IntArray(chunks)
 
-        runBlocking(context = dispatcher) {
-            val chunkSize = (len + chunks - 1) / chunks
-            // Pass A+B: hi and dropped
-            coroutineScope {
-                for (ck in 0 until chunks) {
-                    val start = ck * chunkSize
-                    val end = minOf(len, start + chunkSize)
-                    if (start >= end) continue
-                    launch(context = dispatcher) {
-                        var i = start
-                        while (i < end) {
-                            val v = a[from + i] and mask16
-                            hi[i] = ArithmeticBitwiseOps.BITS_32.rightShift(v.toLong(), s).toInt() and mask16
-                            dropped[i] = if (s == 0) 0 else (v % pow2s)
-                            i++
-                        }
-                        firstDroppedPerChunk[ck] = dropped[start]
+        val chunkSize = (len + chunks - 1) / chunks
+        // Pass A+B: hi and dropped
+        coroutineScope {
+            for (ck in 0 until chunks) {
+                val start = ck * chunkSize
+                val end = minOf(len, start + chunkSize)
+                if (start >= end) continue
+                launch(context = dispatcher) {
+                    var i = start
+                    while (i < end) {
+                        val v = a[from + i] and mask16
+                        hi[i] = ArithmeticBitwiseOps.BITS_32.rightShift(v.toLong(), s).toInt() and mask16
+                        dropped[i] = if (s == 0) 0 else (v % pow2s)
+                        i++
                     }
+                    firstDroppedPerChunk[ck] = dropped[start]
                 }
             }
-            // Pass C: combine; need dropped[i+1] or firstDropped of next chunk
-            coroutineScope {
-                for (ck in 0 until chunks) {
-                    val start = ck * chunkSize
-                    val end = minOf(len, start + chunkSize)
-                    if (start >= end) continue
-                    val nextChunkFirst = if (ck + 1 < chunks) firstDroppedPerChunk[ck + 1] else 0
-                    launch(context = dispatcher) {
-                        var i = start
-                        while (i < end) {
-                            val neighbor = if (i + 1 < end) {
-                                ((dropped[i + 1].toLong() * pow2_16_minus_s) % BASE16).toInt()
-                            } else {
-                                ((nextChunkFirst.toLong() * pow2_16_minus_s) % BASE16).toInt()
-                            }
-                            val combined = BitwiseOps.orArithmeticGeneral(hi[i], neighbor)
-                            a[from + i] = combined % BASE16
-                            i++
+        }
+        // Pass C: combine; need dropped[i+1] or firstDropped of next chunk
+        coroutineScope {
+            for (ck in 0 until chunks) {
+                val start = ck * chunkSize
+                val end = minOf(len, start + chunkSize)
+                if (start >= end) continue
+                val nextChunkFirst = if (ck + 1 < chunks) firstDroppedPerChunk[ck + 1] else 0
+                launch(context = dispatcher) {
+                    var i = start
+                    while (i < end) {
+                        val neighbor = if (i + 1 < end) {
+                            ((dropped[i + 1].toLong() * pow2_16_minus_s) % BASE16).toInt()
+                        } else {
+                            ((nextChunkFirst.toLong() * pow2_16_minus_s) % BASE16).toInt()
                         }
+                        val combined = BitwiseOps.orArithmeticGeneral(hi[i], neighbor)
+                        a[from + i] = combined % BASE16
+                        i++
                     }
                 }
             }

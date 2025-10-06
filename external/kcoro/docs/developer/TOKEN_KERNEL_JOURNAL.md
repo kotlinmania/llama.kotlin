@@ -119,3 +119,15 @@ Next: wire `kc_chan_select_register_{recv,send}` into the ticket queues so selec
 - Rebuilt the mirror core and reran `lab_simple_park_demo` / `lab_token_kernel_demo` to confirm no regressions.
 
 Next: extend the same pending-path logic to buffered modes (or gracefully fall back), then adapt the benchmarks to exercise the callback-driven rendezvous.
+
+## 2025-10-06 — MLX-Style Arena Plan
+
+- Switch channel payloads to arena-backed descriptors. Each token ticket points at a block descriptor (`base_ptr`, `len`, `epoch`, refcount) in a shared arena; no in-flight copies.
+- Send path records the descriptor, increments its refcount, and enqueues the ticket. Receiver wakes with the same descriptor and calls `kc_token_kernel_consume_payload()` -> `kc_payload_id` (refcount-aware).
+- Cancellation/timeout just decrements the refcount and enqueues a canceled status; close drains queues and releases remaining descriptors.
+- Add explicit `retain/release` APIs so callers can forward descriptors or hold them past the receive call; once all refs drop, the arena recycles the block (epochs + background sweep).
+- Integrate IPC: descriptors serialize the shared-memory handle, offset, and length; remote ACK triggers `release_payload()` on both sides to keep pressure bounded.
+- Build the arena/descriptor layer first, then retrofit rendezvous pointer channels to pass descriptors instead of copying `kc_chan_ptrmsg`.
+- After pointer channels work, extend the same descriptors to zero-copy (zdesc) and buffered/unlimited modes so every blocking path is ticket-based with zero copies.
+
+Next: design the arena metadata tables (block headers, free lists), wire the descriptor struct into `kc_token_kernel_callback`, and replace the pending queue payload fields with descriptor IDs.
