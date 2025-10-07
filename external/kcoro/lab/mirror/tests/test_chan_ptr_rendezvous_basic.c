@@ -2,14 +2,10 @@
 // Test rendezvous channel operations with pointer data for kcoro library
 // This test verifies basic rendezvous channel functionality with pointer-based data
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <errno.h>
 #include "../include/kcoro.h"
-#include "../include/kcoro_sched.h"
 #include "../include/kcoro_core.h"
-#include <unistd.h>
 
 /* Producer function that sends 10 "rv" strings through the channel */
 static void producer(void *arg)
@@ -37,57 +33,35 @@ static void consumer(void *arg)
 
 int main(void)
 {
+    kcoro_create_main();
     /* Create a rendezvous channel with zero capacity */
     kc_chan_t *ch = NULL;
     int rc = kc_chan_make_ptr(&ch, KC_RENDEZVOUS, 0);
     assert(rc == 0);
-    struct kc_chan_snapshot probe = {0};
-    rc = kc_chan_snapshot(ch, &probe);
-    if (rc == -ENOTSUP) {
-        printf("[ptr rv] snapshot unsupported; skipping test\n");
-        kc_chan_destroy(ch);
-        return 0;
+    kcoro_t *pco = kcoro_create(producer, ch, 64*1024); assert(pco);
+    kcoro_t *cco = kcoro_create(consumer, ch, 64*1024); assert(cco);
+
+    for (int i = 0; i < 10; ++i) {
+        kcoro_resume(pco);
+        kcoro_resume(cco);
     }
-    kcoro_t *pco=NULL, *cco=NULL;
-    kc_sched_t *s = kc_sched_default();
-    assert(s);
-    /* Spawn producer and consumer coroutines */
-    rc = kc_spawn_co(s, producer, ch, 0, &pco); assert(rc == 0);
-    rc = kc_spawn_co(s, consumer, ch, 0, &cco); assert(rc == 0);
-    /* Wait up to ~2s for producers/consumers to make progress */
+    kcoro_resume(pco);
+    kcoro_resume(cco);
+
     struct kc_chan_snapshot snap={0};
-    int tries=0;
-    int snapshot_supported = 1;
-    for (;;) {
-        usleep(20000);
-        rc = kc_chan_snapshot(ch, &snap);
-        if (rc == -ENOTSUP) {
-            snapshot_supported = 0;
-            break;
-        }
-        assert(rc==0);
-        printf("[debug] tries=%d sends=%lu recvs=%lu\n", tries, snap.total_sends, snap.total_recvs);
-        /* Check if all sends and receives completed */
-        if (snap.total_sends >= 10 && snap.total_recvs >= 10) break;
-        if (++tries > 100) break; /* ~2s */
-    }
-    if (snapshot_supported) {
-        if (snap.total_sends < 10 || snap.total_recvs < 10) {
-            fprintf(stderr,
-                    "[ptr rv][debug] sends=%lu recvs=%lu (expected 10 each)\n",
-                    snap.total_sends, snap.total_recvs);
-        }
-        printf("[ptr rv] snapshot sends=%lu recvs=%lu bytes=%lu\n",
-               snap.total_sends, snap.total_recvs, snap.total_bytes_sent);
-        /* Validate that all operations completed successfully */
-        assert(snap.total_sends >= 10 && snap.total_recvs >= 10);
-        printf("[ptr rv] ok sends=%lu recvs=%lu bytes=%lu\n",
-               snap.total_sends, snap.total_recvs, snap.total_bytes_sent);
-    } else {
-        printf("[ptr rv] snapshot unsupported; skipping statistics assertions\n");
-    }
-    /* Graceful shutdown: best-effort drain scheduler before closing */
-    if (s) (void)kc_sched_drain(s, 500 /* ms */);
+    rc = kc_chan_snapshot(ch, &snap);
+    assert(rc==0);
+    printf("[ptr rv] snapshot sends=%lu recvs=%lu bytes=%lu\n",
+           snap.total_sends, snap.total_recvs, snap.total_bytes_sent);
+    /* Validate that all operations completed successfully */
+    assert(snap.total_sends >= 10 && snap.total_recvs >= 10);
+    printf("[ptr rv] ok sends=%lu recvs=%lu bytes=%lu\n",
+           snap.total_sends, snap.total_recvs, snap.total_bytes_sent);
+
+    /* Graceful shutdown */
     kc_chan_close(ch);
+    kc_chan_destroy(ch);
+    kcoro_destroy(pco);
+    kcoro_destroy(cco);
     return 0;
 }

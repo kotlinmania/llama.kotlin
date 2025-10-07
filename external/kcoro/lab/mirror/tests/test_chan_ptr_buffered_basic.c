@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <errno.h>
 #include "../include/kcoro.h"
 #include "../include/kcoro_sched.h"
 #include "../include/kcoro_core.h"
@@ -32,14 +31,6 @@ int main(void)
     kc_chan_t *ch = NULL;
     int rc = kc_chan_make_ptr(&ch, KC_BUFFERED, 64);
     assert(rc == 0 && ch);
-    struct kc_chan_snapshot probe = {0};
-    rc = kc_chan_snapshot(ch, &probe);
-    if (rc == -ENOTSUP) {
-        printf("[ptr buffered] snapshot unsupported; skipping test\n");
-        kc_chan_destroy(ch);
-        return 0;
-    }
-
     /* Get default scheduler and spawn coroutine */
     kc_sched_t *s = kc_sched_default(); assert(s);
     kcoro_t *co=NULL; rc = kc_spawn_co(s, runner, ch, 0, &co); assert(rc==0);
@@ -59,5 +50,7 @@ int main(void)
 
     printf("[ptr buffered] ok sends=%lu recvs=%lu bytes=%lu\n",
            snap.total_sends, snap.total_recvs, snap.total_bytes_sent);
+    if (s) (void)kc_sched_drain(s, 200);
+    kc_chan_destroy(ch);
     return 0;
 }

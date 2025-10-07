@@ -18,7 +18,7 @@ This note captures the concrete architectural work required to finish the "one t
 - ⏳ Extend the worker to handle timeouts, cancellations, and arena compaction triggers.
 
 ## 4. Instrumentation & Tooling
-- Extend `kc_chan_snapshot()` to expose arena depth, ticket churn, spill events, and worker backlog.
+- ✅ `kc_chan_snapshot()` now surfaces core counters (success/failure/bytes/zref); arena depth/backlog metrics remain TODO.
 - Teach chanmon/bench harness to read the new fields and emit BizTalk-style queue diagnostics.
 - Add an admin dump (`kc_arena_dump()` or chanmon command) that lists live tickets, page chains, and refcounts.
 
@@ -33,4 +33,4 @@ This note captures the concrete architectural work required to finish the "one t
 - Stress-test arena compaction with mixed small/large payloads to watch for fragmentation regressions.
 
 ---
-**Status:** Pointer/byte channels ride arena-backed descriptors; zref backend and worker loop are online; metrics/tooling + advanced worker features remain.
+**Status:** Pointer/byte channels ride arena-backed descriptors; zref backend, worker loop, and baseline snapshots are online; chanmon tooling and advanced worker features remain.

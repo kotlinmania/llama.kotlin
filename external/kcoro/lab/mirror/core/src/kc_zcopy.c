@@ -79,12 +79,35 @@ static void zref_detach(kc_chan_t *c)
     (void)c;
 }
 
+static void kc_chan_record_zref_send(struct kc_chan *ch, size_t len)
+{
+    (void)len;
+    KC_MUTEX_LOCK(&ch->mu);
+    ch->zref_mode = 1;
+    ch->zref_sent++;
+    KC_MUTEX_UNLOCK(&ch->mu);
+}
+
+static void kc_chan_record_zref_recv(struct kc_chan *ch, size_t len)
+{
+    (void)len;
+    KC_MUTEX_LOCK(&ch->mu);
+    ch->zref_mode = 1;
+    ch->zref_received++;
+    KC_MUTEX_UNLOCK(&ch->mu);
+}
+
 static int zref_send_internal(kc_chan_t *c, const kc_zdesc_t *d, long timeout_ms)
 {
     struct kc_chan *ch = (struct kc_chan*)c;
-    if (ch->ptr_mode)
-        return kc_chan_send_ptr(c, (void*)d->addr, d->len, timeout_ms);
-    return kc_chan_send(c, d->addr, timeout_ms);
+    if (ch->ptr_mode) {
+        int rc = kc_chan_send_ptr(c, (void*)d->addr, d->len, timeout_ms);
+        if (rc == 0) kc_chan_record_zref_send(ch, d->len);
+        return rc;
+    }
+    int rc = kc_chan_send(c, d->addr, timeout_ms);
+    if (rc == 0) kc_chan_record_zref_send(ch, d->len);
+    return rc;
 }
 
 static int zref_recv_internal(kc_chan_t *c, kc_zdesc_t *d, long timeout_ms)
@@ -97,11 +120,15 @@ static int zref_recv_internal(kc_chan_t *c, kc_zdesc_t *d, long timeout_ms)
         if (rc == 0) {
             d->addr = ptr;
             d->len = len;
+            kc_chan_record_zref_recv(ch, len);
         }
         return rc;
     } else {
         int rc = kc_chan_recv(c, d->addr, timeout_ms);
-        if (rc == 0 && d) d->len = ch->elem_sz;
+        if (rc == 0) {
+            if (d) d->len = ch->elem_sz;
+            kc_chan_record_zref_recv(ch, d ? d->len : ch->elem_sz);
+        }
         return rc;
     }
 }

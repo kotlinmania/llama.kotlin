@@ -575,6 +575,7 @@ static int kc_chan_recv_ptr_rendezvous(struct kc_chan *ch, void **out_ptr, size_
                 return KC_EPIPE;
             }
             kc_chan_note_op_locked(ch, 0, payload.len);
+            kc_chan_note_op_locked(ch, 1, payload.len);
             *out_ptr = payload.ptr;
             *out_len = payload.len;
             KC_MUTEX_UNLOCK(&ch->mu);
@@ -1224,17 +1225,88 @@ int kc_chan_get_stats(kc_chan_t *c, struct kc_chan_stats *out)
 int kc_chan_snapshot(kc_chan_t *c, struct kc_chan_snapshot *out)
 {
     if (!c || !out) return -EINVAL;
-    (void)c;
+    struct kc_chan *ch = (struct kc_chan*)c;
+    KC_MUTEX_LOCK(&ch->mu);
     memset(out, 0, sizeof(*out));
-    return -ENOTSUP;
+    out->chan = ch;
+    out->kind = ch->kind;
+    out->elem_sz = ch->elem_sz;
+    out->capacity = ch->capacity;
+    if (ch->kind == KC_CONFLATED) {
+        out->count = ch->rv_slot_desc ? 1 : 0;
+    } else {
+        out->count = ch->count;
+    }
+    out->capabilities = ch->capabilities;
+    out->closed = ch->closed;
+    out->zref_mode = ch->zref_mode;
+    out->ptr_mode = ch->ptr_mode;
+
+    out->total_sends = ch->total_sends;
+    out->total_recvs = ch->total_recvs;
+    out->total_bytes_sent = ch->total_bytes_sent;
+    out->total_bytes_recv = ch->total_bytes_recv;
+    out->first_op_time_ns = ch->first_op_time_ns;
+    out->last_op_time_ns = ch->last_op_time_ns;
+
+    out->send_eagain = ch->send_eagain;
+    out->send_etime  = ch->send_etime;
+    out->send_epipe  = ch->send_epipe;
+    out->recv_eagain = ch->recv_eagain;
+    out->recv_etime  = ch->recv_etime;
+    out->recv_epipe  = ch->recv_epipe;
+
+    out->zref_sent = ch->zref_sent;
+    out->zref_received = ch->zref_received;
+    out->zref_aborted_close = ch->zref_aborted_close;
+
+    out->rv_matches = ch->rv_matches;
+    out->rv_cancels = ch->rv_cancels;
+    out->rv_zdesc_matches = ch->rv_zdesc_matches;
+
+    if (ch->first_op_time_ns && ch->last_op_time_ns >= ch->first_op_time_ns) {
+        long duration_ns = ch->last_op_time_ns - ch->first_op_time_ns;
+        out->duration_sec = (double)duration_ns / 1e9;
+    }
+    KC_MUTEX_UNLOCK(&ch->mu);
+    return 0;
 }
 
 int kc_chan_compute_rate(const struct kc_chan_snapshot *prev,
                          const struct kc_chan_snapshot *curr,
                          struct kc_chan_rate_sample *out)
 {
-    (void)prev; (void)curr; (void)out;
-    return -ENOTSUP;
+    if (!curr || !out) return -EINVAL;
+    memset(out, 0, sizeof(*out));
+    if (!prev) prev = &(struct kc_chan_snapshot){0};
+
+    out->delta_sends = curr->total_sends - prev->total_sends;
+    out->delta_recvs = curr->total_recvs - prev->total_recvs;
+    out->delta_bytes_sent = curr->total_bytes_sent - prev->total_bytes_sent;
+    out->delta_bytes_recv = curr->total_bytes_recv - prev->total_bytes_recv;
+    out->delta_send_eagain = curr->send_eagain - prev->send_eagain;
+    out->delta_recv_eagain = curr->recv_eagain - prev->recv_eagain;
+    out->delta_send_epipe = curr->send_epipe - prev->send_epipe;
+    out->delta_recv_epipe = curr->recv_epipe - prev->recv_epipe;
+    out->delta_rv_matches = curr->rv_matches - prev->rv_matches;
+    out->delta_rv_cancels = curr->rv_cancels - prev->rv_cancels;
+    out->delta_rv_zdesc_matches = curr->rv_zdesc_matches - prev->rv_zdesc_matches;
+
+    double interval = 0.0;
+    if (prev->duration_sec > 0.0 && curr->duration_sec >= prev->duration_sec) {
+        interval = curr->duration_sec - prev->duration_sec;
+    } else if (curr->duration_sec > 0.0) {
+        interval = curr->duration_sec;
+    }
+    if (interval <= 0.0) interval = 1e-6; /* clamp to 1 microsecond */
+
+    out->interval_sec = interval;
+    double inv = 1.0 / interval;
+    out->sends_per_sec = out->delta_sends * inv;
+    out->recvs_per_sec = out->delta_recvs * inv;
+    out->bytes_sent_per_sec = out->delta_bytes_sent * inv;
+    out->bytes_recv_per_sec = out->delta_bytes_recv * inv;
+    return 0;
 }
 
 int kc_chan_enable_metrics_pipe(kc_chan_t *ch, kc_chan_t **out_pipe, size_t capacity)
@@ -1310,9 +1382,17 @@ int kc_chan_recv_zref_c(kc_chan_t *ch, void **out_ptr, size_t *out_len, long tim
 
 int kc_chan_get_zstats(kc_chan_t *ch, struct kc_chan_zstats *out)
 {
-    (void)ch; (void)out;
-    // TODO(arena): Publish arena/zref counters after the zero-copy path is wired.
-    return -ENOTSUP;
+    if (!ch || !out) return -EINVAL;
+    struct kc_chan *c = (struct kc_chan*)ch;
+    KC_MUTEX_LOCK(&c->mu);
+    out->zref_sent = c->zref_sent;
+    out->zref_received = c->zref_received;
+    out->zref_fallback_small = c->zref_fallback_small;
+    out->zref_fallback_capacity = c->zref_fallback_capacity;
+    out->zref_canceled = c->zref_canceled;
+    out->zref_aborted_close = c->zref_aborted_close;
+    KC_MUTEX_UNLOCK(&c->mu);
+    return 0;
 }
 
 /* ------------------------------------------------------------------------- */

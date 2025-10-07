@@ -50,7 +50,9 @@ int main(void) {
     assert(rc==KC_EPIPE);
     struct kc_chan_zstats zs = {0};
     rc = kc_chan_get_zstats(rv,&zs);
-    assert(rc == -ENOTSUP);
+    assert(rc == 0);
+    assert(zs.zref_sent == 1);
+    assert(zs.zref_received == 1);
     kc_chan_destroy(rv);
 
     printf("[test] close_semantics ok\n");

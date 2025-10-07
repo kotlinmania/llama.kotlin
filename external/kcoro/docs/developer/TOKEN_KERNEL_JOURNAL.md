@@ -187,8 +187,8 @@ Next: finish the token kernel worker so callbacks drain off-thread, then surface
 
 Next: expose worker/arena metrics to chanmon, add stress tests that exercise mixed success/cancel flows, and revisit the ready queue for a lock-free variant once correctness is locked down.
 
-## 2025-10-08 — Snapshot Gatekeeping
+## 2025-10-08 — Snapshot & Zstats Restored
 
-- Until the arena-backed metrics land, `kc_chan_snapshot()` now returns `-ENOTSUP` with a zeroed struct; the mirror tests detect this and skip snapshot assertions instead of tripping over placeholder values.
-- Rendezvous/pointer zero-copy tests were updated to use `kc_chan_make_ptr` so they exercise the descriptor pipeline rather than the byte-copy shim.
-- Buffered/rendezvous pointer tests now fall back cleanly when metrics are unavailable, keeping the suite green while we wire the real counters.
+- `kc_chan_snapshot()` now exposes the real counters (sends/recvs/bytes/failures/zref) for every channel kind; `kc_chan_compute_rate()` mirrors the production implementation and `kc_chan_get_zstats()` reports zref usage.
+- The mirror tests assert the metrics again: failure counters, buffered pointer throughput, rendezvous pointer totals, and zero-copy close semantics now validate the live stats instead of skipping.
+- Pointer rendezvous coverage no longer depends on the default scheduler; the test drives producer/consumer coroutines directly with `kcoro_create` so the token worker handshake is exercised deterministically.
