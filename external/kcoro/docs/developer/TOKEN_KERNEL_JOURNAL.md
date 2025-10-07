@@ -153,3 +153,11 @@ Next: design the arena metadata tables (block headers, free lists), wire the des
 - Lab demos rebuilt (`make -C external/kcoro/lab/mirror/core all`, `lab_simple_park_demo`, `lab_token_kernel_demo`) to verify the descriptor-backed rendezvous path.
 
 **Next**: port buffered/unlimited pointer modes onto the same descriptor queues, then tackle the arena allocator for byte/zref payloads and the token-worker loop.
+
+## 2025-10-08 — Pointer Channels Unified; Arena Skeleton
+
+- Buffered/unlimited/conflated pointer channels now store descriptor IDs (`ring_descs` for rings, `rv_slot_desc` for conflated) and share the same pending-queue wake paths; select/cancel/close release refs consistently across kinds.
+- Added a minimal `kc_arena` wrapper and taught `kc_desc` to track arena-backed allocations, prepping for byte/zref descriptors.
+- Build & lab demos stay green on the refactored pointer pipeline (`make -C external/kcoro/lab/mirror/core all`; lab demos).
+
+Next: swap byte-channel send/recv stubs for arena-backed descriptors, then re-enable the zero-copy backend on the unified flow.

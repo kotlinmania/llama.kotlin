@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include "kcoro_desc.h"
+#include "kc_arena.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <limits.h>
 
 #define KC_DESC_BUCKETS 256u
 
@@ -17,6 +19,9 @@ struct kc_desc_entry {
     void          *data;
     size_t         len;
     unsigned       flags;
+    unsigned       arena_id;
+    size_t         arena_len;
+    int            owns_allocation;
     atomic_uint    refcount;
 };
 
@@ -57,7 +62,9 @@ int kc_desc_global_init(void)
 static void entry_destroy(kc_desc_entry *entry)
 {
     if (!entry) return;
-    if (!(entry->flags & KC_DESC_FLAG_ALIAS) && entry->data) {
+    if (entry->owns_allocation && entry->data) {
+        kc_arena_free(entry->arena_id, entry->data, entry->arena_len);
+    } else if (!(entry->flags & KC_DESC_FLAG_ALIAS) && entry->data) {
         free(entry->data);
     }
     free(entry);
@@ -81,13 +88,17 @@ void kc_desc_global_shutdown(void)
     atomic_store(&g_desc.initialized, 0);
 }
 
-static kc_desc_entry *kc_desc_insert(void *data, size_t len, unsigned flags)
+static kc_desc_entry *kc_desc_insert(void *data, size_t len, unsigned flags,
+                                    unsigned arena_id, size_t arena_len, int owns)
 {
     kc_desc_entry *entry = calloc(1, sizeof(*entry));
     if (!entry) return NULL;
     entry->data = data;
     entry->len = len;
     entry->flags = flags;
+    entry->arena_id = arena_id;
+    entry->arena_len = arena_len;
+    entry->owns_allocation = owns;
     atomic_init(&entry->refcount, 1);
     entry->id = atomic_fetch_add(&g_desc.next_id, 1);
 
@@ -105,7 +116,7 @@ kc_desc_id kc_desc_make_alias(void *ptr, size_t len)
     if (atomic_load(&g_desc.initialized) != 2) {
         if (kc_desc_global_init() != 0) return 0;
     }
-    kc_desc_entry *entry = kc_desc_insert(ptr, len, KC_DESC_FLAG_ALIAS);
+    kc_desc_entry *entry = kc_desc_insert(ptr, len, KC_DESC_FLAG_ALIAS, UINT_MAX, 0, 0);
     return entry ? entry->id : 0;
 }
 
@@ -114,12 +125,15 @@ kc_desc_id kc_desc_make_copy(const void *src, size_t len)
     if (atomic_load(&g_desc.initialized) != 2) {
         if (kc_desc_global_init() != 0) return 0;
     }
-    void *copy = malloc(len);
-    if (!copy && len) return 0;
+    if (len && kc_arena_create(0, 0) == -EEXIST) {
+        /* already active */
+    }
+    void *copy = len ? kc_arena_alloc(0, len) : NULL;
+    if (len && !copy) return 0;
     if (len && src) memcpy(copy, src, len);
-    kc_desc_entry *entry = kc_desc_insert(copy, len, 0);
+    kc_desc_entry *entry = kc_desc_insert(copy, len, 0, 0, len, 1);
     if (!entry) {
-        free(copy);
+        kc_arena_free(0, copy, len);
         return 0;
     }
     return entry->id;

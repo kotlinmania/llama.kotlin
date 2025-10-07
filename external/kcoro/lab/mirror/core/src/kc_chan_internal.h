@@ -97,15 +97,11 @@ struct kc_chan {
     size_t          capacity;  /* elements */
     size_t          mask;      /* capacity-1 when capacity is power-of-two, else 0 */
 
-    /* ring buffer */
-    unsigned char  *buf;       /* capacity * elem_sz */
+    /* descriptor ring for queued kinds */
+    kc_desc_id     *ring_descs;
     size_t          head;      /* read index */
     size_t          tail;      /* write index */
     size_t          count;     /* elements in buffer */
-
-    /* conflated */
-    unsigned char  *slot;      /* elem_sz */
-    int             has_value;
 
     /* Capabilities */
     unsigned        capabilities;   /* KC_CHAN_CAP_* bitmask */

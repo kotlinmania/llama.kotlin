@@ -125,6 +125,32 @@ static void pending_recv_remove_select(struct kc_chan *ch, kc_select_t *sel, int
     }
 }
 
+static size_t kc_chan_ring_index(const struct kc_chan *ch, size_t idx)
+{
+    return ch->mask ? (idx & ch->mask) : (idx % (ch->capacity ? ch->capacity : 1));
+}
+
+static int kc_chan_expand_ring(struct kc_chan *ch)
+{
+    size_t newcap = ch->capacity ? ch->capacity * 2 : KCORO_UNLIMITED_INIT_CAP;
+    if (newcap == 0) newcap = KCORO_UNLIMITED_INIT_CAP;
+    kc_desc_id *newring = calloc(newcap, sizeof(kc_desc_id));
+    if (!newring) return -ENOMEM;
+    for (size_t i = 0; i < ch->count; ++i) {
+        size_t old_idx = kc_chan_ring_index(ch, ch->head + i);
+        newring[i] = ch->ring_descs ? ch->ring_descs[old_idx] : 0;
+    }
+    free(ch->ring_descs);
+    ch->ring_descs = newring;
+    ch->capacity = newcap;
+    ch->mask = (newcap & (newcap - 1)) == 0 ? newcap - 1 : 0;
+    ch->head = 0;
+    ch->tail = ch->count;
+    return 0;
+}
+
+
+
 /* ------------------------------------------------------------------------- */
 /* Wake helpers */
 
@@ -156,6 +182,21 @@ static void complete_select(kc_select_t *sel, int clause, int result)
     }
 }
 
+static kc_desc_id kc_chan_create_desc(struct kc_chan *ch, const void *ptr, size_t len)
+{
+    if (ch->ptr_mode)
+        return kc_desc_make_alias((void*)ptr, len);
+    return kc_desc_make_copy(ptr, len);
+}
+static size_t kc_chan_copy_bytes(void *dst, const kc_payload *payload, size_t elem_sz)
+{
+    size_t copy_len = payload->len < elem_sz ? payload->len : elem_sz;
+    if (dst && payload->ptr && copy_len) memcpy(dst, payload->ptr, copy_len);
+    else if (dst && copy_len < elem_sz) memset((char*)dst + copy_len, 0, elem_sz - copy_len);
+    return copy_len;
+}
+
+
 /* ------------------------------------------------------------------------- */
 /* Channel lifecycle */
 
@@ -170,13 +211,13 @@ int kc_chan_make(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity)
     ch->kind = kind;
     ch->elem_sz = elem_sz;
     if (kind == KC_RENDEZVOUS || kind == KC_CONFLATED) {
-        ch->slot = malloc(elem_sz);
-        if (!ch->slot) { free(ch); return -ENOMEM; }
+        ch->capacity = (kind == KC_CONFLATED) ? 1 : 0;
+        ch->ring_descs = NULL;
     } else {
         ch->capacity = capacity ? capacity : 64;
         ch->mask = (ch->capacity & (ch->capacity - 1)) == 0 ? ch->capacity - 1 : 0;
-        ch->buf = malloc(ch->capacity * elem_sz);
-        if (!ch->buf) { free(ch); return -ENOMEM; }
+        ch->ring_descs = calloc(ch->capacity, sizeof(kc_desc_id));
+        if (!ch->ring_descs) { free(ch); return -ENOMEM; }
     }
     ch->emit_check_mask = 0x3FFUL;
     *out = ch;
@@ -189,8 +230,12 @@ void kc_chan_destroy(kc_chan_t *c)
     if (!c) return;
     struct kc_chan *ch = (struct kc_chan*)c;
     kc_chan_close(c);
-    free(ch->buf);
-    free(ch->slot);
+    if (ch->ring_descs) {
+        for (size_t i = 0; i < ch->capacity; ++i) {
+            if (ch->ring_descs[i]) kc_desc_release(ch->ring_descs[i]);
+        }
+        free(ch->ring_descs);
+    }
     KC_MUTEX_DESTROY(&ch->mu);
     KC_COND_DESTROY(&ch->cv_send);
     KC_COND_DESTROY(&ch->cv_recv);
@@ -310,14 +355,10 @@ static void fulfill_select_recv(struct kc_chan *ch, struct kc_pending_recv *node
 }
 
 /* ------------------------------------------------------------------------- */
-/* Pointer send/recv (rendezvous only for now). */
+/* Pointer send/recv helpers */
 
-int kc_chan_send_ptr(kc_chan_t *c, void *ptr, size_t len, long timeout_ms)
+static int kc_chan_send_ptr_rendezvous(struct kc_chan *ch, void *ptr, size_t len, long timeout_ms)
 {
-    struct kc_chan *ch = (struct kc_chan*)c;
-    if (!ch || !ptr || len == 0) return -EINVAL;
-    if (ch->kind != KC_RENDEZVOUS) return -ENOTSUP;
-
     kc_desc_id desc = 0;
     long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
 
@@ -326,44 +367,47 @@ int kc_chan_send_ptr(kc_chan_t *c, void *ptr, size_t len, long timeout_ms)
         if (ch->closed) {
             ch->send_epipe++;
             KC_MUTEX_UNLOCK(&ch->mu);
+            if (desc) kc_desc_release(desc);
             return KC_EPIPE;
         }
-        struct kc_pending_recv *wait = pending_recv_dequeue(ch);
-        if (wait) {
+        struct kc_pending_recv *pending = pending_recv_dequeue(ch);
+        if (pending) {
             if (!desc) {
-                desc = kc_desc_make_alias(ptr, len);
+                desc = kc_chan_create_desc(ch, ptr, len);
                 if (!desc) {
                     KC_MUTEX_UNLOCK(&ch->mu);
-                    free(wait);
+                    free(pending);
                     return -ENOMEM;
                 }
             }
             kc_chan_note_op_locked(ch, 1, len);
-            kc_desc_retain(desc);
             KC_MUTEX_UNLOCK(&ch->mu);
-            if (wait->role == KC_PENDING_ROLE_CORO) {
-                fulfill_coroutine_recv(wait, desc);
+            if (pending->role == KC_PENDING_ROLE_CORO) {
+                fulfill_coroutine_recv(pending, desc);
             } else {
-                fulfill_select_recv(ch, wait, desc);
+                fulfill_select_recv(ch, pending, desc);
             }
+            kc_desc_release(desc);
             return 0;
         }
         if (timeout_ms == 0) {
             ch->send_eagain++;
             KC_MUTEX_UNLOCK(&ch->mu);
+            if (desc) kc_desc_release(desc);
             return KC_EAGAIN;
         }
         if (timeout_ms > 0) {
             KC_MUTEX_UNLOCK(&ch->mu);
             if (kc_now_ns() >= deadline_ns) {
                 ch->send_etime++;
+                if (desc) kc_desc_release(desc);
                 return KC_ETIME;
             }
             kcoro_yield();
             continue;
         }
         if (!desc) {
-            desc = kc_desc_make_alias(ptr, len);
+            desc = kc_chan_create_desc(ch, ptr, len);
             if (!desc) {
                 KC_MUTEX_UNLOCK(&ch->mu);
                 return -ENOMEM;
@@ -384,8 +428,8 @@ int kc_chan_send_ptr(kc_chan_t *c, void *ptr, size_t len, long timeout_ms)
         }
         kc_ticket ticket = kc_token_kernel_publish_send(ch, payload.ptr, payload.len, NULL);
         if (ticket.id == 0) {
-            kc_desc_release(desc);
             KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
             free(node);
             return KC_EAGAIN;
         }
@@ -402,43 +446,127 @@ int kc_chan_send_ptr(kc_chan_t *c, void *ptr, size_t len, long timeout_ms)
         int rc = kc_token_kernel_consume_payload(&ack);
         if (ack.desc_id) kc_desc_release(ack.desc_id);
         if (rc < 0) return rc;
-        return ack.status;
+        if (ack.status < 0) return ack.status;
+        return 0;
     }
 }
 
-int kc_chan_recv_ptr(kc_chan_t *c, void **out_ptr, size_t *out_len, long timeout_ms)
+static int kc_chan_send_ptr_non_rendezvous(struct kc_chan *ch, void *ptr, size_t len, long timeout_ms)
 {
-    struct kc_chan *ch = (struct kc_chan*)c;
-    if (!ch || !out_ptr || !out_len) return -EINVAL;
-    if (ch->kind != KC_RENDEZVOUS) return -ENOTSUP;
-
     long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
 
     for (;;) {
         KC_MUTEX_LOCK(&ch->mu);
-        struct kc_pending_send *wait = pending_send_dequeue(ch);
-        if (wait) {
+        if (ch->closed) {
+            ch->send_epipe++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return KC_EPIPE;
+        }
+        struct kc_pending_recv *pending = pending_recv_dequeue(ch);
+        if (pending) {
+            kc_desc_id desc = kc_chan_create_desc(ch, ptr, len);
+            if (!desc) {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                free(pending);
+                return -ENOMEM;
+            }
+            kc_chan_note_op_locked(ch, 1, len);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            if (pending->role == KC_PENDING_ROLE_CORO) {
+                fulfill_coroutine_recv(pending, desc);
+            } else {
+                fulfill_select_recv(ch, pending, desc);
+            }
+            kc_desc_release(desc);
+            return 0;
+        }
+        if (ch->kind == KC_CONFLATED) {
+            kc_desc_id desc = kc_chan_create_desc(ch, ptr, len);
+            if (!desc) {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                return -ENOMEM;
+            }
+            if (ch->rv_slot_desc) kc_desc_release(ch->rv_slot_desc);
+            ch->rv_slot_desc = desc;
+            kc_chan_note_op_locked(ch, 1, len);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return 0;
+        }
+        if (ch->count == ch->capacity) {
+            if (ch->kind == KC_UNLIMITED) {
+                int grow_rc = kc_chan_expand_ring(ch);
+                if (grow_rc != 0) {
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    return grow_rc;
+                }
+            } else {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                if (timeout_ms == 0) { ch->send_eagain++; return KC_EAGAIN; }
+                if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) { ch->send_etime++; return KC_ETIME; }
+                kcoro_yield();
+                continue;
+            }
+        }
+        if (!ch->ring_descs) {
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return -EINVAL;
+        }
+        kc_desc_id desc = kc_chan_create_desc(ch, ptr, len);
+        if (!desc) {
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return -ENOMEM;
+        }
+        size_t idx = kc_chan_ring_index(ch, ch->tail);
+        ch->ring_descs[idx] = desc;
+        size_t next = ch->tail + 1;
+        ch->tail = ch->mask ? (next & ch->mask) : (next % ch->capacity);
+        ch->count++;
+        kc_chan_note_op_locked(ch, 1, len);
+        KC_MUTEX_UNLOCK(&ch->mu);
+        return 0;
+    }
+}
+
+int kc_chan_send_ptr(kc_chan_t *c, void *ptr, size_t len, long timeout_ms)
+{
+    struct kc_chan *ch = (struct kc_chan*)c;
+    if (!ch || !ptr || len == 0) return -EINVAL;
+    if (!ch->ptr_mode) return -EINVAL;
+
+    if (ch->kind == KC_RENDEZVOUS)
+        return kc_chan_send_ptr_rendezvous(ch, ptr, len, timeout_ms);
+    return kc_chan_send_ptr_non_rendezvous(ch, ptr, len, timeout_ms);
+}
+
+static int kc_chan_recv_ptr_rendezvous(struct kc_chan *ch, void **out_ptr, size_t *out_len, long timeout_ms)
+{
+    long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
+
+    for (;;) {
+        KC_MUTEX_LOCK(&ch->mu);
+        struct kc_pending_send *pending = pending_send_dequeue(ch);
+        if (pending) {
             kc_payload payload = {0};
-            int rc = kc_desc_payload(wait->desc_id, &payload);
+            int rc = kc_desc_payload(pending->desc_id, &payload);
             if (rc != 0) {
                 KC_MUTEX_UNLOCK(&ch->mu);
-                if (wait->role == KC_PENDING_ROLE_CORO) {
-                    kc_token_kernel_callback(wait->ticket, (kc_payload){ .ptr = NULL, .len = 0, .status = KC_EPIPE, .desc_id = 0 });
+                if (pending->role == KC_PENDING_ROLE_CORO) {
+                    kc_token_kernel_callback(pending->ticket, (kc_payload){ .ptr = NULL, .len = 0, .status = KC_EPIPE, .desc_id = 0 });
                 } else {
-                    complete_select(wait->sel, wait->clause_index, KC_EPIPE);
+                    complete_select(pending->sel, pending->clause_index, KC_EPIPE);
                 }
-                kc_desc_release(wait->desc_id);
-                free(wait);
+                kc_desc_release(pending->desc_id);
+                free(pending);
                 return KC_EPIPE;
             }
             kc_chan_note_op_locked(ch, 0, payload.len);
             *out_ptr = payload.ptr;
             *out_len = payload.len;
             KC_MUTEX_UNLOCK(&ch->mu);
-            if (wait->role == KC_PENDING_ROLE_CORO) {
-                fulfill_coroutine_send(wait, wait->desc_id);
+            if (pending->role == KC_PENDING_ROLE_CORO) {
+                fulfill_coroutine_send(pending, pending->desc_id);
             } else {
-                fulfill_select_send(ch, wait, wait->desc_id);
+                fulfill_select_send(ch, pending, pending->desc_id);
             }
             return 0;
         }
@@ -452,64 +580,373 @@ int kc_chan_recv_ptr(kc_chan_t *c, void **out_ptr, size_t *out_len, long timeout
             KC_MUTEX_UNLOCK(&ch->mu);
             return KC_EPIPE;
         }
+        KC_MUTEX_UNLOCK(&ch->mu);
+        if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) {
+            ch->recv_etime++;
+            return KC_ETIME;
+        }
+        kcoro_yield();
+    }
+}
+
+static int kc_chan_recv_ptr_non_rendezvous(struct kc_chan *ch, void **out_ptr, size_t *out_len, long timeout_ms)
+{
+    long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
+
+    for (;;) {
+        KC_MUTEX_LOCK(&ch->mu);
+        if (ch->kind == KC_CONFLATED) {
+            if (ch->rv_slot_desc) {
+                kc_desc_id desc = ch->rv_slot_desc;
+                ch->rv_slot_desc = 0;
+                kc_payload payload = {0};
+                int rc = kc_desc_payload(desc, &payload);
+                if (rc != 0) {
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_desc_release(desc);
+                    return KC_EPIPE;
+                }
+                kc_chan_note_op_locked(ch, 0, payload.len);
+                KC_MUTEX_UNLOCK(&ch->mu);
+                *out_ptr = payload.ptr;
+                *out_len = payload.len;
+                kc_desc_release(desc);
+                return 0;
+            }
+            if (ch->closed) {
+                ch->recv_epipe++;
+                KC_MUTEX_UNLOCK(&ch->mu);
+                return KC_EPIPE;
+            }
+            KC_MUTEX_UNLOCK(&ch->mu);
+            if (timeout_ms == 0) { ch->recv_eagain++; return KC_EAGAIN; }
+            if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) { ch->recv_etime++; return KC_ETIME; }
+            kcoro_yield();
+            continue;
+        }
+
+        if (ch->count > 0) {
+            size_t idx = kc_chan_ring_index(ch, ch->head);
+            kc_desc_id desc = ch->ring_descs[idx];
+            ch->ring_descs[idx] = 0;
+            size_t next = ch->head + 1;
+            ch->head = ch->mask ? (next & ch->mask) : (next % ch->capacity);
+            ch->count--;
+            kc_payload payload = {0};
+            int rc = kc_desc_payload(desc, &payload);
+            if (rc != 0) {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_desc_release(desc);
+                return KC_EPIPE;
+            }
+            kc_chan_note_op_locked(ch, 0, payload.len);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            *out_ptr = payload.ptr;
+            *out_len = payload.len;
+            kc_desc_release(desc);
+            return 0;
+        }
+
+        if (ch->closed) {
+            ch->recv_epipe++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return KC_EPIPE;
+        }
+        KC_MUTEX_UNLOCK(&ch->mu);
+        if (timeout_ms == 0) { ch->recv_eagain++; return KC_EAGAIN; }
+        if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) { ch->recv_etime++; return KC_ETIME; }
+        kcoro_yield();
+    }
+}
+
+int kc_chan_recv_ptr(kc_chan_t *c, void **out_ptr, size_t *out_len, long timeout_ms)
+{
+    struct kc_chan *ch = (struct kc_chan*)c;
+    if (!ch || !out_ptr || !out_len) return -EINVAL;
+    if (!ch->ptr_mode) return -EINVAL;
+
+    if (ch->kind == KC_RENDEZVOUS)
+        return kc_chan_recv_ptr_rendezvous(ch, out_ptr, out_len, timeout_ms);
+    return kc_chan_recv_ptr_non_rendezvous(ch, out_ptr, out_len, timeout_ms);
+}
+
+static int kc_chan_send_bytes_rendezvous(struct kc_chan *ch, const void *msg, long timeout_ms)
+{
+    kc_desc_id desc = kc_chan_create_desc(ch, msg, ch->elem_sz);
+    if (!desc) return -ENOMEM;
+    long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
+
+    for (;;) {
+        KC_MUTEX_LOCK(&ch->mu);
+        if (ch->closed) {
+            ch->send_epipe++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            return KC_EPIPE;
+        }
+        struct kc_pending_recv *pending = pending_recv_dequeue(ch);
+        if (pending) {
+            kc_chan_note_op_locked(ch, 1, ch->elem_sz);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            if (pending->role == KC_PENDING_ROLE_CORO) {
+                fulfill_coroutine_recv(pending, desc);
+            } else {
+                fulfill_select_recv(ch, pending, desc);
+            }
+            kc_desc_release(desc);
+            return 0;
+        }
+        if (timeout_ms == 0) {
+            ch->send_eagain++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            return KC_EAGAIN;
+        }
         if (timeout_ms > 0) {
             KC_MUTEX_UNLOCK(&ch->mu);
             if (kc_now_ns() >= deadline_ns) {
-                ch->recv_etime++;
+                ch->send_etime++;
+                kc_desc_release(desc);
                 return KC_ETIME;
             }
             kcoro_yield();
             continue;
         }
-        struct kc_pending_recv *node = calloc(1, sizeof(*node));
+        kc_payload payload = {0};
+        if (kc_desc_payload(desc, &payload) != 0) {
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            return KC_EPIPE;
+        }
+        struct kc_pending_send *node = calloc(1, sizeof(*node));
         if (!node) {
             KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
             return -ENOMEM;
         }
-        node->kind = KC_PENDING_KIND_PTR;
-        node->role = KC_PENDING_ROLE_CORO;
-        kc_ticket ticket = kc_token_kernel_publish_recv(ch, NULL);
+        kc_ticket ticket = kc_token_kernel_publish_send(ch, payload.ptr, payload.len, NULL);
         if (ticket.id == 0) {
-            free(node);
             KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            free(node);
             return KC_EAGAIN;
         }
+        node->kind = KC_PENDING_KIND_BYTES;
+        node->role = KC_PENDING_ROLE_CORO;
         node->ticket = ticket;
-        pending_recv_enqueue(ch, node);
+        node->desc_id = desc;
+        kc_pending_send_append(&ch->token_send_head, &ch->token_send_tail, node);
+        desc = 0;
         KC_MUTEX_UNLOCK(&ch->mu);
 
         kcoro_park();
-        kc_payload payload = {0};
-        int rc = kc_token_kernel_consume_payload(&payload);
-        if (payload.desc_id) kc_desc_release(payload.desc_id);
+        kc_payload ack = {0};
+        int rc = kc_token_kernel_consume_payload(&ack);
+        if (ack.desc_id) kc_desc_release(ack.desc_id);
         if (rc < 0) return rc;
-        if (payload.status < 0) return payload.status;
-        *out_ptr = payload.ptr;
-        *out_len = payload.len;
+        if (ack.status < 0) return ack.status;
         return 0;
     }
 }
 
+static int kc_chan_send_bytes_non_rendezvous(struct kc_chan *ch, const void *msg, long timeout_ms)
+{
+    kc_desc_id desc = kc_chan_create_desc(ch, msg, ch->elem_sz);
+    if (!desc) return -ENOMEM;
+    long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
+
+    for (;;) {
+        KC_MUTEX_LOCK(&ch->mu);
+        if (ch->closed) {
+            ch->send_epipe++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            return KC_EPIPE;
+        }
+        struct kc_pending_recv *pending = pending_recv_dequeue(ch);
+        if (pending) {
+            kc_chan_note_op_locked(ch, 1, ch->elem_sz);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            if (pending->role == KC_PENDING_ROLE_CORO) {
+                fulfill_coroutine_recv(pending, desc);
+            } else {
+                fulfill_select_recv(ch, pending, desc);
+            }
+            kc_desc_release(desc);
+            return 0;
+        }
+        if (ch->kind == KC_CONFLATED) {
+            if (ch->rv_slot_desc) kc_desc_release(ch->rv_slot_desc);
+            ch->rv_slot_desc = desc;
+            kc_chan_note_op_locked(ch, 1, ch->elem_sz);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return 0;
+        }
+        if (ch->count == ch->capacity) {
+            if (ch->kind == KC_UNLIMITED) {
+                int grow_rc = kc_chan_expand_ring(ch);
+                if (grow_rc != 0) {
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_desc_release(desc);
+                    return grow_rc;
+                }
+            } else {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                if (timeout_ms == 0) { ch->send_eagain++; kc_desc_release(desc); return KC_EAGAIN; }
+                if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) { ch->send_etime++; kc_desc_release(desc); return KC_ETIME; }
+                kcoro_yield();
+                continue;
+            }
+        }
+        size_t idx = kc_chan_ring_index(ch, ch->tail);
+        ch->ring_descs[idx] = desc;
+        size_t next = ch->tail + 1;
+        ch->tail = ch->mask ? (next & ch->mask) : (next % ch->capacity);
+        ch->count++;
+        kc_chan_note_op_locked(ch, 1, ch->elem_sz);
+        KC_MUTEX_UNLOCK(&ch->mu);
+        return 0;
+    }
+}
+
+static int kc_chan_recv_bytes_rendezvous(struct kc_chan *ch, void *out, long timeout_ms)
+{
+    long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
+
+    for (;;) {
+        KC_MUTEX_LOCK(&ch->mu);
+        struct kc_pending_send *pending = pending_send_dequeue(ch);
+        if (pending) {
+            kc_payload payload = {0};
+            int rc = kc_desc_payload(pending->desc_id, &payload);
+            if (rc != 0) {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                if (pending->role == KC_PENDING_ROLE_CORO) {
+                    kc_token_kernel_callback(pending->ticket, (kc_payload){ .ptr = NULL, .len = 0, .status = KC_EPIPE, .desc_id = 0 });
+                } else {
+                    complete_select(pending->sel, pending->clause_index, KC_EPIPE);
+                }
+                kc_desc_release(pending->desc_id);
+                free(pending);
+                return KC_EPIPE;
+            }
+            kc_chan_note_op_locked(ch, 0, payload.len);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_chan_copy_bytes(out, &payload, ch->elem_sz);
+            if (pending->role == KC_PENDING_ROLE_CORO) {
+                fulfill_coroutine_send(pending, pending->desc_id);
+            } else {
+                fulfill_select_send(ch, pending, pending->desc_id);
+            }
+            return 0;
+        }
+        if (timeout_ms == 0) {
+            ch->recv_eagain++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return KC_EAGAIN;
+        }
+        if (ch->closed) {
+            ch->recv_epipe++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return KC_EPIPE;
+        }
+        KC_MUTEX_UNLOCK(&ch->mu);
+        if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) {
+            ch->recv_etime++;
+            return KC_ETIME;
+        }
+        kcoro_yield();
+    }
+}
+
+static int kc_chan_recv_bytes_non_rendezvous(struct kc_chan *ch, void *out, long timeout_ms)
+{
+    long deadline_ns = (timeout_ms > 0) ? kc_now_ns() + timeout_ms * 1000000L : 0;
+
+    for (;;) {
+        KC_MUTEX_LOCK(&ch->mu);
+        if (ch->kind == KC_CONFLATED) {
+            if (ch->rv_slot_desc) {
+                kc_desc_id desc = ch->rv_slot_desc;
+                ch->rv_slot_desc = 0;
+                kc_payload payload = {0};
+                int rc = kc_desc_payload(desc, &payload);
+                if (rc != 0) {
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_desc_release(desc);
+                    return KC_EPIPE;
+                }
+                kc_chan_note_op_locked(ch, 0, payload.len);
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_chan_copy_bytes(out, &payload, ch->elem_sz);
+                kc_desc_release(desc);
+                return 0;
+            }
+            if (ch->closed) {
+                ch->recv_epipe++;
+                KC_MUTEX_UNLOCK(&ch->mu);
+                return KC_EPIPE;
+            }
+            KC_MUTEX_UNLOCK(&ch->mu);
+            if (timeout_ms == 0) { ch->recv_eagain++; return KC_EAGAIN; }
+            if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) { ch->recv_etime++; return KC_ETIME; }
+            kcoro_yield();
+            continue;
+        }
+
+        if (ch->count > 0) {
+            size_t idx = kc_chan_ring_index(ch, ch->head);
+            kc_desc_id desc = ch->ring_descs[idx];
+            ch->ring_descs[idx] = 0;
+            size_t next = ch->head + 1;
+            ch->head = ch->mask ? (next & ch->mask) : (next % ch->capacity);
+            ch->count--;
+            kc_payload payload = {0};
+            int rc = kc_desc_payload(desc, &payload);
+            if (rc != 0) {
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_desc_release(desc);
+                return KC_EPIPE;
+            }
+            kc_chan_note_op_locked(ch, 0, payload.len);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_chan_copy_bytes(out, &payload, ch->elem_sz);
+            kc_desc_release(desc);
+            return 0;
+        }
+
+        if (ch->closed) {
+            ch->recv_epipe++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return KC_EPIPE;
+        }
+        KC_MUTEX_UNLOCK(&ch->mu);
+        if (timeout_ms == 0) { ch->recv_eagain++; return KC_EAGAIN; }
+        if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) { ch->recv_etime++; return KC_ETIME; }
+        kcoro_yield();
+    }
+}
 /* ------------------------------------------------------------------------- */
 /* Generic send/recv stubs */
 
 int kc_chan_send(kc_chan_t *ch, const void *msg, long timeout_ms)
 {
-    // TODO(arena): Route byte sends through the arena-backed descriptor path once
-    // buffered/unlimited channels are ported off the legacy waiters (see
-    // ARENA_ARCH_PLAN.md#2). For now we fail fast so the lab only exercises the
-    // rendezvous pointer implementation.
-    (void)ch; (void)msg; (void)timeout_ms;
-    return -ENOTSUP;
+    if (!ch || !msg) return -EINVAL;
+    struct kc_chan *chan = (struct kc_chan*)ch;
+    if (chan->ptr_mode) return -EINVAL;
+    if (chan->kind == KC_RENDEZVOUS)
+        return kc_chan_send_bytes_rendezvous(chan, msg, timeout_ms);
+    return kc_chan_send_bytes_non_rendezvous(chan, msg, timeout_ms);
 }
 
 int kc_chan_recv(kc_chan_t *ch, void *out, long timeout_ms)
 {
-    // TODO(arena): Implement arena-backed dequeue for byte channels once the
-    // buffered/unlimited pending queues are wired up. Until then we surface the
-    // stub so tests cannot silently fall back to the removed waiter code.
-    (void)ch; (void)out; (void)timeout_ms;
-    return -ENOTSUP;
+    if (!ch || !out) return -EINVAL;
+    struct kc_chan *chan = (struct kc_chan*)ch;
+    if (chan->ptr_mode) return -EINVAL;
+    if (chan->kind == KC_RENDEZVOUS)
+        return kc_chan_recv_bytes_rendezvous(chan, out, timeout_ms);
+    return kc_chan_recv_bytes_non_rendezvous(chan, out, timeout_ms);
 }
 
 int kc_chan_send_c(kc_chan_t *ch, const void *msg, long timeout_ms, const kc_cancel_t *cancel)
@@ -543,40 +980,103 @@ int kc_chan_select_register_recv(kc_chan_t *c, kc_select_t *sel, int clause_inde
 {
     struct kc_chan *ch = (struct kc_chan*)c;
     if (!ch || !sel) return -EINVAL;
-    if (ch->kind != KC_RENDEZVOUS) {
-        // TODO(arena): Extend select registration to buffered/unlimited channels
-        // once their pending queues speak arena descriptors. Today only
-        // rendezvous pointer clauses are supported in the lab.
-        return -ENOTSUP;
-    }
 
     KC_MUTEX_LOCK(&ch->mu);
-    struct kc_pending_send *pending = pending_send_dequeue(ch);
-    if (pending) {
+    if (ch->kind == KC_RENDEZVOUS) {
+        struct kc_pending_send *pending = pending_send_dequeue(ch);
+        if (pending) {
+            kc_payload payload = {0};
+            int rc = kc_desc_payload(pending->desc_id, &payload);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            if (rc != 0) {
+                if (pending->role == KC_PENDING_ROLE_CORO) {
+                    kc_token_kernel_callback(pending->ticket, (kc_payload){ .ptr = NULL, .len = 0, .status = KC_EPIPE, .desc_id = 0 });
+                } else {
+                    complete_select(pending->sel, pending->clause_index, KC_EPIPE);
+                }
+                kc_desc_release(pending->desc_id);
+                free(pending);
+                return KC_EPIPE;
+            }
+            kc_chan_note_op_locked(ch, 0, payload.len);
+            struct kc_chan_ptrmsg msg = { .ptr = payload.ptr, .len = payload.len };
+            void *dst = kc_select_recv_buffer(sel, clause_index);
+            if (dst) memcpy(dst, &msg, sizeof(msg));
+            complete_select(sel, clause_index, dst ? 0 : KC_ECANCELED);
+            if (pending->role == KC_PENDING_ROLE_CORO) {
+                fulfill_coroutine_send(pending, pending->desc_id);
+            } else {
+                fulfill_select_send(ch, pending, pending->desc_id);
+            }
+            return 0;
+        }
+        struct kc_pending_recv *node = calloc(1, sizeof(*node));
+        if (!node) {
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return -ENOMEM;
+        }
+        node->kind = KC_PENDING_KIND_PTR;
+        node->role = KC_PENDING_ROLE_SELECT;
+        node->sel = sel;
+        node->clause_index = clause_index;
+        node->desc_id = 0;
+        pending_recv_enqueue(ch, node);
+        KC_MUTEX_UNLOCK(&ch->mu);
+        return KC_EAGAIN;
+    }
+
+    if (ch->kind == KC_CONFLATED && ch->rv_slot_desc) {
+        kc_desc_id desc = ch->rv_slot_desc;
+        ch->rv_slot_desc = 0;
         kc_payload payload = {0};
-        int rc = kc_desc_payload(pending->desc_id, &payload);
+        int rc = kc_desc_payload(desc, &payload);
         if (rc != 0) {
             KC_MUTEX_UNLOCK(&ch->mu);
-            complete_select(sel, clause_index, KC_EPIPE);
-            kc_desc_release(pending->desc_id);
-            free(pending);
+            kc_desc_release(desc);
             return KC_EPIPE;
         }
         kc_chan_note_op_locked(ch, 0, payload.len);
-        KC_MUTEX_UNLOCK(&ch->mu);
-
-        struct kc_chan_ptrmsg msg = { .ptr = payload.ptr, .len = payload.len };
         void *dst = kc_select_recv_buffer(sel, clause_index);
-        if (dst) memcpy(dst, &msg, sizeof(msg));
-        complete_select(sel, clause_index, dst ? 0 : KC_ECANCELED);
-
-        if (pending->role == KC_PENDING_ROLE_CORO) {
-            fulfill_coroutine_send(pending, pending->desc_id);
+        if (ch->ptr_mode) {
+            struct kc_chan_ptrmsg msg = { .ptr = payload.ptr, .len = payload.len };
+            if (dst) memcpy(dst, &msg, sizeof(msg));
         } else {
-            fulfill_select_send(ch, pending, pending->desc_id);
+            if (dst) kc_chan_copy_bytes(dst, &payload, ch->elem_sz);
         }
-        return 0;
+        complete_select(sel, clause_index, dst ? 0 : KC_ECANCELED);
+        KC_MUTEX_UNLOCK(&ch->mu);
+        kc_desc_release(desc);
+        return dst ? 0 : KC_ECANCELED;
     }
+
+    if (ch->ring_descs && ch->count > 0) {
+        size_t idx = kc_chan_ring_index(ch, ch->head);
+        kc_desc_id desc = ch->ring_descs[idx];
+        ch->ring_descs[idx] = 0;
+        size_t next = ch->head + 1;
+        ch->head = ch->mask ? (next & ch->mask) : (next % ch->capacity);
+        ch->count--;
+        kc_payload payload = {0};
+        int rc = kc_desc_payload(desc, &payload);
+        if (rc != 0) {
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            return KC_EPIPE;
+        }
+        kc_chan_note_op_locked(ch, 0, payload.len);
+        void *dst = kc_select_recv_buffer(sel, clause_index);
+        if (ch->ptr_mode) {
+            struct kc_chan_ptrmsg msg = { .ptr = payload.ptr, .len = payload.len };
+            if (dst) memcpy(dst, &msg, sizeof(msg));
+        } else {
+            if (dst) kc_chan_copy_bytes(dst, &payload, ch->elem_sz);
+        }
+        complete_select(sel, clause_index, dst ? 0 : KC_ECANCELED);
+        KC_MUTEX_UNLOCK(&ch->mu);
+        kc_desc_release(desc);
+        return dst ? 0 : KC_ECANCELED;
+    }
+
     struct kc_pending_recv *node = calloc(1, sizeof(*node));
     if (!node) {
         KC_MUTEX_UNLOCK(&ch->mu);
@@ -591,6 +1091,7 @@ int kc_chan_select_register_recv(kc_chan_t *c, kc_select_t *sel, int clause_inde
     KC_MUTEX_UNLOCK(&ch->mu);
     return KC_EAGAIN;
 }
+
 
 int kc_chan_select_register_send(kc_chan_t *c, kc_select_t *sel, int clause_index)
 {
@@ -619,7 +1120,7 @@ int kc_chan_select_register_send(kc_chan_t *c, kc_select_t *sel, int clause_inde
             return KC_ECANCELED;
         }
         const struct kc_chan_ptrmsg *msg = src;
-        kc_desc_id desc = kc_desc_make_alias(msg->ptr, msg->len);
+        kc_desc_id desc = kc_chan_create_desc(ch, msg->ptr, msg->len);
         if (!desc) {
             KC_MUTEX_UNLOCK(&ch->mu);
             complete_select(sel, clause_index, KC_EPIPE);
@@ -654,7 +1155,7 @@ int kc_chan_select_register_send(kc_chan_t *c, kc_select_t *sel, int clause_inde
     const void *src = kc_select_send_buffer(sel, clause_index);
     if (src) {
         const struct kc_chan_ptrmsg *msg = src;
-        node->desc_id = kc_desc_make_alias(msg->ptr, msg->len);
+        node->desc_id = kc_chan_create_desc(ch, msg->ptr, msg->len);
         if (!node->desc_id) {
             KC_MUTEX_UNLOCK(&ch->mu);
             free(node);

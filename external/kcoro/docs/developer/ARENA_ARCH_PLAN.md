@@ -2,17 +2,15 @@
 
 This note captures the concrete architectural work required to finish the "one true path" channel stack with the MLX-inspired arena.
 
-## 1. Arena-Backed Descriptor Layer
-- Implement `kc_rv_arena` with fixed-size pages, free lists, and refcounted descriptors.
-- Define 64-bit tickets (`arena_id | page_index | length | flags`) and expose retain/release helpers.
-- Replace `kc_chan_ptrmsg` copies with descriptor issuance in rendezvous send/recv.
-- Add checksum/generation fields so stale tickets are rejected during hydrate.
+## 1. Arena-Backed Descriptor Layer *(in progress)*
+- ✅ `kc_desc` now keeps arena metadata (owner flag, arena id/len) and rendezvous pointer paths consume descriptors only.
+- ⏳ Replace direct `malloc` in `kc_desc_make_copy` with `kc_arena_alloc` for byte payloads (currently placeholder wrapper).
+- ⏳ Add checksum/generation fields so stale tickets are rejected during hydrate once worker loop lands.
 
 ## 2. Channel Integration (All Kinds)
-- Route buffered, unlimited, conflated, and zero-copy variants through the arena descriptors and token queues.
-- Remove the remaining `-ENOTSUP` stubs in `kc_chan_send/_recv` and pointer wrappers.
-- Update select registration/cancel paths to append arena-backed pending nodes exclusively.
-- Ensure cancellation and close scrub descriptor refs via `release_ticket()`.
+- ✅ Rendezvous + buffered/unlimited pointer channels use descriptor queues (`kc_chan_send_ptr/_recv_ptr`, select paths updated).
+- ⏳ Byte channels: swap `kc_chan_send/_recv` stubs for arena descriptors and release on cancel/close.
+- ⏳ Zero-copy (zref): bind arena-backed backend and re-enable descriptor APIs.
 
 ## 3. Token Kernel Worker Loop
 - Introduce a dedicated worker thread (or pool) that drains token events instead of invoking callbacks inline.
@@ -35,4 +33,4 @@ This note captures the concrete architectural work required to finish the "one t
 - Stress-test arena compaction with mixed small/large payloads to watch for fragmentation regressions.
 
 ---
-**Status:** Rendezvous pointer path already rides the token queues; all other items remain outstanding.
+**Status:** Descriptor table + pointer channels are on the new path; byte/zref channels, worker loop, and metrics remain.
