@@ -161,3 +161,11 @@ Next: design the arena metadata tables (block headers, free lists), wire the des
 - Build & lab demos stay green on the refactored pointer pipeline (`make -C external/kcoro/lab/mirror/core all`; lab demos).
 
 Next: swap byte-channel send/recv stubs for arena-backed descriptors, then re-enable the zero-copy backend on the unified flow.
+
+## 2025-10-08 — Byte Channels on the Descriptor Path
+
+- Replaced `kc_chan_send/_recv` stubs so rendezvous, buffered/unlimited, and conflated byte channels publish arena-backed descriptors into the same pending queues/rings, copying back into user buffers only when returning to callers.
+- Select clauses for byte channels now hydrate from descriptors just like pointer clauses; close/cancel paths release refs consistently.
+- Updated `ARENA_ARCH_PLAN.md` to reflect pointer + byte integration; zero-copy backend wiring remains ahead.
+
+Next: wire up the zref backend (kc_zcopy.c) and plumb `kc_chan_send_zref/_recv_zref` through the unified descriptor flow, then tackle the token worker loop/metrics.

@@ -9,7 +9,7 @@ This note captures the concrete architectural work required to finish the "one t
 
 ## 2. Channel Integration (All Kinds)
 - ✅ Rendezvous + buffered/unlimited pointer channels use descriptor queues (`kc_chan_send_ptr/_recv_ptr`, select paths updated).
-- ⏳ Byte channels: swap `kc_chan_send/_recv` stubs for arena descriptors and release on cancel/close.
+- ✅ Byte channels now route through arena-backed descriptors in send/recv/select paths.
 - ⏳ Zero-copy (zref): bind arena-backed backend and re-enable descriptor APIs.
 
 ## 3. Token Kernel Worker Loop
@@ -33,4 +33,4 @@ This note captures the concrete architectural work required to finish the "one t
 - Stress-test arena compaction with mixed small/large payloads to watch for fragmentation regressions.
 
 ---
-**Status:** Descriptor table + pointer channels are on the new path; byte/zref channels, worker loop, and metrics remain.
+**Status:** Pointer/byte channels ride arena-backed descriptors; zero-copy backend, worker loop, and metrics/tooling remain.

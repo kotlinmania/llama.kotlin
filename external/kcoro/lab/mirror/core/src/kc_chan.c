@@ -1257,17 +1257,17 @@ unsigned kc_chan_capabilities(kc_chan_t *ch)
 
 int kc_chan_enable_zero_copy(kc_chan_t *ch)
 {
-    (void)ch;
-    // TODO(arena): Bind the arena-backed zref backend here once descriptors are
-    // implemented.
-    return -ENOTSUP;
+    if (!ch) return -EINVAL;
+    kc_zcopy_backend_id id = kc_zcopy_resolve("zref");
+    if (id < 0) return id;
+    return kc_chan_enable_zero_copy_backend(ch, id, NULL);
 }
 
 int kc_chan_send_zref(kc_chan_t *ch, void *ptr, size_t len, long timeout_ms)
 {
-    (void)ch; (void)ptr; (void)len; (void)timeout_ms;
-    // TODO(arena): Expose arena-issued descriptors via the zref API.
-    return -ENOTSUP;
+    if (!ch || !ptr) return -EINVAL;
+    kc_zdesc_t d = { .addr = ptr, .len = len };
+    return kc_chan_send_desc(ch, &d, timeout_ms);
 }
 
 int kc_chan_send_zref_c(kc_chan_t *ch, void *ptr, size_t len, long timeout_ms, const kc_cancel_t *cancel)
@@ -1278,9 +1278,14 @@ int kc_chan_send_zref_c(kc_chan_t *ch, void *ptr, size_t len, long timeout_ms, c
 
 int kc_chan_recv_zref(kc_chan_t *ch, void **out_ptr, size_t *out_len, long timeout_ms)
 {
-    (void)ch; (void)out_ptr; (void)out_len; (void)timeout_ms;
-    // TODO(arena): Complement kc_chan_send_zref once arena descriptors exist.
-    return -ENOTSUP;
+    if (!ch || !out_ptr || !out_len) return -EINVAL;
+    kc_zdesc_t d = {0};
+    int rc = kc_chan_recv_desc(ch, &d, timeout_ms);
+    if (rc == 0) {
+        *out_ptr = d.addr;
+        *out_len = d.len;
+    }
+    return rc;
 }
 
 int kc_chan_recv_zref_c(kc_chan_t *ch, void **out_ptr, size_t *out_len, long timeout_ms, const kc_cancel_t *cancel)
