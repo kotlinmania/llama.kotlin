@@ -20,14 +20,17 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <sys/time.h>
 #include <stdio.h>
 #include <signal.h>
 #include <getopt.h>
 #include <sys/resource.h>
-#include <sys/sysinfo.h>
 #include <stdatomic.h>
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#endif
 #include "../../../include/kcoro_bench.h"
 
 #include "kcoro.h" /* ensures struct kc_chan_rate_sample definition available */
@@ -49,6 +52,9 @@ struct kc_chan_rate_sample {
     unsigned long delta_recv_eagain;
     unsigned long delta_send_epipe;
     unsigned long delta_recv_epipe;
+    unsigned long delta_rv_matches;
+    unsigned long delta_rv_cancels;
+    unsigned long delta_rv_zdesc_matches;
     double        interval_sec;
     double        sends_per_sec;
     double        recvs_per_sec;
@@ -67,7 +73,7 @@ void kcoro_yield(void);
 #define MAX_HISTORY 100
 #define UPDATE_INTERVAL_MS 50
 #define STATS_WINDOW_SECS 5
-#define KCORO_MON_SCHEMA_VERSION 1
+#define KCORO_MON_SCHEMA_VERSION 2
 
 typedef enum {
     MODE_CHANNEL = 0,
@@ -154,6 +160,15 @@ typedef struct {
     double ema_duration_ms;  /* EMA on iteration duration */
     unsigned long mismatch_messages; /* producer message count mismatches */
 
+    /* Channel attributes */
+    int           channel_kind;       /* enum kc_kind */
+    size_t        channel_capacity;   /* capacity in elements */
+    size_t        queue_depth;        /* snapshot count */
+    unsigned      channel_caps;       /* KC_CHAN_CAP_* */
+    int           channel_closed;     /* 1 if closed */
+    int           channel_ptr_mode;   /* 1 if pointer descriptors */
+    int           channel_zref_mode;  /* 1 if zero-copy engaged */
+
     /* Channel failure counters (cumulative totals since start) */
     unsigned long fail_send_eagain_total;
     unsigned long fail_recv_eagain_total;
@@ -169,6 +184,22 @@ typedef struct {
     unsigned long bytes_recv_total;
     unsigned long bytes_sent_delta;
     unsigned long bytes_recv_delta;
+
+    /* Zero-copy counters */
+    unsigned long zref_sent_total;
+    unsigned long zref_received_total;
+    unsigned long zref_aborted_total;
+    unsigned long zref_sent_delta;
+    unsigned long zref_received_delta;
+    unsigned long zref_aborted_delta;
+
+    /* Rendezvous counters */
+    unsigned long rv_matches_total;
+    unsigned long rv_cancels_total;
+    unsigned long rv_zdesc_total;
+    unsigned long rv_matches_delta;
+    unsigned long rv_cancels_delta;
+    unsigned long rv_zdesc_delta;
 } monitor_ctx_t;
 
 static monitor_ctx_t g_ctx;
@@ -206,9 +237,28 @@ static double get_cpu_usage(void) {
 
 // Memory usage tracking
 static size_t get_memory_usage(void) {
+#if defined(__APPLE__)
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                  (task_info_t)&info, &count) == KERN_SUCCESS) {
+        return (size_t)(info.resident_size / 1024);
+    }
+    return 0;
+#else
     struct rusage usage;
-    getrusage(RUSAGE_SELF, &usage);
-    return usage.ru_maxrss; // KB (units are platform dependent)
+    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+        return (size_t)usage.ru_maxrss; // platform dependent units (KB on Linux)
+    }
+    return 0;
+#endif
+}
+
+static void sleep_ms(int ms)
+{
+    if (ms <= 0) return;
+    struct timespec ts = { .tv_sec = ms / 1000, .tv_nsec = (long)(ms % 1000) * 1000000L };
+    nanosleep(&ts, NULL);
 }
 
 // --- Time utility early (needed by benchmark helpers) ---
@@ -412,40 +462,68 @@ static void co_benchmark_coordinator(void *arg) {
         if (ctx->mode == MODE_CHANNEL) {
             struct kc_chan_snapshot snap;
             if (kc_chan_snapshot(persistent_ch, &snap) == 0) {
-                double dt_sec = snap.duration_sec - last_snap.duration_sec;
-                /* If this is the first non-zero activity and duration hasn't advanced yet due to
-                 * coarse first_op/last_op times, fall back to a minimal wall-clock delta to avoid
-                 * suppressing the very first sample. */
-                if (dt_sec <= 0.0) {
-                    dt_sec = 0.000001; /* 1 microsecond nominal to allow emission */
-                }
                 struct kc_chan_rate_sample rate;
                 kc_chan_compute_rate(&last_snap, &snap, &rate);
+
+                double msgs = (rate.delta_recvs ? (double)rate.delta_recvs : (double)rate.delta_sends);
+                double interval = rate.interval_sec > 0.0 ? rate.interval_sec : 1e-6;
+                double pps = msgs / interval;
+                double gbps = (pps * (double)ctx->packet_size * 8.0) / 1e9;
+
+                unsigned long zref_sent_delta = snap.zref_sent - last_snap.zref_sent;
+                unsigned long zref_recv_delta = snap.zref_received - last_snap.zref_received;
+                unsigned long zref_abort_delta = snap.zref_aborted_close - last_snap.zref_aborted_close;
+                unsigned long rv_match_delta  = snap.rv_matches - last_snap.rv_matches;
+                unsigned long rv_cancel_delta = snap.rv_cancels - last_snap.rv_cancels;
+                unsigned long rv_zdesc_delta = snap.rv_zdesc_matches - last_snap.rv_zdesc_matches;
+
+                pthread_mutex_lock(&ctx->stats_lock);
+                ctx->channel_kind       = snap.kind;
+                ctx->channel_capacity   = snap.capacity;
+                ctx->queue_depth        = snap.count;
+                ctx->channel_caps       = snap.capabilities;
+                ctx->channel_closed     = snap.closed;
+                ctx->channel_ptr_mode   = snap.ptr_mode;
+                ctx->channel_zref_mode  = snap.zref_mode;
+
+                ctx->fail_send_eagain_delta = rate.delta_send_eagain;
+                ctx->fail_recv_eagain_delta = rate.delta_recv_eagain;
+                ctx->fail_send_epipe_delta  = rate.delta_send_epipe;
+                ctx->fail_recv_epipe_delta  = rate.delta_recv_epipe;
+                ctx->fail_send_eagain_total = snap.send_eagain;
+                ctx->fail_recv_eagain_total = snap.recv_eagain;
+                ctx->fail_send_epipe_total  = snap.send_epipe;
+                ctx->fail_recv_epipe_total  = snap.recv_epipe;
+
+                ctx->bytes_sent_delta = rate.delta_bytes_sent;
+                ctx->bytes_recv_delta = rate.delta_bytes_recv;
+                ctx->bytes_sent_total = snap.total_bytes_sent;
+                ctx->bytes_recv_total = snap.total_bytes_recv;
+
+                ctx->zref_sent_delta     = zref_sent_delta;
+                ctx->zref_received_delta = zref_recv_delta;
+                ctx->zref_aborted_delta  = zref_abort_delta;
+                ctx->zref_sent_total     = snap.zref_sent;
+                ctx->zref_received_total = snap.zref_received;
+                ctx->zref_aborted_total  = snap.zref_aborted_close;
+
+                ctx->rv_matches_delta = rv_match_delta;
+                ctx->rv_cancels_delta = rv_cancel_delta;
+                ctx->rv_zdesc_delta   = rv_zdesc_delta;
+                ctx->rv_matches_total = snap.rv_matches;
+                ctx->rv_cancels_total = snap.rv_cancels;
+                ctx->rv_zdesc_total   = snap.rv_zdesc_matches;
+
+                ctx->total_packets = snap.total_sends;
+
                 if (rate.delta_sends || rate.delta_recvs) {
-                    double msgs = (rate.delta_recvs ? (double)rate.delta_recvs : (double)rate.delta_sends);
-                    double pps = msgs / (rate.interval_sec > 0 ? rate.interval_sec : 1e-6);
-                    double gbps = (pps * (double)ctx->packet_size * 8.0) / 1e9;
-                    pthread_mutex_lock(&ctx->stats_lock);
                     ctx->last_result.pps = pps;
                     ctx->last_result.gbps = gbps;
-                    ctx->last_result.duration_s = rate.interval_sec;
-                    /* Failure counters (from core rate sample + cumulative snapshot totals) */
-                    ctx->fail_send_eagain_delta = rate.delta_send_eagain;
-                    ctx->fail_recv_eagain_delta = rate.delta_recv_eagain;
-                    ctx->fail_send_epipe_delta  = rate.delta_send_epipe;
-                    ctx->fail_recv_epipe_delta  = rate.delta_recv_epipe;
-                    ctx->fail_send_eagain_total = snap.send_eagain;
-                    ctx->fail_recv_eagain_total = snap.recv_eagain;
-                    ctx->fail_send_epipe_total  = snap.send_epipe;
-                    ctx->fail_recv_epipe_total  = snap.recv_epipe;
-                    /* Byte counters */
-                    ctx->bytes_sent_delta = rate.delta_bytes_sent;
-                    ctx->bytes_recv_delta = rate.delta_bytes_recv;
-                    ctx->bytes_sent_total = snap.total_bytes_sent;
-                    ctx->bytes_recv_total = snap.total_bytes_recv;
+                    ctx->last_result.duration_s = interval;
                     ctx->result_ready = true;
-                    pthread_mutex_unlock(&ctx->stats_lock);
                 }
+                pthread_mutex_unlock(&ctx->stats_lock);
+
                 last_snap = snap;
             }
             
@@ -475,12 +553,18 @@ static void emit_json_channel(monitor_ctx_t *ctx, const perf_sample_t *sample) {
         "{\"schema\":%d,\"ts\":%.6f,\"mode\":\"channel\",\"pps\":%.6f,\"gbps\":%.6f,"
         "\"smooth_pps\":%.6f,\"smooth_gbps\":%.6f,\"duration_ms\":%.3f,"
         "\"cpu\":%.2f,\"mem_kb\":%zu,\"producers\":%d,\"consumers\":%d,"
+        "\"kind\":%d,\"capacity\":%zu,\"depth\":%zu,\"capabilities\":%u,"
+        "\"closed\":%d,\"ptr_mode\":%d,\"zref_mode\":%d,"
         "\"fail_send_eagain_total\":%lu,\"fail_recv_eagain_total\":%lu,"
         "\"fail_send_epipe_total\":%lu,\"fail_recv_epipe_total\":%lu,"
         "\"fail_send_eagain_delta\":%lu,\"fail_recv_eagain_delta\":%lu,"
         "\"fail_send_epipe_delta\":%lu,\"fail_recv_epipe_delta\":%lu,"
         "\"bytes_sent_total\":%lu,\"bytes_recv_total\":%lu,"
-        "\"bytes_sent_delta\":%lu,\"bytes_recv_delta\":%lu}\n",
+        "\"bytes_sent_delta\":%lu,\"bytes_recv_delta\":%lu,"
+        "\"zref_sent_total\":%lu,\"zref_received_total\":%lu,\"zref_aborted_total\":%lu,"
+        "\"zref_sent_delta\":%lu,\"zref_received_delta\":%lu,\"zref_aborted_delta\":%lu,"
+        "\"rv_matches_total\":%lu,\"rv_cancels_total\":%lu,\"rv_zdesc_total\":%lu,"
+        "\"rv_matches_delta\":%lu,\"rv_cancels_delta\":%lu,\"rv_zdesc_delta\":%lu}\n",
         KCORO_MON_SCHEMA_VERSION,
         sample->timestamp,
         sample->pps,
@@ -492,6 +576,13 @@ static void emit_json_channel(monitor_ctx_t *ctx, const perf_sample_t *sample) {
         sample->memory_kb,
         sample->active_producers,
         sample->active_consumers,
+        ctx->channel_kind,
+        ctx->channel_capacity,
+        ctx->queue_depth,
+        ctx->channel_caps,
+        ctx->channel_closed,
+        ctx->channel_ptr_mode,
+        ctx->channel_zref_mode,
         ctx->fail_send_eagain_total,
         ctx->fail_recv_eagain_total,
         ctx->fail_send_epipe_total,
@@ -503,7 +594,19 @@ static void emit_json_channel(monitor_ctx_t *ctx, const perf_sample_t *sample) {
         ctx->bytes_sent_total,
         ctx->bytes_recv_total,
         ctx->bytes_sent_delta,
-        ctx->bytes_recv_delta);
+        ctx->bytes_recv_delta,
+        ctx->zref_sent_total,
+        ctx->zref_received_total,
+        ctx->zref_aborted_total,
+        ctx->zref_sent_delta,
+        ctx->zref_received_delta,
+        ctx->zref_aborted_delta,
+        ctx->rv_matches_total,
+        ctx->rv_cancels_total,
+        ctx->rv_zdesc_total,
+        ctx->rv_matches_delta,
+        ctx->rv_cancels_delta,
+        ctx->rv_zdesc_delta);
     fflush(ctx->json_out);
 }
 
@@ -537,7 +640,7 @@ static void* benchmark_thread(void* arg) {
     
     /* This pthread now just sleeps and lets the coroutine scheduler do all the work */
     while (!g_shutdown) {
-        usleep(100 * 1000); /* 100ms - minimal impact, just keeps thread alive */
+        sleep_ms(100); /* 100ms - minimal impact, just keeps thread alive */
     }
     
     /* Note: coord_arg is intentionally leaked - coroutine may still be running */
@@ -665,7 +768,6 @@ static void draw_stats(WINDOW *win, const monitor_ctx_t *ctx) {
     pthread_mutex_lock((pthread_mutex_t*)&ctx->stats_lock);
     double result_pps = ctx->last_result.pps;
     double result_gbps = ctx->last_result.gbps; 
-    double result_duration = ctx->last_result.duration_s;
     pthread_mutex_unlock((pthread_mutex_t*)&ctx->stats_lock);
     
     int y = 2;
@@ -693,6 +795,17 @@ static void draw_stats(WINDOW *win, const monitor_ctx_t *ctx) {
     mvwprintw(win, y++, 2, "Last Interval Bytes: sent=%lu recv=%lu (%.2f / %.2f MB)",
           ctx->bytes_sent_delta, ctx->bytes_recv_delta,
           ctx->bytes_sent_delta / (1024.0*1024.0), ctx->bytes_recv_delta / (1024.0*1024.0));
+        y++;
+        mvwprintw(win, y++, 2, "Channel State: kind=%d depth=%zu cap=%zu caps=0x%x ptr=%d zref=%d closed=%d",
+                  ctx->channel_kind, ctx->queue_depth, ctx->channel_capacity,
+                  ctx->channel_caps, ctx->channel_ptr_mode, ctx->channel_zref_mode, ctx->channel_closed);
+        mvwprintw(win, y++, 2, "Zero-Copy Totals: sent=%lu recv=%lu abort=%lu", ctx->zref_sent_total, ctx->zref_received_total, ctx->zref_aborted_total);
+        mvwprintw(win, y++, 2, "Zero-Copy Delta: sent=%lu recv=%lu abort=%lu",
+                  ctx->zref_sent_delta, ctx->zref_received_delta, ctx->zref_aborted_delta);
+        mvwprintw(win, y++, 2, "Rendezvous Totals: matches=%lu cancels=%lu desc=%lu",
+                  ctx->rv_matches_total, ctx->rv_cancels_total, ctx->rv_zdesc_total);
+        mvwprintw(win, y++, 2, "Rendezvous Delta: matches=%lu cancels=%lu desc=%lu",
+                  ctx->rv_matches_delta, ctx->rv_cancels_delta, ctx->rv_zdesc_delta);
         y++;
         mvwprintw(win, y++, 2, "Peak Performance:");
         mvwprintw(win, y++, 4, "PPS: %12.3f M", ctx->peak_pps / 1e6);
@@ -821,6 +934,7 @@ static void cleanup_ui(monitor_ctx_t *ctx) {
 
 // Signal handler
 static void signal_handler(int sig) {
+    (void)sig;
     g_shutdown = true;
 }
 
@@ -950,10 +1064,10 @@ static void ui_loop(monitor_ctx_t *ctx) {
             draw_stats(ctx->stats_win, ctx);
             draw_graph(ctx->graph_win, ctx);
             if (show_help) draw_help(ctx->help_win);
-            usleep(UPDATE_INTERVAL_MS * 1000);
+            sleep_ms(UPDATE_INTERVAL_MS);
         } else {
             /* Headless pacing */
-            usleep(UPDATE_INTERVAL_MS * 1000);
+            sleep_ms(UPDATE_INTERVAL_MS);
         }
 
         /* Headless duration check */

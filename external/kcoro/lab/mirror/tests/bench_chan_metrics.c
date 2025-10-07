@@ -80,6 +80,9 @@ int main(int argc, char **argv) {
     unsigned long total_rv_matches = 0;
     unsigned long total_rv_cancels = 0;
     unsigned long total_rv_zdesc = 0;
+    unsigned long total_zref_sent = 0;
+    unsigned long total_zref_recv = 0;
+    unsigned long total_zref_abort = 0;
     int samples = 0;
 
     while (1) {
@@ -97,23 +100,43 @@ int main(int argc, char **argv) {
         kc_chan_compute_rate(&prev, &curr, &sample);
         double pps = sample.sends_per_sec;
         double gbps = (sample.bytes_sent_per_sec * 8.0) / 1e9;
+        unsigned long zref_sent_delta = curr.zref_sent - prev.zref_sent;
+        unsigned long zref_recv_delta = curr.zref_received - prev.zref_received;
+        unsigned long zref_abort_delta = curr.zref_aborted_close - prev.zref_aborted_close;
         if (out_file) {
             fprintf(out_file,
                     "{\"interval_sec\":%.6f,\"pps\":%.3f,\"gbps\":%.6f,"
                     "\"delta_packets\":%lu,\"delta_bytes\":%lu,"
-                    "\"delta_rv_matches\":%lu,\"delta_rv_cancels\":%lu,\"delta_rv_zdesc\":%lu}\n",
+                    "\"depth\":%zu,\"capacity\":%zu,"
+                    "\"zref_sent_delta\":%lu,\"zref_recv_delta\":%lu,\"zref_abort_delta\":%lu,"
+                    "\"zref_sent_total\":%lu,\"zref_recv_total\":%lu,\"zref_abort_total\":%lu,"
+                    "\"delta_rv_matches\":%lu,\"delta_rv_cancels\":%lu,\"delta_rv_zdesc\":%lu,"
+                    "\"rv_matches_total\":%lu,\"rv_cancels_total\":%lu,\"rv_zdesc_total\":%lu}\n",
                     sample.interval_sec,
                     pps,
                     gbps,
                     sample.delta_sends,
                     sample.delta_bytes_sent,
+                    curr.count,
+                    curr.capacity,
+                    zref_sent_delta,
+                    zref_recv_delta,
+                    zref_abort_delta,
+                    curr.zref_sent,
+                    curr.zref_received,
+                    curr.zref_aborted_close,
                     sample.delta_rv_matches,
                     sample.delta_rv_cancels,
-                    sample.delta_rv_zdesc_matches);
+                    sample.delta_rv_zdesc_matches,
+                    curr.rv_matches,
+                    curr.rv_cancels,
+                    curr.rv_zdesc_matches);
             fflush(out_file);
         } else {
-            printf("interval %.3fs: packets/s %.2f, Gbps %.3f, rv_matches %lu, rv_cancels %lu, rv_zdesc %lu\n",
+            printf("interval %.3fs: packets/s %.2f, Gbps %.3f, depth %zu, zref(sent/recv/abort) %lu/%lu/%lu, rv_matches %lu, rv_cancels %lu, rv_zdesc %lu\n",
                    sample.interval_sec, pps, gbps,
+                   curr.count,
+                   zref_sent_delta, zref_recv_delta, zref_abort_delta,
                    sample.delta_rv_matches,
                    sample.delta_rv_cancels,
                    sample.delta_rv_zdesc_matches);
@@ -123,6 +146,9 @@ int main(int argc, char **argv) {
         total_rv_matches += sample.delta_rv_matches;
         total_rv_cancels += sample.delta_rv_cancels;
         total_rv_zdesc += sample.delta_rv_zdesc_matches;
+        total_zref_sent += zref_sent_delta;
+        total_zref_recv += zref_recv_delta;
+        total_zref_abort += zref_abort_delta;
         samples++;
         prev = curr;
     }
@@ -131,9 +157,12 @@ int main(int argc, char **argv) {
     if (out_file) fclose(out_file);
 
     if (samples > 0) {
-        printf("AVERAGE packets/s %.2f, Gbps %.3f, rv_matches/sample %.2f, rv_cancels/sample %.2f, rv_zdesc/sample %.2f\n",
+        printf("AVERAGE packets/s %.2f, Gbps %.3f, zref(sent/recv/abort)/sample %.2f/%.2f/%.2f, rv_matches/sample %.2f, rv_cancels/sample %.2f, rv_zdesc/sample %.2f\n",
                total_packets / samples,
                total_gbps / samples,
+               samples ? (double)total_zref_sent / samples : 0.0,
+               samples ? (double)total_zref_recv / samples : 0.0,
+               samples ? (double)total_zref_abort / samples : 0.0,
                samples ? (double)total_rv_matches / samples : 0.0,
                samples ? (double)total_rv_cancels / samples : 0.0,
                samples ? (double)total_rv_zdesc / samples : 0.0);

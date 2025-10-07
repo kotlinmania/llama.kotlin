@@ -192,3 +192,8 @@ Next: expose worker/arena metrics to chanmon, add stress tests that exercise mix
 - `kc_chan_snapshot()` now exposes the real counters (sends/recvs/bytes/failures/zref) for every channel kind; `kc_chan_compute_rate()` mirrors the production implementation and `kc_chan_get_zstats()` reports zref usage.
 - The mirror tests assert the metrics again: failure counters, buffered pointer throughput, rendezvous pointer totals, and zero-copy close semantics now validate the live stats instead of skipping.
 - Pointer rendezvous coverage no longer depends on the default scheduler; the test drives producer/consumer coroutines directly with `kcoro_create` so the token worker handshake is exercised deterministically.
+
+**Still ahead**
+- Fold the new snapshot fields into chanmon/bench output (queue depth, tokens outstanding once the worker exposes backlog).
+- Extend the stats to include arena depth / spill counters once the allocator grows past the stub.
+- Add stress coverage for zero-copy fallback paths (small payload copies, capacity exhaustion) so the zref counters stay honest.
