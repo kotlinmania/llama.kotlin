@@ -197,3 +197,17 @@ Next: expose worker/arena metrics to chanmon, add stress tests that exercise mix
 - Fold the new snapshot fields into chanmon/bench output (queue depth, tokens outstanding once the worker exposes backlog).
 - Extend the stats to include arena depth / spill counters once the allocator grows past the stub.
 - Add stress coverage for zero-copy fallback paths (small payload copies, capacity exhaustion) so the zref counters stay honest.
+
+## 2025-10-09 — Instrumentation Reality Check
+
+- What’s working: core APIs now report real counters; unit tests cover rendezvous, buffered pointer, failure deltas, and zref send/recv. The token worker and descriptor flow are resilient under the lab suite.
+- What isn’t done: chanmon and bench still default to buffered pointer workloads, so rendezvous/zref counters stay at zero in those live runs. Arena backlog / spill telemetry remains unimplemented, and we have no stress that mixes zero-copy success + fallback + cancel to keep the numbers honest.
+- Next actions: add rendezvous/zero-copy modes to the bench + monitor, plumb arena/ticket depth once the allocator lands, and build targeted stress tests for zero-copy fallback. Until then, treat the synthetic Gb/s figures as lab throughput only.
+
+### What I Struggled With
+
+- **Tooling drift:** Wiring `kc_chan_snapshot()` back up was easy; discovering chanmon/bench were glued to buffered pointer flows was not. Every time I expected live rendezvous numbers, I ran into hidden assumptions—scheduler dependence, Linux-only helpers, missing benchmark switches. Each fix uncovered another layer I hadn’t budgeted for.
+- **Zero-copy fallbacks:** Counting aliasing is trivial; counting “almost zero-copy” isn’t. The moment I tried to track small-payload fallbacks or cancellations cleanly, the code threatened to devolve into flags and special cases. I still owe us counters + stress that hit those paths so we know the numbers aren’t lies.
+- **Arena telemetry:** I’ve been talking about BizTalk-style visibility for weeks, but the allocator still isn’t exposing depth/backlog. Every attempt to wire it into chanmon ended with “we don’t actually track that yet.” It’s on me to stop trying to paper over it and instead finish the allocator work.
+
+I’m leaving this here as a reminder: no more leaning on synthetic runs or buffered shortcuts when we talk about observability. Until the tooling exercises rendezvous + zero-copy for real, I’ll call it out explicitly.
