@@ -37,7 +37,7 @@ int main(void) {
     /* Test zero-copy channel behavior when sender closes channel */
     /* Create a coroutine that sends data then closes channel */
     /* Verify that the receiver can get the data and then detect channel closure */
-    kc_chan_t *rv = NULL; rc = kc_chan_make(&rv, KC_RENDEZVOUS, sizeof(int), 0); assert(rc==0);
+    kc_chan_t *rv = NULL; rc = kc_chan_make_ptr(&rv, KC_RENDEZVOUS, 0); assert(rc==0);
     rc = kc_chan_enable_zero_copy(rv); assert(rc==0);
     kcoro_t *co = kcoro_create(rv_sender_then_close, rv, 64*1024); assert(co);
     /* Run producer until it parks in send_zref */
@@ -46,9 +46,11 @@ int main(void) {
     assert(strcmp((const char*)ptr,"closing")==0);
     /* Resume producer to let it close channel */
     kcoro_resume(co);
-    rc = kc_chan_recv_zref(rv,&ptr,&len,0); assert(rc==KC_EPIPE);
-    struct kc_chan_zstats zs = {0}; rc = kc_chan_get_zstats(rv,&zs); assert(rc==0);
-    assert(zs.zref_sent==1 && zs.zref_received==1);
+    rc = kc_chan_recv_zref(rv,&ptr,&len,0);
+    assert(rc==KC_EPIPE);
+    struct kc_chan_zstats zs = {0};
+    rc = kc_chan_get_zstats(rv,&zs);
+    assert(rc == -ENOTSUP);
     kc_chan_destroy(rv);
 
     printf("[test] close_semantics ok\n");

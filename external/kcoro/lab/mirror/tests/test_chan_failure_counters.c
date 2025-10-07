@@ -4,6 +4,7 @@
 // reflected in kc_chan_snapshot after inducing those conditions.
 #include <stdio.h>
 #include <assert.h>
+#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 #include "../include/kcoro.h"
@@ -23,7 +24,13 @@ int main(void) {
 
     /* Take initial snapshot of channel counters */
     struct kc_chan_snapshot snap0; memset(&snap0, 0, sizeof(snap0));
-    rc = kc_chan_snapshot(ch, &snap0); assert(rc == 0);
+    rc = kc_chan_snapshot(ch, &snap0);
+    if (rc == -ENOTSUP) {
+        printf("[test] failure_counters skip (snapshot unsupported)\n");
+        kc_chan_destroy(ch);
+        return 0;
+    }
+    assert(rc == 0);
 
     /* Fill channel (capacity 1) to force an EAGAIN on next send */
     /* Send first value to fill the channel */

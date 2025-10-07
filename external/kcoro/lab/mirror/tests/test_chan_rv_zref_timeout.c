@@ -13,8 +13,8 @@ int main(void) {
     /* Initialize main coroutine context */
     kcoro_create_main();
     kc_chan_t *ch = NULL;
-    /* Create a rendezvous channel with zero capacity */
-    int rc = kc_chan_make(&ch, KC_RENDEZVOUS, sizeof(int), 0); assert(rc == 0);
+    /* Create a rendezvous pointer channel with zero capacity */
+    int rc = kc_chan_make_ptr(&ch, KC_RENDEZVOUS, 0); assert(rc == 0);
     /* Enable zero-copy mode for the channel */
     rc = kc_chan_enable_zero_copy(ch); assert(rc == 0);
 

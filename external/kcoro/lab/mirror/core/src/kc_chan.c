@@ -5,7 +5,9 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
+#include <stdio.h>
 #include <time.h>
+#include <sched.h>
 
 #include "../../include/kcoro.h"
 #include "../../include/kcoro_core.h"
@@ -32,6 +34,18 @@ static void kc_chan_note_op_locked(struct kc_chan *ch, int is_send, size_t len)
     long now = kc_now_ns();
     if (ch->first_op_time_ns == 0) ch->first_op_time_ns = now;
     ch->last_op_time_ns = now;
+}
+
+static int kc_wait_for_token_payload(kc_payload *ack)
+{
+    if (!ack) return -EINVAL;
+    for (;;) {
+        int rc = kc_token_kernel_consume_payload(ack);
+        if (rc != KC_EAGAIN) {
+            return rc;
+        }
+        sched_yield();
+    }
 }
 
 unsigned kc_chan_len(kc_chan_t *c)
@@ -392,6 +406,7 @@ static int kc_chan_send_ptr_rendezvous(struct kc_chan *ch, void *ptr, size_t len
         }
         if (timeout_ms == 0) {
             ch->send_eagain++;
+            fprintf(stderr, "[kc_chan][send_ptr_rv] timeout==0 returning EAGAIN\n");
             KC_MUTEX_UNLOCK(&ch->mu);
             if (desc) kc_desc_release(desc);
             return KC_EAGAIN;
@@ -443,7 +458,7 @@ static int kc_chan_send_ptr_rendezvous(struct kc_chan *ch, void *ptr, size_t len
 
         kcoro_park();
         kc_payload ack = {0};
-        int rc = kc_token_kernel_consume_payload(&ack);
+        int rc = kc_wait_for_token_payload(&ack);
         if (ack.desc_id) kc_desc_release(ack.desc_id);
         if (rc < 0) return rc;
         if (ack.status < 0) return ack.status;
@@ -570,15 +585,15 @@ static int kc_chan_recv_ptr_rendezvous(struct kc_chan *ch, void **out_ptr, size_
             }
             return 0;
         }
-        if (timeout_ms == 0) {
-            ch->recv_eagain++;
-            KC_MUTEX_UNLOCK(&ch->mu);
-            return KC_EAGAIN;
-        }
         if (ch->closed) {
             ch->recv_epipe++;
             KC_MUTEX_UNLOCK(&ch->mu);
             return KC_EPIPE;
+        }
+        if (timeout_ms == 0) {
+            ch->recv_eagain++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return KC_EAGAIN;
         }
         KC_MUTEX_UNLOCK(&ch->mu);
         if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) {
@@ -741,7 +756,7 @@ static int kc_chan_send_bytes_rendezvous(struct kc_chan *ch, const void *msg, lo
 
         kcoro_park();
         kc_payload ack = {0};
-        int rc = kc_token_kernel_consume_payload(&ack);
+        int rc = kc_wait_for_token_payload(&ack);
         if (ack.desc_id) kc_desc_release(ack.desc_id);
         if (rc < 0) return rc;
         if (ack.status < 0) return ack.status;
@@ -840,15 +855,15 @@ static int kc_chan_recv_bytes_rendezvous(struct kc_chan *ch, void *out, long tim
             }
             return 0;
         }
-        if (timeout_ms == 0) {
-            ch->recv_eagain++;
-            KC_MUTEX_UNLOCK(&ch->mu);
-            return KC_EAGAIN;
-        }
         if (ch->closed) {
             ch->recv_epipe++;
             KC_MUTEX_UNLOCK(&ch->mu);
             return KC_EPIPE;
+        }
+        if (timeout_ms == 0) {
+            ch->recv_eagain++;
+            KC_MUTEX_UNLOCK(&ch->mu);
+            return KC_EAGAIN;
         }
         KC_MUTEX_UNLOCK(&ch->mu);
         if (timeout_ms > 0 && kc_now_ns() >= deadline_ns) {
@@ -1209,10 +1224,9 @@ int kc_chan_get_stats(kc_chan_t *c, struct kc_chan_stats *out)
 int kc_chan_snapshot(kc_chan_t *c, struct kc_chan_snapshot *out)
 {
     if (!c || !out) return -EINVAL;
-    // TODO(metrics): Populate snapshots with arena/queue depth when the unified
-    // buffered implementation lands (ARENA_ARCH_PLAN.md#4).
+    (void)c;
     memset(out, 0, sizeof(*out));
-    return 0;
+    return -ENOTSUP;
 }
 
 int kc_chan_compute_rate(const struct kc_chan_snapshot *prev,

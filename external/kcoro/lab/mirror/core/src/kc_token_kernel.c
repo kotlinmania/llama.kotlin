@@ -38,6 +38,18 @@ typedef struct kc_token_freelist {
     kc_token_block *head;
 } kc_token_freelist;
 
+typedef struct kc_token_ready_queue {
+    pthread_mutex_t mu;
+    pthread_cond_t  cv;
+    kc_token_block *head;
+    kc_token_block *tail;
+    int             stop;
+} kc_token_ready_queue;
+
+static kc_token_block *ready_dequeue(kc_token_ready_queue *q);
+static void ready_enqueue(kc_token_ready_queue *q, kc_token_block *blk);
+static void freelist_push(kc_token_freelist *fl, kc_token_block *blk);
+
 enum {
     KC_TOKEN_INIT_UNINITIALIZED = 0,
     KC_TOKEN_INIT_IN_PROGRESS   = 1,
@@ -49,11 +61,15 @@ static struct {
     kc_token_bucket     *buckets;
     size_t               bucket_count;
     kc_token_freelist    freelist;
+    kc_token_ready_queue ready_queue;
+    pthread_t            worker;
+    int                  worker_started;
     atomic_int           initialized;
 } g_kernel = {
     .next_id = ATOMIC_VAR_INIT(1),
     .buckets = NULL,
     .bucket_count = 0,
+    .worker_started = 0,
     .initialized = ATOMIC_VAR_INIT(KC_TOKEN_INIT_UNINITIALIZED),
 };
 
@@ -75,6 +91,75 @@ static void freelist_destroy(kc_token_freelist *fl)
     fl->head = NULL;
     pthread_mutex_unlock(&fl->mu);
     pthread_mutex_destroy(&fl->mu);
+}
+
+static void ready_queue_init(kc_token_ready_queue *q) {
+    pthread_mutex_init(&q->mu, NULL);
+    pthread_cond_init(&q->cv, NULL);
+    q->head = q->tail = NULL;
+    q->stop = 0;
+}
+
+static void ready_queue_destroy(kc_token_ready_queue *q) {
+    pthread_mutex_destroy(&q->mu);
+    pthread_cond_destroy(&q->cv);
+}
+
+static void ready_queue_stop(kc_token_ready_queue *q) {
+    pthread_mutex_lock(&q->mu);
+    q->stop = 1;
+    pthread_cond_broadcast(&q->cv);
+    pthread_mutex_unlock(&q->mu);
+}
+
+static void ready_enqueue(kc_token_ready_queue *q, kc_token_block *blk) {
+    pthread_mutex_lock(&q->mu);
+    blk->next_hash = NULL;
+    if (q->tail) q->tail->next_hash = blk; else q->head = blk;
+    q->tail = blk;
+    pthread_cond_signal(&q->cv);
+    pthread_mutex_unlock(&q->mu);
+}
+
+static kc_token_block *ready_dequeue(kc_token_ready_queue *q) {
+    pthread_mutex_lock(&q->mu);
+    while (!q->head && !q->stop) {
+        pthread_cond_wait(&q->cv, &q->mu);
+    }
+    if (!q->head) {
+        pthread_mutex_unlock(&q->mu);
+        return NULL;
+    }
+    kc_token_block *blk = q->head;
+    q->head = blk->next_hash;
+    if (!q->head) q->tail = NULL;
+    pthread_mutex_unlock(&q->mu);
+    blk->next_hash = NULL;
+    return blk;
+}
+
+static void kc_token_process_block(kc_token_block *blk) {
+    if (blk->owner_co) {
+        kcoro_t *co = blk->owner_co;
+        co->token_payload_ptr = blk->payload.ptr;
+        co->token_payload_len = blk->payload.len;
+        co->token_payload_status = blk->payload.status;
+        co->token_payload_desc = blk->payload.desc_id;
+        atomic_store_explicit(&co->token_payload_ready, 1, memory_order_release);
+        kcoro_unpark(co);
+    }
+    // TODO(token-kernel): honor blk->resume_pc once interpreter hand-off is implemented.
+    freelist_push(&g_kernel.freelist, blk);
+}
+
+static void *kc_token_worker_main(void *arg) {
+    (void)arg;
+    for (;;) {
+        kc_token_block *blk = ready_dequeue(&g_kernel.ready_queue);
+        if (!blk) break;
+        kc_token_process_block(blk);
+    }
+    return NULL;
 }
 
 static kc_token_block *freelist_pop(kc_token_freelist *fl)
@@ -187,13 +272,23 @@ int kc_token_kernel_global_init(void)
                                                         memory_order_acq_rel,
                                                         memory_order_acquire)) {
                 freelist_init(&g_kernel.freelist);
+                ready_queue_init(&g_kernel.ready_queue);
                 int rc = bucket_init_many(KC_TOKEN_KERNEL_BUCKETS);
                 if (rc != 0) {
+                    ready_queue_destroy(&g_kernel.ready_queue);
                     freelist_destroy(&g_kernel.freelist);
                     atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_UNINITIALIZED, memory_order_release);
                     return rc;
                 }
                 atomic_store_explicit(&g_kernel.next_id, 1, memory_order_relaxed);
+                if (pthread_create(&g_kernel.worker, NULL, kc_token_worker_main, NULL) != 0) {
+                    ready_queue_destroy(&g_kernel.ready_queue);
+                    freelist_destroy(&g_kernel.freelist);
+                    bucket_destroy_many();
+                    atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_UNINITIALIZED, memory_order_release);
+                    return -errno;
+                }
+                g_kernel.worker_started = 1;
                 atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_READY, memory_order_release);
                 return 0;
             }
@@ -212,6 +307,12 @@ void kc_token_kernel_global_shutdown(void)
     if (atomic_load_explicit(&g_kernel.initialized, memory_order_acquire) != KC_TOKEN_INIT_READY) {
         return;
     }
+    ready_queue_stop(&g_kernel.ready_queue);
+    if (g_kernel.worker_started) {
+        pthread_join(g_kernel.worker, NULL);
+        g_kernel.worker_started = 0;
+    }
+    ready_queue_destroy(&g_kernel.ready_queue);
     bucket_destroy_many();
     freelist_destroy(&g_kernel.freelist);
     atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_UNINITIALIZED, memory_order_release);
@@ -283,16 +384,7 @@ void kc_token_kernel_callback(kc_ticket ticket, kc_payload payload)
         return;
     }
     blk->payload = payload;
-    // TODO: enqueue block onto interpreter queue and signal thread
-    if (blk->owner_co) {
-        blk->owner_co->token_payload_ptr = payload.ptr;
-        blk->owner_co->token_payload_len = payload.len;
-        blk->owner_co->token_payload_status = payload.status;
-        blk->owner_co->token_payload_desc = payload.desc_id;
-        atomic_store_explicit(&blk->owner_co->token_payload_ready, 1, memory_order_release);
-        kcoro_unpark(blk->owner_co);
-    }
-    freelist_push(&g_kernel.freelist, blk);
+    ready_enqueue(&g_kernel.ready_queue, blk);
 }
 
 void kc_token_kernel_cancel(kc_ticket ticket, int reason)
@@ -311,15 +403,7 @@ void kc_token_kernel_cancel(kc_ticket ticket, int reason)
         blk->payload.desc_id = 0;
     }
     blk->payload.status = reason;
-    if (blk->owner_co) {
-        blk->owner_co->token_payload_ptr = NULL;
-        blk->owner_co->token_payload_len = 0;
-        blk->owner_co->token_payload_status = reason;
-        blk->owner_co->token_payload_desc = 0;
-        atomic_store_explicit(&blk->owner_co->token_payload_ready, 1, memory_order_release);
-        kcoro_unpark(blk->owner_co);
-    }
-    freelist_push(&g_kernel.freelist, blk);
+    ready_enqueue(&g_kernel.ready_queue, blk);
 }
 
 int kc_token_kernel_consume_payload(kc_payload *out_payload)

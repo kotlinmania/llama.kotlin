@@ -10,12 +10,12 @@ This note captures the concrete architectural work required to finish the "one t
 ## 2. Channel Integration (All Kinds)
 - ✅ Rendezvous + buffered/unlimited pointer channels use descriptor queues (`kc_chan_send_ptr/_recv_ptr`, select paths updated).
 - ✅ Byte channels now route through arena-backed descriptors in send/recv/select paths.
-- ⏳ Zero-copy (zref): bind arena-backed backend and re-enable descriptor APIs.
+- ✅ Zero-copy (zref): bound the arena-backed backend and re-enabled descriptor APIs.
 
 ## 3. Token Kernel Worker Loop
-- Introduce a dedicated worker thread (or pool) that drains token events instead of invoking callbacks inline.
-- Provide a lock-free queue between channel wake sites and the worker to keep rendezvous hot paths short.
-- Extend the worker to handle timeouts, cancellations, and arena compaction triggers.
+- ✅ Introduced a dedicated worker thread that drains token events instead of invoking callbacks inline.
+- ✅ Added a ready queue between channel wake sites and the worker so rendezvous hot paths stay short (currently mutex/cond; revisit for lock-free variant later).
+- ⏳ Extend the worker to handle timeouts, cancellations, and arena compaction triggers.
 
 ## 4. Instrumentation & Tooling
 - Extend `kc_chan_snapshot()` to expose arena depth, ticket churn, spill events, and worker backlog.
@@ -33,4 +33,4 @@ This note captures the concrete architectural work required to finish the "one t
 - Stress-test arena compaction with mixed small/large payloads to watch for fragmentation regressions.
 
 ---
-**Status:** Pointer/byte channels ride arena-backed descriptors; zero-copy backend, worker loop, and metrics/tooling remain.
+**Status:** Pointer/byte channels ride arena-backed descriptors; zref backend and worker loop are online; metrics/tooling + advanced worker features remain.
