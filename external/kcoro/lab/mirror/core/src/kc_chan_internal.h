@@ -9,47 +9,81 @@
 #include <string.h>
 #include "../../include/kcoro_port.h"
 #include "../../include/kcoro.h"
-/* forward decl to avoid including kcoro_zcopy.h here */
+#include "../../include/kcoro_token_kernel.h"
+#include "../../include/kcoro_zcopy.h"
+#include "kcoro_desc.h"
+
 struct kc_zcopy_backend_ops;
 
-/* Internal channel structure and helpers shared between kc_chan.c and kc_zcopy.c.
- * Not part of the public API surface. */
-
-enum kc_waiter_kind { KC_WAITER_CORO=0, KC_WAITER_SELECT=1 };
-struct kc_waiter {
-    enum kc_waiter_kind kind;
-    kcoro_t *co;
-    kc_select_t *sel;
-    int clause_index;
-    enum kc_select_clause_kind clause_kind;
-    int is_zref;
-    struct kc_waiter *next;
-    unsigned long magic;
-    int freed;
-    void **recv_ptr_slot;
-    size_t *recv_len_slot;
+enum kc_pending_kind {
+    KC_PENDING_KIND_BYTES = 0,
+    KC_PENDING_KIND_PTR   = 1,
+    KC_PENDING_KIND_ZDESC = 2,
 };
 
-enum kc_waiter_token_status {
-    KC_WAITER_TOKEN_INIT = 0,
-    KC_WAITER_TOKEN_ENQUEUED = 1,
+enum kc_pending_role {
+    KC_PENDING_ROLE_CORO   = 0,
+    KC_PENDING_ROLE_SELECT = 1,
 };
 
-struct kc_waiter_token {
-    enum kc_waiter_token_status status;
+struct kc_pending_send {
+    struct kc_pending_send *next;
+    enum kc_pending_kind    kind;
+    enum kc_pending_role    role;
+    kc_ticket               ticket;
+    kc_select_t            *sel;
+    int                     clause_index;
+    kc_desc_id              desc_id;
 };
 
-struct kc_pending_send;
-struct kc_pending_recv;
+struct kc_pending_recv {
+    struct kc_pending_recv *next;
+    enum kc_pending_kind    kind;
+    enum kc_pending_role    role;
+    kc_ticket               ticket;
+    kc_select_t            *sel;
+    int                     clause_index;
+    kc_desc_id              desc_id; /* for future buffered integration */
+};
 
-static inline void kc_waiter_token_reset(struct kc_waiter_token *token)
+static inline void kc_pending_send_append(struct kc_pending_send **head,
+                                          struct kc_pending_send **tail,
+                                          struct kc_pending_send *node)
 {
-    if (token) token->status = KC_WAITER_TOKEN_INIT;
+    node->next = NULL;
+    if (*tail) (*tail)->next = node; else *head = node;
+    *tail = node;
 }
 
-static inline int kc_waiter_token_is_enqueued(const struct kc_waiter_token *token)
+static inline struct kc_pending_send *kc_pending_send_pop(struct kc_pending_send **head,
+                                                          struct kc_pending_send **tail)
 {
-    return token && token->status == KC_WAITER_TOKEN_ENQUEUED;
+    struct kc_pending_send *node = *head;
+    if (!node) return NULL;
+    *head = node->next;
+    if (!*head) *tail = NULL;
+    node->next = NULL;
+    return node;
+}
+
+static inline void kc_pending_recv_append(struct kc_pending_recv **head,
+                                          struct kc_pending_recv **tail,
+                                          struct kc_pending_recv *node)
+{
+    node->next = NULL;
+    if (*tail) (*tail)->next = node; else *head = node;
+    *tail = node;
+}
+
+static inline struct kc_pending_recv *kc_pending_recv_pop(struct kc_pending_recv **head,
+                                                          struct kc_pending_recv **tail)
+{
+    struct kc_pending_recv *node = *head;
+    if (!node) return NULL;
+    *head = node->next;
+    if (!*head) *tail = NULL;
+    node->next = NULL;
+    return node;
 }
 
 struct kc_chan {
@@ -72,14 +106,6 @@ struct kc_chan {
     /* conflated */
     unsigned char  *slot;      /* elem_sz */
     int             has_value;
-
-    /* waiter counters (best-effort hints) */
-    unsigned        waiters_send;
-    unsigned        waiters_recv;
-
-    /* Cooperative wait queues (used by select or park) */
-    struct kc_waiter *wq_send_head, *wq_send_tail;
-    struct kc_waiter *wq_recv_head, *wq_recv_tail;
 
     /* Capabilities */
     unsigned        capabilities;   /* KC_CHAN_CAP_* bitmask */
@@ -126,6 +152,7 @@ struct kc_chan {
     unsigned long   rv_matches;
     unsigned long   rv_cancels;
     unsigned long   rv_zdesc_matches;
+    kc_desc_id      rv_slot_desc;  /* descriptor staged for rendezvous handoff */
 
     /* Token kernel pending queues */
     struct kc_pending_send *token_send_head;
@@ -154,67 +181,3 @@ static inline size_t kc_ring_idx(const struct kc_chan *ch, size_t i)
 void kc_chan_emit_metrics_if_needed(struct kc_chan *ch, long now);
 void kc_chan_update_send_stats_len_locked(struct kc_chan *ch, size_t len);
 void kc_chan_update_recv_stats_len_locked(struct kc_chan *ch, size_t len);
-
-/* Waiter helpers (shared by core and zcopy backends) */
-static inline struct kc_waiter* kc_waiter_new_coro(enum kc_select_clause_kind kind)
-{
-    struct kc_waiter *w = (struct kc_waiter*)malloc(sizeof(*w));
-    if (!w) return NULL;
-    w->kind = KC_WAITER_CORO;
-    w->co = kcoro_current();
-    kcoro_retain(w->co);
-    w->sel = NULL;
-    w->clause_index = -1;
-    w->clause_kind = kind;
-    w->is_zref = 0;
-    w->next = NULL;
-    w->magic = 0xCAFEBABEUL;
-    w->freed = 0;
-    w->recv_ptr_slot = NULL;
-    w->recv_len_slot = NULL;
-    return w;
-}
-
-static inline void kc_waiter_append(struct kc_waiter **head, struct kc_waiter **tail, struct kc_waiter *w)
-{
-    if (*tail) (*tail)->next = w; else *head = w;
-    *tail = w;
-}
-
-static inline struct kc_waiter* kc_waiter_pop(struct kc_waiter **head, struct kc_waiter **tail)
-{
-    struct kc_waiter *w = *head;
-    if (!w) return NULL;
-    *head = w->next;
-    if (!*head) *tail = NULL;
-    w->next = NULL;
-    return w;
-}
-
-/* Dispose a waiter exactly once; logs if double-disposed in dev runs. */
-static inline void kc_waiter_dispose(struct kc_waiter *w)
-{
-    if (!w) return;
-    if (w->freed) {
-        const char *dbg = getenv("KCORO_DEBUG");
-        if (dbg && *dbg && dbg[0] != '0') {
-            fprintf(stderr, "[kcoro][waiter] double-dispose w=%p kind=%d clause=%d magic=%lx\n",
-                    (void*)w, w->kind, w->clause_kind, w->magic);
-        }
-        return;
-    }
-    if (w->magic != 0xCAFEBABEUL) {
-        const char *dbg = getenv("KCORO_DEBUG");
-        if (dbg && *dbg && dbg[0] != '0') {
-            fprintf(stderr, "[kcoro][waiter] bad magic before free w=%p magic=%lx\n",
-                    (void*)w, w->magic);
-        }
-    }
-    if (w->co) {
-        kcoro_release(w->co);
-        w->co = NULL;
-    }
-    w->freed = 1;
-    w->magic = 0xDEADDEADUL;
-    free(w);
-}

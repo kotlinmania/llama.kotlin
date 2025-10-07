@@ -131,3 +131,25 @@ Next: extend the same pending-path logic to buffered modes (or gracefully fall b
 - After pointer channels work, extend the same descriptors to zero-copy (zdesc) and buffered/unlimited modes so every blocking path is ticket-based with zero copies.
 
 Next: design the arena metadata tables (block headers, free lists), wire the descriptor struct into `kc_token_kernel_callback`, and replace the pending queue payload fields with descriptor IDs.
+
+## 2025-10-07 — Pending-Queue Rewrite (Lab Mirror)
+
+- Replaced the waiter/condvar scaffolding in `kc_chan_internal.h` with `kc_pending_{send,recv}` structures that carry role, kind, ticket, and select metadata. `struct kc_chan` now tracks only token-backed queues.
+- Nuked the legacy waiter lists from the lab mirror `kc_chan.c` and rebuilt rendezvous pointer send/recv/select on top of the pending queues. `kc_token_kernel_publish_{send,recv}` is now the only blocking path; callbacks deliver straight through `fulfill_coroutine_*` or select helpers.
+- Stubbed buffered/unlimited/byte/zref paths with explicit `-ENOTSUP` so no one accidentally uses the half-migrated logic; metrics and zero-copy APIs currently return empty data. Lab demos still pass, confirming the rendezvous path remains healthy.
+- Added a temporary placeholder `kc_zcopy.c` that returns `-ENOTSUP` while we slot in the arena-backed descriptors. Restored lab builds (`make -C external/kcoro/lab/mirror/core all`) and reran the demos to validate the new single-path rendezvous.
+
+**Next steps**
+1. Implement the arena allocator + ticket retain/release (`ARENA_ARCH_PLAN.md` #1) and swap the pending queue payload fields to descriptor IDs.
+2. Bring buffered/unlimited/conflated send/recv (and their select clauses) onto the same pending queues so the `-ENOTSUP` stubs disappear (#2).
+3. Layer the token-kernel worker loop and expose arena/queue metrics to chanmon (#3/#4). 
+
+## 2025-10-07 — Rendezvous on Descriptors
+
+- Added the shared descriptor table (`kc_desc.{c,h}`) with refcounts, alias/copy helpers, and hooked it into the lab build.
+- Extended `kc_payload`, `kcoro_t`, and `kc_token_kernel` so token callbacks carry `desc_id` alongside `ptr/len/status` and the consumer releases the descriptor deterministically.
+- Reworked rendezvous pointer send/recv + select clauses to hand out descriptor IDs instead of raw structs; pending nodes now store `desc_id`, and close/cancel paths release refs rather than touching legacy buffers.
+- Removed the last waiter-era copies (slot buffers, pending `struct kc_chan_ptrmsg` scratch) from the lab mirror: every rendezvous wake now resolves through `kc_desc_payload()` and token callbacks.
+- Lab demos rebuilt (`make -C external/kcoro/lab/mirror/core all`, `lab_simple_park_demo`, `lab_token_kernel_demo`) to verify the descriptor-backed rendezvous path.
+
+**Next**: port buffered/unlimited pointer modes onto the same descriptor queues, then tackle the arena allocator for byte/zref payloads and the token-worker loop.

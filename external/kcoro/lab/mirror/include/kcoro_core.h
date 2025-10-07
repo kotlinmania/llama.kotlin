@@ -66,6 +66,7 @@ struct kcoro {
     void   *token_payload_ptr;   /* payload pointer delivered via token kernel */
     size_t  token_payload_len;   /* payload length */
     int     token_payload_status;/* status/result from callback */
+    uint64_t token_payload_desc; /* descriptor backing the payload */
     atomic_int token_payload_ready; /* 1 if payload fields contain new data */
 
     /* Stack management */

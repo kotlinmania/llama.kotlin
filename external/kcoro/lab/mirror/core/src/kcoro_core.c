@@ -70,6 +70,7 @@ kcoro_t* kcoro_create_main(void)
     main_co->token_payload_ptr = NULL;
     main_co->token_payload_len = 0;
     main_co->token_payload_status = 0;
+    main_co->token_payload_desc = 0;
     atomic_init(&main_co->token_payload_ready, 0);
     
     /* Set as current */
@@ -122,6 +123,7 @@ kcoro_t* kcoro_create(kcoro_fn_t fn, void* arg, size_t stack_size)
     co->token_payload_ptr = NULL;
     co->token_payload_len = 0;
     co->token_payload_status = 0;
+    co->token_payload_desc = 0;
     atomic_init(&co->token_payload_ready, 0);
     
     /* Set up stack and entry point (ARM64 ABI compliant) */

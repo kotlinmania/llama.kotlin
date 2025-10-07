@@ -11,6 +11,7 @@
 
 #include "kcoro_core.h"
 #include "kcoro_port.h"
+#include "kcoro_desc.h"
 
 #ifndef KC_TOKEN_KERNEL_BUCKETS
 #define KC_TOKEN_KERNEL_BUCKETS 1024u
@@ -248,6 +249,7 @@ static kc_ticket publish_common(struct kc_chan *ch,
         blk->payload.ptr = NULL;
         blk->payload.len = 0;
         blk->payload.status = 0;
+        blk->payload.desc_id = 0;
     }
 
     bucket_insert(blk);
@@ -261,7 +263,7 @@ kc_ticket kc_token_kernel_publish_send(struct kc_chan *ch,
                                        size_t len,
                                        void (*resume_pc)(void))
 {
-    kc_payload payload = { .ptr = ptr, .len = len, .status = 0 };
+    kc_payload payload = { .ptr = ptr, .len = len, .status = 0, .desc_id = 0 };
     return publish_common(ch, &payload, resume_pc);
 }
 
@@ -286,6 +288,7 @@ void kc_token_kernel_callback(kc_ticket ticket, kc_payload payload)
         blk->owner_co->token_payload_ptr = payload.ptr;
         blk->owner_co->token_payload_len = payload.len;
         blk->owner_co->token_payload_status = payload.status;
+        blk->owner_co->token_payload_desc = payload.desc_id;
         atomic_store_explicit(&blk->owner_co->token_payload_ready, 1, memory_order_release);
         kcoro_unpark(blk->owner_co);
     }
@@ -303,11 +306,16 @@ void kc_token_kernel_cancel(kc_ticket ticket, int reason)
     }
     blk->payload.ptr = NULL;
     blk->payload.len = 0;
+    if (blk->payload.desc_id) {
+        kc_desc_release(blk->payload.desc_id);
+        blk->payload.desc_id = 0;
+    }
     blk->payload.status = reason;
     if (blk->owner_co) {
         blk->owner_co->token_payload_ptr = NULL;
         blk->owner_co->token_payload_len = 0;
         blk->owner_co->token_payload_status = reason;
+        blk->owner_co->token_payload_desc = 0;
         atomic_store_explicit(&blk->owner_co->token_payload_ready, 1, memory_order_release);
         kcoro_unpark(blk->owner_co);
     }
@@ -326,8 +334,10 @@ int kc_token_kernel_consume_payload(kc_payload *out_payload)
         out_payload->ptr = current->token_payload_ptr;
         out_payload->len = current->token_payload_len;
         out_payload->status = current->token_payload_status;
+        out_payload->desc_id = current->token_payload_desc;
     }
     current->token_payload_ptr = NULL;
     current->token_payload_len = 0;
+    current->token_payload_desc = 0;
     return current->token_payload_status;
 }

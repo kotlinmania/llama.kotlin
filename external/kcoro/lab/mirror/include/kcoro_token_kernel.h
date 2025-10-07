@@ -18,6 +18,7 @@ typedef struct kc_payload {
     void   *ptr;
     size_t  len;
     int     status;   // 0=OK, negative = error (e.g. KC_ECANCELLED)
+    uint64_t desc_id; // descriptor backing the payload (0 when not used)
 } kc_payload;
 
 typedef struct kc_ticket {
