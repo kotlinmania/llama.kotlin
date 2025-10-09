@@ -127,6 +127,8 @@ kotlin {
     }
 
     targets.withType<KotlinNativeTarget>().configureEach {
+        compilations.getByName("test").cinterops.create("posix")
+
         if (konanTarget == KonanTarget.MACOS_ARM64) {
             val mainCompilation = compilations["main"]
             val kcoroInclude = layout.projectDirectory.dir("external/kcoro/include")
@@ -182,6 +184,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+                implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.0")
             }
             kotlin.srcDir("src/commonTest/kotlin")
             resources.srcDir("src/commonTest/resources")

@@ -9,10 +9,10 @@
 
 ## Next Actions
 
-1. **Channel wake/retain patch** (in-flight): teach `kc_chan_schedule_wake` and rendezvous receive paths to retain until resume succeeds; release only after queue removal. Cover both waiter representations (`Waiter` and `WaiterEB`).
-2. **Cancellation hook wiring:** extend waiter creation helpers to call a shared `kc_waiter_install_cancel` that mirrors the upstream `invokeOnCancellation(segment, index)` semantics.
-3. **Scheduler TLS audit:** document and implement the explicit `main_co` swap + TLS store performed by the upstream runtime when resuming continuations.
-4. **ASan regression suite:** once the above lands, rerun `test_chan_ptr_rendezvous_basic` (and friends) under ASan/TSan. Promote the rendezvous test from excluded to default.
+1. **Channel wake/retain patch** (in-flight): clarified and verified: channel wake paths retain under lock before waiter disposal; scheduler enqueue takes ownership and a single balancing release happens in `kc_chan_schedule_wake`. Ready queue owns exactly one reference until dequeue.
+2. **Cancellation hook wiring:** scaffolding added to `kc_waiter` for an optional `cancel` token (best-effort). Next step: provide `kc_waiter_install_cancel()` and poll in retry loops; consider callback registration once token supports listeners.
+3. **Scheduler TLS audit:** documented actual behavior in `docs/components/scheduler/ARCHITECTURE.md` and validated worker path (`worker_main` sets `tls_current_sched`, installs `main_co`, resumes, then re-enqueues or releases).
+4. **ASan/TSan regression suite:** SAN switch added to common.mk (`SAN=asan|tsan`). ASan builds run; RV tests still reproduce stalls (see issue #81). Keep enabled for further debugging.
 5. **Docs & code comments:** keep `CHANNELS_ALGORITHM.md` and `scheduler/ARCHITECTURE.md` in sync with the findings (already started in this iteration). Reference the native sample/disassembly path (`tools/kotlin-native-samples/chan`).
 
 ## Watch List / Follow Ups
