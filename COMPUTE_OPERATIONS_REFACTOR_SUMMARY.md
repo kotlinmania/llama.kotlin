@@ -133,7 +133,7 @@ fun testComputeAddWithDestination() {
 - **`src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLComputeOps.kt`**: Complete refactor of all compute operations
 
 ### Tests Added:
-- **`src/nativeTest/kotlin/ai/solace/llamakotlin/core/GGMLComputeOpsDestinationTest.kt`**: New focused test suite
+- **`src/commonTest/kotlin/ai/solace/llamakotlin/core/GGMLComputeOpsDestinationTest.kt`**: New focused test suite
 - **`demo_destination_tensors.kts`**: Demonstration script
 
 ### Documentation:

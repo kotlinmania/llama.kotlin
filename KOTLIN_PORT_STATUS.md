@@ -1,9 +1,11 @@
 # LLama.cpp Kotlin Native Port - Current Status
 
 ## Overview
-This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The goal is a Kotlin Multiplatform implementation (CPU + Apple Metal), with deterministic numeric behavior across targets via a new pure‑Kotlin soft‑float and limb engine (KLang).
+This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The goal is a Kotlin Multiplatform implementation anchored by an optimized CPU backend, with deterministic numeric behavior across targets via a new pure‑Kotlin soft‑float and limb engine (KLang). Accelerator work (Metal, SIMD, etc.) is deferred until the CPU path is fully hardened.
 
-## Current Status
+## Current Status (October 7, 2025)
+The Kotlin/Native port continues to evolve, with the repository now containing only actively maintained Kotlin sources plus the kcoro runtime. kcoro usage is gated via `expect/actual` wrappers: non-Apple targets receive inert stubs, while macOS/Arm64 builds the real C interop. `./gradlew build -x macosArm64Test` completes successfully; running the full `macosArm64Test` target today triggers numerous failures in legacy GGML/model suites (BitNet 1.58, inference pipeline, tensor integration) because those tests still reference data and helpers that lived in the removed `archive/` and `examples/` trees. A dedicated `./gradlew kcoroBench` task now runs the kcoro ping-pong benchmark (Apple Silicon only).
+
 The project has made substantial progress across multiple development phases. Here's what has been accomplished:
 
 1. **✅ Phase 1 - Project Setup**: Complete
@@ -52,8 +54,8 @@ The project has made substantial progress across multiple development phases. He
    - Kotlin/Native SIMD port documented (`docs/kdocs/kotlin-native-simd-plan.md`); implementation underway
    - Next milestone: rewrite ggml SIMD kernels in pure Kotlin using `Vector128` helpers
 
-6. **🔄 Phase 4 - Metal Backend Implementation**: In Progress 
-   - Metal context setup and shader compilation infrastructure planned
+6. **🔄 Phase 4 - Backend Extensibility Research**: Planned
+   - Define interfaces needed to host optional accelerators
    - Integration with existing tensor operations
 
 7. **📋 Phase 5 - LLaMA Model Implementation**: Starting
@@ -138,9 +140,9 @@ Based on the substantial progress made, the immediate next steps are:
    - Extend optimization framework to cover new quantization formats
    - Maintain comprehensive testing coverage
 
-4. **Metal Backend Foundation**
-   - Basic Metal context setup and shader compilation infrastructure
-   - Simple Metal compute shader for proof-of-concept operations
+4. **Backend Extensibility Hooks**
+   - Document registry seams for future accelerators
+   - Prototype coroutine-friendly streaming on CPU first
    - Integration planning with existing tensor operations
 
 ### ✅ Phase 1: Project Setup and Initial Analysis (Complete)
@@ -151,10 +153,10 @@ Based on the substantial progress made, the immediate next steps are:
 - [x] Analyze C/C++ Codebase with Scope Focus
   - [x] Identify and separate code related to CUDA, hipBLAS, Vulkan, SYCL, MUSA, and CANN backends
   - [x] Create an archive folder structure for non-supported backends
-  - [x] Document the core CPU and Metal implementation components
+  - [x] Document the core CPU implementation components
   - [x] Map dependencies between core components and backend-specific code
 - [x] Design Kotlin Native Architecture
-  - [x] Design package structure with clear separation between core, CPU, and Metal implementations
+  - [x] Design package structure with clear separation between core logic and optional backends
   - [x] Plan memory management approach (Kotlin Native has different memory model than C++)
   - [x] Design API that maintains compatibility with original while being idiomatic Kotlin
 
@@ -189,15 +191,10 @@ Based on the substantial progress made, the immediate next steps are:
   - [ ] Optimize memory access patterns
   - [ ] Implement SIMD optimizations where possible in Kotlin Native
 
-### 🔄 Phase 4: Metal Backend Implementation (In Progress)
-- [ ] Translate Metal-Specific Code
-  - [ ] Implement Metal shader code in appropriate format
-  - [ ] Implement Metal backend for tensor operations
-  - [ ] Implement Metal-specific memory management
-- [ ] Optimize Metal Performance
-  - [ ] Implement efficient Metal command buffer usage
-  - [ ] Optimize Metal compute pipeline
-  - [ ] Implement Metal-specific optimizations for Apple Silicon
+### 🔄 Phase 4: Backend Extensibility Planning (Deferred)
+- [ ] Define accelerator-agnostic backend interfaces (shaders/kernels optional)
+- [ ] Prototype CPU-only implementations of streaming primitives that accelerators will reuse
+- [ ] Evaluate requirements for later GPU/SIMD backends once CPU parity is locked
 
 ### 📋 Phase 5: LLaMA Model Implementation (Starting)
 - [ ] Translate Model Structures
@@ -314,7 +311,7 @@ The project has made substantial progress with these key achievements:
 ✅ **Comprehensive Testing**: Multi-tier validation with benchmarking and accuracy frameworks  
 ✅ **Robust Documentation**: Detailed implementation summaries and design documents
 
-🔄 **Currently Active**: CPU/Metal backend development, LLaMA model architecture implementation
+🔄 **Currently Active**: CPU backend refinements, LLaMA model architecture implementation
 
 The foundation is solid and ready for the next phases of model implementation and backend optimization.
 
@@ -323,7 +320,7 @@ The foundation is solid and ready for the next phases of model implementation an
 Current development challenges and focus areas:
 
 1. **Model Architecture Implementation**: Beginning LLaMA attention and feed-forward implementations
-2. **Backend Integration**: Formalizing CPU backend and beginning Metal backend development  
+2. **Backend Integration**: Formalizing CPU backend and cataloging requirements for future accelerators  
 3. **K-Quant Support**: Extending quantization ecosystem to include remaining K-Quant types
 4. **Multi-threading**: Implementing efficient parallel execution for graph computation
 5. **Real Model Testing**: Validating with actual LLaMA models once model architecture is complete

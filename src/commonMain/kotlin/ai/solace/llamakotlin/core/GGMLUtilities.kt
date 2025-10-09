@@ -250,8 +250,7 @@ object DemoTextUtilities {
         
         val backendArchitectureFeatures = listOf(
             "CPU backend with ByteArray management",
-            "Metal backend foundation (macOS/iOS)",
-            "Flexible backend registration system",
+            "Flexible backend registry ready for future accelerators",
             "Multi-threading support with Kotlin coroutines"
         )
     }

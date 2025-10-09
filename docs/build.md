@@ -84,6 +84,8 @@ In order to build llama.cpp you have four different options.
         gmake CC=/usr/local/bin/clang15 CXX=/usr/local/bin/clang++15 -j4
         ```
 
+> **Note:** The Kotlin/Native port currently ships a CPU-only backend. The Metal instructions below are kept from upstream llama.cpp for archival purposes.
+
 ## Metal Build
 
 On MacOS, Metal is enabled by default. Using Metal makes the computation run on the GPU.

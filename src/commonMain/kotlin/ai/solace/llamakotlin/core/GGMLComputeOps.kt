@@ -9,9 +9,11 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
 import ai.solace.llamakotlin.core.simd.GGMLSimd
+import ai.solace.klang.bitwise.ArithmeticBitwiseOps
 import ai.solace.klang.bitwise.BitShiftEngine
 import ai.solace.klang.bitwise.BitShiftMode
 import ai.solace.klang.bitwise.BitwiseOps
+import ai.solace.klang.bitwise.PackOps
 import ai.solace.klang.bitwise.DoubleDouble
 import kotlin.math.abs
 import kotlin.math.exp
@@ -167,15 +169,15 @@ internal fun computeDotProductF32Q4_K(
             
             // Get sub-block quantized scale and min
             val scaleByte = buffer[(tensorQ4_K.dataOffset + blockByteOffset.toULong() + 4uL + subBlock.toULong()).toInt()]
-            val quantizedScale = scaleByte.toInt() and 0x3F
-            val quantizedMinLow = (scaleByte.toInt() shr 6) and 0x03
+            val quantizedScale = scaleByte.toUnsignedInt().lowBits(6)
+            val quantizedMinLow = scaleByte.getBits(6, 2)
             
             val minByteOffset = blockByteOffset + 4 + subBlock * 2 + 1
             val bufferIndex = (tensorQ4_K.dataOffset + minByteOffset.toULong()).toInt()
             val quantizedMinHigh = if (bufferIndex >= 0 && bufferIndex < buffer.size) {
-                buffer[bufferIndex].toInt() and 0x0F
+                buffer[bufferIndex].getBits(0, 4)
             } else 0
-            val quantizedMin = quantizedMinLow or (quantizedMinHigh shl 2)
+            val quantizedMin = mergeBits32(quantizedMinLow, logicalLeft32(quantizedMinHigh, 2))
             
             // Reconstruct sub-block scale and min
             val scale = (quantizedScale.toFloat() / 63.0f) * d
@@ -190,8 +192,8 @@ internal fun computeDotProductF32Q4_K(
                 
                 if (k1 < commonDimK) {
                     val qsByte = buffer[(tensorQ4_K.dataOffset + qsBaseOffset.toULong() + (i / 2).toULong()).toInt()]
-                    val q1 = qsByte.toInt() and 0x0F
-                    val q2 = (qsByte.toInt() shr 4) and 0x0F
+                    val q1 = qsByte.getBits(0, 4)
+                    val q2 = qsByte.getBits(4, 4)
                     val f32Value1 = tensorF32.getFloat(graphAllocator, rowIndexInF32, k1)
                     val dequantizedQ4K1 = (q1.toFloat() / 15.0f) * scale + min
                     sumF32 += f32Value1 * dequantizedQ4K1
@@ -264,25 +266,27 @@ internal fun computeDotProductQ4_KQ4_K(
             // Get sub-block scales and mins for both tensors
             // Tensor A
             val scaleByteA = bufferA[(tensorQ4_KA.dataOffset + blockByteOffsetA.toULong() + 4uL + subBlock.toULong()).toInt()]
-            val quantizedScaleA = scaleByteA.toInt() and 0x3F
-            val quantizedMinLowA = (scaleByteA.toInt() shr 6) and 0x03
+            val scaleUnsignedA = unsignedByte(scaleByteA)
+            val quantizedScaleA = maskLowBits32(scaleUnsignedA, 6)
+            val quantizedMinLowA = extractBits(scaleUnsignedA, 6, 2)
             val minByteOffsetA = blockByteOffsetA + 4 + subBlock * 2
             val quantizedMinHighA = if (minByteOffsetA < blockByteOffsetA + 4 + K_SCALE_SIZE) {
-                bufferA[(tensorQ4_KA.dataOffset + minByteOffsetA.toULong() + 1uL).toInt()].toInt() and 0x0F
+                lowNibble(bufferA[(tensorQ4_KA.dataOffset + minByteOffsetA.toULong() + 1uL).toInt()].toInt())
             } else 0
-            val quantizedMinA = quantizedMinLowA or (quantizedMinHighA shl 2)
+            val quantizedMinA = mergeBits32(quantizedMinLowA, logicalLeft32(quantizedMinHighA, 2))
             val scaleA = (quantizedScaleA.toFloat() / 63.0f) * dA
             val minA = (quantizedMinA.toFloat() / 63.0f) * dA + dminA
-            
+
             // Tensor B  
             val scaleByteB = bufferB[(tensorQ4_KB.dataOffset + blockByteOffsetB.toULong() + 4uL + subBlock.toULong()).toInt()]
-            val quantizedScaleB = scaleByteB.toInt() and 0x3F
-            val quantizedMinLowB = (scaleByteB.toInt() shr 6) and 0x03
+            val scaleUnsignedB = unsignedByte(scaleByteB)
+            val quantizedScaleB = maskLowBits32(scaleUnsignedB, 6)
+            val quantizedMinLowB = extractBits(scaleUnsignedB, 6, 2)
             val minByteOffsetB = blockByteOffsetB + 4 + subBlock * 2
             val quantizedMinHighB = if (minByteOffsetB < blockByteOffsetB + 4 + K_SCALE_SIZE) {
-                bufferB[(tensorQ4_KB.dataOffset + minByteOffsetB.toULong() + 1uL).toInt()].toInt() and 0x0F
+                lowNibble(bufferB[(tensorQ4_KB.dataOffset + minByteOffsetB.toULong() + 1uL).toInt()].toInt())
             } else 0
-            val quantizedMinB = quantizedMinLowB or (quantizedMinHighB shl 2)
+            val quantizedMinB = mergeBits32(quantizedMinLowB, logicalLeft32(quantizedMinHighB, 2))
             val scaleB = (quantizedScaleB.toFloat() / 63.0f) * dB
             val minB = (quantizedMinB.toFloat() / 63.0f) * dB + dminB
             
@@ -298,16 +302,16 @@ internal fun computeDotProductQ4_KQ4_K(
                     // Get quantized values from both tensors
                     val qsByteA = bufferA[(tensorQ4_KA.dataOffset + qsBaseOffsetA.toULong() + (i / 2).toULong()).toInt()]
                     val qsByteB = bufferB[(tensorQ4_KB.dataOffset + qsBaseOffsetB.toULong() + (i / 2).toULong()).toInt()]
-                    
-                    val qA1 = qsByteA.toInt() and 0x0F
-                    val qB1 = qsByteB.toInt() and 0x0F
+
+                    val qA1 = qsByteA.getBits(0, 4)
+                    val qB1 = qsByteB.getBits(0, 4)
                     val dequantizedA1 = (qA1.toFloat() / 15.0f) * scaleA + minA
                     val dequantizedB1 = (qB1.toFloat() / 15.0f) * scaleB + minB
                     sumF32 += dequantizedA1 * dequantizedB1
-                    
+
                     if (k2 < commonDimK) {
-                        val qA2 = (qsByteA.toInt() shr 4) and 0x0F
-                        val qB2 = (qsByteB.toInt() shr 4) and 0x0F
+                        val qA2 = qsByteA.getBits(4, 4)
+                        val qB2 = qsByteB.getBits(4, 4)
                         val dequantizedA2 = (qA2.toFloat() / 15.0f) * scaleA + minA
                         val dequantizedB2 = (qB2.toFloat() / 15.0f) * scaleB + minB
                         sumF32 += dequantizedA2 * dequantizedB2
@@ -433,8 +437,9 @@ internal fun computeDotProductQ2_KF32(
             // Process sub-blocks
             for (subBlock in 0 until QK_K/16) {
                 val scaleAndMin = tensorQ2_K.getQ2_KScale(graphAllocator, blockIndex, subBlock)
-                val quantizedScale = scaleAndMin.toInt() and 0x0F
-                val quantizedMin = (scaleAndMin.toInt() shr 4) and 0x0F
+                val scaleAndMinUnsigned = maskLowBits32(scaleAndMin.toInt(), 8)
+                val quantizedScale = maskLowBits32(scaleAndMinUnsigned, 4)
+                val quantizedMin = extractBits(scaleAndMinUnsigned, 4, 4)
                 
                 val scale = (quantizedScale.toFloat() / 15.0f) * d
                 val min = (quantizedMin.toFloat() * d) + dmin
@@ -446,7 +451,7 @@ internal fun computeDotProductQ2_KF32(
                     for (j in 0 until 4) {
                         val k = blockStart + subBlock * 16 + i + j
                         if (k < blockEnd) {
-                            val quantizedValue = (quantByte.toInt() shr (j * 2)) and 0x03
+                            val quantizedValue = extractBits(unsignedByte(quantByte), j * 2, 2)
                             val dequantizedValue = (quantizedValue.toFloat() / 3.0f) * scale + min
                             val f32Value = tensorF32.getFloat(graphAllocator, colIndexInF32, k)
                             sumF32 += dequantizedValue * f32Value
@@ -467,8 +472,9 @@ internal fun computeDotProductQ2_KF32(
                 
                 val subBlock = itemInBlock / 16
                 val scaleAndMin = tensorQ2_K.getQ2_KScale(graphAllocator, blockIndex, subBlock)
-                val quantizedScale = scaleAndMin.toInt() and 0x0F
-                val quantizedMin = (scaleAndMin.toInt() shr 4) and 0x0F
+                val scaleAndMinUnsigned = maskLowBits32(scaleAndMin.toInt(), 8)
+                val quantizedScale = maskLowBits32(scaleAndMinUnsigned, 4)
+                val quantizedMin = extractBits(scaleAndMinUnsigned, 4, 4)
                 
                 val scale = (quantizedScale.toFloat() / 15.0f) * d
                 val min = (quantizedMin.toFloat() * d) + dmin
@@ -476,7 +482,7 @@ internal fun computeDotProductQ2_KF32(
                 val quantByteIdx = (subBlock * 4) + ((itemInBlock % 16) / 4)
                 val quantByte = tensorQ2_K.getQ2_KQuant(graphAllocator, blockIndex, quantByteIdx)
                 val bitPos = ((itemInBlock % 16) % 4) * 2
-                val quantizedValue = (quantByte.toInt() shr bitPos) and 0x03
+                val quantizedValue = extractBits(unsignedByte(quantByte), bitPos, 2)
                 
                 val dequantizedValue = (quantizedValue.toFloat() / 3.0f) * scale + min
                 val f32Value = tensorF32.getFloat(graphAllocator, colIndexInF32, k)
@@ -526,14 +532,14 @@ internal fun computeDotProductQ4_KF32(
                 // Get quantized scale and min for this sub-block
                 val scaleByteOffset = blockByteOffset + 4 + subBlock
                 val scaleByte = buffer[(tensorQ4_K.dataOffset + scaleByteOffset.toULong()).toInt()]
-                val quantizedScale = scaleByte.toInt() and 0x3F
-                val quantizedMinLow = (scaleByte.toInt() shr 6) and 0x03
+                val quantizedScale = scaleByte.toUnsignedInt().lowBits(6)
+                val quantizedMinLow = extractBits(scaleByte.toUnsignedInt(), 6, 2)
                 
                 val minByteOffset = blockByteOffset + 4 + subBlock * 2 + 1
                 val quantizedMinHigh = if (minByteOffset < blockByteOffset + 4 + K_SCALE_SIZE) {
-                    buffer[(tensorQ4_K.dataOffset + minByteOffset.toULong()).toInt()].toInt() and 0x0F
+                    maskLowBits32(unsignedByte(buffer[(tensorQ4_K.dataOffset + minByteOffset.toULong()).toInt()]), 4)
                 } else 0
-                val quantizedMin = quantizedMinLow or (quantizedMinHigh shl 2)
+                val quantizedMin = mergeBits32(quantizedMinLow, logicalLeft32(quantizedMinHigh, 2))
                 
                 val scale = (quantizedScale.toFloat() / 63.0f) * d
                 val min = (quantizedMin.toFloat() / 63.0f) * d + dmin
@@ -547,13 +553,13 @@ internal fun computeDotProductQ4_KF32(
                     if (k1 < blockEnd) {
                         val qsByte = buffer[(tensorQ4_K.dataOffset + qsBaseOffset.toULong() + (i / 2).toULong()).toInt()]
                         
-                        val q1 = qsByte.toInt() and 0x0F
+                        val q1 = qsByte.getBits(0, 4)
                         val dequantizedValue1 = (q1.toFloat() / 15.0f) * scale + min
                         val f32Value1 = tensorF32.getFloat(graphAllocator, colIndexInF32, k1)
                         sumF32 += dequantizedValue1 * f32Value1
                         
                         if (k2 < blockEnd) {
-                            val q2 = (qsByte.toInt() shr 4) and 0x0F
+                            val q2 = qsByte.getBits(4, 4)
                             val dequantizedValue2 = (q2.toFloat() / 15.0f) * scale + min
                             val f32Value2 = tensorF32.getFloat(graphAllocator, colIndexInF32, k2)
                             sumF32 += dequantizedValue2 * f32Value2
@@ -578,12 +584,12 @@ internal fun computeDotProductQ4_KF32(
                 
                 val scaleByteOffset = blockByteOffset + 4 + subBlock
                 val scaleByte = buffer[(tensorQ4_K.dataOffset + scaleByteOffset.toULong()).toInt()]
-                val quantizedScale = scaleByte.toInt() and 0x3F
+                val quantizedScale = scaleByte.toUnsignedInt().lowBits(6)
                 val scale = (quantizedScale.toFloat() / 63.0f) * d
                 
                 val qsOffset = blockByteOffset + 4 + K_SCALE_SIZE + subBlock * 16 + ((itemInBlock % 32) / 2)
                 val qsByte = buffer[(tensorQ4_K.dataOffset + qsOffset.toULong()).toInt()]
-                val q = if ((itemInBlock % 32) % 2 == 0) qsByte.toInt() and 0x0F else (qsByte.toInt() shr 4) and 0x0F
+                val q = if ((itemInBlock % 32) % 2 == 0) qsByte.getBits(0, 4) else qsByte.getBits(4, 4)
                 
                 val dequantizedValue = (q.toFloat() / 15.0f) * scale + dmin
                 val f32Value = tensorF32.getFloat(graphAllocator, colIndexInF32, k)
@@ -1399,7 +1405,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
                     resArr.setShortLe(boff, floatToHalf(scale)); val qOff = boff + SHORT_SIZE_BYTES
                     for (j in 0 until QK4_0 / 2) {
                         val q1 = round(f32Blk[j*2] * invS + 8.0f).toInt().coerceIn(0,15); val q2 = round(f32Blk[j*2+1] * invS + 8.0f).toInt().coerceIn(0,15)
-                        resArr[qOff + j] = ((q1 and 0x0F) or ((q2 and 0x0F) shl 4)).toByte()
+                        resArr[qOff + j] = (maskLowBits32(q1, 4) or (logicalLeft32(maskLowBits32(q2, 4), 4))).toByte()
                     }; boff += blkSize
                 }; curIdx++
             }; result.data = resArr
@@ -1512,7 +1518,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
                         val quantVal1 = round((f32Val1 - m_minF32) * invDScaleF32).toInt().coerceIn(0, 15)
                         val quantVal2 = round((f32Val2 - m_minF32) * invDScaleF32).toInt().coerceIn(0, 15)
 
-                        val packedByte = (quantVal1 and 0x0F) or ((quantVal2 and 0x0F) shl 4)
+                        val packedByte = maskLowBits32(quantVal1, 4) or (logicalLeft32(maskLowBits32(quantVal2, 4), 4))
                         q4_1DataArray[qsDataWriteStartOffsetInBlock + j] = packedByte.toByte()
                     }
                     byteArrayWriteOffset += q4_1BlockByteSize
@@ -1551,6 +1557,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
             result.data = resArr
             
             var currentElementIndex = 0
+            val q3Scratch = Q3KScratch()
             for (blockNum in 0 until numBlocks) {
                 val blockValues = FloatArray(QK_K)
                 for (i in 0 until QK_K) {
@@ -1566,7 +1573,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
                     blockValues[i] = tensorF32.getFloat(graphAllocator, *indices)
                 }
                 
-                quantizeQ3_KBlock(blockValues, resArr, blockNum * blockByteSize)
+                quantizeQ3_KBlock(blockValues, resArr, blockNum * blockByteSize, q3Scratch)
             }
         }
         GGMLType.Q4_K -> {
@@ -1577,6 +1584,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
             result.data = resArr
             
             var currentElementIndex = 0
+            val q4Scratch = Q4KScratch()
             for (blockNum in 0 until numBlocks) {
                 val blockValues = FloatArray(QK_K)
                 for (i in 0 until QK_K) {
@@ -1591,8 +1599,8 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
                     }
                     blockValues[i] = tensorF32.getFloat(graphAllocator, *indices)
                 }
-                
-                quantizeQ4_KBlock(blockValues, resArr, blockNum * blockByteSize)
+
+                quantizeQ4_KBlock(blockValues, resArr, blockNum * blockByteSize, q4Scratch)
             }
         }
         GGMLType.Q5_K -> {
@@ -1603,6 +1611,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
             result.data = resArr
             
             var currentElementIndex = 0
+            val q5Scratch = Q5KScratch()
             for (blockNum in 0 until numBlocks) {
                 val blockValues = FloatArray(QK_K)
                 for (i in 0 until QK_K) {
@@ -1617,8 +1626,8 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
                     }
                     blockValues[i] = tensorF32.getFloat(graphAllocator, *indices)
                 }
-                
-                quantizeQ5_KBlock(blockValues, resArr, blockNum * blockByteSize)
+
+                quantizeQ5_KBlock(blockValues, resArr, blockNum * blockByteSize, q5Scratch)
             }
         }
         GGMLType.Q6_K -> {
@@ -1629,6 +1638,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
             result.data = resArr
             
             var currentElementIndex = 0
+            val q6Scratch = Q6KScratch()
             for (blockNum in 0 until numBlocks) {
                 val blockValues = FloatArray(QK_K)
                 for (i in 0 until QK_K) {
@@ -1643,8 +1653,8 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
                     }
                     blockValues[i] = tensorF32.getFloat(graphAllocator, *indices)
                 }
-                
-                quantizeQ6_KBlock(blockValues, resArr, blockNum * blockByteSize)
+
+                quantizeQ6_KBlock(blockValues, resArr, blockNum * blockByteSize, q6Scratch)
             }
         }
         GGMLType.Q8_K -> {
@@ -2212,6 +2222,84 @@ fun computeDiv(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
  * Effectively 2.625 bits per weight
  */
 private val BIT_SHIFT_ENGINE_8 = BitShiftEngine(BitShiftMode.ARITHMETIC, 8)
+private const val GROUP_MAX_EPS_F = 1e-15f
+
+private class Q2KScratch(
+    val quants: ByteArray = ByteArray(QK_K),
+    val aux: ByteArray = ByteArray(16),
+    val weights: FloatArray = FloatArray(16),
+    val mins: FloatArray = FloatArray(QK_K / 16),
+    val scales: FloatArray = FloatArray(QK_K / 16)
+)
+
+private class Q3KScratch(
+    val quants: ByteArray = ByteArray(QK_K),
+    val scales: FloatArray = FloatArray(QK_K / 16)
+)
+
+private class Q4KScratch(
+    val quants: ByteArray = ByteArray(QK_K),
+    val aux: ByteArray = ByteArray(32),
+    val weights: FloatArray = FloatArray(32),
+    val mins: FloatArray = FloatArray(QK_K / 32),
+    val scales: FloatArray = FloatArray(QK_K / 32)
+)
+
+private val BIT_SHIFT_ENGINE_32 = BitShiftEngine(BitShiftMode.ARITHMETIC, 32)
+private val ARITH_32 = ArithmeticBitwiseOps.BITS_32
+
+private fun logicalLeft32(value: Int, bits: Int): Int =
+    BIT_SHIFT_ENGINE_32.leftShift(value.toLong(), bits).value.toInt()
+
+private fun logicalRight32(value: Int, bits: Int): Int =
+    BIT_SHIFT_ENGINE_32.unsignedRightShift(value.toLong(), bits).value.toInt()
+
+private fun maskLowBits32(value: Int, bits: Int): Int =
+    ARITH_32.extractBits(value.toLong(), bits).toInt()
+
+private fun mergeBits32(base: Int, addition: Int): Int =
+    BitwiseOps.orArithmeticGeneral(base, addition)
+
+private fun lowNibble(value: Int): Int = maskLowBits32(value, 4)
+
+private fun highNibble(value: Int): Int = maskLowBits32(logicalRight32(value, 4), 4)
+
+private fun packNibbles(low: Int, high: Int): Int =
+    mergeBits32(maskLowBits32(low, 4), logicalLeft32(maskLowBits32(high, 4), 4))
+
+private fun extractBits(value: Int, shift: Int, count: Int): Int =
+    maskLowBits32(logicalRight32(value, shift), count)
+
+private fun unsignedByte(value: Byte): Int = maskLowBits32(value.toInt(), 8)
+
+private fun extractBitsFromByte(value: Byte, shift: Int, count: Int): Int =
+    extractBits(unsignedByte(value), shift, count)
+
+private fun combineNibbleIntoByte(base: Byte, highNibble: Int): Byte =
+    maskLowBits32(packNibbles(maskLowBits32(base.toInt(), 4), highNibble), 8).toByte()
+
+private fun nibbleFromByte(value: Byte, index: Int): Int {
+    val unsigned = unsignedByte(value)
+    return if (index == 0) lowNibble(unsigned) else highNibble(unsigned)
+}
+
+private fun Byte.toUnsignedInt(): Int = unsignedByte(this)
+
+private fun Byte.getBits(offset: Int, width: Int): Int =
+    extractBits(toUnsignedInt(), offset, width)
+
+private fun Byte.withBits(value: Int, offset: Int, width: Int): Byte =
+    mergeIntoByte(this, value, offset, width)
+
+private fun Int.lowBits(width: Int): Int = maskLowBits32(this, width)
+
+private fun Int.getBits(offset: Int, width: Int): Int = extractBits(this, offset, width)
+
+private fun mergeIntoByte(base: Byte, value: Int, shift: Int, width: Int): Byte {
+    val clearedAddition = logicalLeft32(maskLowBits32(value, width), shift)
+    val merged = mergeBits32(unsignedByte(base), clearedAddition)
+    return maskLowBits32(merged, 8).toByte()
+}
 
 private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: Int, scratch: Q2KScratch) {
     require(values.size == QK_K) { "Q2_K block must have $QK_K values" }
@@ -2230,21 +2318,23 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
         for (i in 0 until 16) {
             weights[i] = abs(values[base + i])
         }
-        val stats = makeQkx2QuantsCFloat(
+        val stats = makeQKX2Quants(
             n = 16,
             nmax = 3,
-            x = values,
-            xOffset = base,
+            values = values,
+            valuesOffset = base,
             weights = weights,
-            lDest = l,
-            lOffset = base,
+            weightsOffset = 0,
+            dest = l,
+            destOffset = base,
             mins = mins,
-            minIndex = subBlock,
-            lAux = lAux,
+            minsIndex = subBlock,
+            aux = lAux,
+            auxOffset = 0,
             rmin = -0.5f,
             rdelta = 0.1f,
             nstep = 15,
-            useMAD = true
+            useMad = true
         )
         scales[subBlock] = stats.scale
         if (Q2KDiagnosticsRecorder.enabled && (subBlock == 0 || subBlock == 12)) {
@@ -2278,9 +2368,9 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
     val dminHalf = if (maxMin > 0.0f) {
         val iscale = 15.0f / maxMin
         for (subBlock in 0 until QK_K / 16) {
-            val existing = dest[scalesOffset + subBlock].toInt() and 0x0F
+            val existing = maskLowBits32(dest[scalesOffset + subBlock].toInt(), 4)
             val quantized = nearestIntFloat(iscale * mins[subBlock]).coerceIn(0, 15)
-            dest[scalesOffset + subBlock] = (existing or (quantized shl 4)).toByte()
+            dest[scalesOffset + subBlock] = packNibbles(existing, quantized).toByte()
         }
         floatToHalf(maxMin / 15.0f)
     } else {
@@ -2292,9 +2382,9 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
     val dmBase = halfToFloat(dminHalf)
 
     for (subBlock in 0 until QK_K / 16) {
-        val scaleByte = dest[scalesOffset + subBlock].toInt() and 0xFF
-        val scaleLow = scaleByte and 0x0F
-        val scaleHigh = scaleByte ushr 4
+        val scaleByte = maskLowBits32(dest[scalesOffset + subBlock].toInt(), 8)
+        val scaleLow = lowNibble(scaleByte)
+        val scaleHigh = highNibble(scaleByte)
         val dScale = dBase * scaleLow
         val base = subBlock * 16
         if (dScale == 0.0f) {
@@ -2310,589 +2400,140 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
 
         for (group in 0 until QK_K / 64) {
             val idx0 = base + group * 4
-            val v0 = BitwiseOps.byteToUnsignedInt(l[idx0]) and 0x03
-            val v1 = BitwiseOps.byteToUnsignedInt(l[idx0 + 1]) and 0x03
-            val v2 = BitwiseOps.byteToUnsignedInt(l[idx0 + 2]) and 0x03
-            val v3 = BitwiseOps.byteToUnsignedInt(l[idx0 + 3]) and 0x03
+            val v0 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0]), 2)
+            val v1 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0 + 1]), 2)
+            val v2 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0 + 2]), 2)
+            val v3 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0 + 3]), 2)
 
-            val combined = BitwiseOps.orArithmeticGeneral(
-                BitwiseOps.orArithmeticGeneral(v0, BIT_SHIFT_ENGINE_8.leftShift(v1.toLong(), 2).value.toInt()),
-                BitwiseOps.orArithmeticGeneral(
-                    BIT_SHIFT_ENGINE_8.leftShift(v2.toLong(), 4).value.toInt(),
-                    BIT_SHIFT_ENGINE_8.leftShift(v3.toLong(), 6).value.toInt()
-                )
+            val combined = mergeBits32(
+                mergeBits32(v0, logicalLeft32(v1, 2)),
+                mergeBits32(logicalLeft32(v2, 4), logicalLeft32(v3, 6))
             )
-            dest[quantsOffset + subBlock * (QK_K / 64) + group] = (combined and 0xFF).toByte()
+            dest[quantsOffset + subBlock * (QK_K / 64) + group] = maskLowBits32(combined, 8).toByte()
         }
     }
 }
 
-private data class Q2QuantStats(val scale: Float, val min: Float)
 
-// C-compatible implementation following ggml's make_qkx2_quants for K-quants
-// DoubleDouble-based variant to retain residuals in degenerate steps
-private fun makeQkx2QuantsDD(
-    n: Int,
-    nmax: Int,
-    x: FloatArray,
-    xOffset: Int,
-    weights: FloatArray,
-    lDest: ByteArray,
-    lOffset: Int,
-    mins: FloatArray,
-    minIndex: Int,
-    lAux: ByteArray,
-    rmin: Float,
-    rdelta: Float,
-    nstep: Int,
-    useMAD: Boolean
-): Q2QuantStats {
-    var minVal = x[xOffset]
-    var maxVal = minVal
-    var sumW = weights[0]
-    var sumX = sumW * x[xOffset]
-    for (i in 1 until n) {
-        val xi = x[xOffset + i]
-        if (xi < minVal) minVal = xi
-        if (xi > maxVal) maxVal = xi
-        val w = weights[i]
-        sumW += w
-        sumX += w * xi
-    }
-    if (minVal > 0f) minVal = 0f
-    if (maxVal == minVal) {
-        for (i in 0 until n) lDest[lOffset + i] = 0
-        mins[minIndex] = -minVal
-        return Q2QuantStats(scale = 0f, min = -minVal)
-    }
-
-    var iscale = nmax.toFloat() / (maxVal - minVal)
-    var scale = 1f / iscale
-    var bestMetric = 0f
-    for (i in 0 until n) {
-        val xi = x[xOffset + i]
-        val l = nearestIntFloat(iscale * (xi - minVal)).coerceIn(0, nmax)
-        lDest[lOffset + i] = l.toByte()
-        var diff = scale * l + minVal - xi
-        diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
-        val w = weights[i]
-        bestMetric += w * diff
-    }
-    if (nstep < 1) {
-        mins[minIndex] = -minVal
-        return Q2QuantStats(scale = scale, min = -minVal)
-    }
-
-    for (step in 0..nstep) {
-        iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
-        var sumL = 0f
-        var sumL2 = 0f
-        var sumXL = 0f
-        for (i in 0 until n) {
-            val xi = x[xOffset + i]
-            var l = nearestIntFloat(iscale * (xi - minVal))
-            l = l.coerceIn(0, nmax)
-            lAux[i] = l.toByte()
-            val w = weights[i]
-            val lf = l.toFloat()
-            sumL += w * lf
-            sumL2 += w * lf * lf
-            sumXL += w * lf * xi
-        }
-        if (minIndex == 12 && step == 0) {
-            val codes = IntArray(n) { lAux[it].toInt() and 0xFF }
-            println("compat subBlock=12 step=0 codes=${codes.joinToString()}")
-        }
-        val D = sumW * sumL2 - sumL * sumL
-        if (minIndex == 12 && step == 0) {
-            println("compat subBlock=12 step=0 sumW=$sumW sumL=$sumL sumL2=$sumL2 D=$D")
-        }
-        if (D > 0f) {
-            var scaleCand = (sumW * sumXL - sumX * sumL) / D
-            var minCand = (sumL2 * sumX - sumL * sumXL) / D
-            if (minCand > 0f) {
-                minCand = 0f
-                scaleCand = sumXL / sumL2
-            }
-            var metric = 0f
-            for (i in 0 until n) {
-                val xi = x[xOffset + i]
-                val li = (lAux[i].toInt() and 0xFF).toFloat()
-                var diff = scaleCand * li + minCand - xi
-                diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
-                val w = weights[i]
-                metric += w * diff
-            }
-            if (metric < bestMetric) {
-                for (i in 0 until n) lDest[lOffset + i] = lAux[i]
-                bestMetric = metric
-                scale = scaleCand
-                minVal = minCand
-            }
-        }
-    }
-
-    mins[minIndex] = -minVal
-    return Q2QuantStats(scale = scale, min = -minVal)
-}
-
-private fun makeQkx2QuantsRef(
-    n: Int,
-    nmax: Int,
-    x: FloatArray,
-    xOffset: Int,
-    weights: FloatArray,
-    lDest: ByteArray,
-    lOffset: Int,
-    mins: FloatArray,
-    minIndex: Int,
-    lAux: ByteArray,
-    rmin: Float,
-    rdelta: Float,
-    nstep: Int,
-    useMAD: Boolean
-): Q2QuantStats {
-    var minVal = x[xOffset].toDouble()
-    var maxVal = minVal
-    var sumW = DoubleDouble.fromDouble(weights[0].toDouble())
-    var sumX = DoubleDouble.fromDouble(0.0).addProduct(weights[0].toDouble(), x[xOffset].toDouble())
-    for (i in 1 until n) {
-        val xi = x[xOffset + i].toDouble()
-        if (xi < minVal) minVal = xi
-        if (xi > maxVal) maxVal = xi
-        val w = weights[i].toDouble()
-        sumW = sumW + w
-        sumX = sumX.addProduct(w, xi)
-    }
-    if (minVal > 0.0) minVal = 0.0
-    if (maxVal == minVal) {
-        for (i in 0 until n) lDest[lOffset + i] = 0
-        mins[minIndex] = (-minVal).toFloat()
-        return Q2QuantStats(scale = 0f, min = (-minVal).toFloat())
-    }
-
-    var iscale = nmax.toDouble() / (maxVal - minVal)
-    var scale = 1.0 / iscale
-    var bestMetric = 0.0
-    for (i in 0 until n) {
-        val xi = x[xOffset + i].toDouble()
-        val l = nearestIntFloat((iscale * (xi - minVal)).toFloat()).coerceIn(0, nmax)
-        lDest[lOffset + i] = l.toByte()
-        val diff = scale * l + minVal - xi
-        val penalty = if (useMAD) abs(diff) else diff * diff
-        bestMetric += weights[i].toDouble() * penalty
-    }
-    if (nstep < 1) {
-        mins[minIndex] = (-minVal).toFloat()
-        return Q2QuantStats(scale = scale.toFloat(), min = (-minVal).toFloat())
-    }
-
-    for (step in 0..nstep) {
-        iscale = (rmin + rdelta * step + nmax).toDouble() / (maxVal - minVal)
-        var sumL = DoubleDouble.fromDouble(0.0)
-        var sumL2 = DoubleDouble.fromDouble(0.0)
-        var sumXL = DoubleDouble.fromDouble(0.0)
-        for (i in 0 until n) {
-            val xi = x[xOffset + i].toDouble()
-            val l = nearestIntFloat((iscale * (xi - minVal)).toFloat()).coerceIn(0, nmax)
-            lAux[i] = l.toByte()
-            val w = weights[i].toDouble()
-            val lf = l.toDouble()
-            sumL = sumL.addProduct(w, lf)
-            sumL2 = sumL2.addProduct(w, lf * lf)
-            sumXL = sumXL.addProduct(w, lf * xi)
-        }
-        if (minIndex == 12 && step == 0) {
-            println("sumW=${sumW.hi}+${sumW.lo} sumL=${sumL.hi}+${sumL.lo} sumL2=${sumL2.hi}+${sumL2.lo}")
-        }
-        val denominatorDD = ai.solace.klang.bitwise.DoubleDouble.fms(sumW, sumL2, sumL, sumL)
-        if (minIndex == 12 && step == 0) {
-            println("denDD hi=${denominatorDD.hi} lo=${denominatorDD.lo}")
-        }
-        val denominator = denominatorDD.toDouble()
-        if (denominator <= 0.0) continue
-
-        var scaleCand = ai.solace.klang.bitwise.DoubleDouble.fms(sumW, sumXL, sumX, sumL).toDouble() / denominator
-        var minCand = ai.solace.klang.bitwise.DoubleDouble.fms(sumL2, sumX, sumL, sumXL).toDouble() / denominator
-        if (minCand > 0.0) {
-            minCand = 0.0
-            scaleCand = sumXL.toDouble() / sumL2.toDouble()
-        }
-        var metric = 0.0
-        for (i in 0 until n) {
-            val xi = x[xOffset + i].toDouble()
-            val li = (lAux[i].toInt() and 0xFF).toDouble()
-            val diff = scaleCand * li + minCand - xi
-            val penalty = if (useMAD) abs(diff) else diff * diff
-            metric += weights[i].toDouble() * penalty
-        }
-        if (metric < bestMetric) {
-            for (i in 0 until n) lDest[lOffset + i] = lAux[i]
-            bestMetric = metric
-            scale = scaleCand
-            minVal = minCand
-        }
-    }
-
-    mins[minIndex] = (-minVal).toFloat()
-    return Q2QuantStats(scale = scale.toFloat(), min = (-minVal).toFloat())
-}
-
-// C-compatible float32 implementation following ggml's make_qkx2_quants
-private fun makeQkx2QuantsCompat(
-    n: Int,
-    nmax: Int,
-    x: FloatArray,
-    xOffset: Int,
-    weights: FloatArray,
-    lDest: ByteArray,
-    lOffset: Int,
-    mins: FloatArray,
-    minIndex: Int,
-    lAux: ByteArray,
-    rmin: Float,
-    rdelta: Float,
-    nstep: Int,
-    useMAD: Boolean
-): Q2QuantStats {
-    var minVal = x[xOffset]
-    var maxVal = minVal
-    var sumW = weights[0]
-    var sumX = sumW * x[xOffset]
-    for (i in 1 until n) {
-        val xi = x[xOffset + i]
-        if (xi < minVal) minVal = xi
-        if (xi > maxVal) maxVal = xi
-        val w = weights[i]
-        sumW += w
-        sumX += w * xi
-    }
-    if (minVal > 0f) minVal = 0f
-    if (maxVal == minVal) {
-        for (i in 0 until n) lDest[lOffset + i] = 0
-        mins[minIndex] = -minVal
-        return Q2QuantStats(scale = 0f, min = -minVal)
-    }
-
-    var iscale = nmax.toFloat() / (maxVal - minVal)
-    var scale = 1f / iscale
-    var bestMetric = 0f
-    for (i in 0 until n) {
-        val xi = x[xOffset + i]
-        val l = nearestIntFloat(iscale * (xi - minVal)).coerceIn(0, nmax)
-        lDest[lOffset + i] = l.toByte()
-        var diff = scale * l + minVal - xi
-        diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
-        val w = weights[i]
-        bestMetric += w * diff
-    }
-    if (nstep < 1) {
-        mins[minIndex] = -minVal
-        return Q2QuantStats(scale = scale, min = -minVal)
-    }
-
-    for (step in 0..nstep) {
-        iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
-        var sumL = 0f
-        var sumL2 = 0f
-        var sumXL = 0f
-        for (i in 0 until n) {
-            val xi = x[xOffset + i]
-            var l = nearestIntFloat(iscale * (xi - minVal))
-            l = l.coerceIn(0, nmax)
-            lAux[i] = l.toByte()
-            val w = weights[i]
-            val lf = l.toFloat()
-            sumL += w * lf
-            sumL2 += w * lf * lf
-            sumXL += w * lf * xi
-        }
-        val D = sumW * sumL2 - sumL * sumL
-        if (minIndex == 12 && step == 0) {
-            val codes = IntArray(n) { lAux[it].toInt() and 0xFF }
-            println("compat subBlock=12 step=0 codes=${codes.joinToString()} sumW=$sumW sumL=$sumL sumL2=$sumL2 D=$D")
-        }
-        if (D > 0f) {
-            var scaleCand = (sumW * sumXL - sumX * sumL) / D
-            var minCand = (sumL2 * sumX - sumL * sumXL) / D
-            if (minCand > 0f) {
-                minCand = 0f
-                scaleCand = sumXL / sumL2
-            }
-            var metric = 0f
-            for (i in 0 until n) {
-                val xi = x[xOffset + i]
-                val li = (lAux[i].toInt() and 0xFF).toFloat()
-                var diff = scaleCand * li + minCand - xi
-                diff = if (useMAD) kotlin.math.abs(diff) else diff * diff
-                val w = weights[i]
-                metric += w * diff
-            }
-            if (metric < bestMetric) {
-                for (i in 0 until n) lDest[lOffset + i] = lAux[i]
-                bestMetric = metric
-                scale = scaleCand
-                minVal = minCand
-            }
-        }
-    }
-
-    mins[minIndex] = -minVal
-    return Q2QuantStats(scale = scale, min = -minVal)
-}
-
-// Variant that accumulates in CFloat32 to simulate C single-precision rounding strictly
-private fun makeQkx2QuantsCFloat(
-    n: Int,
-    nmax: Int,
-    x: FloatArray,
-    xOffset: Int,
-    weights: FloatArray,
-    lDest: ByteArray,
-    lOffset: Int,
-    mins: FloatArray,
-    minIndex: Int,
-    lAux: ByteArray,
-    rmin: Float,
-    rdelta: Float,
-    nstep: Int,
-    useMAD: Boolean
-): Q2QuantStats {
-    var minVal = x[xOffset]
-    var maxVal = minVal
-        var sumW = ai.solace.klang.bitwise.CFloat32.fromFloat(weights[0])
-        var sumX = ai.solace.klang.bitwise.CFloat32.ZERO
-    for (i in 1 until n) {
-        val xi = x[xOffset + i]
-        if (xi < minVal) minVal = xi
-        if (xi > maxVal) maxVal = xi
-        val w = weights[i]
-        sumW = sumW + w
-        // sumX += (w * xi) using separate mul then add (C-like)
-        run {
-            val prod = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(xi)
-            sumX = sumX + prod
-        }
-    }
-    if (minVal > 0f) minVal = 0f
-    if (maxVal == minVal) {
-        for (i in 0 until n) lDest[lOffset + i] = 0
-        mins[minIndex] = -minVal
-        return Q2QuantStats(scale = 0f, min = -minVal)
-    }
-
-    var iscale = nmax.toFloat() / (maxVal - minVal)
-    var scale = (1f / iscale)
-    var bestMetric = ai.solace.klang.bitwise.CFloat32.fromFloat(0f)
-    for (i in 0 until n) {
-        val xi = x[xOffset + i]
-        val l = nearestIntFloat(iscale * (xi - minVal)).coerceIn(0, nmax)
-        lDest[lOffset + i] = l.toByte()
-        val diff = (scale * l + minVal - xi)
-        val penalty = if (useMAD) kotlin.math.abs(diff) else diff * diff
-        bestMetric = bestMetric + (weights[i] * penalty)
-    }
-    if (nstep < 1) {
-        mins[minIndex] = -minVal
-        return Q2QuantStats(scale = scale, min = -minVal)
-    }
-    if (minIndex == 12) {
-        println("cf32 subBlock=12 init bestMad=${bestMetric.toFloat()} scale=$scale min=$minVal")
-    }
-
-    for (step in 0..nstep) {
-        iscale = (rmin + rdelta * step + nmax) / (maxVal - minVal)
-        var sumL = ai.solace.klang.bitwise.CFloat32.ZERO
-        var sumL2 = ai.solace.klang.bitwise.CFloat32.ZERO
-        var sumXL = ai.solace.klang.bitwise.CFloat32.ZERO
-        for (i in 0 until n) {
-            val xi = x[xOffset + i]
-            var l = nearestIntFloat(iscale * (xi - minVal))
-            l = l.coerceIn(0, nmax)
-            lAux[i] = l.toByte()
-            val w = weights[i]
-            val lf = l.toFloat()
-            // sumL += (w * l)
-            run {
-                val prod = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(lf)
-                sumL = sumL + prod
-            }
-            // sumL2 += (w * (l*l)) with l*l in integer then converted
-            run {
-                val l2i = l * l
-                val prod2 = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(l2i.toFloat())
-                sumL2 = sumL2 + prod2
-            }
-            // sumXL += ((w * l) * x)
-            run {
-                val wl = ai.solace.klang.bitwise.CFloat32.fromFloat(w).timesExact(lf)
-                val wlx = wl.timesExact(xi)
-                sumXL = sumXL + wlx
-            }
-        }
-        // Denominator in float32: (sum_w * sum_l2) - (sum_l * sum_l)
-        val pA = ai.solace.klang.bitwise.CFloat32.fromBits(
-            ai.solace.klang.bitwise.Float32Math.mulBits(sumW.toBits(), sumL2.toBits())
-        )
-        val pB = ai.solace.klang.bitwise.CFloat32.fromBits(
-            ai.solace.klang.bitwise.Float32Math.mulBits(sumL.toBits(), sumL.toBits())
-        )
-        var D = (pA - pB).toFloat()
-        var useDoubleDen = false
-        var Ddouble = 0.0
-        if (D == 0f && step == 0) {
-            val first = lAux[0].toInt() and 0xFF
-            var allEq = true
-            for (ii in 1 until n) {
-                if ((lAux[ii].toInt() and 0xFF) != first) { allEq = false; break }
-            }
-            if (allEq) {
-                val ddd = ai.solace.klang.bitwise.DoubleDouble.fms(
-                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumW.toFloat()),
-                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumL2.toFloat()),
-                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumL.toFloat()),
-                    ai.solace.klang.bitwise.DoubleDouble.fromFloat(sumL.toFloat())
-                )
-                Ddouble = ddd.toDouble()
-                if (Ddouble > 0.0) {
-                    useDoubleDen = true
-                }
-            }
-        }
-        if (minIndex == 12 && (step == 0 || step == 1 || step == 2)) {
-            val codes = IntArray(n) { lAux[it].toInt() and 0xFF }
-            println("cf32 subBlock=12 step=$step codes=${codes.joinToString()} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} D=${if (useDoubleDen) Ddouble else D.toDouble()}")
-        }
-        if (D > 0f || useDoubleDen) {
-            val nScaleF = run {
-                val a = ai.solace.klang.bitwise.Float32Math.mul(sumW.toFloat(), sumXL.toFloat())
-                val b = ai.solace.klang.bitwise.Float32Math.mul(sumX.toFloat(), sumL.toFloat())
-                (a - b)
-            }
-            val nMinF = run {
-                val a = ai.solace.klang.bitwise.Float32Math.mul(sumL2.toFloat(), sumX.toFloat())
-                val b = ai.solace.klang.bitwise.Float32Math.mul(sumL.toFloat(), sumXL.toFloat())
-                (a - b)
-            }
-            val nScale = nScaleF
-            val nMin = nMinF
-            val denom = if (useDoubleDen) Ddouble.toFloat() else D
-            var scaleCand = nScale / denom
-            var minCand = nMin / denom
-            if (minIndex == 12 && (step == 1 || step == 2)) {
-                println("cf32 subBlock=12 step=$step D=$D nScale=${nScale} nMin=${nMin} sumW=${sumW.toFloat()} sumL=${sumL.toFloat()} sumL2=${sumL2.toFloat()} sumX=${sumX.toFloat()} sumXL=${sumXL.toFloat()}")
-            }
-            if (minCand > 0f) {
-                minCand = 0f
-                scaleCand = sumXL.toFloat() / sumL2.toFloat()
-            }
-            var metric = ai.solace.klang.bitwise.CFloat32.ZERO
-            for (i in 0 until n) {
-                val xi = x[xOffset + i]
-                val li = (lAux[i].toInt() and 0xFF).toFloat()
-                val diff = (scaleCand * li + minCand - xi)
-                val penalty = if (useMAD) kotlin.math.abs(diff) else diff * diff
-                metric = metric + (weights[i] * penalty)
-            }
-            if (minIndex == 12 && (step == 0 || step == 1 || step == 2)) {
-                println("cf32 subBlock=12 step=$step metric=${metric.toFloat()} best=${bestMetric.toFloat()} scaleCand=$scaleCand minCand=$minCand")
-            }
-            if (metric.toFloat() < bestMetric.toFloat()) {
-                for (i in 0 until n) lDest[lOffset + i] = lAux[i]
-                bestMetric = metric
-                scale = scaleCand
-                minVal = minCand
-            }
-        }
-    }
-
-    mins[minIndex] = -minVal
-    return Q2QuantStats(scale = scale, min = -minVal)
-}
-
-private fun nextUpFloat(x: Float): Float {
-    if (x.isNaN()) return x
-    if (x == Float.POSITIVE_INFINITY) return x
-    if (x == 0f) return Float.fromBits(1) // smallest subnormal
-    val bits = x.toRawBits()
-    val next = if (x > 0f) bits + 1 else bits - 1
-    return Float.fromBits(next)
-}
-
-private class Q2KScratch(
-    val quants: ByteArray = ByteArray(QK_K),
-    val aux: ByteArray = ByteArray(16),
-    val weights: FloatArray = FloatArray(16),
-    val mins: FloatArray = FloatArray(QK_K / 16),
-    val scales: FloatArray = FloatArray(QK_K / 16)
-)
-
-private fun nearestIntFloat(value: Float): Int {
-    if (!value.isFinite()) return 0
-    if (value > 4_194_303.0f || value < -4_194_303.0f) {
-        return value.roundToInt()
-    }
-    val adjusted = value + 12582912.0f
-    val bits = adjusted.toRawBits()
-    return (bits and 0x007FFFFF) - 0x00400000
-}
 /**
  * Quantizes a block of QK_K float values to Q3_K format.
  * Q3_K structure: hmask[QK_K/8], qs[QK_K/4], scales[12], d (F16)
  * Effectively 3.4375 bits per weight
  */
-private fun quantizeQ3_KBlock(blockValues: FloatArray, dest: ByteArray, destOffset: Int) {
+private fun quantizeQ3_KBlock(
+    blockValues: FloatArray,
+    dest: ByteArray,
+    destOffset: Int,
+    scratch: Q3KScratch
+) {
     require(blockValues.size == QK_K) { "Q3_K block must have $QK_K values" }
-    
-    // Find absolute maximum for super-block scale
-    var amax = 0.0f
-    for (value in blockValues) {
-        amax = maxOf(amax, abs(value))
-    }
-    
-    val d = if (amax > 0.0f) amax / 127.0f else 1.0f
-    val invD = if (d > 0.0f) 1.0f / d else 0.0f
-    
-    // Write super-block scale d at the end
-    val dOffset = destOffset + QK_K/8 + QK_K/4 + 12
-    dest.setShortLe(dOffset, floatToHalf(d))
-    
-    // Process in 16-element sub-blocks
-    for (subBlock in 0 until QK_K/16) {
-        val subBlockStart = subBlock * 16
-        
-        // Find max absolute value in this sub-block
-        var subAmax = 0.0f
-        for (i in 0 until 16) {
-            subAmax = maxOf(subAmax, abs(blockValues[subBlockStart + i]))
-        }
-        
-        // Calculate and store quantized scale for this sub-block
-        val scale = if (subAmax > 0.0f) subAmax / 7.0f else 1.0f
-        val quantizedScale = round((scale / d) * 63.0f).toInt().coerceIn(0, 63)
-        dest[destOffset + QK_K/8 + QK_K/4 + subBlock] = quantizedScale.toByte()
-        
-        // Quantize values in this sub-block
-        val invScale = if (scale > 0.0f) 1.0f / scale else 0.0f
-        for (i in 0 until 16) {
-            val value = blockValues[subBlockStart + i]
-            val quantizedValue = round(value * invScale).toInt().coerceIn(-7, 7)
-            
-            // Pack 3-bit values: 2 bits in qs, 1 bit in hmask
-            val byteIdx = (subBlockStart + i) / 4
-            val bitPos = ((subBlockStart + i) % 4) * 2
-            val maskByteIdx = (subBlockStart + i) / 8
-            val maskBitPos = (subBlockStart + i) % 8
-            
-            // Store low 2 bits in qs
-            val lowBits = quantizedValue and 0x03
-            dest[destOffset + QK_K/8 + byteIdx] = (dest[destOffset + QK_K/8 + byteIdx].toInt() or (lowBits shl bitPos)).toByte()
-            
-            // Store high bit in hmask
-            val highBit = (quantizedValue shr 2) and 0x01
-            dest[destOffset + maskByteIdx] = (dest[destOffset + maskByteIdx].toInt() or (highBit shl maskBitPos)).toByte()
+
+    val quants = scratch.quants
+    val scales = scratch.scales
+
+    val subBlocks = QK_K / 16
+    var maxScale = 0.0f
+    var maxAbsScale = 0.0f
+    for (sub in 0 until subBlocks) {
+        val base = sub * 16
+        val scale = makeQ3Quants(
+            n = 16,
+            nmax = 4,
+            values = blockValues,
+            valuesOffset = base,
+            dest = quants,
+            destOffset = base,
+            doRmse = true
+        )
+        scales[sub] = scale
+        val absScale = abs(scale)
+        if (absScale > maxAbsScale) {
+            maxAbsScale = absScale
+            maxScale = scale
         }
     }
+
+    val hmaskOffset = destOffset
+    val qsOffset = hmaskOffset + QK_K / 8
+    val scalesOffset = qsOffset + QK_K / 4
+    val dOffset = scalesOffset + 12
+
+    dest.fill(0.toByte(), hmaskOffset, hmaskOffset + QK_K / 8)
+    dest.fill(0.toByte(), qsOffset, qsOffset + QK_K / 4)
+    dest.fill(0.toByte(), scalesOffset, scalesOffset + 12)
+
+    if (maxAbsScale < GROUP_MAX_EPS_F) {
+        dest.setShortLe(dOffset, floatToHalf(0f))
+        return
+    }
+
+    val iscale = -32.0f / maxScale
+    dest.setShortLe(dOffset, floatToHalf(1f / iscale))
+    val dBase = halfToFloat(dest.getShortLe(dOffset))
+
+    for (sub in 0 until subBlocks) {
+        var qScale = nearestIntFloat(iscale * scales[sub]).coerceIn(-32, 31)
+        qScale += 32
+        val lowIndex = scalesOffset + if (sub < 8) sub else sub - 8
+        val lowShift = if (sub < 8) 0 else 4
+        val lowBits = maskLowBits32(qScale, 4)
+        dest[lowIndex] = mergeIntoByte(dest[lowIndex], lowBits, lowShift, 4)
+
+        val highIndex = scalesOffset + 8 + (sub % 4)
+        val bitOffset = (sub / 4) * 2
+        val highBits = logicalRight32(qScale, 4)
+        dest[highIndex] = mergeIntoByte(dest[highIndex], highBits, bitOffset, 2)
+    }
+
+    for (sub in 0 until subBlocks) {
+        val scaleInt = readQ3Scale(dest, scalesOffset, sub)
+        val scaleValue = dBase * scaleInt
+        if (scaleValue == 0.0f) continue
+        val base = sub * 16
+        for (lane in 0 until 16) {
+            val q = nearestIntFloat(blockValues[base + lane] / scaleValue).coerceIn(-4, 3) + 4
+            quants[base + lane] = q.toByte()
+        }
+    }
+
+    var maskIndex = 0
+    var bitPlane = 0
+    for (i in 0 until QK_K) {
+        var q = quants[i].toInt()
+        if (q > 3) {
+            q -= 4
+            quants[i] = q.toByte()
+            val maskPos = hmaskOffset + maskIndex
+            dest[maskPos] = mergeIntoByte(dest[maskPos], 1, bitPlane, 1)
+        }
+        maskIndex++
+        if (maskIndex == QK_K / 8) {
+            maskIndex = 0
+            bitPlane++
+        }
+    }
+
+    var qsIndex = qsOffset
+    for (chunk in 0 until QK_K step 128) {
+        for (l in 0 until 32) {
+            val q0 = maskLowBits32(quants[chunk + l].toInt(), 2)
+            val q1 = maskLowBits32(quants[chunk + l + 32].toInt(), 2)
+            val q2 = maskLowBits32(quants[chunk + l + 64].toInt(), 2)
+            val q3 = maskLowBits32(quants[chunk + l + 96].toInt(), 2)
+            dest[qsIndex + l] = PackOps.packQuads(q0, q1, q2, q3).toByte()
+        }
+        qsIndex += 32
+    }
+}
+
+private fun readQ3Scale(dest: ByteArray, scalesOffset: Int, index: Int): Int {
+    val lowIndex = scalesOffset + if (index < 8) index else index - 8
+    val lowShift = if (index < 8) 0 else 4
+    val low = extractBits(unsignedByte(dest[lowIndex]), lowShift, 4)
+    val highIndex = scalesOffset + 8 + (index % 4)
+    val highShift = (index / 4) * 2
+    val high = extractBits(unsignedByte(dest[highIndex]), highShift, 2)
+    return mergeBits32(low, logicalLeft32(high, 4)) - 32
 }
 
 /**
@@ -2900,72 +2541,143 @@ private fun quantizeQ3_KBlock(blockValues: FloatArray, dest: ByteArray, destOffs
  * Q4_K structure: d (F16), dmin (F16), scales[K_SCALE_SIZE], qs[QK_K/2]
  * Effectively 4.5 bits per weight
  */
-private fun quantizeQ4_KBlock(blockValues: FloatArray, dest: ByteArray, destOffset: Int) {
+private fun quantizeQ4_KBlock(
+    blockValues: FloatArray,
+    dest: ByteArray,
+    destOffset: Int,
+    scratch: Q4KScratch
+) {
     require(blockValues.size == QK_K) { "Q4_K block must have $QK_K values" }
-    
-    // Find min and max for the entire block
-    var minVal = Float.POSITIVE_INFINITY
-    var maxVal = Float.NEGATIVE_INFINITY
-    for (value in blockValues) {
-        minVal = minOf(minVal, value)
-        maxVal = maxOf(maxVal, value)
-    }
-    
-    val range = maxVal - minVal
-    val d = if (range > 0.0f) range / 255.0f else 1.0f
-    val dmin = minVal
-    val invD = if (d > 0.0f) 1.0f / d else 0.0f
-    
-    // Write super-block scales
-    dest.setShortLe(destOffset, floatToHalf(d))
-    dest.setShortLe(destOffset + 2, floatToHalf(dmin))
-    
-    // Process in 32-element sub-blocks (8 sub-blocks total)
-    for (subBlock in 0 until 8) {
-        val subBlockStart = subBlock * 32
-        
-        // Find min/max for this sub-block
-        var subMin = Float.POSITIVE_INFINITY  
-        var subMax = Float.NEGATIVE_INFINITY
+
+    val quants = scratch.quants
+    val aux = scratch.aux
+    val weights = scratch.weights
+    val mins = scratch.mins
+    val scales = scratch.scales
+
+    var maxScale = 0.0f
+    var maxMin = 0.0f
+
+    for (subBlock in 0 until QK_K / 32) {
+        val base = subBlock * 32
+        var sumX2 = 0.0f
         for (i in 0 until 32) {
-            val idx = subBlockStart + i
-            if (idx < blockValues.size) {
-                subMin = minOf(subMin, blockValues[idx])
-                subMax = maxOf(subMax, blockValues[idx])
-            }
+            val value = blockValues[base + i]
+            sumX2 += value * value
         }
-        
-        // Calculate sub-block scale and min
-        val subRange = subMax - subMin
-        val scale = if (subRange > 0.0f) subRange / 15.0f else 1.0f
-        val quantizedScale = round((scale / d) * 63.0f).toInt().coerceIn(0, 63)
-        val quantizedMin = round((subMin - dmin) / d).toInt().coerceIn(0, 63)
-        
-        // Store quantized scale and min (6 bits each, packed into 12 bits)
-        if (subBlock < K_SCALE_SIZE) {
-            dest[destOffset + 4 + subBlock] = ((quantizedScale and 0x3F) or ((quantizedMin and 0x03) shl 6)).toByte()
-            if (subBlock * 2 + 1 < K_SCALE_SIZE) {
-                dest[destOffset + 4 + subBlock * 2 + 1] = ((quantizedMin shr 2) and 0x0F).toByte()
-            }
+        val avX = sqrt(sumX2 / 32.0f)
+        for (i in 0 until 32) {
+            weights[i] = avX + abs(blockValues[base + i])
         }
-        
-        // Quantize and pack the 32 values (2 values per byte)
-        val invScale = if (scale > 0.0f) 1.0f / scale else 0.0f
-        for (i in 0 until 32 step 2) {
-            val idx1 = subBlockStart + i
-            val idx2 = subBlockStart + i + 1
-            
-            val q1 = if (idx1 < blockValues.size && subRange > 0.0f) {
-                round(((blockValues[idx1] - subMin) * invScale)).toInt().coerceIn(0, 15)
-            } else 0
-            
-            val q2 = if (idx2 < blockValues.size && subRange > 0.0f) {
-                round(((blockValues[idx2] - subMin) * invScale)).toInt().coerceIn(0, 15)
-            } else 0
-            
-            val packedNibbles = (q1 and 0x0F) or ((q2 and 0x0F) shl 4)
-            dest[destOffset + 4 + K_SCALE_SIZE + subBlock * 16 + i / 2] = packedNibbles.toByte()
+        val stats = makeQKX2Quants(
+            n = 32,
+            nmax = 15,
+            values = blockValues,
+            valuesOffset = base,
+            weights = weights,
+            weightsOffset = 0,
+            dest = quants,
+            destOffset = base,
+            mins = mins,
+            minsIndex = subBlock,
+            aux = aux,
+            auxOffset = 0,
+            rmin = -1.0f,
+            rdelta = 0.1f,
+            nstep = 20,
+            useMad = false
+        )
+        scales[subBlock] = stats.scale
+        if (stats.scale > maxScale) maxScale = stats.scale
+        if (stats.min > maxMin) maxMin = stats.min
+    }
+
+    val scalesOffset = destOffset + 4
+    for (i in scalesOffset until scalesOffset + K_SCALE_SIZE) {
+        dest[i] = 0
+    }
+
+    val dHalf = floatToHalf(if (maxScale > 0.0f) maxScale / 63.0f else 0.0f)
+    dest.setShortLe(destOffset, dHalf)
+    val d = halfToFloat(dHalf)
+
+    val dminHalf = floatToHalf(if (maxMin > 0.0f) maxMin / 63.0f else 0.0f)
+    dest.setShortLe(destOffset + 2, dminHalf)
+    val dmin = halfToFloat(dminHalf)
+
+    val scaleQuantizer = if (maxScale > 0.0f) 63.0f / maxScale else 0.0f
+    val minQuantizer = if (maxMin > 0.0f) 63.0f / maxMin else 0.0f
+
+    for (subBlock in 0 until QK_K / 32) {
+        val ls = nearestIntFloat(scaleQuantizer * scales[subBlock]).coerceIn(0, 63)
+        val lm = nearestIntFloat(minQuantizer * mins[subBlock]).coerceIn(0, 63)
+        if (subBlock < 4) {
+            dest[scalesOffset + subBlock] = ls.toByte()
+            dest[scalesOffset + subBlock + 4] = lm.toByte()
+        } else {
+            val packedIndex = scalesOffset + subBlock + 4
+            dest[packedIndex] = PackOps.packNibbles(ls and 0xF, lm and 0xF).toByte()
+
+            val scaleHighIdx = scalesOffset + subBlock - 4
+            dest[scaleHighIdx] = PackOps.bitplaneWrite(
+                dest[scaleHighIdx].toInt() and 0xFF,
+                ls ushr 4,
+                6,
+                2
+            ).toByte()
+
+            val minHighIdx = scalesOffset + subBlock
+            dest[minHighIdx] = PackOps.bitplaneWrite(
+                dest[minHighIdx].toInt() and 0xFF,
+                lm ushr 4,
+                6,
+                2
+            ).toByte()
         }
+    }
+
+    for (i in 0 until QK_K) {
+        quants[i] = 0
+    }
+
+    for (subBlock in 0 until QK_K / 32) {
+        val (scaleInt, minInt) = getScaleMinK4(dest, scalesOffset, subBlock)
+        val scaleValue = d * scaleInt
+        val minValue = dmin * minInt
+        val base = subBlock * 32
+        if (scaleValue == 0.0f) {
+            continue
+        }
+        for (lane in 0 until 32) {
+            val value = blockValues[base + lane]
+            val q = nearestIntFloat((value + minValue) / scaleValue).coerceIn(0, 15)
+            quants[base + lane] = q.toByte()
+        }
+    }
+
+    var writeOffset = scalesOffset + K_SCALE_SIZE
+    for (chunkStart in 0 until QK_K step 64) {
+        for (l in 0 until 32) {
+            val low = quants[chunkStart + l].toInt() and 0xF
+            val high = quants[chunkStart + l + 32].toInt() and 0xF
+            dest[writeOffset + l] = PackOps.packNibbles(low, high).toByte()
+        }
+        writeOffset += 32
+    }
+}
+
+private fun getScaleMinK4(scales: ByteArray, scalesOffset: Int, index: Int): Pair<Int, Int> {
+    return if (index < 4) {
+        val scale = maskLowBits32(unsignedByte(scales[scalesOffset + index]), 6)
+        val min = maskLowBits32(unsignedByte(scales[scalesOffset + index + 4]), 6)
+        scale to min
+    } else {
+        val packed = unsignedByte(scales[scalesOffset + index + 4])
+        val scaleHigh = extractBits(unsignedByte(scales[scalesOffset + index - 4]), 6, 2)
+        val minHigh = extractBits(unsignedByte(scales[scalesOffset + index]), 6, 2)
+        val scale = mergeBits32(maskLowBits32(packed, 4), logicalLeft32(scaleHigh, 4))
+        val min = mergeBits32(extractBits(packed, 4, 4), logicalLeft32(minHigh, 4))
+        scale to min
     }
 }
 
@@ -2974,76 +2686,163 @@ private fun quantizeQ4_KBlock(blockValues: FloatArray, dest: ByteArray, destOffs
  * Q5_K structure: d (F16), dmin (F16), scales[K_SCALE_SIZE], qh[QK_K/8], qs[QK_K/2]  
  * Effectively 5.5 bits per weight
  */
-private fun quantizeQ5_KBlock(blockValues: FloatArray, dest: ByteArray, destOffset: Int) {
+
+private class Q5KScratch(
+    val quants: ByteArray = ByteArray(QK_K),
+    val aux: ByteArray = ByteArray(32),
+    val weights: FloatArray = FloatArray(32),
+    val mins: FloatArray = FloatArray(QK_K / 32),
+    val scales: FloatArray = FloatArray(QK_K / 32),
+    val sw: FloatArray = FloatArray(QK_K / 32),
+    val ls: ByteArray = ByteArray(QK_K / 32),
+    val lm: ByteArray = ByteArray(QK_K / 32)
+)
+
+private fun quantizeQ5_KBlock(
+    blockValues: FloatArray,
+    dest: ByteArray,
+    destOffset: Int,
+    scratch: Q5KScratch
+) {
     require(blockValues.size == QK_K) { "Q5_K block must have $QK_K values" }
-    
-    // Similar to Q4_K but with 5-bit quantization (0-31 range)
-    var minVal = Float.POSITIVE_INFINITY
-    var maxVal = Float.NEGATIVE_INFINITY
-    for (value in blockValues) {
-        minVal = minOf(minVal, value)
-        maxVal = maxOf(maxVal, value)
-    }
-    
-    val range = maxVal - minVal
-    val d = if (range > 0.0f) range / 511.0f else 1.0f
-    val dmin = minVal
-    
-    // Write super-block scales
-    dest.setShortLe(destOffset, floatToHalf(d))
-    dest.setShortLe(destOffset + 2, floatToHalf(dmin))
-    
-    // Process in 32-element sub-blocks
-    for (subBlock in 0 until 8) {
-        val subBlockStart = subBlock * 32
-        
-        // Find min/max for this sub-block
-        var subMin = Float.POSITIVE_INFINITY
-        var subMax = Float.NEGATIVE_INFINITY
+
+    val quants = scratch.quants
+    val aux = scratch.aux
+    val weights = scratch.weights
+    val mins = scratch.mins
+    val scales = scratch.scales
+    val sw = scratch.sw
+    val ls = scratch.ls
+    val lm = scratch.lm
+
+    sw.fill(0f)
+    var sumX2 = 0.0f
+    for (value in blockValues) sumX2 += value * value
+    val sigma2 = sumX2 / QK_K
+    val subBlocks = QK_K / 32
+    for (sub in 0 until subBlocks) {
+        val base = sub * 32
+        var sumW = 0.0f
         for (i in 0 until 32) {
-            val idx = subBlockStart + i
-            if (idx < blockValues.size) {
-                subMin = minOf(subMin, blockValues[idx])
-                subMax = maxOf(subMax, blockValues[idx])
+            val v = blockValues[base + i]
+            val w = sqrt(sigma2 + v * v)
+            weights[i] = w
+            sumW += w
+        }
+        sw[sub] = sumW
+        val stats = makeQKX3Quants(
+            n = 32,
+            nmax = 31,
+            values = blockValues,
+            valuesOffset = base,
+            weights = weights,
+            weightsOffset = 0,
+            dest = quants,
+            destOffset = base,
+            mins = mins,
+            minsIndex = sub,
+            aux = aux,
+            auxOffset = 0,
+            rmin = -0.9f,
+            rdelta = 0.05f,
+            nstep = 36,
+            useMad = false
+        )
+        scales[sub] = stats.scale
+    }
+
+    var dm = makeQPQuants(
+        n = subBlocks,
+        nmax = 15,
+        values = scales,
+        valuesOffset = 0,
+        dest = ls,
+        destOffset = 0,
+        quantWeights = sw,
+        weightsOffset = 0
+    )
+    var mm = makeQPQuants(
+        n = subBlocks,
+        nmax = 15,
+        values = mins,
+        valuesOffset = 0,
+        dest = lm,
+        destOffset = 0,
+        quantWeights = sw,
+        weightsOffset = 0
+    )
+
+    dest.setShortLe(destOffset, floatToHalf(dm))
+    dest.setShortLe(destOffset + 2, floatToHalf(mm))
+    dm = halfToFloat(dest.getShortLe(destOffset))
+    mm = halfToFloat(dest.getShortLe(destOffset + 2))
+
+    val scalesOffset = destOffset + 4
+    for (i in 0 until K_SCALE_SIZE) dest[scalesOffset + i] = 0
+
+    for (sub in 0 until subBlocks) {
+        val lsInt = ls[sub].toInt() and 0xFF
+        val lmInt = lm[sub].toInt() and 0xFF
+        if (sub < 4) {
+            dest[scalesOffset + sub] = lsInt.toByte()
+            dest[scalesOffset + sub + 4] = lmInt.toByte()
+        } else {
+            dest[scalesOffset + sub + 4] = PackOps.packNibbles(lsInt and 0xF, lmInt and 0xF).toByte()
+            val scaleHighIdx = scalesOffset + sub - 4
+            dest[scaleHighIdx] = PackOps.bitplaneWrite(
+                dest[scaleHighIdx].toInt() and 0xFF,
+                lsInt ushr 4,
+                6,
+                2
+            ).toByte()
+            val minHighIdx = scalesOffset + sub
+            dest[minHighIdx] = PackOps.bitplaneWrite(
+                dest[minHighIdx].toInt() and 0xFF,
+                lmInt ushr 4,
+                6,
+                2
+            ).toByte()
+        }
+    }
+
+    dest.fill(0.toByte(), scalesOffset + K_SCALE_SIZE, scalesOffset + K_SCALE_SIZE + QK_K / 8)
+    dest.fill(0.toByte(), scalesOffset + K_SCALE_SIZE + QK_K / 8, scalesOffset + K_SCALE_SIZE + QK_K / 8 + QK_K / 2)
+
+    val qhOffset = scalesOffset + K_SCALE_SIZE
+    val qsOffset = qhOffset + QK_K / 8
+
+    for (sub in 0 until subBlocks) {
+        val (scaleInt, minInt) = getScaleMinK4(dest, scalesOffset, sub)
+        val scaleValue = dm * scaleInt
+        if (scaleValue == 0.0f) continue
+        val minValue = mm * minInt
+        val base = sub * 32
+        for (lane in 0 until 32) {
+            val q = nearestIntFloat((blockValues[base + lane] + minValue) / scaleValue).coerceIn(0, 31)
+            quants[base + lane] = q.toByte()
+        }
+    }
+
+    var mask1 = 1
+    var mask2 = 2
+    var qsIndex = qsOffset
+    for (chunk in 0 until QK_K step 64) {
+        for (j in 0 until 32) {
+            var q1 = quants[chunk + j].toInt() and 0x1F
+            var q2 = quants[chunk + j + 32].toInt() and 0x1F
+            if (q1 > 15) {
+                q1 -= 16
+                dest[qhOffset + j] = (dest[qhOffset + j].toInt() or mask1).toByte()
             }
+            if (q2 > 15) {
+                q2 -= 16
+                dest[qhOffset + j] = (dest[qhOffset + j].toInt() or mask2).toByte()
+            }
+            dest[qsIndex + j] = PackOps.packNibbles(q1, q2).toByte()
         }
-        
-        val subRange = subMax - subMin
-        val scale = if (subRange > 0.0f) subRange / 31.0f else 1.0f
-        val quantizedScale = round((scale / d) * 63.0f).toInt().coerceIn(0, 63)
-        val quantizedMin = round((subMin - dmin) / d).toInt().coerceIn(0, 63)
-        
-        // Store scales (similar packing as Q4_K)
-        if (subBlock < K_SCALE_SIZE) {
-            dest[destOffset + 4 + subBlock] = ((quantizedScale and 0x3F) or ((quantizedMin and 0x03) shl 6)).toByte()
-        }
-        
-        // Quantize to 5 bits: 4 bits in qs, 1 bit in qh
-        val invScale = if (scale > 0.0f) 1.0f / scale else 0.0f
-        for (i in 0 until 32 step 2) {
-            val idx1 = subBlockStart + i
-            val idx2 = subBlockStart + i + 1
-            
-            val q1 = if (idx1 < blockValues.size && subRange > 0.0f) {
-                round((blockValues[idx1] - subMin) * invScale).toInt().coerceIn(0, 31)
-            } else 0
-            
-            val q2 = if (idx2 < blockValues.size && subRange > 0.0f) {
-                round((blockValues[idx2] - subMin) * invScale).toInt().coerceIn(0, 31)
-            } else 0
-            
-            // Store low 4 bits in qs
-            val qs1 = q1 and 0x0F
-            val qs2 = q2 and 0x0F
-            dest[destOffset + 4 + K_SCALE_SIZE + QK_K/8 + subBlock * 16 + i / 2] = (qs1 or (qs2 shl 4)).toByte()
-            
-            // Store high bits in qh
-            val qh1 = (q1 shr 4) and 0x01
-            val qh2 = (q2 shr 4) and 0x01
-            val qhByteIdx = destOffset + 4 + K_SCALE_SIZE + (idx1 / 8)
-            val qhBitPos = idx1 % 8
-            dest[qhByteIdx] = (dest[qhByteIdx].toInt() or (qh1 shl qhBitPos) or (qh2 shl (qhBitPos + 1))).toByte()
-        }
+        mask1 = (mask1 shl 2) and 0xFF
+        mask2 = (mask2 shl 2) and 0xFF
+        qsIndex += 32
     }
 }
 
@@ -3052,66 +2851,98 @@ private fun quantizeQ5_KBlock(blockValues: FloatArray, dest: ByteArray, destOffs
  * Q6_K structure: ql[QK_K/2], qh[QK_K/4], scales[QK_K/16], d (F16)
  * Effectively 6.5625 bits per weight
  */
-private fun quantizeQ6_KBlock(blockValues: FloatArray, dest: ByteArray, destOffset: Int) {
+
+private class Q6KScratch(
+    val quants: ByteArray = ByteArray(QK_K),
+    val scales: FloatArray = FloatArray(QK_K / 16)
+)
+
+private fun quantizeQ6_KBlock(
+    blockValues: FloatArray,
+    dest: ByteArray,
+    destOffset: Int,
+    scratch: Q6KScratch
+) {
     require(blockValues.size == QK_K) { "Q6_K block must have $QK_K values" }
-    
-    // Find absolute maximum for the block
-    var amax = 0.0f
-    for (value in blockValues) {
-        amax = maxOf(amax, abs(value))
+
+    val quants = scratch.quants
+    val scales = scratch.scales
+
+    val subBlocks = QK_K / 16
+    var maxScale = 0.0f
+    var maxAbsScale = 0.0f
+    for (sub in 0 until subBlocks) {
+        val base = sub * 16
+        val scale = makeQXQuants(
+            n = 16,
+            nmax = 32,
+            values = blockValues,
+            valuesOffset = base,
+            dest = quants,
+            destOffset = base,
+            rmseTypeInput = 1,
+            quantWeights = null,
+            weightsOffset = 0
+        )
+        scales[sub] = scale
+        val absScale = abs(scale)
+        if (absScale > maxAbsScale) {
+            maxAbsScale = absScale
+            maxScale = scale
+        }
     }
-    
-    val d = if (amax > 0.0f) amax / 127.0f else 1.0f
-    val invD = if (d > 0.0f) 1.0f / d else 0.0f
-    
-    // Write super-block scale at the end
-    val dOffset = destOffset + QK_K/2 + QK_K/4 + QK_K/16
-    dest.setShortLe(dOffset, floatToHalf(d))
-    
-    // Process in 16-element sub-blocks
-    for (subBlock in 0 until QK_K/16) {
-        val subBlockStart = subBlock * 16
-        
-        // Find max absolute value in sub-block
-        var subAmax = 0.0f
-        for (i in 0 until 16) {
-            val idx = subBlockStart + i
-            if (idx < blockValues.size) {
-                subAmax = maxOf(subAmax, abs(blockValues[idx]))
-            }
+
+    val qlOffset = destOffset
+    val qhOffset = destOffset + QK_K / 2
+    val scalesOffset = qhOffset + QK_K / 4
+    val dOffset = scalesOffset + QK_K / 16
+
+    dest.fill(0.toByte(), qlOffset, qlOffset + QK_K / 2)
+    dest.fill(0.toByte(), qhOffset, qhOffset + QK_K / 4)
+    dest.fill(0.toByte(), scalesOffset, scalesOffset + QK_K / 16)
+
+    if (maxAbsScale < GROUP_MAX_EPS_F) {
+        dest.setShortLe(dOffset, floatToHalf(0f))
+        return
+    }
+
+    val iscale = -128f / maxScale
+    dest.setShortLe(dOffset, floatToHalf(1f / iscale))
+    val dBase = halfToFloat(dest.getShortLe(dOffset))
+
+    for (sub in 0 until subBlocks) {
+        val qScale = nearestIntFloat(iscale * scales[sub]).coerceIn(-128, 127)
+        dest[scalesOffset + sub] = qScale.toByte()
+    }
+
+    for (sub in 0 until subBlocks) {
+        val scaleInt = dest[scalesOffset + sub].toInt()
+        val scaleValue = dBase * scaleInt
+        if (scaleValue == 0.0f) continue
+        val base = sub * 16
+        for (lane in 0 until 16) {
+            val q = nearestIntFloat(blockValues[base + lane] / scaleValue).coerceIn(-32, 31)
+            quants[base + lane] = (q + 32).toByte()
         }
-        
-        // Calculate and store 8-bit scale for this sub-block
-        val scale = if (subAmax > 0.0f) subAmax / 63.0f else 1.0f
-        val quantizedScale = round((scale / d) * 127.0f).toInt().coerceIn(-128, 127)
-        dest[destOffset + QK_K/2 + QK_K/4 + subBlock] = quantizedScale.toByte()
-        
-        // Quantize values to 6 bits: 4 bits in ql, 2 bits in qh
-        val invScale = if (scale > 0.0f) 1.0f / scale else 0.0f
-        for (i in 0 until 16 step 2) {
-            val idx1 = subBlockStart + i
-            val idx2 = subBlockStart + i + 1
-            
-            val q1 = if (idx1 < blockValues.size) {
-                round(blockValues[idx1] * invScale + 32.0f).toInt().coerceIn(0, 63)
-            } else 32
-            
-            val q2 = if (idx2 < blockValues.size) {
-                round(blockValues[idx2] * invScale + 32.0f).toInt().coerceIn(0, 63)  
-            } else 32
-            
-            // Store low 4 bits in ql
-            val ql1 = q1 and 0x0F
-            val ql2 = q2 and 0x0F
-            dest[destOffset + subBlock * 8 + i / 2] = (ql1 or (ql2 shl 4)).toByte()
-            
-            // Store high 2 bits in qh
-            val qh1 = (q1 shr 4) and 0x03
-            val qh2 = (q2 shr 4) and 0x03
-            val qhByteIdx = destOffset + QK_K/2 + (subBlock * 4) + (i / 4)
-            val qhBitPos = (i % 4) * 2
-            dest[qhByteIdx] = (dest[qhByteIdx].toInt() or (qh1 shl qhBitPos) or (qh2 shl (qhBitPos + 2))).toByte()
+    }
+
+    var qlIndex = qlOffset
+    var qhIndex = qhOffset
+    for (chunk in 0 until QK_K step 128) {
+        for (l in 0 until 32) {
+            val q1 = quants[chunk + l].toInt() and 0x3F
+            val q2 = quants[chunk + l + 32].toInt() and 0x3F
+            val q3 = quants[chunk + l + 64].toInt() and 0x3F
+            val q4 = quants[chunk + l + 96].toInt() and 0x3F
+
+            dest[qlIndex + l] = PackOps.packNibbles(q1 and 0xF, q3 and 0xF).toByte()
+            dest[qlIndex + l + 32] = PackOps.packNibbles(q2 and 0xF, q4 and 0xF).toByte()
+
+            val highPacked = ((q4 shr 4) shl 6) or ((q3 shr 4) shl 4) or ((q2 shr 4) shl 2) or (q1 shr 4)
+            dest[qhIndex + l] = highPacked.toByte()
         }
+        qlIndex += 64
+        qhIndex += 32
     }
 }
 
@@ -3168,7 +2999,7 @@ private fun dequantizeQ2_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
     for (subBlock in 0 until 16) {
         // Get quantized scale for this sub-block
         val scaleAndMin = tensor.getQ2_KScale(graphAllocator, blockIndex, subBlock)
-        val quantizedScale = scaleAndMin.toInt() and 0x0F
+        val quantizedScale = maskLowBits32(scaleAndMin.toInt(), 4)
         
         // Reconstruct scale (Q2_K uses simple scale mapping)
         val scale = (quantizedScale.toFloat() / 15.0f) * d
@@ -3179,7 +3010,7 @@ private fun dequantizeQ2_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
             
             for (j in 0 until 4) {
                 if (elementIdx < dest.size) {
-                    val quantizedValue = (packedByte.toInt() shr (j * 2)) and 0x03
+                    val quantizedValue = extractBits(unsignedByte(packedByte), j * 2, 2)
                     val dequantizedValue = (quantizedValue.toFloat() / 3.0f) * scale + dmin
                     dest[elementIdx++] = dequantizedValue
                 }
@@ -3205,7 +3036,7 @@ private fun dequantizeQ3_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
         val quantizedScale = buffer[(tensor.dataOffset + scaleOffset.toULong()).toInt()]
         
         // Reconstruct scale
-        val scale = ((quantizedScale.toInt() and 0x3F).toFloat() / 63.0f) * d
+        val scale = ((maskLowBits32(quantizedScale.toInt(), 6)).toFloat() / 63.0f) * d
         
         // Dequantize 16 values
         val subBlockStart = subBlock * 16
@@ -3217,16 +3048,16 @@ private fun dequantizeQ3_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
                 val qsByteIdx = globalIdx / 4
                 val qsBitPos = (globalIdx % 4) * 2
                 val qsOffset = blockByteOffset + QK_K/8 + qsByteIdx
-                val qsValue = (buffer[(tensor.dataOffset + qsOffset.toULong()).toInt()].toInt() shr qsBitPos) and 0x03
+                val qsValue = extractBits(unsignedByte(buffer[(tensor.dataOffset + qsOffset.toULong()).toInt()]), qsBitPos, 2)
                 
                 // Get high bit from hmask
                 val hmaskByteIdx = globalIdx / 8
                 val hmaskBitPos = globalIdx % 8
                 val hmaskOffset = blockByteOffset + hmaskByteIdx
-                val hmaskValue = (buffer[(tensor.dataOffset + hmaskOffset.toULong()).toInt()].toInt() shr hmaskBitPos) and 0x01
+                val hmaskValue = extractBits(unsignedByte(buffer[(tensor.dataOffset + hmaskOffset.toULong()).toInt()]), hmaskBitPos, 1)
                 
                 // Combine to get 3-bit value
-                val quantizedValue = qsValue or (hmaskValue shl 2)
+                val quantizedValue = qsValue or (logicalLeft32(hmaskValue, 2))
                 val signedValue = if (quantizedValue > 3) quantizedValue - 8 else quantizedValue
                 
                 dest[elementIdx++] = signedValue.toFloat() * scale
@@ -3253,14 +3084,14 @@ private fun dequantizeQ4_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
         // Read packed scale and min values
         val scaleByteOffset = blockByteOffset + 4 + subBlock
         val scaleByte = buffer[(tensor.dataOffset + scaleByteOffset.toULong()).toInt()]
-        val quantizedScale = scaleByte.toInt() and 0x3F
-        val quantizedMinLow = (scaleByte.toInt() shr 6) and 0x03
+        val quantizedScale = scaleByte.toUnsignedInt().lowBits(6)
+        val quantizedMinLow = extractBits(scaleByte.toUnsignedInt(), 6, 2)
         
         val minByteOffset = blockByteOffset + 4 + subBlock * 2 + 1
         val quantizedMinHigh = if (minByteOffset < blockByteOffset + 4 + K_SCALE_SIZE) {
-            buffer[(tensor.dataOffset + minByteOffset.toULong()).toInt()].toInt() and 0x0F
+            maskLowBits32(unsignedByte(buffer[(tensor.dataOffset + minByteOffset.toULong()).toInt()]), 4)
         } else 0
-        val quantizedMin = quantizedMinLow or (quantizedMinHigh shl 2)
+        val quantizedMin = mergeBits32(quantizedMinLow, logicalLeft32(quantizedMinHigh, 2))
         
         // Reconstruct scale and min
         val scale = (quantizedScale.toFloat() / 63.0f) * d
@@ -3272,8 +3103,8 @@ private fun dequantizeQ4_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
             if (elementIdx < dest.size) {
                 val qsByte = buffer[(tensor.dataOffset + qsBaseOffset.toULong() + (i / 2).toULong()).toInt()]
                 
-                val q1 = qsByte.toInt() and 0x0F
-                val q2 = (qsByte.toInt() shr 4) and 0x0F
+                val q1 = qsByte.getBits(0, 4)
+                val q2 = qsByte.getBits(4, 4)
                 
                 dest[elementIdx++] = (q1.toFloat() / 15.0f) * scale + min
                 if (elementIdx < dest.size) {
@@ -3299,8 +3130,8 @@ private fun dequantizeQ5_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
         // Get quantized scale and min for this sub-block
         val scaleByteOffset = blockByteOffset + 4 + subBlock
         val scaleByte = buffer[(tensor.dataOffset + scaleByteOffset.toULong()).toInt()]
-        val quantizedScale = scaleByte.toInt() and 0x3F
-        val quantizedMin = (scaleByte.toInt() shr 6) and 0x03
+        val quantizedScale = scaleByte.toUnsignedInt().lowBits(6)
+        val quantizedMin = extractBits(scaleByte.toUnsignedInt(), 6, 2)
         
         val scale = (quantizedScale.toFloat() / 63.0f) * d
         
@@ -3312,8 +3143,8 @@ private fun dequantizeQ5_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
             if (elementIdx < dest.size) {
                 // Get 4-bit values from qs
                 val qsByte = buffer[(tensor.dataOffset + qsBaseOffset.toULong() + (i / 2).toULong()).toInt()]
-                val qs1 = qsByte.toInt() and 0x0F
-                val qs2 = (qsByte.toInt() shr 4) and 0x0F
+                val qs1 = qsByte.getBits(0, 4)
+                val qs2 = qsByte.getBits(4, 4)
                 
                 // Get high bits from qh
                 val globalIdx1 = subBlock * 32 + i
@@ -3321,12 +3152,12 @@ private fun dequantizeQ5_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
                 val qhByte1 = buffer[(tensor.dataOffset + qhBaseOffset.toULong() + (globalIdx1 / 8).toULong()).toInt()]
                 val qhByte2 = buffer[(tensor.dataOffset + qhBaseOffset.toULong() + (globalIdx2 / 8).toULong()).toInt()]
                 
-                val qh1 = (qhByte1.toInt() shr (globalIdx1 % 8)) and 0x01
-                val qh2 = (qhByte2.toInt() shr (globalIdx2 % 8)) and 0x01
+                val qh1 = extractBits(unsignedByte(qhByte1), globalIdx1 % 8, 1)
+                val qh2 = extractBits(unsignedByte(qhByte2), globalIdx2 % 8, 1)
                 
                 // Combine to get 5-bit values
-                val q1 = qs1 or (qh1 shl 4)
-                val q2 = qs2 or (qh2 shl 4)
+                val q1 = mergeBits32(qs1, logicalLeft32(qh1, 4))
+                val q2 = mergeBits32(qs2, logicalLeft32(qh2, 4))
                 
                 dest[elementIdx++] = (q1.toFloat() / 31.0f) * scale
                 if (elementIdx < dest.size) {
@@ -3362,18 +3193,18 @@ private fun dequantizeQ6_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
             if (elementIdx < dest.size) {
                 // Get 4-bit values from ql
                 val qlByte = buffer[(tensor.dataOffset + qlBaseOffset.toULong() + (i / 2).toULong()).toInt()]
-                val ql1 = qlByte.toInt() and 0x0F
-                val ql2 = (qlByte.toInt() shr 4) and 0x0F
+                val ql1 = maskLowBits32(unsignedByte(qlByte), 4)
+                val ql2 = extractBits(unsignedByte(qlByte), 4, 4)
                 
                 // Get 2-bit values from qh
                 val qhByte = buffer[(tensor.dataOffset + qhBaseOffset.toULong() + (i / 4).toULong()).toInt()]
                 val qhBitPos = (i % 4) * 2
-                val qh1 = (qhByte.toInt() shr qhBitPos) and 0x03
-                val qh2 = (qhByte.toInt() shr (qhBitPos + 2)) and 0x03
+                val qh1 = extractBits(unsignedByte(qhByte), qhBitPos, 2)
+                val qh2 = extractBits(unsignedByte(qhByte), qhBitPos + 2, 2)
                 
                 // Combine to get 6-bit values
-                val q1 = ql1 or (qh1 shl 4)
-                val q2 = ql2 or (qh2 shl 4)
+                val q1 = mergeBits32(ql1, logicalLeft32(qh1, 4))
+                val q2 = mergeBits32(ql2, logicalLeft32(qh2, 4))
                 
                 dest[elementIdx++] = ((q1.toFloat() - 32.0f) / 63.0f) * scale
                 if (elementIdx < dest.size) {

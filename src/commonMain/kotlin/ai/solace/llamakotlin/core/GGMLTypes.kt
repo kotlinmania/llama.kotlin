@@ -8,6 +8,8 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
+import ai.solace.klang.bitwise.BitPrimitives
+import ai.solace.klang.bitwise.PackOps
 import kotlin.Short.Companion.SIZE_BYTES
 
 /**
@@ -38,6 +40,13 @@ const val GGML_MAX_DIMS = 4
  * Used for operations that can take multiple input tensors.
  */
 const val GGML_MAX_SRC = 10
+
+private fun Byte.toUnsignedInt(): Int = toInt() and 0xFF
+private fun Byte.readBits(offset: Int, width: Int): Int = BitPrimitives.bitFieldExtract32(toUnsignedInt(), offset, width)
+private fun Byte.withBits(value: Int, offset: Int, width: Int): Byte =
+    BitPrimitives.bitFieldInsert32(toUnsignedInt(), value, offset, width).toByte()
+private fun Int.insertBits(value: Int, offset: Int, width: Int): Int =
+    BitPrimitives.bitFieldInsert32(this, value, offset, width)
 
 /**
  * Maximum number of operation parameters.
@@ -648,9 +657,9 @@ class GGMLTensor(
         val packedByte = buffer[finalByteToReadOffset.toInt()]
 
         val nibble = if (itemIndexInBlock % 2 == 0) {
-            packedByte.toInt() and 0x0F // First item in the byte (lower 4 bits)
+            packedByte.readBits(0, 4)
         } else {
-            (packedByte.toInt() ushr 4) and 0x0F // Second item in the byte (upper 4 bits)
+            packedByte.readBits(4, 4)
         }
         return nibble.toByte()
     }
@@ -727,9 +736,9 @@ class GGMLTensor(
         val packedByte = buffer[finalByteToReadOffset.toInt()]
 
         val nibble = if (itemIndexInBlock % 2 == 0) {
-            packedByte.toInt() and 0x0F // First item (lower 4 bits)
+            packedByte.readBits(0, 4)
         } else {
-            (packedByte.toInt() ushr 4) and 0x0F // Second item (upper 4 bits)
+            packedByte.readBits(4, 4)
         }
         return nibble.toByte()
     }
@@ -869,7 +878,7 @@ class GGMLTensor(
 
         val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
         val scaleByte = buffer[(dataOffset + scaleByteOffset).toInt()]
-        return scaleByte.toInt() and 0x3F // Extract lower 6 bits
+        return scaleByte.readBits(0, 6)
     }
 
     /**
@@ -892,18 +901,17 @@ class GGMLTensor(
         // Min values are packed with scales - low 2 bits in the scale byte, high 4 bits packed in bytes 8-11 of the scales array
         val scaleByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong()
         val scaleByte = buffer[(dataOffset + scaleByteOffset).toInt()]
-        val quantizedMinLow = (scaleByte.toInt() shr 6) and 0x03
+        val quantizedMinLow = scaleByte.readBits(6, 2)
 
-        // High 4 bits for each sub-block are packed two per byte in bytes 8-11 of the scales array
         val minHighByteOffset = blockByteOffset + 4uL + 8uL + (subBlockIndex / 2).toULong()
         val minHighByte = buffer[(dataOffset + minHighByteOffset).toInt()]
         val quantizedMinHigh = if (subBlockIndex % 2 == 0) {
-            minHighByte.toInt() and 0x0F // lower 4 bits
+            minHighByte.readBits(0, 4)
         } else {
-            (minHighByte.toInt() shr 4) and 0x0F // upper 4 bits
+            minHighByte.readBits(4, 4)
         }
-        
-        return quantizedMinLow or (quantizedMinHigh shl 2)
+
+        return quantizedMinLow.insertBits(quantizedMinHigh, 2, 4)
     }
 
     /**
@@ -931,9 +939,9 @@ class GGMLTensor(
         val weightByte = buffer[(dataOffset + byteOffset).toInt()]
         
         return if (elementIndex % 2 == 0) {
-            weightByte.toInt() and 0x0F  // Lower 4 bits
+            weightByte.readBits(0, 4)
         } else {
-            (weightByte.toInt() shr 4) and 0x0F  // Upper 4 bits
+            weightByte.readBits(4, 4)
         }
     }
 
@@ -989,24 +997,20 @@ class GGMLTensor(
         
         // Pack scale (6 bits) + min low bits (2 bits) into one byte
         val scaleByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong()
-        val scaleByte = (quantizedScale and 0x3F) or ((quantizedMin and 0x03) shl 6)
-        buffer[(dataOffset + scaleByteOffset).toInt()] = scaleByte.toByte()
+        val scaleByteIndex = (dataOffset + scaleByteOffset).toInt()
+        var scaleByte = buffer[scaleByteIndex]
+        scaleByte = scaleByte.withBits(quantizedScale, 0, 6)
+        scaleByte = scaleByte.withBits(quantizedMin, 6, 2)
+        buffer[scaleByteIndex] = scaleByte
         
         // Store high 4 bits of min in correct location
         val minByteOffset = blockByteOffset + 4uL + 8uL + (subBlockIndex / 2).toULong()
         val minByteIndex = (dataOffset + minByteOffset).toInt()
         // Bounds check similar to getQ4_KQuantizedMin
         if (minByteIndex >= 0 && minByteIndex < buffer.size) {
-            val minHighBits = (quantizedMin shr 2) and 0x0F
-            val currentByte = buffer[minByteIndex].toInt() and 0xFF
-            val newByte = if (subBlockIndex % 2 == 0) {
-                // Even sub-block: update lower 4 bits
-                (currentByte and 0xF0) or minHighBits
-            } else {
-                // Odd sub-block: update upper 4 bits
-                (currentByte and 0x0F) or (minHighBits shl 4)
-            }
-            buffer[minByteIndex] = newByte.toByte()
+            val minHighBits = BitPrimitives.bitFieldExtract32(quantizedMin, 2, 4)
+            val bitOffset = if (subBlockIndex % 2 == 0) 0 else 4
+            buffer[minByteIndex] = buffer[minByteIndex].withBits(minHighBits, bitOffset, 4)
         }
     }
 
@@ -1033,13 +1037,8 @@ class GGMLTensor(
         val byteOffset = weightsStartOffset + (elementIndex / 2).toULong()
         val byteIndex = (dataOffset + byteOffset).toInt()
         
-        if (elementIndex % 2 == 0) {
-            // Set lower 4 bits, preserve upper 4 bits
-            buffer[byteIndex] = ((buffer[byteIndex].toInt() and 0xF0) or (weight and 0x0F)).toByte()
-        } else {
-            // Set upper 4 bits, preserve lower 4 bits
-            buffer[byteIndex] = ((buffer[byteIndex].toInt() and 0x0F) or ((weight and 0x0F) shl 4)).toByte()
-        }
+        val bitOffset = if (elementIndex % 2 == 0) 0 else 4
+        buffer[byteIndex] = buffer[byteIndex].withBits(weight, bitOffset, 4)
     }
 
     /**

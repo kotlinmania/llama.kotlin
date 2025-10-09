@@ -252,6 +252,134 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
             return qRes to rRes
         }
 
+        private data class UInt128(var hi: ULong, var lo: ULong) {
+            fun isZero(): Boolean = hi == 0uL && lo == 0uL
+            fun compare(other: UInt128): Int = when {
+                hi != other.hi -> if (hi > other.hi) 1 else -1
+                lo != other.lo -> if (lo > other.lo) 1 else -1
+                else -> 0
+            }
+            fun bitLength(): Int {
+                if (hi != 0uL) return 128 - hi.countLeadingZeroBits()
+                if (lo != 0uL) return 64 - lo.countLeadingZeroBits()
+                return 0
+            }
+            fun shl(bits: Int): UInt128 {
+                if (bits <= 0) return copy()
+                if (bits >= 128) return UInt128(0u, 0u)
+                return when {
+                    bits >= 64 -> UInt128(lo shl (bits - 64), 0u)
+                    else -> {
+                        val newHi = (hi shl bits) or (lo shr (64 - bits))
+                        val newLo = lo shl bits
+                        UInt128(newHi, newLo)
+                    }
+                }
+            }
+            fun shr(bits: Int): UInt128 {
+                if (bits <= 0) return copy()
+                if (bits >= 128) return UInt128(0u, 0u)
+                return when {
+                    bits >= 64 -> UInt128(0u, hi shr (bits - 64))
+                    else -> {
+                        val newLo = (lo shr bits) or (hi shl (64 - bits))
+                        val newHi = hi shr bits
+                        UInt128(newHi, newLo)
+                    }
+                }
+            }
+            fun subtractAssign(other: UInt128) {
+                val loTmp = lo
+                lo -= other.lo
+                val borrow = if (loTmp < other.lo) 1uL else 0uL
+                hi = hi - other.hi - borrow
+            }
+            fun orBit(bit: Int) {
+                require(bit in 0..127)
+                if (bit >= 64) {
+                    hi = hi or (1uL shl (bit - 64))
+                } else {
+                    lo = lo or (1uL shl bit)
+                }
+            }
+            fun copy(): UInt128 = UInt128(hi, lo)
+        }
+
+        private fun HPC16x8.toUInt128(): UInt128 {
+            val (hi, lo) = hiLoULong(this)
+            return UInt128(hi, lo)
+        }
+
+        private fun fromUInt128(value: UInt128): HPC16x8 {
+            val limbs = UShortArray(8)
+            var tmpLo = value.lo
+            for (i in 0..3) {
+                limbs[i] = (tmpLo and 0xFFFFu).toUShort()
+                tmpLo = tmpLo shr 16
+            }
+            var tmpHi = value.hi
+            for (i in 4..7) {
+                limbs[i] = (tmpHi and 0xFFFFu).toUShort()
+                tmpHi = tmpHi shr 16
+            }
+            return HPC16x8(limbs)
+        }
+
+        fun mul128(a: HPC16x8, b: HPC16x8): Pair<HPC16x8, HPC16x8> {
+            val acc = UIntArray(16) { 0u }
+            for (i in 0..7) {
+                var carry = 0uL
+                val ai = a.limb(i).toULong()
+                for (j in 0..7) {
+                    val idx = i + j
+                    val prod = ai * b.limb(j).toULong() + acc[idx].toULong() + carry
+                    acc[idx] = (prod and 0xFFFFu).toUInt()
+                    carry = prod shr 16
+                }
+                var k = i + 8
+                while (carry != 0uL && k < 16) {
+                    val sum = acc[k].toULong() + carry
+                    acc[k] = (sum and 0xFFFFu).toUInt()
+                    carry = sum shr 16
+                    k++
+                }
+            }
+            val loLimbs = UShortArray(8) { acc[it].toUShort() }
+            val hiLimbs = UShortArray(8) { acc[it + 8].toUShort() }
+            return HPC16x8(loLimbs) to HPC16x8(hiLimbs)
+        }
+
+        fun mulHi128(a: HPC16x8, b: HPC16x8): HPC16x8 = mul128(a, b).second
+
+        fun umul128(a: ULong, b: ULong): Pair<ULong, ULong> {
+            val result = mul64x64To128(HPC16x4.fromULong(a), HPC16x4.fromULong(b))
+            val (hi, lo) = hiLoULong(result)
+            return hi to lo
+        }
+
+        fun divmod128(num: HPC16x8, den: HPC16x8): Pair<HPC16x8, HPC16x8> {
+            val divisor = den.toUInt128()
+            require(!divisor.isZero()) { "division by zero" }
+            val remainder = num.toUInt128()
+            if (remainder.compare(divisor) < 0) return zero() to num.copy()
+
+            var rem = remainder.copy()
+            var shift = remainder.bitLength() - divisor.bitLength()
+            var shiftedDiv = divisor.shl(shift)
+            var quotient = UInt128(0u, 0u)
+
+            while (shift >= 0) {
+                if (rem.compare(shiftedDiv) >= 0) {
+                    rem.subtractAssign(shiftedDiv)
+                    quotient.orBit(shift)
+                }
+                shiftedDiv = shiftedDiv.shr(1)
+                shift--
+            }
+            return fromUInt128(quotient) to fromUInt128(rem)
+        }
+
+        fun bitLength(value: HPC16x8): Int = value.toUInt128().bitLength()
         // (removed raw clz16; normalization uses arithmetic-only clz)
 
         // Note: all limb shifts must route through ArrayBitShifts/BitShiftEngine.

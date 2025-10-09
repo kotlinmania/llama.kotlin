@@ -31,7 +31,8 @@ object SwAR {
     private inline fun umod(x: UInt, d: UInt): UInt = x - d * (x / d)
 
     // Fast arithmetic-only helpers using exact FP reciprocals for powers of two (no bitwise).
-    // Double has 53-bit mantissa; for 32-bit unsigned inputs these are exact for 256^k divisors.
+    // Double has a 53-bit mantissa; multiplying a 32-bit unsigned value by these reciprocals
+    // followed by truncation is exact (no rounding error) for 256^k divisors.
     private const val INV_256 = 1.0 / 256.0
     private const val INV_65536 = 1.0 / 65536.0
 

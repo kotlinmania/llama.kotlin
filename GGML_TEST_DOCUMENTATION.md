@@ -184,9 +184,9 @@ Maintains baseline results to prevent performance/accuracy regressions:
 ./gradlew allTests
 
 # Run specific test classes
-./gradlew nativeTest --tests "*GGMLExtendedOpsTest*"
-./gradlew nativeTest --tests "*GGMLPerformanceBenchmarkTest*"
-./gradlew nativeTest --tests "*GGMLStandardizedQuantizationTest*"
+./gradlew macosArm64Test --tests "*GGMLExtendedOpsTest*"
+./gradlew macosArm64Test --tests "*GGMLPerformanceBenchmarkTest*"
+./gradlew macosArm64Test --tests "*GGMLStandardizedQuantizationTest*"
 ```
 
 ### Test Configuration

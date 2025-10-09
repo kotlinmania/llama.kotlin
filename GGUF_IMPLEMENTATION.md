@@ -128,7 +128,7 @@ src/nativeMain/kotlin/ai/solace/llamakotlin/gguf/
 ├── ModelLoader.kt      # High-level loading interface
 └── GGUFExample.kt      # Usage example
 
-src/nativeTest/kotlin/ai/solace/llamakotlin/gguf/
+src/commonTest/kotlin/ai/solace/llamakotlin/gguf/
 ├── TestGGUFGenerator.kt    # Test file generator
 ├── GGUFTest.kt            # Core functionality tests
 └── GGUFIntegrationTest.kt # Integration tests

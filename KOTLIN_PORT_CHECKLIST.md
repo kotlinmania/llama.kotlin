@@ -10,10 +10,10 @@ This checklist is based on the current state of the Kotlin Native port of llama.
   - [x] Setup project structure following Kotlin conventions
 
 - [~] Analyze C/C++ Codebase
-  - [~] Create a detailed map of all C/C++ files and their dependencies (key core, CPU, Metal components and their roles mapped in CPP_CORE_ANALYSIS.md)
-  - [~] Identify platform-specific code (Metal, AVX, etc.) (Metal backend structure analyzed; CPU SIMD usage in ggml.c noted in CPP_CORE_ANALYSIS.md)
-  - [x] Document all external dependencies (core ggml, CPU, and Metal paths found to be largely self-contained, as noted in CPP_CORE_ANALYSIS.md)
-  - [x] Separate code related to supported backends (CPU, Metal) from unsupported backends (GPU backends moved to archive)
+  - [~] Create a detailed map of all C/C++ files and their dependencies (key core components captured in CPP_CORE_ANALYSIS.md)
+  - [~] Identify platform-specific code (Metal, AVX, etc.) for future reference (not currently targeted)
+  - [x] Document all external dependencies (core ggml and CPU paths are largely self-contained, as noted in CPP_CORE_ANALYSIS.md)
+  - [x] Separate code related to current CPU support from archived GPU backends (legacy GPU backends removed Oct 2025)
 
 - [x] Design Kotlin Native Architecture
   - [x] Design package structure (ai.solace.llamakotlin.*)
@@ -78,13 +78,15 @@ This checklist is based on the current state of the Kotlin Native port of llama.
   - [ ] Implement graph optimization
 
 - [~] Implement Quantization Support
-  - [x] Implement 1.5-bit integer quantization (BitNet 1.58)
+  - [~] Implement 1.5-bit integer quantization (BitNet 1.58)
     - [x] Defined BitNet 1.58 block structure (F16 scale + packed ternary values, type.byteSize = 10).
     - [x] Implemented data accessors for BitNet 1.58 blocks (`getBitNet158BlockScale`, `getBitNet158TernaryWeight`, `setBitNet158TernaryWeight`).
     - [x] Implemented ternary value quantization/dequantization with scale-based thresholds.
     - [x] Implemented efficient base-3 packing (5 ternary values per byte).
     - [x] Added dot product operations (`computeDotProductBitNet158F32`, `computeDotProductBitNet158BitNet158`).
-    - [x] Comprehensive test suite with accuracy validation and edge case testing.
+    - [x] Added HPC128 utilities to support LUT/bias transforms in Kotlin (Oct 7, 2025).
+    - [ ] Mirror merge-dev BitNet LUT + bias transform (`ggml_bitnet_transform_tensor`) to drive ternary packing and matmul parity.
+    - [ ] Regenerate BitNet fixtures/tests once LUT path is ported.
   - [ ] Implement 2-bit integer quantization
   - [ ] Implement 3-bit integer quantization
   - [x] Implement 4-bit integer quantization (Q4_0 focused)
@@ -107,8 +109,14 @@ This checklist is based on the current state of the Kotlin Native port of llama.
       - [x] Refactored `computeMatMul` to use the optimized dot product for (Q4_1 x F32 -> F32) cases.
       - [x] Implemented optimized dot product for the symmetric F32 x Q4_1 case (`computeDotProductF32Q41`).
       - [x] Implemented direct quantized Q4_1 x Q4_1 operations (`computeDotProductQ41Q41`).
-  - [ ] Implement 5-bit integer quantization
-  - [ ] Implement 6-bit integer quantization
+  - [~] Implement 5-bit integer quantization
+    - [x] Initial Kotlin Q5_K block quantize/dequant paths with klang bit helpers.
+    - [ ] Align Q5_K scale/min packing with merge-dev `get_scale_min_k4` layout (add high-bit bitplane + mins).
+    - [ ] Regenerate tests/fixtures for Q5_K once packing is corrected.
+  - [~] Implement 6-bit integer quantization
+    - [x] Initial Kotlin Q6_K block quantize/dequant paths with klang bit helpers.
+    - [ ] Port merge-dev `make_qx_quants` + signed scale handling; ensure dequant multiplies by signed sub-block scales.
+    - [ ] Regenerate tests/fixtures for Q6_K after parity pass.
   - [x] Implement 8-bit integer quantization (Q8_0 focused)
     - [x] Defined Q8_0 block structure (F16 scale + 32xI8 weights, type.byteSize = 34).
     - [x] Implemented data accessors for Q8_0 blocks (`getQ8_0BlockScale`, `getQ8_0Weight`).
@@ -120,6 +128,13 @@ This checklist is based on the current state of the Kotlin Native port of llama.
       - [x] Implemented optimized dot product for the symmetric F32 x Q8_0 case (`computeDotProductF32Q80`).
       - [x] Implemented direct quantized Q8_0 x Q8_0 operations (`computeDotProductQ80Q80`).
       - [x] Implemented mixed quantized Q8_0 x Q4_0 operations (`computeDotProductQ80Q40`).
+  - [~] Implement K-Quant family (Q2_K/Q3_K/Q4_K/Q5_K/Q6_K)
+    - [x] Routed all K-Quant pack/unpack paths through klang BitShift/ArithmeticBitwiseOps helpers (Oct 7, 2025).
+    - [x] Added shared bitfield/packing primitives (`BitPrimitives`, `PackOps`) and memory/vector helpers to support parity work (Oct 7, 2025).
+    - [x] Introduced `QuantizationHelper` with Kotlin ports of merge-dev `make_qkx2`, `make_qkx3`, `make_qp`, `make_qx`, and `make_q3_quants` (Oct 7-8, 2025).
+    - [ ] Port merge-dev `make_qkx{2,3}_quants` flows for scale/min selection (Q2_K/Q3_K/Q4_K).
+    - [ ] Update `GGMLTypes` K-Quant accessors to use shared helper layer and match C packing.
+    - [ ] Cross-check Kotlin vs merge-dev outputs on deterministic tensors; store fixtures for regression tests.
   - [x] **Comprehensive Matrix Multiplication Optimization** (Issue #48)
     - [x] Implemented symmetric F32 x Q_type optimizations replacing expensive dequantization fallbacks
       - [x] `computeDotProductF32Q40` for F32 x Q4_0 operations  
@@ -194,17 +209,18 @@ Why this matters now
 - Eliminates subdeterministic float drift (esp. quantization math) before SIMD/GPU paths
 - Provides a deterministic reference path for future backends (JVM Vector API, NEON, Metal)
 
-## Phase 4: Metal Backend Implementation
+## Phase 4: Backend Extensibility Planning (Deferred)
 
-- [ ] Translate Metal-Specific Code
-  - [ ] Implement Metal shader code in appropriate format
-  - [ ] Implement Metal backend for tensor operations
-  - [ ] Implement Metal-specific memory management
+- [ ] Define accelerator-agnostic backend interfaces and registration contracts
+  - [ ] Document requirements for GPU/SIMD backends drawing from merge-dev sources
+  - [ ] Keep Kotlin implementations CPU-first until accelerator scope is approved
 
-- [ ] Optimize Metal Performance
-  - [ ] Implement efficient Metal command buffer usage
-  - [ ] Optimize Metal compute pipeline
-  - [ ] Implement Metal-specific optimizations for Apple Silicon
+- [ ] Prototype CPU streaming primitives that accelerators can reuse
+  - [ ] Evaluate coroutine-based buffer arenas (see CHANNEL_ARENA_SPEC)
+  - [ ] Validate zero-copy pathways with existing quantization workflows
+
+- [ ] Revisit GPU/SIMD integration after CPU parity and tests are locked
+  - [ ] Capture lessons learned from kcoro experiments for any future accelerator work
 
 ## Phase 5: LLaMA Model Implementation
 
@@ -391,42 +407,42 @@ Why this matters now
 
 ## Next Steps
 
-With foundational memory management, data access, and initial quantization types (Q8_0, Q4_0, Q4_1) in place, the immediate priorities are:
+With the shared klang primitives in place, the remaining work focuses on merge-dev parity, refreshed validation, and staging the backends. Immediate priorities:
 
-1.  **Advance Quantization Support:**
-    *   Implement a K-Quant type (e.g., Q4_K or Q2_K), including its structure, accessors, quant/dequant routines.
-    *   Implement optimized dot product routines for symmetric cases (e.g., F32 x Q_type for Q8_0, Q4_0, Q4_1) and for new K-Quant types.
-    *   Test quantization accuracy for all newly supported types (e.g., Q4_1 accuracy test is pending).
+1.  **Merge-Dev Quantization Parity**
+    *   Migrate Q5_K/Q6_K (and any remaining K-Quant paths) to `QuantizationHelper`, matching `get_scale_min_k4`, signed scales, and high-bit packing.
+    *   Update `GGMLTypes` accessors to use `BitPrimitives`/`PackOps` so read/write paths match the C layout.
+    *   Mirror `ggml_bitnet_transform_tensor` (LUT + bias) so BitNet blocks are byte-identical before matmul.
 
-2.  **Strengthen Core Operations and Testing:**
-    *   Implement and write unit tests for remaining core tensor operations in `GGMLComputeOps.kt` (e.g., common activation functions like SILU; normalization layers like RMSNorm) for F32/F16 types. (Note: GELU/RELU tests were planned next).
-    *   Ensure all basic compute operations have proper handling or clear strategies for all fundamental (non-quantized) data types (I8, I32, I64).
-    *   Begin work on "Implement graph optimization" from Phase 2.
+2.  **Fixture & Test Regeneration**
+    *   Generate golden K-Quant/BitNet blocks from the merge-dev C reference and add byte-for-byte regression tests.
+    *   Re-enable `macosArm64Test` (and other native suites) using the refreshed fixtures; keep coroutine benchmarks in the loop.
 
-3.  **Initiate CPU Backend Development (Phase 3):**
-    *   Formalize the CPU backend structure.
-    *   Start integrating current `GGMLComputeOps.kt` logic into this backend.
-    *   Investigate and implement initial multi-threading for graph computation on CPU.
+3.  **Documentation & Checklist**
+    *   Update quantization/bitwise design docs and `KOTLIN_PORT_STATUS.md` to reflect parity progress and new helper modules.
+    *   Keep this checklist in sync after each milestone and add any additional helper documentation as needed.
 
-4.  **Begin Foundational GGUF Support (Phase 6):**
-    *   Start implementing GGUF file parsing (reading headers, tensor info, quantization types). This is crucial for loading models.
+4.  **Backend Enablement**
+    *   Resume CPU backend formalization (threading/SIMD) once quantizer parity is complete.
+    *   Stage the GGUF parsing refresh so model loading consumes the corrected tensor layouts.
 
-5.  **(Stretch Goal / Parallel) Initial Metal Backend Exploration (Phase 4):**
-    *   Begin basic Metal context setup and experiment with compiling/running a simple Metal compute shader for a single ggml operation.
+5.  **Backend & kcoro Follow-Up**
+    *   Prototype coroutine-friendly block streaming on the CPU backend after parity is confirmed.
+    *   Expand `kcoroBench` coverage to include post-parity kernels and track Kotlin vs kcoro performance.
 
 ## Build Environment
 
 The project is set up as a Kotlin Multiplatform project with the following structure:
 
-- **Root Directory**: /Volumes/stuff/Projects/SolaceCore/tmp/llama.kotlin
+- **Root Directory**: /Volumes/stuff/Projects/llama.kotlin
 - **Source Directory**: src/nativeMain/kotlin/ai/solace/llamakotlin
 - **Build Configuration**: build.gradle.kts, settings.gradle.kts
-- **Design Documents**: TENSOR_OPERATIONS_DESIGN.md, GGML_COMPUTE_OPS_DESIGN.md
+- **Design Documents**: TENSOR_OPERATIONS_DESIGN.md, GGML_COMPUTE_OPS_DESIGN.md, GGUF_IMPLEMENTATION.md (in progress)
 - **Status Document**: KOTLIN_PORT_STATUS.md
 
-The project targets macOS platforms (both x64 and arm64) and uses Gradle for building. The entry point for the application is defined as "ai.solace.llamakotlin.main".
+The project targets macOS platforms (both x64 and arm64) and uses Gradle for building. Key commands: `./gradlew build -x macosArm64Test` (current green) and `./gradlew macosArm64Test` (failing until fixtures are regenerated). KCoro benchmarks run via `./gradlew kcoroBench`.
 
-Note: C/C++ build files (CMakeLists.txt, CMakePresets.json, Makefile) and non-Kotlin related build tools (cmake directory) have been moved to the archive/build-tools folder. GPU backends (CUDA, SYCL, Vulkan, etc.) have been moved to the archive folder. Instead of symbolic links, actual copies of header files are used in the spm-headers directory for Windows compatibility.
+Note: All legacy llama.cpp archives, GPU backends, and examples were removed in October 2025. The repo now retains only the Kotlin/Native sources, kcoro runtimes under `external/`, klang in `src/commonMain/kotlin/ai/solace/klang`, and header snapshots in `spm-headers/` for archival reference (e.g., potential Swift/Metal integration later).
 
 ## Challenges and Considerations
 
@@ -435,5 +451,5 @@ Some key challenges and considerations for the Kotlin Native port:
 1. **Memory Management**: Kotlin Native has a different memory model than C++, which will require careful design for efficient tensor operations
 2. **Performance**: Ensuring that the Kotlin implementation maintains comparable performance to the C++ original
 3. **Interoperability**: Potentially allowing interoperability with the original C++ code for components that are difficult to port
-4. **Metal Integration**: Implementing the Metal backend for Apple Silicon optimization
+4. **Future Accelerator Integration**: Evaluate GPU/SIMD backends once the CPU path is fully validated
 5. **Quantization**: Implementing efficient quantization support in Kotlin Native

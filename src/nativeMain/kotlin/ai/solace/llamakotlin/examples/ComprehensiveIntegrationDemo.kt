@@ -61,7 +61,6 @@ class ComprehensiveIntegrationDemo {
                 features = DemoTextUtilities.FeatureLists.backendArchitectureFeatures,
                 statusIcon = "✅ Flexible backend system:"
             ))
-            appendLine("  • Metal backend foundations (stub)")
             appendLine("  • Graph allocator with inplace optimization")
             appendLine("  • Multi-backend computation scheduling")
             

@@ -23,11 +23,20 @@ class ArithmeticBitwiseOps(
         require(bitLength in 1..32) { "Bit length must be between 1 and 32" }
     }
 
+    // Precompute powers of two up to the configured bit length for reuse
+    private val pow2Cache: LongArray = LongArray(bitLength + 1).also { cache ->
+        cache[0] = 1L
+        for (i in 1..bitLength) {
+            cache[i] = cache[i - 1] * 2L
+        }
+    }
+
     // Arithmetic-only power-of-two (no bit shifts)
     private fun pow2(n: Int): Long {
         if (n <= 0) return 1L
-        var r = 1L
-        repeat(n) { r *= 2L }
+        if (n <= bitLength) return pow2Cache[n]
+        var r = pow2Cache[bitLength]
+        repeat(n - bitLength) { r *= 2L }
         return r
     }
 

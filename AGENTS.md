@@ -4,7 +4,7 @@ This file provides guidance for future agents working on the Kotlin port of `lla
 It summarizes the current project state and lists recommended next steps. Before starting new work, read `KOTLIN_PORT_CHECKLIST.md` in the repository root for a detailed roadmap.
 
 ## Project Overview
-- **Goal**: Create a Kotlin/Native implementation of llama.cpp, focusing on CPU and Apple Metal backends
+- **Goal**: Create a Kotlin/Native implementation of llama.cpp with an optimized CPU backend (future accelerators can plug into the same abstractions)
 - **Current Status**: Phase 3-4 (Advanced Core Implementation & Backend Development) with substantial infrastructure complete
 - The repository is a work‐in‐progress port of `llama.cpp` to Kotlin/Native
 - Kotlin sources live under `src/nativeMain/kotlin/ai/solace/llamakotlin`
@@ -69,15 +69,16 @@ It summarizes the current project state and lists recommended next steps. Before
   - Integration tests for end-to-end workflows and mathematical expressions
   - Reference validation framework with analytical validation
   - Memory stress testing and allocation efficiency validation
+  - kcoro ping-pong benchmarks remain macOS arm64-specific under `src/macosArm64Test/...`.
 
 ### 🔄 In Progress  
 - **Additional Quantization**: K-Quant types (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K)
 - **CPU Backend Formalization**: Structured CPU backend with multi-threading support
 - **Model Architecture Implementation**: LLaMA model structures and inference pipeline
-- **Metal Backend Foundation**: Basic Metal context and shader infrastructure
+- **Backend Extensibility Research**: Define hooks for future accelerator integrations (Metal, SIMD, etc.)
 
 ### 📋 Testing Infrastructure
-- Comprehensive unit tests for core operations under `src/nativeTest/kotlin`
+- Comprehensive unit tests for core operations under `src/commonTest/kotlin`
 - Quantization accuracy tests with MSE and MAD validation
 - Memory allocator tests for graph-level memory planning
 - **Destination-based compute operations testing** with comprehensive validation
@@ -121,7 +122,7 @@ It summarizes the current project state and lists recommended next steps. Before
   Alternatively set `GRADLE_OPTS="-Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts"` to use the system certificate store
 - **Target Platforms**: Currently targets macOS (x64 and arm64) - configured in `build.gradle.kts`
 - **Test Structure**: 
-  - Unit tests: `src/nativeTest/kotlin/ai/solace/llamakotlin/core/`
+  - Unit tests: `src/commonTest/kotlin/ai/solace/llamakotlin/core/`
   - Test categories: Core operations, memory allocation, quantization accuracy, data accessors
   - Run tests: `./gradlew allTests` (when build system is accessible)
 - **C++ Legacy**: C++ tests under `tests/` are not required for the Kotlin port
@@ -151,10 +152,10 @@ It summarizes the current project state and lists recommended next steps. Before
    - Extend matrix multiplication optimization framework to cover new quantization formats
    - Maintain comprehensive testing coverage for accuracy and performance
 
-4. **Metal Backend Foundation**
-   - Basic Metal context setup and shader compilation infrastructure
-   - Simple Metal compute shader for proof-of-concept operations
-   - Integration planning with existing tensor operations
+4. **Backend Extensibility Hooks**
+   - Document backend registration seams for future accelerators
+   - Prototype coroutine-friendly buffer streaming in CPU space first
+   - Defer platform-specific kernels until CPU parity + tests are complete
 
 ### 🔄 Mid-term Goals
 1. **Advanced Model Support** (Phase 5)
@@ -163,8 +164,8 @@ It summarizes the current project state and lists recommended next steps. Before
    - Add grammar-constrained generation capabilities
 
 2. **Enhanced Backend Development**
-   - Metal backend implementation for Apple Silicon optimization
    - Advanced CPU optimizations and multi-threading improvements
+   - Evaluate accelerator requirements (Metal, SIMD) after CPU baseline hardening
    - Performance benchmarking against reference implementations
 
 3. **Production Readiness** (Phase 7)
@@ -176,7 +177,7 @@ It summarizes the current project state and lists recommended next steps. Before
 - **Memory Management Patterns**: See `GGMLAlloc.kt` for tensor and graph allocation strategies  
 - **Quantization Implementation**: Reference `GGMLComputeOps.kt` for Q8_0/Q4_0/Q4_1 patterns
 - **Data Access Patterns**: See `GGMLTensor` accessor methods for ByteArray-based storage
-- **Testing Patterns**: Follow existing test structure in `src/nativeTest/kotlin/` 
+- **Testing Patterns**: Follow existing test structure in `src/commonTest/kotlin/` 
 - **Utility Patterns**: Use `GGMLUtilities.kt` for formatting, display, and ByteArray operations
 - **DRY Implementation**: Reference centralized utilities to avoid code duplication:
   - `GGMLTensorUtils.calculateTotalSize()` for tensor size calculations
@@ -220,7 +221,7 @@ fun computeNewOp(graphAllocator: GGMLGraphAllocator, context: GGMLContext,
 ```
 
 ## Project Scope and Backend Support
-- **Supported Backends**: CPU (primary focus) and Apple Metal for macOS/iOS
+- **Supported Backends**: CPU (primary focus); additional accelerators are deferred
 - **Archived Backends**: CUDA, hipBLAS, Vulkan, SYCL, MUSA, and CANN backends moved to `archive/` 
 - **Platform Targets**: macOS (x64 and arm64) with future support for other Kotlin/Native targets
 - **Memory Model**: Adapted for Kotlin/Native's memory management (different from C++ original)
@@ -240,14 +241,14 @@ The project includes research into hybrid architectures beyond the core llama.cp
 - **Tensor Operations**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLOps.kt`
 - **Computation Logic**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLComputeOps.kt`
 - **Graph Execution**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLGraph.kt`
-- **Test Suite**: `src/nativeTest/kotlin/ai/solace/llamakotlin/core/`
+- **Test Suite**: `src/commonTest/kotlin/ai/solace/llamakotlin/core/`
 
 ## Challenges and Considerations
 - **Memory Management**: Kotlin/Native memory model requires different patterns than C++
 - **Performance**: Maintaining comparable performance to C++ original while leveraging Kotlin strengths
 - **Interoperability**: Potential C interop for performance-critical sections (evaluate on case-by-case basis)
 - **SIMD Limitations**: Kotlin/Native has limited SIMD support compared to C++ (explore alternatives)
-- **Metal Integration**: Implementing Metal backend for Apple Silicon optimization
+- **Accelerator Integration**: Future task once CPU, klang, and ggml parity are complete
 - **Quantization Precision**: Ensuring accuracy across all quantization formats
 
 Follow this guide when extending the Kotlin port. Keep commits focused and include relevant tests whenever possible. For detailed implementation status, always reference `KOTLIN_PORT_CHECKLIST.md` for the most current progress information.

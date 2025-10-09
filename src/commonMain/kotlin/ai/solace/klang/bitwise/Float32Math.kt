@@ -1,6 +1,7 @@
 package ai.solace.klang.bitwise
 
 import kotlin.math.abs
+import kotlin.math.floor
 
 /**
  * Software IEEE-754 float32 multiply using integer bit manipulation and
@@ -22,6 +23,13 @@ object Float32Math {
     fun add(a: Float, b: Float): Float = Float.fromBits(addBits(a.toRawBits(), b.toRawBits()))
 
     fun sub(a: Float, b: Float): Float = Float.fromBits(subBits(a.toRawBits(), b.toRawBits()))
+
+    fun fma(a: Float, b: Float, c: Float): Float = add(mul(a, b), c)
+
+    fun lrint(value: Float): Long = roundToNearestEven(value.toDouble()).toLong()
+    fun lrint(value: Double): Long = roundToNearestEven(value).toLong()
+
+    fun nearbyint(value: Float): Float = roundToNearestEven(value.toDouble()).toFloat()
 
     fun div(a: Float, b: Float): Float = Float.fromBits(divBits(a.toRawBits(), b.toRawBits()))
 
@@ -174,6 +182,17 @@ object Float32Math {
         val eUnb = exp - 1023
         val m = (1L shl 52) or frac
         return packDoubleToFloat(sign, eUnb, m and ((1L shl 52) - 1))
+    }
+
+    private fun roundToNearestEven(value: Double): Double {
+        if (value.isNaN() || value.isInfinite()) return value
+        val lower = floor(value)
+        val diff = value - lower
+        return when {
+            diff > 0.5 -> lower + 1.0
+            diff < 0.5 -> lower
+            else -> if ((lower % 2.0) == 0.0) lower else lower + 1.0
+        }
     }
 
     private fun packDoubleToFloat(sign: Int, eUnb: Int, mantNoImplicit: Long): Int {

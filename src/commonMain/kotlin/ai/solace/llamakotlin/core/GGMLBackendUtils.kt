@@ -13,13 +13,7 @@ package ai.solace.llamakotlin.core
 enum class GGMLBackendSelectionStrategy {
     /** Always use CPU backend */
     CPU_ONLY,
-    /** Always use Metal backend (if available) */
-    METAL_ONLY,
-    /** Use Metal for large operations, CPU for small ones */
-    HYBRID_SIZE_BASED,
-    /** Use Metal for supported ops, CPU for unsupported ones */
-    HYBRID_OP_BASED,
-    /** Automatic selection based on operation and tensor properties */
+    /** Automatic selection (currently identical to CPU_ONLY until new backends exist) */
     AUTO
 }
 
@@ -40,22 +34,10 @@ class GGMLBackendManager {
      * Initialize available backends
      */
     private fun initializeBackends() {
-        // Initialize CPU backend (always available)
         val cpuBackend = GGMLCpuBackend()
         availableBackends[cpuBackend.getName()] = cpuBackend
+        primaryBackend = cpuBackend
         fallbackBackend = cpuBackend
-        
-        // Try to initialize Metal backend
-        val metalBackend = metalBackendInstance()
-        if (metalBackend != null) {
-            availableBackends[metalBackend.getName()] = metalBackend
-            primaryBackend = metalBackend
-        }
-        
-        // Set primary backend to CPU if Metal failed
-        if (primaryBackend == null) {
-            primaryBackend = cpuBackend
-        }
     }
     
     /**
@@ -98,76 +80,7 @@ class GGMLBackendManager {
      * Select the best backend for a given operation
      */
     fun selectBackend(tensor: GGMLTensor): GGMLBackend? {
-        return when (selectionStrategy) {
-            GGMLBackendSelectionStrategy.CPU_ONLY -> fallbackBackend
-            GGMLBackendSelectionStrategy.METAL_ONLY -> primaryBackend
-            GGMLBackendSelectionStrategy.HYBRID_SIZE_BASED -> selectBackendBySize(tensor)
-            GGMLBackendSelectionStrategy.HYBRID_OP_BASED -> selectBackendByOperation(tensor)
-            GGMLBackendSelectionStrategy.AUTO -> selectBackendAuto(tensor)
-        }
-    }
-    
-    /**
-     * Select backend based on tensor size
-     */
-    private fun selectBackendBySize(tensor: GGMLTensor): GGMLBackend? {
-        val elementCount = tensor.numElements()
-        val threshold = 1000L // Arbitrary threshold for demonstration
-        
-        return if (elementCount > threshold && primaryBackend != fallbackBackend) {
-            // Use Metal for large tensors
-            if (primaryBackend?.supportsOp(tensor) == true) {
-                primaryBackend
-            } else {
-                fallbackBackend
-            }
-        } else {
-            // Use CPU for small tensors
-            fallbackBackend
-        }
-    }
-    
-    /**
-     * Select backend based on operation type
-     */
-    private fun selectBackendByOperation(tensor: GGMLTensor): GGMLBackend? {
-        // Check if primary backend supports the operation
-        if (primaryBackend?.supportsOp(tensor) == true) {
-            return primaryBackend
-        }
-        
-        // Fall back to CPU
-        return if (fallbackBackend?.supportsOp(tensor) == true) {
-            fallbackBackend
-        } else {
-            null
-        }
-    }
-    
-    /**
-     * Automatic backend selection based on multiple factors
-     */
-    private fun selectBackendAuto(tensor: GGMLTensor): GGMLBackend? {
-        // Combine size and operation considerations
-        val elementCount = tensor.numElements()
-        val sizeThreshold = 10000L
-        
-        // For very small operations, always use CPU
-        if (elementCount < 100L) {
-            return fallbackBackend
-        }
-        
-        // For large operations that Metal supports, use Metal
-        if (elementCount > sizeThreshold && primaryBackend?.supportsOp(tensor) == true) {
-            return primaryBackend
-        }
-        
-        // For medium operations, check operation type preference
-        return when (tensor.op) {
-            GGMLOp.MUL_MAT -> primaryBackend?.takeIf { it.supportsOp(tensor) } ?: fallbackBackend
-            GGMLOp.ADD, GGMLOp.MUL -> primaryBackend?.takeIf { it.supportsOp(tensor) } ?: fallbackBackend
-            else -> fallbackBackend
-        }
+        return fallbackBackend
     }
     
     /**
@@ -177,12 +90,7 @@ class GGMLBackendManager {
         val oldStrategy = selectionStrategy
         strategy?.let { setSelectionStrategy(it) }
         
-        val backend = when (selectionStrategy) {
-            GGMLBackendSelectionStrategy.CPU_ONLY -> fallbackBackend
-            GGMLBackendSelectionStrategy.METAL_ONLY -> primaryBackend
-            else -> primaryBackend // Default to primary backend for graph creation
-        }
-        
+        val backend = fallbackBackend
         val graph = createGraph(size, backend)
         setSelectionStrategy(oldStrategy) // Restore old strategy
         return graph
@@ -213,17 +121,14 @@ class GGMLBackendManager {
         info["primaryBackend"] = primaryBackend?.getName() ?: "None"
         info["fallbackBackend"] = fallbackBackend?.getName() ?: "None" 
         info["selectionStrategy"] = selectionStrategy.name
-        
+
         // Add backend-specific info
         availableBackends.forEach { (name, backend) ->
             info["${name}_guid"] = backend.getGuid()
             info["${name}_bufferType"] = backend.getDefaultBufferType().getName()
             info["${name}_alignment"] = backend.getAlignment()
             info["${name}_maxSize"] = backend.getMaxSize()
-            
         }
-
-        metalDeviceInfo()?.let { info["Metal_deviceInfo"] = it }
         
         return info
     }

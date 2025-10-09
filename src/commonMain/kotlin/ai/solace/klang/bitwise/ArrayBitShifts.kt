@@ -1,5 +1,6 @@
 package ai.solace.klang.bitwise
 import ai.solace.klang.buffer.LimbBuffer
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -21,7 +22,7 @@ object ArrayBitShifts {
     private const val MIN_PAR_CHUNK: Int = 8192
 
     // Coroutines (multiplatform)
-    private val dispatcher = Dispatchers.Default
+    var parallelDispatcher: CoroutineDispatcher = Dispatchers.Default
 
     /**
      * In-place left shift of a little-endian IntArray of 16-bit limbs: a[from .. from+len-1].
@@ -30,22 +31,20 @@ object ArrayBitShifts {
     fun shl16LEInPlace(a: IntArray, from: Int, len: Int, s: Int, carryIn: Int = 0): ShiftResult {
         require(s in 0..15) { "s must be in 0..15" }
         if (len <= 0 || s == 0) return ShiftResult(carryIn and 0xFFFF, false)
+        val pow2s = ShiftTables16.POW2[s]
+        val mask16 = ShiftTables16.MASK16
+        val maskLowS = ShiftTables16.LOW_MASK[s]
         if (len >= VECTOR_THRESHOLD) return shl16ThreePass(a, from, len, s, carryIn)
         var carry = carryIn and 0xFFFF
         var sticky = false
         for (i in from until from + len) {
-            val cur = (a[i] and 0xFFFF).toLong()
+            val cur = (a[i] and mask16).toLong()
             val rs = eng16.leftShift(cur, s)
             val lowShifted = a16.normalize(rs.value).toInt()
-            // mask = (1 << s) - 1 via arithmetic-only
-            val pow2s = a32.leftShift(1L, s).toInt()
-            val mask = (pow2s - 1).coerceAtLeast(0)
-            val carryLow = if (mask == 0) 0 else (carry % (mask + 1))
+            val carryLow = if (maskLowS == 0) 0 else (carry % (maskLowS + 1))
             val combined = BitwiseOps.orArithmetic(lowShifted, carryLow)
             a[i] = (combined % BASE16)
-            // bits shifted out from cur become new carry
-            val carryMask = mask
-            carry = if (carryMask == 0) 0 else (rs.carry.toInt() % (carryMask + 1))
+            carry = if (maskLowS == 0) 0 else (rs.carry.toInt() % (maskLowS + 1))
         }
         return ShiftResult(carry and 0xFFFF, sticky)
     }
@@ -68,7 +67,7 @@ object ArrayBitShifts {
         val pow2s = ShiftTables16.POW2[s]
         val mask16 = ShiftTables16.MASK16
         val pow2_16_minus_s = ShiftTables16.POW2[16 - s]
-        val maskLowS = (pow2s - 1).coerceAtLeast(0)
+        val maskLowS = ShiftTables16.LOW_MASK[s]
 
         val lo = IntArray(len)
         val hi = IntArray(len)
@@ -96,7 +95,7 @@ object ArrayBitShifts {
                 val start = ck * chunkSize
                 val end = minOf(len, start + chunkSize)
                 if (start >= end) continue
-                launch(context = dispatcher) {
+                launch(context = parallelDispatcher) {
                     var i = start
                     while (i < end) {
                         val v = a[from + i] and mask16
@@ -115,7 +114,7 @@ object ArrayBitShifts {
                 val start = ck * chunkSize
                 val end = minOf(len, start + chunkSize)
                 if (start >= end) continue
-                launch(context = dispatcher) {
+                launch(context = parallelDispatcher) {
                     var i = start
                     var neighbor = if (i == 0) carryInNorm else {
                         if (i == start) boundaries[ck - 1] else hi[i - 1]
@@ -156,7 +155,7 @@ object ArrayBitShifts {
             idx++
         }
         // Pass C: combine with neighbor carry; carryIn feeds element 0
-        val maskLowS = (pow2s - 1).coerceAtLeast(0)
+        val maskLowS = ShiftTables16.LOW_MASK[s]
         var carry = carryIn and 0xFFFF
         idx = 0
         while (idx < len) {
@@ -176,20 +175,20 @@ object ArrayBitShifts {
     fun rsh16LEInPlace(a: IntArray, from: Int, len: Int, s: Int): ShiftResult {
         require(s in 0..15) { "s must be in 0..15" }
         if (len <= 0 || s == 0) return ShiftResult(0, false)
+        val pow2s = ShiftTables16.POW2[s]
+        val mask16 = ShiftTables16.MASK16
         if (len >= VECTOR_THRESHOLD) return rsh16ThreePass(a, from, len, s)
         var nextCarry = 0
         var sticky = false
         var carryOut = 0
         for (i in from + len - 1 downTo from) {
-            val cur = (a[i] and 0xFFFF).toLong()
+            val cur = (a[i] and mask16).toLong()
             val rs = eng16.unsignedRightShift(cur, s)
             val lowPart = a16.normalize(rs.value).toInt()
             // compute nextCarry * 2^(16-s) arithmetically
             val shiftHi = 16 - s
             val highPart = if (shiftHi == 0) nextCarry % 65536 else a32.leftShift(nextCarry.toLong(), shiftHi).toInt()
             val out = BitwiseOps.orArithmeticGeneral(lowPart, highPart)
-            // dropped = cur % 2^s
-            val pow2s = a32.leftShift(1L, s).toInt()
             val dropped = if (s == 0) 0 else (cur.toInt() % pow2s)
             if (i == from) carryOut = dropped
             sticky = sticky or (dropped != 0)
@@ -272,7 +271,7 @@ object ArrayBitShifts {
                 val start = ck * chunkSize
                 val end = minOf(len, start + chunkSize)
                 if (start >= end) continue
-                launch(context = dispatcher) {
+                launch(context = parallelDispatcher) {
                     var i = start
                     while (i < end) {
                         val v = a[from + i] and mask16
@@ -291,7 +290,7 @@ object ArrayBitShifts {
                 val end = minOf(len, start + chunkSize)
                 if (start >= end) continue
                 val nextChunkFirst = if (ck + 1 < chunks) firstDroppedPerChunk[ck + 1] else 0
-                launch(context = dispatcher) {
+                launch(context = parallelDispatcher) {
                     var i = start
                     while (i < end) {
                         val neighbor = if (i + 1 < end) {

@@ -102,11 +102,11 @@ This document provides a comprehensive summary of the testing infrastructure imp
 ./gradlew allTests
 
 # Run specific test categories  
-./gradlew nativeTest --tests "*ExtendedOpsTest*"
-./gradlew nativeTest --tests "*QuantizationTest*"
-./gradlew nativeTest --tests "*IntegrationTest*"
-./gradlew nativeTest --tests "*BenchmarkTest*"
-./gradlew nativeTest --tests "*ValidationTest*"
+./gradlew macosArm64Test --tests "*ExtendedOpsTest*"
+./gradlew macosArm64Test --tests "*QuantizationTest*"
+./gradlew macosArm64Test --tests "*IntegrationTest*"
+./gradlew macosArm64Test --tests "*BenchmarkTest*"
+./gradlew macosArm64Test --tests "*ValidationTest*"
 ```
 
 ### Expected Results

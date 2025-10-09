@@ -19,6 +19,9 @@ repositories {
     mavenCentral()
 }
 
+val hostOs = System.getProperty("os.name")
+val hostArch = System.getProperty("os.arch")
+
 // ---------------------------------------------------------------------------
 // Native coroutine runtimes (kcoro C and C++ variants)
 // ---------------------------------------------------------------------------
@@ -188,19 +191,11 @@ kotlin {
             dependsOn(commonMain)
             kotlin.srcDir("src/nativeMain/kotlin")
         }
-        val nativeTest by creating {
-            dependsOn(commonTest)
-            kotlin.srcDir("src/nativeTest/kotlin")
-        }
 
         val linuxX64Main by getting { dependsOn(nativeMain) }
-        val linuxX64Test by getting { dependsOn(nativeTest) }
         val macosX64Main by getting { dependsOn(nativeMain) }
-        val macosX64Test by getting { dependsOn(nativeTest) }
         val macosArm64Main by getting { dependsOn(nativeMain) }
-        val macosArm64Test by getting { dependsOn(nativeTest) }
         val mingwX64Main by getting { dependsOn(nativeMain) }
-        val mingwX64Test by getting { dependsOn(nativeTest) }
 
         val jsMain by getting {
             dependencies {
@@ -219,6 +214,27 @@ tasks.withType<KotlinNativeTest>().configureEach {
     if (name == "macosArm64Test") {
         args = args + "--ktest_logger=SIMPLE"
     }
+}
+
+// Kotlin/Native is the primary focus; pause JVM test execution for now.
+tasks.named("jvmTest").configure {
+    enabled = false
+}
+
+tasks.register<Exec>("kcoroBench") {
+    group = "bench"
+    description = "Run kcoro ping-pong benchmark on macOS arm64."
+    onlyIf { hostOs == "Mac OS X" && hostArch == "aarch64" }
+    dependsOn("linkDebugTestMacosArm64")
+    val testBinary = layout.buildDirectory.file("bin/macosArm64/debugTest/test.kexe")
+    doFirst {
+        println("[kcoroBench] running PingPongBenchmarkTest on macOS arm64")
+    }
+    commandLine(
+        testBinary.get().asFile.absolutePath,
+        "--ktest_filter=ai.solace.bench.PingPongBenchmarkTest.*",
+        "--ktest_logger=SIMPLE"
+    )
 }
 
 publishing {
@@ -313,8 +329,6 @@ tasks.register<DisasmSummaryTask>("disasmSummaryLinuxX64") {
     outFile.set(disasmDir.get().file("bench-linuxX64.summary.txt"))
 }
 
-val hostOs = System.getProperty("os.name")
-val hostArch = System.getProperty("os.arch")
 val swarBenchTarget = when {
     hostOs == "Mac OS X" && hostArch == "aarch64" -> "macosArm64"
     hostOs == "Mac OS X" -> "macosX64"

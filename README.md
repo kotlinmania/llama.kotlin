@@ -18,11 +18,17 @@ This project is a Kotlin/Native port of the original [llama.cpp](https://github.
 
 This is a **Kotlin/Native implementation** of llama.cpp, designed to bring the power of large language model inference to the Kotlin ecosystem with a focus on:
 
-- **CPU and Apple Metal backends** for optimal performance on supported hardware
+- **Optimized CPU backend** built on deterministic klang primitives
 - **Idiomatic Kotlin API** while maintaining compatibility with original concepts
 - **Memory-efficient tensor operations** adapted for Kotlin/Native's memory model
 - **Comprehensive quantization support** (Q8_0, Q4_0, Q4_1, BitNet 1.58, and K-Quant types Q2_K, Q3_K, Q4_K, Q5_K, Q8_K; Q6_K in progress)
 - **Automatic differentiation** for training and fine-tuning capabilities
+
+## Status Snapshot (October 7, 2025)
+
+- kcoro interop is now gated behind `expect/actual` wrappers: non-Apple targets receive inert stubs while macOS/Arm64 keeps the native bindings. `./gradlew build -x macosArm64Test` succeeds across JVM/JS/native targets. Running `./gradlew macosArm64Test` currently fails: legacy llama.cpp-style tensor/model tests (BitNet 1.58, GGML integration, inference pipeline) expect archived fixtures and need to be reworked for the Kotlin port. The kcoro benchmark itself is opt-in—set `ENABLE_KCORO_BENCH=1` to exercise it on Apple Silicon.
+- The legacy `archive/` and `examples/` trees from the original llama.cpp have been removed. Kotlin sources now depend solely on the vendored `external/kcoro` / `external/kcoro_cpp` runtimes and the rewritten Kotlin/Native code.
+- macOS-specific kcoro benchmarks were moved to `src/macosArm64Test`. Other target test suites execute normally (JS/JVM/Native metadata), while kcoro tests are skipped when interop is unavailable.
 
 ## Current Status - Phase 3-4 (Advanced Core Implementation & Backend Development)
 
@@ -76,7 +82,7 @@ The project is actively under development with substantial progress across multi
 - **Model Architecture Implementation**: LLaMA model structures and inference pipeline
 
 ### 📋 Comprehensive Testing Infrastructure
-- **Unit Tests**: Complete coverage for core operations under `src/nativeTest/kotlin`
+- **Unit Tests**: Complete coverage for core operations under `src/commonTest/kotlin`
   - Element-wise operations (ADD, MUL, SUB, DIV, NEG, SQR, SQRT)
   - Matrix operations with all quantization combinations
   - Activation functions (RELU, GELU, SILU, RMSNorm) 
@@ -141,7 +147,12 @@ This project uses **Kotlin Multiplatform** with **Gradle** as the build system.
 ./gradlew macosX64Test  # macOS tests (when on macOS)
 ```
 
-*Note: The original C/C++ sources remain in the repository during the porting process but are not required for the Kotlin build.*
+### kcoro Benchmarks
+```bash
+./gradlew kcoroBench  # macOS arm64 only
+```
+
+*Note: Legacy llama.cpp C/C++ and Python examples were removed in October 2025; only files required by the Kotlin/Native port remain. Expect kcoro and ggml headers to live under `external/`, `spm-headers/`, and `src/nativeInterop/`.*
 
 ## Architecture Overview
 
@@ -157,7 +168,7 @@ This project uses **Kotlin Multiplatform** with **Gradle** as the build system.
 
 ## Supported Platforms
 
-- **macOS** (x64 and arm64) - Primary target with Metal backend support planned
+- **macOS** (x64 and arm64) - Primary target for Kotlin/Native builds
 - **Linux** (x64) - Supported for CPU backend development and testing
 - **Windows** (mingw-x64) - Basic support for development
 - **Other Kotlin/Native targets** - Planned for future releases
@@ -187,7 +198,7 @@ We welcome contributions to the Kotlin port! Here's how you can help:
 - **Core tensor operations** and optimization
 - **Quantization methods** implementation
 - **CPU backend** development and optimization  
-- **Metal backend** for Apple Silicon
+- **Future accelerator hooks** exposed via backend registry
 - **Testing and validation** against original implementations
 - **Documentation** and examples
 
@@ -202,7 +213,7 @@ We welcome contributions to the Kotlin port! Here's how you can help:
 1. Check the current progress in [KOTLIN_PORT_CHECKLIST.md](KOTLIN_PORT_CHECKLIST.md)
 2. Review the [AGENTS.md](AGENTS.md) file for detailed development guidance
 3. Look at existing implementations in `src/nativeMain/kotlin/ai/solace/llamakotlin/`
-4. Add tests in `src/nativeTest/kotlin/`
+4. Add tests in `src/commonTest/kotlin/`
 
 ## Relationship to Original llama.cpp
 
@@ -316,7 +327,7 @@ The project follows a structured development approach across multiple phases:
 1. **✅ Phase 1**: Project Setup and Analysis - *Complete*
 2. **✅ Phase 2**: Core Library Translation (ggml) - *Complete*
 3. **🔄 Phase 3**: CPU Backend Implementation - *In Progress*
-4. **🔄 Phase 4**: Metal Backend Implementation - *In Progress*
+4. **🔄 Phase 4**: Backend Extensibility & Runtime Experiments - *Planned*
 5. **📋 Phase 5**: LLaMA Model Implementation - *Starting*
 6. **✅ Phase 6**: Model Loading and File Format Support - *Largely Complete (GGUF)*
 7. **📋 Phase 7**: API and Applications
@@ -340,4 +351,3 @@ This project is licensed under the **MIT License** - same as the original llama.
 ---
 
 *This project is maintained by Sydney at The Solace Project. We are grateful to the original llama.cpp community for their foundational work that makes this Kotlin port possible.*
-

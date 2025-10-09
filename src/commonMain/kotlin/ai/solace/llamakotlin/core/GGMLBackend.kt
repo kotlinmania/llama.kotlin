@@ -4,7 +4,7 @@ package ai.solace.llamakotlin.core
  * Kotlin Native port of GGML backend abstraction.
  * 
  * This file defines the backend interfaces that abstract over different compute backends
- * (CPU, Metal, etc.) similar to ggml_backend_t in the C++ implementation.
+ * (currently CPU; additional accelerators can plug into the same interface in the future)
  */
 
 /**
@@ -194,8 +194,6 @@ object GGMLBackendRegistry {
             defaultBufferType = GGMLCpuBufferType()
         ))
 
-        // Optionally register Metal backend if available on this target
-        metalBackendRegistration()?.let { register(it) }
     }
     
     /**
