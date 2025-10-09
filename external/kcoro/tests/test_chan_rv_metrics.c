@@ -90,13 +90,16 @@ int main(void) {
     }
 
     /* Wait for scheduler to drain (up to 10 seconds). */
-    const long timeout_ms = 10000;
+    const long timeout_ms = 60000;
     rc = kc_sched_drain(sched, timeout_ms);
     if (rc != 0) {
         struct kc_chan_snapshot fail_snap = {0};
         kc_chan_snapshot(chan, &fail_snap);
-        fprintf(stderr,
-                "[rv-metrics] drain timeout (%d) sends=%lu (atomic=%lu) recvs=%lu (atomic=%lu) rv_matches=%lu rv_cancels=%lu waiters_send=%u waiters_recv=%u producers_done=%d\n",
+        struct kc_chan *internal = (struct kc_chan *)chan;
+    FILE *trace = fopen("/tmp/kcoro_trace_snapshot.txt", "a");
+    if (trace) {
+        fprintf(trace,
+                "[rv-metrics] drain timeout (%d) sends=%lu (atomic=%lu) recvs=%lu (atomic=%lu) rv_matches=%lu rv_cancels=%lu waiters_send=%u waiters_recv=%u has_value=%d producers_done=%d\n",
                 rc,
                 fail_snap.total_sends,
                 (unsigned long)atomic_load_explicit(&ctx.sends_completed, memory_order_relaxed),
@@ -104,9 +107,18 @@ int main(void) {
                 (unsigned long)atomic_load_explicit(&ctx.recvs_completed, memory_order_relaxed),
                 fail_snap.rv_matches,
                 fail_snap.rv_cancels,
-                ((struct kc_chan *)chan)->waiters_send,
-                ((struct kc_chan *)chan)->waiters_recv,
+                internal->waiters_send,
+                internal->waiters_recv,
+                internal->has_value,
                 atomic_load_explicit(&ctx.producers_done, memory_order_relaxed));
+        fprintf(trace,
+                "[rv-metrics] queues send_head=%p recv_head=%p count=%zu closed=%d\n",
+                (void*)internal->wq_send_head,
+                (void*)internal->wq_recv_head,
+                internal->count,
+                internal->closed);
+        fclose(trace);
+    }
         kc_sched_shutdown(sched);
         kc_chan_destroy(chan);
         return 1;

@@ -17,9 +17,22 @@ endif
 # Thread + position independent (for static + potential shared builds)
 KC_PLATFORM_FLAGS := -pthread -fPIC -MMD -MP -D_GNU_SOURCE
 
+# Optional sanitizers: set SAN=asan or SAN=tsan when invoking make
+SAN ?= none
+ifeq ($(SAN),asan)
+  KC_SAN_CFLAGS := -fsanitize=address -fno-omit-frame-pointer
+  KC_SAN_LDFLAGS := -fsanitize=address
+else ifeq ($(SAN),tsan)
+  KC_SAN_CFLAGS := -fsanitize=thread -fno-omit-frame-pointer
+  KC_SAN_LDFLAGS := -fsanitize=thread
+else
+  KC_SAN_CFLAGS :=
+  KC_SAN_LDFLAGS :=
+endif
+
 # Consumers can append to EXTRA_CFLAGS / EXTRA_LDFLAGS
-CFLAGS += $(KC_BASE_CFLAGS) $(KC_OPTFLAGS) $(KC_PLATFORM_FLAGS) $(EXTRA_CFLAGS)
-LDFLAGS += $(KC_PLATFORM_FLAGS) $(EXTRA_LDFLAGS)
+CFLAGS += $(KC_BASE_CFLAGS) $(KC_OPTFLAGS) $(KC_PLATFORM_FLAGS) $(KC_SAN_CFLAGS) $(EXTRA_CFLAGS)
+LDFLAGS += $(KC_PLATFORM_FLAGS) $(KC_SAN_LDFLAGS) $(EXTRA_LDFLAGS)
 
 # Provide a helper target to show final flags
 .PHONY: kc-flags

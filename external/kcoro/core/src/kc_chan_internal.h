@@ -28,6 +28,10 @@ struct kc_waiter {
     int freed;
     void **recv_ptr_slot;
     size_t *recv_len_slot;
+    /* Optional cancellation token (best-effort). If non-NULL, enqueue helpers
+     * may choose to poll it between retries; selected wake remains the single
+     * disposal owner. Not wired to callbacks yet (see PLAN.md). */
+    const struct kc_cancel *cancel;
 };
 
 enum kc_waiter_token_status {
@@ -163,6 +167,7 @@ static inline struct kc_waiter* kc_waiter_new_coro(enum kc_select_clause_kind ki
     w->freed = 0;
     w->recv_ptr_slot = NULL;
     w->recv_len_slot = NULL;
+    w->cancel = NULL;
     return w;
 }
 

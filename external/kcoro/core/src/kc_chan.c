@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <limits.h>
+#include <pthread.h>
 /*
  * kc_chan.c — Channel kinds and operations
  * ----------------------------------------
@@ -120,6 +121,55 @@ void kc_chan_update_recv_stats_len_locked(struct kc_chan *ch, size_t len)
     }
 }
 
+/* ------------------------------------------------------------------------- */
+/* Debug tracing                                                             */
+/* ------------------------------------------------------------------------- */
+
+static FILE *kc_chan_trace_fp = NULL;
+static pthread_mutex_t kc_chan_trace_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static void kc_chan_trace(const char *fmt, ...)
+{
+    static int kc_chan_trace_initialized = 0;
+    if (!kc_chan_trace_initialized) {
+        const char *path = getenv("KCORO_TRACE");
+        if (path && *path) {
+            kc_chan_trace_fp = fopen(path, "w");
+            if (!kc_chan_trace_fp) {
+                perror("kcoro: fopen KCORO_TRACE");
+            }
+        }
+        kc_chan_trace_initialized = 1;
+    }
+    if (!kc_chan_trace_fp) return;
+
+    pthread_mutex_lock(&kc_chan_trace_mu);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(kc_chan_trace_fp, fmt, ap);
+    va_end(ap);
+    fputc('\n', kc_chan_trace_fp);
+    fflush(kc_chan_trace_fp);
+    pthread_mutex_unlock(&kc_chan_trace_mu);
+}
+
+static void kc_chan_trace_state(const char *event, struct kc_chan *ch)
+{
+    if (!ch) {
+        kc_chan_trace("[chan] %s ch=NULL", event);
+        return;
+    }
+    kc_chan_trace("[chan] %s ch=%p kind=%d has_value=%d count=%zu send_head=%p recv_head=%p closed=%d",
+                  event,
+                  (void*)ch,
+                  ch->kind,
+                  ch->has_value,
+                  ch->count,
+                  (void*)ch->wq_send_head,
+                  (void*)ch->wq_recv_head,
+                  ch->closed);
+}
+
 /* Lightweight debug helper (enabled via KCORO_DEBUG env var). */
 static int kc_dbg_enabled(void)
 {
@@ -186,6 +236,8 @@ struct kc_wake {
 static void kc_chan_schedule_wake(struct kc_wake wake)
 {
     if (!wake.co) return;
+    kc_chan_trace("schedule_wake co=%p sel=%p parked=%d", (void*)wake.co, (void*)wake.sel,
+                  kcoro_is_parked(wake.co));
     kcoro_t *co = wake.co;
     kc_sched_t *current = kc_sched_current();
     int was_parked = kcoro_is_parked(co);
@@ -500,6 +552,7 @@ static struct kc_wake kc_chan_wake_recv_locked(struct kc_chan *ch)
             wake.co = w->co;
             if (wake.co) kcoro_retain(wake.co);
             kc_waiter_dispose(w);
+            kc_chan_trace_state("wake_recv_coroutine", ch);
             return wake;
         }
         int schedule = 0;
@@ -511,6 +564,7 @@ static struct kc_wake kc_chan_wake_recv_locked(struct kc_chan *ch)
             wake.co = kc_select_waiter(sel);
             if (wake.co) kcoro_retain(wake.co);
             wake.sel = sel;
+            kc_chan_trace_state("wake_recv_select", ch);
             return wake;
         }
         /* Otherwise continue to next waiter (select already resolved). */
@@ -527,6 +581,7 @@ static struct kc_wake kc_chan_wake_send_locked(struct kc_chan *ch)
             wake.co = w->co;
             if (wake.co) kcoro_retain(wake.co);
             kc_waiter_dispose(w);
+            kc_chan_trace_state("wake_send_coroutine", ch);
             return wake;
         }
         int schedule = 0;
@@ -537,6 +592,7 @@ static struct kc_wake kc_chan_wake_send_locked(struct kc_chan *ch)
             wake.co = kc_select_waiter(sel);
             if (wake.co) kcoro_retain(wake.co);
             wake.sel = sel;
+            kc_chan_trace_state("wake_send_select", ch);
             return wake;
         }
         /* Otherwise select already finished; continue scanning. */
@@ -792,6 +848,7 @@ void kc_chan_close(kc_chan_t *c)
 {
     struct kc_chan *ch = (struct kc_chan*)c;
     KC_MUTEX_LOCK(&ch->mu);
+    kc_chan_trace_state("close", ch);
     ch->closed = 1;
     ch->zref_sender_waiter_expected = 0; /* clear to avoid invariant trips after close */
     /* Close policy for zero-copy staged pointer:
@@ -864,8 +921,12 @@ int kc_chan_send(kc_chan_t *c, const void *msg, long timeout_ms)
     assert(kcoro_current() != NULL);
     long deadline_ns = 0; int timed = (timeout_ms > 0);
     if (timed) deadline_ns = kc_now_ns() + timeout_ms * 1000000L;
+    /* Avoid duplicate waiter nodes across retries */
+    struct kc_waiter_token send_token; kc_waiter_token_reset(&send_token);
+    /* rendezvous path uses simple waiter nodes; pointer variant uses tokens */
 again_send:
     KC_MUTEX_LOCK(&ch->mu);
+    kc_chan_trace_state("send_enter", ch);
     kc_dbg("chan%p send kind=%d tmo=%ld cnt=%zu cap=%zu", (void*)ch, ch->kind,
            timeout_ms, ch->count, ch->capacity);
     if (ch->closed) { ch->send_epipe++; KC_MUTEX_UNLOCK(&ch->mu); return KC_EPIPE; }
@@ -893,18 +954,33 @@ again_send:
                 kcoro_yield();
                 goto again_send;
             }
+            /* Infinite: sender‑first publish to avoid dual‑enqueue stall. */
+            if (!ch->has_value) {
+                memcpy(ch->slot, msg, ch->elem_sz);
+                ch->has_value = 1;
+                kc_chan_update_send_stats_locked(ch);
+                KC_COND_SIGNAL(&ch->cv_recv);
+            }
+            /* Enqueue this sender and park until a receiver consumes and wakes us. */
             struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
             if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
             kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
+            if (ch->wq_recv_head != NULL && ch->has_value) {
+                wake_recv = kc_chan_wake_recv_locked(ch);
+            }
             KC_MUTEX_UNLOCK(&ch->mu);
-            kcoro_yield();
-            goto again_send;
+            kc_chan_schedule_wake(wake_recv);
+            kcoro_park();
+            /* Our send has been consumed; complete successfully. */
+            return 0;
         }
         memcpy(ch->slot, msg, ch->elem_sz);
         ch->has_value = 1;
+        kc_chan_trace("send_set_has_value ch=%p", (void*)ch);
         kc_chan_update_send_stats_locked(ch);
         KC_COND_SIGNAL(&ch->cv_recv);
         wake_recv = kc_chan_wake_recv_locked(ch);
+        kc_chan_trace_state("send_match", ch);
         KC_MUTEX_UNLOCK(&ch->mu);
         kc_chan_schedule_wake(wake_recv);
         return 0;
@@ -953,6 +1029,7 @@ again_send:
         kc_chan_update_send_stats_locked(ch);
         KC_COND_SIGNAL(&ch->cv_recv);
         wake_recv = kc_chan_wake_recv_locked(ch);
+        kc_chan_trace_state("send_buffered_store", ch);
         kc_dbg("chan%p send ok cnt=%zu", (void*)ch, ch->count);
     }
     KC_MUTEX_UNLOCK(&ch->mu);
@@ -971,6 +1048,7 @@ int kc_chan_recv(kc_chan_t *c, void *out, long timeout_ms)
     if (timed) deadline_ns = kc_now_ns() + timeout_ms * 1000000L;
 again_recv:
     KC_MUTEX_LOCK(&ch->mu);
+    kc_chan_trace_state("recv_enter", ch);
     kc_dbg("chan%p recv kind=%d tmo=%ld cnt=%zu", (void*)ch, ch->kind, timeout_ms, ch->count);
     struct kc_wake wake_send = {0};
     if (ch->kind == KC_CONFLATED) {
@@ -979,15 +1057,40 @@ again_recv:
             if (!ch->has_value) rc = KC_EAGAIN;
         } else if (timeout_ms < 0) {
             if (!ch->has_value && !ch->closed) {
+                /* If a sender is already waiting, wake it so it can supply data. */
+                if (ch->wq_send_head != NULL) {
+                    kc_dbg("chan%p recv wake sender", (void*)ch);
+                    wake_send = kc_chan_wake_send_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_chan_trace_state("recv_wake_sender", ch);
+                    kc_chan_schedule_wake(wake_send);
+                    kcoro_yield();
+                    goto again_recv;
+                }
                 struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
                 if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
                 kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
+                kc_chan_trace("recv_enqueue ch=%p waiter=%p", (void*)ch, (void*)w);
+                /* Cross-wake: if a sender arrived concurrently, nudge it now. */
+                if (ch->wq_send_head != NULL && !ch->has_value) {
+                    wake_send = kc_chan_wake_send_locked(ch);
+                }
                 KC_MUTEX_UNLOCK(&ch->mu);
+                kc_chan_schedule_wake(wake_send);
                 kcoro_yield();
                 goto again_recv;
             }
         } else {
             if (!ch->has_value && !ch->closed) {
+                if (ch->wq_send_head != NULL) {
+                    kc_dbg("chan%p recv wake sender", (void*)ch);
+                    wake_send = kc_chan_wake_send_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_chan_trace_state("recv_wake_sender", ch);
+                    kc_chan_schedule_wake(wake_send);
+                    kcoro_yield();
+                    goto again_recv;
+                }
                 KC_MUTEX_UNLOCK(&ch->mu);
                 if (kc_now_ns() >= deadline_ns) return KC_ETIME;
                 kcoro_yield();
@@ -1011,21 +1114,60 @@ again_recv:
 
     if (ch->kind == KC_RENDEZVOUS) {
         int rc = 0;
+        struct kc_waiter_token recv_token; kc_waiter_token_reset(&recv_token);
         if (timeout_ms == 0) {
-            if (!ch->has_value) rc = KC_EAGAIN;
+            if (!ch->has_value) {
+                /* Nudge sender if present, then fail fast */
+                if (ch->wq_send_head != NULL) {
+                    wake_send = kc_chan_wake_send_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_chan_schedule_wake(wake_send);
+                    return KC_EAGAIN;
+                }
+                rc = KC_EAGAIN;
+            }
         } else if (timeout_ms < 0) {
             if (!ch->has_value && !ch->closed) {
-                struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
-                if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
-                kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
+                /* Pop-first: if sender waiting, wake it and retry without enqueue */
+                if (ch->wq_send_head != NULL) {
+                    kc_dbg("chan%p recv wake sender", (void*)ch);
+                    wake_send = kc_chan_wake_send_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_chan_schedule_wake(wake_send);
+                    kcoro_yield();
+                    goto again_recv;
+                }
+                int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV);
+                if (ensure_rc != 0) { KC_MUTEX_UNLOCK(&ch->mu); return ensure_rc; }
+                /* Cross-wake: if a sender arrives concurrently, nudge it */
+                if (ch->wq_send_head != NULL && !ch->has_value) {
+                    wake_send = kc_chan_wake_send_locked(ch);
+                }
                 KC_MUTEX_UNLOCK(&ch->mu);
-                kcoro_yield();
+                kc_chan_schedule_wake(wake_send);
+                kcoro_park();
+                kc_waiter_token_reset(&recv_token);
                 goto again_recv;
             }
         } else {
             if (!ch->has_value && !ch->closed) {
+                if (kc_now_ns() >= deadline_ns) {
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    return KC_ETIME;
+                }
+                if (ch->wq_send_head != NULL) {
+                    kc_dbg("chan%p recv wake sender", (void*)ch);
+                    wake_send = kc_chan_wake_send_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_chan_schedule_wake(wake_send);
+                    kcoro_yield();
+                    goto again_recv;
+                }
+                struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
+                if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+                kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
+                kc_chan_trace("recv_enqueue ch=%p waiter=%p", (void*)ch, (void*)w);
                 KC_MUTEX_UNLOCK(&ch->mu);
-                if (kc_now_ns() >= deadline_ns) return KC_ETIME;
                 kcoro_yield();
                 goto again_recv;
             }
@@ -1037,6 +1179,7 @@ again_recv:
             kc_chan_update_recv_stats_locked(ch);
             KC_COND_SIGNAL(&ch->cv_send);
             wake_send = kc_chan_wake_send_locked(ch);
+            kc_chan_trace_state("recv_match", ch);
             kc_dbg("chan%p recv rv ok", (void*)ch);
         } else if (rc == 0 && ch->closed && !ch->has_value) {
             rc = KC_EPIPE;
@@ -1432,12 +1575,23 @@ again_send_ptr:
         if (ch->wq_recv_head == NULL || ch->has_value) {
             if (timeout_ms == 0) { ch->send_eagain++; KC_MUTEX_UNLOCK(&ch->mu); return KC_EAGAIN; }
             if (timeout_ms < 0) {
-                int ensure_rc = kc_waiter_token_ensure_enqueued(&send_token, ch, KC_SELECT_CLAUSE_SEND);
-                if (ensure_rc != 0) { KC_MUTEX_UNLOCK(&ch->mu); return ensure_rc; }
+                /* Sender-first publish to avoid dual-enqueue: fill slot once, then park */
+                if (!ch->has_value) {
+                    memcpy(ch->slot, &msg, sizeof(msg));
+                    ch->has_value = 1;
+                    kc_chan_update_send_stats_len_locked(ch, len);
+                    KC_COND_SIGNAL(&ch->cv_recv);
+                }
+                struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
+                if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+                kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
+                if (ch->wq_recv_head != NULL && ch->has_value) {
+                    wake_recv = kc_chan_wake_recv_locked(ch);
+                }
                 KC_MUTEX_UNLOCK(&ch->mu);
+                kc_chan_schedule_wake(wake_recv);
                 kcoro_park();
-                kc_waiter_token_reset(&send_token);
-                goto again_send_ptr;
+                return 0;
             }
             KC_MUTEX_UNLOCK(&ch->mu);
             if (kc_now_ns() >= deadline_ns) { ch->send_etime++; return KC_ETIME; }

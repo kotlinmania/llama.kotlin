@@ -1,5 +1,8 @@
 include ../mk/common.mk
 
+# For debugging, prefer -O0. Remove any existing optimization flags.
+CFLAGS := $(filter-out -O%,$(CFLAGS))
+CFLAGS += -O0 -g
 CFLAGS += -I../include
 LDFLAGS += -L../core/build/lib -lkcoro -pthread
 

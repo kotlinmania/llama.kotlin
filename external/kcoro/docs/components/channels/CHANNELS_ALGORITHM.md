@@ -45,6 +45,16 @@ Exactly‑once rules
 - Only the receiver clears Z.ready and unparks exactly one sender.
 - Only the sender that published early parks; it is awakened by the receiver that consumes.
 
+Wake/retain invariants (2025‑10‑09)
+- A waiter’s coroutine is retained under the channel mutex in the wake path before the waiter node is disposed; the scheduler receives a retained `kcoro_t*`.
+- `kc_chan_schedule_wake` enqueues the retained coroutine and then releases once; the ready queue holds its own reference and drops it on dequeue/retire. Net: exactly one live reference while runnable.
+
+Deadlock‑avoidance rule
+- When enqueueing on a rendezvous channel and the opposite queue is already non‑empty while `Z.ready==0`, cross‑wake the opposite side under the lock before yielding. This breaks the “both queues populated, empty slot” stalemate by ensuring a runnable counterpart publishes/consumes.
+
+Pop‑first policy (planned)
+- Prefer direct wake‑and‑publish over enqueue when the opposite queue is non‑empty. Receivers that observe `WqS!=∅ && Z.ready==0` should wake a sender and yield instead of enqueueing (and vice‑versa). This reduces dual‑enqueue windows without changing external semantics.
+
 ---
 
 ## 2. Bounded Buffer (capacity = N > 0)
