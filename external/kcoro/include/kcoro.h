@@ -91,6 +91,13 @@ void kc_cancel_ctx_destroy(kc_cancel_ctx_t *ctx);
  * @name Channel API (generic payload copy)
  * @{ */
 int  kc_chan_make(kc_chan_t** out, int kind, size_t elem_sz, size_t capacity);
+/* Extended creation with undelivered callbacks (optional). */
+typedef void (*kc_on_undelivered_copy_fn)(void *elem, size_t len, void *arg);
+typedef void (*kc_on_undelivered_ptr_fn)(void *ptr, size_t len, void *arg);
+int  kc_chan_make_ex(kc_chan_t** out, int kind, size_t elem_sz, size_t capacity,
+                     kc_on_undelivered_copy_fn on_ud_copy,
+                     kc_on_undelivered_ptr_fn  on_ud_ptr,
+                     void *on_ud_arg);
 void kc_chan_destroy(kc_chan_t* ch);
 int  kc_chan_send(kc_chan_t* ch, const void* msg, long timeout_ms);
 int  kc_chan_recv(kc_chan_t* ch, void* out, long timeout_ms);

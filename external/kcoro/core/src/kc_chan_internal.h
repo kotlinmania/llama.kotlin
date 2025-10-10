@@ -26,12 +26,18 @@ struct kc_waiter {
     struct kc_waiter *next;
     unsigned long magic;
     int freed;
+    /* Rendezvous waiter state machine (coarse-grained under channel lock). */
+    enum { W_INIT = 0, W_ENQ = 1, W_CLAIMED = 2, W_CANCELLED = 3 } state;
+    int committed; /* set when the waiter is the single winner (resume committed) */
     void **recv_ptr_slot;
     size_t *recv_len_slot;
     /* Optional cancellation token (best-effort). If non-NULL, enqueue helpers
      * may choose to poll it between retries; selected wake remains the single
      * disposal owner. Not wired to callbacks yet (see PLAN.md). */
     const struct kc_cancel *cancel;
+    /* Rendezvous copy path: optional inline payload buffer for direct handoff */
+    void   *send_buf;
+    size_t  send_len;
 };
 
 enum kc_waiter_token_status {
@@ -127,6 +133,11 @@ struct kc_chan {
     unsigned long   rv_matches;
     unsigned long   rv_cancels;
     unsigned long   rv_zdesc_matches;
+
+    /* Optional undelivered callbacks (copy / pointer descriptor). */
+    void (*on_undelivered_copy)(void *elem, size_t len, void *arg);
+    void (*on_undelivered_ptr)(void *ptr, size_t len, void *arg);
+    void *on_undelivered_arg;
 };
 
 static inline long kc_now_ns(void)
@@ -165,14 +176,19 @@ static inline struct kc_waiter* kc_waiter_new_coro(enum kc_select_clause_kind ki
     w->next = NULL;
     w->magic = 0xCAFEBABEUL;
     w->freed = 0;
+    w->state = W_INIT;
+    w->committed = 0;
     w->recv_ptr_slot = NULL;
     w->recv_len_slot = NULL;
     w->cancel = NULL;
+    w->send_buf = NULL;
+    w->send_len = 0;
     return w;
 }
 
 static inline void kc_waiter_append(struct kc_waiter **head, struct kc_waiter **tail, struct kc_waiter *w)
 {
+    w->state = W_ENQ;
     if (*tail) (*tail)->next = w; else *head = w;
     *tail = w;
 }
@@ -210,6 +226,7 @@ static inline void kc_waiter_dispose(struct kc_waiter *w)
         kcoro_release(w->co);
         w->co = NULL;
     }
+    if (w->send_buf) { free(w->send_buf); w->send_buf = NULL; w->send_len = 0; }
     w->freed = 1;
     w->magic = 0xDEADDEADUL;
     free(w);

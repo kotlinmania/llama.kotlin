@@ -130,8 +130,11 @@ int main(void) {
 
     if (snap.total_sends != ctx.expected_msgs || snap.total_recvs != ctx.expected_msgs) {
         fprintf(stderr,
-                "[rv-metrics] mismatch sends=%lu recvs=%lu expected=%lu\n",
-                snap.total_sends, snap.total_recvs, ctx.expected_msgs);
+                "[rv-metrics] mismatch sends=%lu recvs=%lu expected=%lu (atomic sends=%lu recvs=%lu producers_done=%d)\n",
+                snap.total_sends, snap.total_recvs, ctx.expected_msgs,
+                (unsigned long)atomic_load_explicit(&ctx.sends_completed, memory_order_relaxed),
+                (unsigned long)atomic_load_explicit(&ctx.recvs_completed, memory_order_relaxed),
+                atomic_load_explicit(&ctx.producers_done, memory_order_relaxed));
         kc_sched_shutdown(sched);
         kc_chan_destroy(chan);
         return 2;

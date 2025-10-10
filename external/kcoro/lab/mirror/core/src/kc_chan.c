@@ -198,8 +198,25 @@ static void complete_select(kc_select_t *sel, int clause, int result)
 
 static kc_desc_id kc_chan_create_desc(struct kc_chan *ch, const void *ptr, size_t len)
 {
-    if (ch->ptr_mode)
-        return kc_desc_make_alias((void*)ptr, len);
+    if (ch->ptr_mode) {
+        kc_desc_id id = 0;
+        if (ch->alias_lru_enabled) {
+            /* try alias LRU first */
+            /* lookup retains for caller on hit */
+            /* note: ptr lifetime must be managed by producer */
+            /* cache capacity is small and bounded */
+            extern kc_desc_id kc_alias_lru_lookup(struct kc_chan*, const void*, size_t);
+            id = kc_alias_lru_lookup(ch, ptr, len);
+            if (id) return id;
+        }
+        id = kc_desc_make_alias((void*)ptr, len);
+        if (id && ch->alias_lru_enabled) {
+            extern void kc_alias_lru_insert(struct kc_chan*, void*, size_t, kc_desc_id);
+            kc_alias_lru_insert(ch, (void*)ptr, len, id);
+            kc_desc_retain(id); /* retain for caller use in addition to LRU hold */
+        }
+        return id ? id : kc_desc_make_alias((void*)ptr, len);
+    }
     return kc_desc_make_copy(ptr, len);
 }
 static size_t kc_chan_copy_bytes(void *dst, const kc_payload *payload, size_t elem_sz)
@@ -236,6 +253,12 @@ int kc_chan_make(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity)
     ch->emit_check_mask = 0x3FFUL;
     *out = ch;
     kc_desc_global_init();
+    /* init optional alias LRU */
+    {
+        /* local decls for static helpers */
+        extern void kc_alias_lru_init(struct kc_chan *);
+        kc_alias_lru_init(ch);
+    }
     return 0;
 }
 

@@ -8,6 +8,8 @@
 #include <stdarg.h>
 #include <limits.h>
 #include <pthread.h>
+#include <time.h>
+#include <stdatomic.h>
 /*
  * kc_chan.c — Channel kinds and operations
  * ----------------------------------------
@@ -127,6 +129,18 @@ void kc_chan_update_recv_stats_len_locked(struct kc_chan *ch, size_t len)
 
 static FILE *kc_chan_trace_fp = NULL;
 static pthread_mutex_t kc_chan_trace_mu = PTHREAD_MUTEX_INITIALIZER;
+static atomic_ulong kc_chan_trace_seq = 0;
+
+static long long kc_ts_us(void) {
+    struct timespec ts;
+#ifdef CLOCK_MONOTONIC
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        return (long long)ts.tv_sec * 1000000LL + ts.tv_nsec / 1000LL;
+    }
+#endif
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (long long)ts.tv_sec * 1000000LL + ts.tv_nsec / 1000LL;
+}
 
 static void kc_chan_trace(const char *fmt, ...)
 {
@@ -146,11 +160,24 @@ static void kc_chan_trace(const char *fmt, ...)
     pthread_mutex_lock(&kc_chan_trace_mu);
     va_list ap;
     va_start(ap, fmt);
+    unsigned long seq = atomic_fetch_add_explicit(&kc_chan_trace_seq, 1UL, memory_order_relaxed) + 1UL;
+    long long ts = kc_ts_us();
+    unsigned long tid = (unsigned long)pthread_self();
+    fprintf(kc_chan_trace_fp, "[ts=%lldus tid=%lu seq=%lu] ", ts, tid, seq);
     vfprintf(kc_chan_trace_fp, fmt, ap);
     va_end(ap);
     fputc('\n', kc_chan_trace_fp);
     fflush(kc_chan_trace_fp);
     pthread_mutex_unlock(&kc_chan_trace_mu);
+}
+
+static unsigned kc_wq_len_recv(struct kc_chan *ch) {
+    unsigned n = 0; struct kc_waiter *w = ch ? ch->wq_recv_head : NULL; while (w) { ++n; w = w->next; }
+    return n;
+}
+static unsigned kc_wq_len_send(struct kc_chan *ch) {
+    unsigned n = 0; struct kc_waiter *w = ch ? ch->wq_send_head : NULL; while (w) { ++n; w = w->next; }
+    return n;
 }
 
 static void kc_chan_trace_state(const char *event, struct kc_chan *ch)
@@ -159,7 +186,7 @@ static void kc_chan_trace_state(const char *event, struct kc_chan *ch)
         kc_chan_trace("[chan] %s ch=NULL", event);
         return;
     }
-    kc_chan_trace("[chan] %s ch=%p kind=%d has_value=%d count=%zu send_head=%p recv_head=%p closed=%d",
+    kc_chan_trace("[chan] %s ch=%p kind=%d has_value=%d count=%zu send_head=%p recv_head=%p closed=%d send_len=%u recv_len=%u waiters_send_hint=%u waiters_recv_hint=%u total_sends=%lu total_recvs=%lu",
                   event,
                   (void*)ch,
                   ch->kind,
@@ -167,7 +194,13 @@ static void kc_chan_trace_state(const char *event, struct kc_chan *ch)
                   ch->count,
                   (void*)ch->wq_send_head,
                   (void*)ch->wq_recv_head,
-                  ch->closed);
+                  ch->closed,
+                  kc_wq_len_send(ch),
+                  kc_wq_len_recv(ch),
+                  ch->waiters_send,
+                  ch->waiters_recv,
+                  ch->total_sends,
+                  ch->total_recvs);
 }
 
 /* Lightweight debug helper (enabled via KCORO_DEBUG env var). */
@@ -323,9 +356,17 @@ static struct kc_waiter* kc_waiter_new_select(kc_select_t *sel, int clause_index
 static struct kc_wake kc_chan_wake_recv_locked(struct kc_chan *ch);
 static struct kc_wake kc_chan_wake_send_locked(struct kc_chan *ch);
 
+/* Forward decls for waiter helpers (defined later in this file). */
+static inline int kc_waiter_claim_prepare_wake_locked(struct kc_waiter *w, int rc_for_select, struct kc_wake *out);
+/* static inline void kc_waiter_mark_cancelled_locked(struct kc_waiter *w); */
+static inline void kc_waiter_on_undelivered_locked(struct kc_chan *ch, struct kc_waiter *w);
+
 /* zref invariants now asserted inside kc_zcopy.c */
 
-int kc_chan_make(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity)
+static int kc_chan_make_impl(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity,
+                             kc_on_undelivered_copy_fn on_ud_copy,
+                             kc_on_undelivered_ptr_fn  on_ud_ptr,
+                             void *on_ud_arg)
 {
     if (!out || elem_sz == 0)
         return -EINVAL;
@@ -357,6 +398,9 @@ int kc_chan_make(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity)
         ch->buf = malloc(ch->capacity * elem_sz);
         if (!ch->buf) { free(ch); return -ENOMEM; }
     }
+    ch->on_undelivered_copy = on_ud_copy;
+    ch->on_undelivered_ptr  = on_ud_ptr;
+    ch->on_undelivered_arg  = on_ud_arg;
     *out = ch;
     kc_dbg("chan%p make kind=%d elem_sz=%zu cap=%zu", (void*)ch, kind, elem_sz,
            (kind == KC_BUFFERED || kind > 0) ? ch->capacity : 0);
@@ -368,6 +412,19 @@ int kc_chan_make(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity)
     ch->emit_check_mask = 0x3FFUL; /* default: every 1024 ops */
     ch->ops_since_emit_check = 0;
     return 0;
+}
+
+int kc_chan_make(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity)
+{
+    return kc_chan_make_impl(out, kind, elem_sz, capacity, NULL, NULL, NULL);
+}
+
+int kc_chan_make_ex(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity,
+                    kc_on_undelivered_copy_fn on_ud_copy,
+                    kc_on_undelivered_ptr_fn  on_ud_ptr,
+                    void *on_ud_arg)
+{
+    return kc_chan_make_impl(out, kind, elem_sz, capacity, on_ud_copy, on_ud_ptr, on_ud_arg);
 }
 
 void kc_chan_destroy(kc_chan_t *c)
@@ -548,6 +605,12 @@ static struct kc_wake kc_chan_wake_recv_locked(struct kc_chan *ch)
     for (;;) {
         struct kc_waiter *w = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail);
         if (!w) return wake;
+        /* Drop cancelled waiters promptly */
+        if (w->cancel && kc_cancel_is_set(w->cancel)) {
+            if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
+            kc_waiter_dispose(w);
+            continue;
+        }
         if (w->kind == KC_WAITER_CORO) {
             wake.co = w->co;
             if (wake.co) kcoro_retain(wake.co);
@@ -577,6 +640,13 @@ static struct kc_wake kc_chan_wake_send_locked(struct kc_chan *ch)
     for (;;) {
         struct kc_waiter *w = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
         if (!w) return wake;
+        /* Drop cancelled waiters promptly, releasing undelivered payloads */
+        if (w->cancel && kc_cancel_is_set(w->cancel)) {
+            if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
+            kc_waiter_on_undelivered_locked(ch, w);
+            kc_waiter_dispose(w);
+            continue;
+        }
         if (w->kind == KC_WAITER_CORO) {
             wake.co = w->co;
             if (wake.co) kcoro_retain(wake.co);
@@ -607,6 +677,8 @@ int kc_chan_select_register_recv(kc_chan_t *c, kc_select_t *sel, int clause_inde
     if (ch->zref_mode) return -ENOTSUP;
     struct kc_wake_list wakes = {0};
     KC_MUTEX_LOCK(&ch->mu);
+    kc_chan_trace_state("recv_ptr_enter", ch);
+    kc_chan_trace_state("send_ptr_enter", ch);
 
     if (ch->kind == KC_CONFLATED) {
         if (ch->has_value) {
@@ -877,6 +949,7 @@ void kc_chan_close(kc_chan_t *c)
             }
         }
         if (ch->kind == KC_RENDEZVOUS) ch->rv_cancels++;
+        kc_waiter_on_undelivered_locked(ch, w);
         kc_waiter_dispose(w);
     }
     while ((w = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail)) != NULL) {
@@ -916,7 +989,10 @@ int kc_chan_send(kc_chan_t *c, const void *msg, long timeout_ms)
 {
     struct kc_chan *ch = (struct kc_chan*)c;
     if (!ch || !msg) return -EINVAL;
-    if (ch->zref_mode) return -EINVAL; /* disallow mixing modes */
+    if (ch->zref_mode) {
+        kc_chan_trace_state("send_einval_zref_mode", ch);
+        return -EINVAL; /* disallow mixing modes */
+    }
     /* Require coroutine context (no thread-blocking). */
     assert(kcoro_current() != NULL);
     long deadline_ns = 0; int timed = (timeout_ms > 0);
@@ -954,35 +1030,50 @@ again_send:
                 kcoro_yield();
                 goto again_send;
             }
-            /* Infinite: sender‑first publish to avoid dual‑enqueue stall. */
-            if (!ch->has_value) {
-                memcpy(ch->slot, msg, ch->elem_sz);
-                ch->has_value = 1;
-                kc_chan_update_send_stats_locked(ch);
-                KC_COND_SIGNAL(&ch->cv_recv);
-            }
-            /* Enqueue this sender and park until a receiver consumes and wakes us. */
+            /* Infinite: enqueue sender and park; receiver will commit and deliver. */
             struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
             if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+            /* Always stash payload for direct handoff */
+            w->send_buf = malloc(ch->elem_sz);
+            if (!w->send_buf) { kc_waiter_dispose(w); KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+            memcpy(w->send_buf, msg, ch->elem_sz);
+            w->send_len = ch->elem_sz;
             kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
-            if (ch->wq_recv_head != NULL && ch->has_value) {
-                wake_recv = kc_chan_wake_recv_locked(ch);
-            }
+            /* If a receiver is waiting and slot is empty, let it consume immediately */
+            if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
             KC_MUTEX_UNLOCK(&ch->mu);
             kc_chan_schedule_wake(wake_recv);
             kcoro_park();
-            /* Our send has been consumed; complete successfully. */
+            /* Sender resumes only when committed by receiver. */
             return 0;
         }
-        memcpy(ch->slot, msg, ch->elem_sz);
-        ch->has_value = 1;
-        kc_chan_trace("send_set_has_value ch=%p", (void*)ch);
-        kc_chan_update_send_stats_locked(ch);
-        KC_COND_SIGNAL(&ch->cv_recv);
-        wake_recv = kc_chan_wake_recv_locked(ch);
-        kc_chan_trace_state("send_match", ch);
+        /* Receiver present and slot empty: commit receiver first, then publish and wake */
+        struct kc_waiter *rw = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail);
+        struct kc_wake wake_r = {0};
+        int cl = kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r);
+        if (cl == 0) {
+            memcpy(ch->slot, msg, ch->elem_sz);
+            ch->has_value = 1;
+            kc_chan_update_send_stats_locked(ch);
+            KC_COND_SIGNAL(&ch->cv_recv);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_chan_schedule_wake(wake_r);
+            kc_waiter_dispose(rw);
+            return 0;
+        }
+        /* If claim failed (e.g., canceled), push back receiver and enqueue sender; receiver will handoff */
+        if (rw) { rw->next = ch->wq_recv_head; ch->wq_recv_head = rw; if (!ch->wq_recv_tail) ch->wq_recv_tail = rw; }
+        struct kc_waiter *w2 = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
+        if (!w2) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+        w2->send_buf = malloc(ch->elem_sz);
+        if (!w2->send_buf) { kc_waiter_dispose(w2); KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+        memcpy(w2->send_buf, msg, ch->elem_sz);
+        w2->send_len = ch->elem_sz;
+        kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w2);
+        if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
         KC_MUTEX_UNLOCK(&ch->mu);
         kc_chan_schedule_wake(wake_recv);
+        kcoro_park();
         return 0;
     }
 
@@ -1042,7 +1133,10 @@ int kc_chan_recv(kc_chan_t *c, void *out, long timeout_ms)
     struct kc_chan *ch = (struct kc_chan*)c;
     if (!ch || !out) return -EINVAL;
     if (ch->ptr_mode) return -EINVAL; /* pointer descriptor channels use kc_chan_recv_ptr */
-    if (ch->zref_mode) return -EINVAL; /* disallow mixing modes */
+    if (ch->zref_mode) {
+        kc_chan_trace_state("recv_einval_zref_mode", ch);
+        return -EINVAL; /* disallow mixing modes */
+    }
     assert(kcoro_current() != NULL);
     long deadline_ns = 0; int timed = (timeout_ms > 0);
     if (timed) deadline_ns = kc_now_ns() + timeout_ms * 1000000L;
@@ -1050,7 +1144,8 @@ again_recv:
     KC_MUTEX_LOCK(&ch->mu);
     kc_chan_trace_state("recv_enter", ch);
     kc_dbg("chan%p recv kind=%d tmo=%ld cnt=%zu", (void*)ch, ch->kind, timeout_ms, ch->count);
-    struct kc_wake wake_send = {0};
+    struct kc_wake wake_send = (struct kc_wake){0};
+    struct kc_wake wake_recv2 = (struct kc_wake){0};
     if (ch->kind == KC_CONFLATED) {
         int rc = 0;
         if (timeout_ms == 0) {
@@ -1128,8 +1223,28 @@ again_recv:
             }
         } else if (timeout_ms < 0) {
             if (!ch->has_value && !ch->closed) {
-                /* Pop-first: if sender waiting, wake it and retry without enqueue */
+                /* Pop-first: if sender waiting, perform direct handoff under lock */
                 if (ch->wq_send_head != NULL) {
+                    struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
+                    if (sw && sw->send_buf && sw->send_len >= (size_t)ch->elem_sz) {
+                        memcpy(out, sw->send_buf, ch->elem_sz);
+                        /* Count both sides of the transfer here */
+                        kc_chan_update_send_stats_locked(ch);
+                        kc_chan_update_recv_stats_locked(ch);
+                        /* Mark sender as delivered and wake it */
+                        struct kc_wake wake = {0};
+                        if (sw->kind == KC_WAITER_CORO && sw->co) {
+                            sw->co->last_send_delivered = 1;
+                            wake.co = sw->co;
+                            kcoro_retain(wake.co);
+                        }
+                        kc_waiter_dispose(sw);
+                        KC_MUTEX_UNLOCK(&ch->mu);
+                        kc_chan_schedule_wake(wake);
+                        return 0;
+                    }
+                    /* Fallback: wake normal sender */
+                    if (sw) { /* push back if not used */ sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
                     kc_dbg("chan%p recv wake sender", (void*)ch);
                     wake_send = kc_chan_wake_send_locked(ch);
                     KC_MUTEX_UNLOCK(&ch->mu);
@@ -1173,19 +1288,56 @@ again_recv:
             }
         }
         if (rc == 0 && ch->has_value) {
+            /* Consume the staged value */
             memcpy(out, ch->slot, ch->elem_sz);
             ch->has_value = 0;
             ch->rv_matches++;
             kc_chan_update_recv_stats_locked(ch);
             KC_COND_SIGNAL(&ch->cv_send);
-            wake_send = kc_chan_wake_send_locked(ch);
+            /* Publish and commit a queued sender if available */
+            if (ch->wq_send_head != NULL) {
+                struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
+                struct kc_wake wake = {0};
+                if (sw && sw->send_buf && sw->send_len >= (size_t)ch->elem_sz &&
+                    kc_waiter_claim_prepare_wake_locked(sw, 0, &wake) == 0) {
+                    memcpy(ch->slot, sw->send_buf, ch->elem_sz);
+                    ch->has_value = 1;
+                    kc_chan_update_send_stats_locked(ch);
+                    KC_COND_SIGNAL(&ch->cv_recv);
+                    if (ch->wq_recv_head != NULL) wake_recv2 = kc_chan_wake_recv_locked(ch);
+                    kc_waiter_dispose(sw);
+                    wake_send = wake;
+                } else {
+                    if (sw) { sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
+                    wake_send = kc_chan_wake_send_locked(ch);
+                }
+            } else {
+                wake_send = kc_chan_wake_send_locked(ch);
+            }
             kc_chan_trace_state("recv_match", ch);
             kc_dbg("chan%p recv rv ok", (void*)ch);
+        } else if (rc == 0 && !ch->has_value && ch->wq_send_head != NULL) {
+            /* Direct handoff: claim sender, copy payload, commit, wake sender */
+            struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
+            struct kc_wake wake = {0};
+            if (sw && sw->send_buf && sw->send_len >= (size_t)ch->elem_sz &&
+                kc_waiter_claim_prepare_wake_locked(sw, 0, &wake) == 0) {
+                memcpy(out, sw->send_buf, ch->elem_sz);
+                ch->rv_matches++;
+                kc_chan_update_send_stats_locked(ch);
+                kc_chan_update_recv_stats_locked(ch);
+                kc_waiter_dispose(sw);
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_chan_schedule_wake(wake);
+                return 0;
+            }
+            if (sw) { sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
         } else if (rc == 0 && ch->closed && !ch->has_value) {
             rc = KC_EPIPE;
         }
         KC_MUTEX_UNLOCK(&ch->mu);
-        kc_chan_schedule_wake(wake_send);
+        if (wake_send.co || wake_send.sel) kc_chan_schedule_wake(wake_send);
+        if (wake_recv2.co || wake_recv2.sel) kc_chan_schedule_wake(wake_recv2);
         return rc;
     }
 
@@ -1575,18 +1727,18 @@ again_send_ptr:
         if (ch->wq_recv_head == NULL || ch->has_value) {
             if (timeout_ms == 0) { ch->send_eagain++; KC_MUTEX_UNLOCK(&ch->mu); return KC_EAGAIN; }
             if (timeout_ms < 0) {
-                /* Sender-first publish to avoid dual-enqueue: fill slot once, then park */
-                if (!ch->has_value) {
-                    memcpy(ch->slot, &msg, sizeof(msg));
-                    ch->has_value = 1;
-                    kc_chan_update_send_stats_len_locked(ch, len);
-                    KC_COND_SIGNAL(&ch->cv_recv);
-                }
+                /* Enqueue sender with stashed descriptor and park; receiver will commit delivery */
                 struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
                 if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+                w->send_buf = malloc(sizeof(msg));
+                if (!w->send_buf) { kc_waiter_dispose(w); KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+                memcpy(w->send_buf, &msg, sizeof(msg));
+                w->send_len = sizeof(msg);
                 kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
-                if (ch->wq_recv_head != NULL && ch->has_value) {
+                kc_chan_trace("send_ptr_enqueue ch=%p waiter=%p", (void*)ch, (void*)w);
+                if (ch->wq_recv_head != NULL && !ch->has_value) {
                     wake_recv = kc_chan_wake_recv_locked(ch);
+                    kc_chan_trace_state("send_ptr_wake_recv", ch);
                 }
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_recv);
@@ -1598,13 +1750,32 @@ again_send_ptr:
             kcoro_yield();
             goto again_send_ptr;
         }
-        memcpy(ch->slot, &msg, sizeof(msg));
-        ch->has_value = 1;
-        kc_chan_update_send_stats_len_locked(ch, len);
-        KC_COND_SIGNAL(&ch->cv_recv);
-        wake_recv = kc_chan_wake_recv_locked(ch);
+        /* Receiver present: claim receiver, publish, wake */
+        struct kc_waiter *rw = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail);
+        struct kc_wake wake_r = {0};
+        if (rw && kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r) == 0) {
+            memcpy(ch->slot, &msg, sizeof(msg));
+            ch->has_value = 1;
+            kc_chan_update_send_stats_len_locked(ch, len);
+            KC_COND_SIGNAL(&ch->cv_recv);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_chan_schedule_wake(wake_r);
+            kc_waiter_dispose(rw);
+            return 0;
+        }
+        if (rw) { rw->next = ch->wq_recv_head; ch->wq_recv_head = rw; if (!ch->wq_recv_tail) ch->wq_recv_tail = rw; }
+        /* Enqueue sender and park; receiver will commit on next recv */
+        struct kc_waiter *w3 = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
+        if (!w3) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+        w3->send_buf = malloc(sizeof(msg));
+        if (!w3->send_buf) { kc_waiter_dispose(w3); KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+        memcpy(w3->send_buf, &msg, sizeof(msg));
+        w3->send_len = sizeof(msg);
+        kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w3);
+        if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
         KC_MUTEX_UNLOCK(&ch->mu);
         kc_chan_schedule_wake(wake_recv);
+        kcoro_park();
         return 0;
     }
 
@@ -1684,7 +1855,8 @@ int kc_chan_recv_ptr(kc_chan_t *c, void **out_ptr, size_t *out_len, long timeout
 
 again_recv_ptr:
     KC_MUTEX_LOCK(&ch->mu);
-    struct kc_wake wake_send = {0};
+    struct kc_wake wake_send = (struct kc_wake){0};
+    struct kc_wake wake_recv2 = (struct kc_wake){0};
 
     if (ch->kind == KC_CONFLATED) {
         int rc = 0;
@@ -1735,9 +1907,31 @@ again_recv_ptr:
                 ch->rv_matches++;
                 kc_chan_update_recv_stats_len_locked(ch, tmp.len);
                 KC_COND_SIGNAL(&ch->cv_send);
-                wake_send = kc_chan_wake_send_locked(ch);
+                /* After consuming, publish + commit one queued sender if any */
+                if (ch->wq_send_head != NULL) {
+                    struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
+                    struct kc_wake wake_s = {0};
+                    if (sw && sw->send_buf && sw->send_len >= sizeof(struct kc_chan_ptrmsg) &&
+                        kc_waiter_claim_prepare_wake_locked(sw, 0, &wake_s) == 0) {
+                        memcpy(ch->slot, sw->send_buf, sizeof(struct kc_chan_ptrmsg));
+                        ch->has_value = 1;
+                        const struct kc_chan_ptrmsg *pm = (const struct kc_chan_ptrmsg *)sw->send_buf;
+                        kc_chan_update_send_stats_len_locked(ch, pm->len);
+                        KC_COND_SIGNAL(&ch->cv_recv);
+                        if (ch->wq_recv_head != NULL) wake_recv2 = kc_chan_wake_recv_locked(ch);
+                        kc_waiter_dispose(sw);
+                        wake_send = wake_s;
+                    } else {
+                        if (sw) { sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
+                        wake_send = kc_chan_wake_send_locked(ch);
+                    }
+                } else {
+                    wake_send = kc_chan_wake_send_locked(ch);
+                }
+                kc_chan_trace_state("recv_ptr_match", ch);
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_send);
+                if (wake_recv2.co || wake_recv2.sel) kc_chan_schedule_wake(wake_recv2);
                 kc_waiter_token_reset(&recv_token);
                 return 0;
             }
@@ -1748,8 +1942,24 @@ again_recv_ptr:
             }
             if (timeout_ms == 0) {
                 if (ch->wq_send_head != NULL) {
+                    /* Direct handoff with commit */
+                    struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
+                    struct kc_wake wake_s = {0};
+                    if (sw && sw->send_buf && sw->send_len >= sizeof(struct kc_chan_ptrmsg) &&
+                        kc_waiter_claim_prepare_wake_locked(sw, 0, &wake_s) == 0) {
+                        struct kc_chan_ptrmsg tmp; memcpy(&tmp, sw->send_buf, sizeof(tmp));
+                        *out_ptr = tmp.ptr; *out_len = tmp.len;
+                        ch->rv_matches++;
+                        kc_chan_update_recv_stats_len_locked(ch, tmp.len);
+                        kc_waiter_dispose(sw);
+                        KC_MUTEX_UNLOCK(&ch->mu);
+                        kc_chan_schedule_wake(wake_s);
+                        return 0;
+                    }
+                    if (sw) { sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
                     struct kc_wake wake_sender = kc_chan_wake_send_locked(ch);
                     KC_MUTEX_UNLOCK(&ch->mu);
+                    kc_chan_trace_state("recv_ptr_wake_sender", ch);
                     kc_chan_schedule_wake(wake_sender);
                     goto again_recv_ptr;
                 }
@@ -1759,6 +1969,38 @@ again_recv_ptr:
                 return KC_EAGAIN;
             }
             if (timeout_ms < 0) {
+                /* Pop-first direct handoff if a sender is queued */
+                if (ch->wq_send_head != NULL) {
+                    struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
+                    if (sw && sw->send_buf && sw->send_len >= sizeof(struct kc_chan_ptrmsg)) {
+                        struct kc_chan_ptrmsg tmp; memcpy(&tmp, sw->send_buf, sizeof(tmp));
+                        *out_ptr = tmp.ptr; *out_len = tmp.len;
+                        ch->rv_matches++;
+                        kc_chan_update_recv_stats_len_locked(ch, tmp.len);
+                        if (sw->kind == KC_WAITER_CORO && sw->co) { sw->co->last_send_delivered = 1; }
+                        kc_waiter_dispose(sw);
+                        KC_MUTEX_UNLOCK(&ch->mu);
+                        return 0;
+                    }
+                    if (sw) { sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
+                }
+                /* Try direct handoff with commit first */
+                if (ch->wq_send_head != NULL) {
+                    struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
+                    struct kc_wake wake_s = {0};
+                    if (sw && sw->send_buf && sw->send_len >= sizeof(struct kc_chan_ptrmsg) &&
+                        kc_waiter_claim_prepare_wake_locked(sw, 0, &wake_s) == 0) {
+                        struct kc_chan_ptrmsg tmp; memcpy(&tmp, sw->send_buf, sizeof(tmp));
+                        *out_ptr = tmp.ptr; *out_len = tmp.len;
+                        ch->rv_matches++;
+                        kc_chan_update_recv_stats_len_locked(ch, tmp.len);
+                        kc_waiter_dispose(sw);
+                        KC_MUTEX_UNLOCK(&ch->mu);
+                        kc_chan_schedule_wake(wake_s);
+                        return 0;
+                    }
+                    if (sw) { sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
+                }
                 int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV);
                 if (ensure_rc != 0) {
                     KC_MUTEX_UNLOCK(&ch->mu);
@@ -1767,6 +2009,7 @@ again_recv_ptr:
                 struct kc_wake wake_sender = {0};
                 if (ch->wq_send_head != NULL) {
                     wake_sender = kc_chan_wake_send_locked(ch);
+                    kc_chan_trace_state("recv_ptr_wake_sender", ch);
                 }
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_sender);
@@ -1778,6 +2021,7 @@ again_recv_ptr:
             struct kc_wake wake_sender = {0};
             if (ch->wq_send_head != NULL) {
                 wake_sender = kc_chan_wake_send_locked(ch);
+                kc_chan_trace_state("recv_ptr_wake_sender", ch);
             }
             KC_MUTEX_UNLOCK(&ch->mu);
             kc_chan_schedule_wake(wake_sender);
@@ -1889,5 +2133,50 @@ int kc_chan_recv_ptr_c(kc_chan_t *ch, void **out_ptr, size_t *out_len, long time
             if (remain <= 0) return KC_ETIME;
         }
         return KC_ETIME;
+    }
+}
+/* =============================
+ * Waiter claim/commit helpers
+ * ============================= */
+
+static inline int kc_waiter_claim_prepare_wake_locked(struct kc_waiter *w, int rc_for_select, struct kc_wake *out)
+{
+    if (!w || !out) return -EINVAL;
+    out->co = NULL; out->sel = NULL;
+    /* Only claim once from ENQ state. Channel lock held, so no atomics needed. */
+    if (w->state != W_ENQ) return KC_EAGAIN;
+    if (w->kind == KC_WAITER_SELECT) {
+        if (!w->sel) return -EINVAL;
+        if (!kc_select_try_complete(w->sel, w->clause_index, rc_for_select)) {
+            return KC_EAGAIN;
+        }
+        kcoro_t *co = kc_select_waiter(w->sel);
+        if (co) kcoro_retain(co);
+        out->co = co;
+        out->sel = w->sel;
+    } else {
+        if (w->co) kcoro_retain(w->co);
+        out->co = w->co;
+        out->sel = NULL;
+    }
+    w->state = W_CLAIMED;
+    w->committed = 1;
+    return 0;
+}
+
+/* reserved for future cancellation path; keep defined for symmetry but unused now */
+/* static inline void kc_waiter_mark_cancelled_locked(struct kc_waiter *w) { if (w && w->state != W_CLAIMED) w->state = W_CANCELLED; } */
+
+static inline void kc_waiter_on_undelivered_locked(struct kc_chan *ch, struct kc_waiter *w)
+{
+    if (!ch || !w) return;
+    if (w->committed) return; /* delivered */
+    if (w->send_buf && w->send_len > 0) {
+        if (ch->ptr_mode && w->send_len >= sizeof(struct kc_chan_ptrmsg) && ch->on_undelivered_ptr) {
+            struct kc_chan_ptrmsg *pm = (struct kc_chan_ptrmsg*)w->send_buf;
+            ch->on_undelivered_ptr(pm->ptr, pm->len, ch->on_undelivered_arg);
+        } else if (!ch->ptr_mode && ch->on_undelivered_copy) {
+            ch->on_undelivered_copy(w->send_buf, w->send_len, ch->on_undelivered_arg);
+        }
     }
 }

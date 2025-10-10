@@ -155,6 +155,22 @@ struct kc_chan {
     struct kc_pending_send *token_send_tail;
     struct kc_pending_recv *token_recv_head;
     struct kc_pending_recv *token_recv_tail;
+
+    /* Alias descriptor LRU (ptr_mode): optional per-channel cache of (ptr,len)->desc_id.
+     * Holds a retained reference to cached ids; lookups retain before returning to callers.
+     */
+    int             alias_lru_enabled;
+    unsigned        alias_lru_size;
+    unsigned        alias_lru_clock;
+    struct {
+        void       *ptr;
+        size_t      len;
+        kc_desc_id  id;
+        unsigned    last_used;
+    } alias_lru[32];
+    unsigned long   alias_lru_hits;
+    unsigned long   alias_lru_misses;
+    unsigned long   alias_lru_evicts;
 };
 
 static inline long kc_now_ns(void)

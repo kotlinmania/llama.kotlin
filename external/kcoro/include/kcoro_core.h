@@ -73,6 +73,14 @@ struct kcoro {
     
     /* Debug info */
     const char* name;            /* Optional name for debugging */
+
+    /* Lightweight rendezvous handshake hint:
+     * When a parked sender is directly handed off by a receiver, the receiver
+     * marks this flag on the sender coroutine before waking it. The sender
+     * checks and clears the flag after kcoro_park() to return success without
+     * re-enqueueing. This avoids "success without transfer" and keeps the
+     * core lock structure unchanged. */
+    int last_send_delivered;     /* 1 if last parked send was delivered by recv */
 };
 
 /** ARM64 assembly context switching primitive (internal). */
