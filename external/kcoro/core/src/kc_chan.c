@@ -311,7 +311,8 @@ static void kc_wake_list_schedule(struct kc_wake_list *list)
 
 static int kc_waiter_token_ensure_enqueued(struct kc_waiter_token *token,
                                            struct kc_chan *ch,
-                                           enum kc_select_clause_kind clause)
+                                           enum kc_select_clause_kind clause,
+                                           void *recv_copy_out)
 {
     if (kc_waiter_token_is_enqueued(token)) {
         return 0;
@@ -323,6 +324,8 @@ static int kc_waiter_token_ensure_enqueued(struct kc_waiter_token *token,
     if (clause == KC_SELECT_CLAUSE_SEND) {
         kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
     } else {
+        /* Stash destination buffer for direct handoff in copy rendezvous */
+        w->recv_copy_buf = recv_copy_out;
         kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
     }
     token->status = KC_WAITER_TOKEN_ENQUEUED;
@@ -657,6 +660,20 @@ static struct kc_wake kc_chan_wake_send_locked(struct kc_chan *ch)
         int schedule = 0;
         kc_select_t *sel = w->sel;
         kc_chan_select_deliver_send_locked(ch, w, &schedule);
+        /* If delivering a select-send staged a value on a rendezvous channel and
+         * there is a waiting receiver, immediately wake exactly one receiver.
+         * This ensures progress: the staged value will be consumed without relying
+         * on a subsequent, separate nudge. */
+        if (ch->kind == KC_RENDEZVOUS && ch->has_value && ch->wq_recv_head != NULL) {
+            struct kc_wake rw = kc_chan_wake_recv_locked(ch);
+            if (rw.co || rw.sel) {
+                /* Schedule the receiver wake right away. We intentionally schedule here
+                 * under the channel lock to guarantee the receiver becomes runnable; the
+                 * normal returned 'wake' for the select sender is still returned to be
+                 * scheduled by the caller after it unlocks. */
+                kc_chan_schedule_wake(rw);
+            }
+        }
         kc_waiter_dispose(w);
         if (schedule) {
             wake.co = kc_select_waiter(sel);
@@ -933,6 +950,12 @@ void kc_chan_close(kc_chan_t *c)
     KC_COND_BROADCAST(&ch->cv_send);
     KC_COND_BROADCAST(&ch->cv_recv);
     struct kc_wake_list wakes = {0};
+    /* Rendezvous/conflated: if a value is already staged at close time, allow
+     * exactly one receiver to consume it by waking a waiting receiver first. */
+    if (ch->has_value && (ch->kind == KC_RENDEZVOUS || ch->kind == KC_CONFLATED)) {
+        struct kc_wake rw = kc_chan_wake_recv_locked(ch);
+        if (rw.co || rw.sel) kc_wake_list_append(&wakes, rw);
+    }
 
     struct kc_waiter *w;
     while ((w = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail)) != NULL) {
@@ -1047,19 +1070,56 @@ again_send:
             /* Sender resumes only when committed by receiver. */
             return 0;
         }
-        /* Receiver present and slot empty: commit receiver first, then publish and wake */
+        /* Receiver present and slot empty: deliver directly to the receiver.
+         * - If receiver is a coroutine waiter, publish to slot and wake it.
+         * - If receiver is a select waiter, publish to slot and immediately
+         *   deliver via select helper (which consumes the slot) before scheduling. */
         struct kc_waiter *rw = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail);
-        struct kc_wake wake_r = {0};
-        int cl = kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r);
-        if (cl == 0) {
+        if (rw && rw->kind == KC_WAITER_SELECT) {
+            int schedule = 0, consumed = 0;
+            kc_select_t *sel = rw->sel;
+            /* Stage into slot, then deliver into the select's recv buffer. */
             memcpy(ch->slot, msg, ch->elem_sz);
             ch->has_value = 1;
             kc_chan_update_send_stats_locked(ch);
             KC_COND_SIGNAL(&ch->cv_recv);
-            KC_MUTEX_UNLOCK(&ch->mu);
-            kc_chan_schedule_wake(wake_r);
+            kc_chan_select_deliver_recv_locked(ch, rw, &schedule, &consumed);
+            struct kc_wake wake_r = {0};
+            if (schedule) {
+                wake_r.co = kc_select_waiter(sel);
+                if (wake_r.co) kcoro_retain(wake_r.co);
+                wake_r.sel = sel;
+            }
             kc_waiter_dispose(rw);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            if (wake_r.co || wake_r.sel) kc_chan_schedule_wake(wake_r);
             return 0;
+        }
+        /* Coroutine waiter: prefer direct handoff into its destination buffer if available. */
+        struct kc_wake wake_r = {0};
+        int cl = kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r);
+        if (cl == 0) {
+            if (rw->recv_copy_buf) {
+                memcpy(rw->recv_copy_buf, msg, ch->elem_sz);
+                ch->rv_matches++;
+                kc_chan_update_send_stats_locked(ch);
+                kc_chan_update_recv_stats_locked(ch);
+                /* No staging; just wake the receiver to continue. */
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_chan_schedule_wake(wake_r);
+                kc_waiter_dispose(rw);
+                return 0;
+            } else {
+                /* Fallback: stage to slot and wake receiver to consume. */
+                memcpy(ch->slot, msg, ch->elem_sz);
+                ch->has_value = 1;
+                kc_chan_update_send_stats_locked(ch);
+                KC_COND_SIGNAL(&ch->cv_recv);
+                KC_MUTEX_UNLOCK(&ch->mu);
+                kc_chan_schedule_wake(wake_r);
+                kc_waiter_dispose(rw);
+                return 0;
+            }
         }
         /* If claim failed (e.g., canceled), push back receiver and enqueue sender; receiver will handoff */
         if (rw) { rw->next = ch->wq_recv_head; ch->wq_recv_head = rw; if (!ch->wq_recv_tail) ch->wq_recv_tail = rw; }
@@ -1164,6 +1224,7 @@ again_recv:
                 }
                 struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
                 if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+                w->recv_copy_buf = out;
                 kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
                 kc_chan_trace("recv_enqueue ch=%p waiter=%p", (void*)ch, (void*)w);
                 /* Cross-wake: if a sender arrived concurrently, nudge it now. */
@@ -1252,7 +1313,7 @@ again_recv:
                     kcoro_yield();
                     goto again_recv;
                 }
-                int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV);
+                int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV, out);
                 if (ensure_rc != 0) { KC_MUTEX_UNLOCK(&ch->mu); return ensure_rc; }
                 /* Cross-wake: if a sender arrives concurrently, nudge it */
                 if (ch->wq_send_head != NULL && !ch->has_value) {
@@ -1280,6 +1341,7 @@ again_recv:
                 }
                 struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
                 if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+                w->recv_copy_buf = out;
                 kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
                 kc_chan_trace("recv_enqueue ch=%p waiter=%p", (void*)ch, (void*)w);
                 KC_MUTEX_UNLOCK(&ch->mu);
@@ -2001,7 +2063,7 @@ again_recv_ptr:
                     }
                     if (sw) { sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
                 }
-                int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV);
+                int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV, NULL);
                 if (ensure_rc != 0) {
                     KC_MUTEX_UNLOCK(&ch->mu);
                     return ensure_rc;

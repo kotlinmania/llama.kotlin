@@ -31,6 +31,8 @@ struct kc_waiter {
     int committed; /* set when the waiter is the single winner (resume committed) */
     void **recv_ptr_slot;
     size_t *recv_len_slot;
+    /* Copy rendezvous: destination buffer for direct handoff (coroutine recv) */
+    void   *recv_copy_buf;
     /* Optional cancellation token (best-effort). If non-NULL, enqueue helpers
      * may choose to poll it between retries; selected wake remains the single
      * disposal owner. Not wired to callbacks yet (see PLAN.md). */
@@ -180,6 +182,7 @@ static inline struct kc_waiter* kc_waiter_new_coro(enum kc_select_clause_kind ki
     w->committed = 0;
     w->recv_ptr_slot = NULL;
     w->recv_len_slot = NULL;
+    w->recv_copy_buf = NULL;
     w->cancel = NULL;
     w->send_buf = NULL;
     w->send_len = 0;
