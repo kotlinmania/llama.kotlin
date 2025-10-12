@@ -937,6 +937,12 @@ void kc_chan_close(kc_chan_t *c)
 {
     struct kc_chan *ch = (struct kc_chan*)c;
     KC_MUTEX_LOCK(&ch->mu);
+    
+    /* Track close events for monitoring early-close bugs */
+    ch->close_calls++;
+    if (ch->has_value) ch->close_with_staged++;
+    if (ch->wq_send_head || ch->wq_recv_head) ch->close_while_waiters++;
+    
     kc_chan_trace_state("close", ch);
     ch->closed = 1;
     ch->zref_sender_waiter_expected = 0; /* clear to avoid invariant trips after close */
@@ -1099,27 +1105,26 @@ again_send:
         struct kc_wake wake_r = {0};
         int cl = kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r);
         if (cl == 0) {
+            /* DISABLED direct handoff temporarily to debug hang:
             if (rw->recv_copy_buf) {
                 memcpy(rw->recv_copy_buf, msg, ch->elem_sz);
                 ch->rv_matches++;
                 kc_chan_update_send_stats_locked(ch);
                 kc_chan_update_recv_stats_locked(ch);
-                /* No staging; just wake the receiver to continue. */
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_r);
                 kc_waiter_dispose(rw);
                 return 0;
-            } else {
-                /* Fallback: stage to slot and wake receiver to consume. */
-                memcpy(ch->slot, msg, ch->elem_sz);
-                ch->has_value = 1;
-                kc_chan_update_send_stats_locked(ch);
-                KC_COND_SIGNAL(&ch->cv_recv);
-                KC_MUTEX_UNLOCK(&ch->mu);
-                kc_chan_schedule_wake(wake_r);
-                kc_waiter_dispose(rw);
-                return 0;
-            }
+            } */
+            /* Fallback: stage to slot and wake receiver to consume. */
+            memcpy(ch->slot, msg, ch->elem_sz);
+            ch->has_value = 1;
+            kc_chan_update_send_stats_locked(ch);
+            KC_COND_SIGNAL(&ch->cv_recv);
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_chan_schedule_wake(wake_r);
+            kc_waiter_dispose(rw);
+            return 0;
         }
         /* If claim failed (e.g., canceled), push back receiver and enqueue sender; receiver will handoff */
         if (rw) { rw->next = ch->wq_recv_head; ch->wq_recv_head = rw; if (!ch->wq_recv_tail) ch->wq_recv_tail = rw; }

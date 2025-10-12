@@ -31,11 +31,12 @@ static void producer_co(void *arg) {
         int payload = i;
         int rc = kc_chan_send(ctx->chan, &payload, -1);
         if (rc != 0) {
-            fprintf(stderr, "[rv-metrics] producer send failed rc=%d at i=%d\n", rc, i);
-            return;
+            fprintf(stderr, "[rv-metrics] producer send failed rc=%d at i=%d; NOT closing (bug!)\n", rc, i);
+            return; /* Exit without incrementing producers_done—this producer failed. */
         }
         atomic_fetch_add_explicit(&ctx->sends_completed, 1, memory_order_relaxed);
     }
+    /* Only producers that complete all sends vote to close. */
     int finished = atomic_fetch_add_explicit(&ctx->producers_done, 1, memory_order_acq_rel) + 1;
     if (finished == PRODUCERS) {
         kc_chan_close(ctx->chan);
@@ -129,12 +130,20 @@ int main(void) {
     assert(rc == 0);
 
     if (snap.total_sends != ctx.expected_msgs || snap.total_recvs != ctx.expected_msgs) {
+        struct kc_chan *internal = (struct kc_chan *)chan;
         fprintf(stderr,
                 "[rv-metrics] mismatch sends=%lu recvs=%lu expected=%lu (atomic sends=%lu recvs=%lu producers_done=%d)\n",
                 snap.total_sends, snap.total_recvs, ctx.expected_msgs,
                 (unsigned long)atomic_load_explicit(&ctx.sends_completed, memory_order_relaxed),
                 (unsigned long)atomic_load_explicit(&ctx.recvs_completed, memory_order_relaxed),
                 atomic_load_explicit(&ctx.producers_done, memory_order_relaxed));
+        fprintf(stderr,
+                "[rv-metrics] close telemetry: close_calls=%lu close_with_staged=%lu close_while_waiters=%lu has_value=%d closed=%d\n",
+                internal->close_calls,
+                internal->close_with_staged,
+                internal->close_while_waiters,
+                internal->has_value,
+                internal->closed);
         kc_sched_shutdown(sched);
         kc_chan_destroy(chan);
         return 2;

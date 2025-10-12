@@ -136,6 +136,11 @@ struct kc_chan {
     unsigned long   rv_cancels;
     unsigned long   rv_zdesc_matches;
 
+    /* Close monitoring (detect early close) */
+    unsigned long   close_calls;
+    unsigned long   close_with_staged;      /* close while has_value==1 */
+    unsigned long   close_while_waiters;    /* close with send/recv waiters */
+
     /* Optional undelivered callbacks (copy / pointer descriptor). */
     void (*on_undelivered_copy)(void *elem, size_t len, void *arg);
     void (*on_undelivered_ptr)(void *ptr, size_t len, void *arg);
