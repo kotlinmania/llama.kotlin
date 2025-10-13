@@ -1062,6 +1062,8 @@ again_send:
                         ch->rv_matches++;
                         kc_chan_update_send_stats_locked(ch);
                         kc_chan_update_recv_stats_locked(ch);
+                        /* Mark receiver so it knows handoff was completed */
+                        if (rw->co) rw->co->last_recv_delivered = 1;
                         KC_MUTEX_UNLOCK(&ch->mu);
                         kc_chan_schedule_wake(wake_r);
                         kc_waiter_dispose(rw);
@@ -1186,6 +1188,11 @@ again_recv:
     KC_MUTEX_LOCK(&ch->mu);
     kc_chan_trace_state("recv_enter", ch);
     kc_dbg("chan%p recv kind=%d tmo=%ld cnt=%zu", (void*)ch, ch->kind, timeout_ms, ch->count);
+    /* Early check: if closed and no value, return EPIPE immediately */
+    if (ch->closed && !ch->has_value && ch->kind == KC_RENDEZVOUS) {
+        KC_MUTEX_UNLOCK(&ch->mu);
+        return KC_EPIPE;
+    }
     struct kc_wake wake_send = (struct kc_wake){0};
     struct kc_wake wake_recv2 = (struct kc_wake){0};
     if (ch->kind == KC_CONFLATED) {
