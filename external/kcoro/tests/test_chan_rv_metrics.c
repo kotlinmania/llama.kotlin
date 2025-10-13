@@ -36,11 +36,8 @@ static void producer_co(void *arg) {
         }
         atomic_fetch_add_explicit(&ctx->sends_completed, 1, memory_order_relaxed);
     }
-    /* Only producers that complete all sends vote to close. */
-    int finished = atomic_fetch_add_explicit(&ctx->producers_done, 1, memory_order_acq_rel) + 1;
-    if (finished == PRODUCERS) {
-        kc_chan_close(ctx->chan);
-    }
+    /* Mark this producer done; do NOT close here (other producers may still be mid-send). */
+    atomic_fetch_add_explicit(&ctx->producers_done, 1, memory_order_acq_rel);
 }
 
 static void consumer_co(void *arg) {
@@ -58,6 +55,17 @@ static void consumer_co(void *arg) {
         atomic_fetch_add_explicit(&ctx->recvs_completed, 1, memory_order_relaxed);
     }
     (void)ctx;
+}
+
+/* Coordinator: waits for all producers to finish, then closes the channel. */
+static void coordinator_co(void *arg) {
+    struct test_context *ctx = (struct test_context *)arg;
+    /* Spin-wait until all producers have finished their loops. */
+    while (atomic_load_explicit(&ctx->producers_done, memory_order_acquire) < PRODUCERS) {
+        kcoro_yield();
+    }
+    /* Now safe to close: all producers have exited their send loops. */
+    kc_chan_close(ctx->chan);
 }
 
 int main(void) {
@@ -89,10 +97,16 @@ int main(void) {
         rc = kc_spawn_co(sched, consumer_co, &ctx, STACK_SIZE, NULL);
         assert(rc == 0);
     }
+    /* Spawn coordinator to close channel after all producers finish. */
+    rc = kc_spawn_co(sched, coordinator_co, &ctx, STACK_SIZE, NULL);
+    assert(rc == 0);
 
-    /* Wait for scheduler to drain (up to 10 seconds). */
+    /* Wait for scheduler to drain (all coroutines finish). */
     const long timeout_ms = 60000;
     rc = kc_sched_drain(sched, timeout_ms);
+    
+    /* Channel already closed by coordinator; no need to close again. */
+    
     if (rc != 0) {
         struct kc_chan_snapshot fail_snap = {0};
         kc_chan_snapshot(chan, &fail_snap);
