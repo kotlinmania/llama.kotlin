@@ -20,6 +20,70 @@
 #include "kc_select_internal.h"
 
 /* ------------------------------------------------------------------------- */
+/* Alias LRU helpers (pointer descriptor cache) */
+
+static void kc_alias_lru_init(struct kc_chan *ch)
+{
+    if (!ch) return;
+    const char *env = getenv("KC_DESC_ALIAS_LRU");
+    ch->alias_lru_enabled = (env && atoi(env) > 0);
+    if (ch->alias_lru_enabled) {
+        ch->alias_lru_size = 32;
+        ch->alias_lru_clock = 0;
+        for (unsigned i = 0; i < ch->alias_lru_size; ++i) {
+            ch->alias_lru[i].ptr = NULL;
+            ch->alias_lru[i].len = 0;
+            ch->alias_lru[i].id = 0;
+            ch->alias_lru[i].last_used = 0;
+        }
+        ch->alias_lru_hits = 0;
+        ch->alias_lru_misses = 0;
+        ch->alias_lru_evicts = 0;
+    }
+}
+
+static kc_desc_id kc_alias_lru_lookup(struct kc_chan *ch, const void *ptr, size_t len)
+{
+    if (!ch || !ch->alias_lru_enabled) return 0;
+    /* Linear scan (cache is small, ~32 entries) */
+    for (unsigned i = 0; i < ch->alias_lru_size; ++i) {
+        if (ch->alias_lru[i].ptr == ptr && ch->alias_lru[i].len == len && ch->alias_lru[i].id) {
+            ch->alias_lru[i].last_used = ++ch->alias_lru_clock;
+            ch->alias_lru_hits++;
+            kc_desc_retain(ch->alias_lru[i].id); /* caller expects retained ref */
+            return ch->alias_lru[i].id;
+        }
+    }
+    ch->alias_lru_misses++;
+    return 0;
+}
+
+static void kc_alias_lru_insert(struct kc_chan *ch, void *ptr, size_t len, kc_desc_id id)
+{
+    if (!ch || !ch->alias_lru_enabled || !id) return;
+    /* Find LRU victim slot */
+    unsigned victim = 0;
+    unsigned oldest = ch->alias_lru[0].last_used;
+    for (unsigned i = 1; i < ch->alias_lru_size; ++i) {
+        if (ch->alias_lru[i].last_used < oldest) {
+            oldest = ch->alias_lru[i].last_used;
+            victim = i;
+        }
+    }
+    /* Evict old entry if present */
+    if (ch->alias_lru[victim].id) {
+        kc_desc_release(ch->alias_lru[victim].id);
+        ch->alias_lru_evicts++;
+    }
+    /* Insert new entry (caller has already retained for their use; we retain for cache) */
+    kc_desc_retain(id);
+    ch->alias_lru[victim].ptr = ptr;
+    ch->alias_lru[victim].len = len;
+    ch->alias_lru[victim].id = id;
+    ch->alias_lru[victim].last_used = ++ch->alias_lru_clock;
+}
+
+/* ------------------------------------------------------------------------- */
 /* Metrics helpers (unchanged from legacy path). */
 
 static void kc_chan_note_op_locked(struct kc_chan *ch, int is_send, size_t len)
@@ -205,13 +269,11 @@ static kc_desc_id kc_chan_create_desc(struct kc_chan *ch, const void *ptr, size_
             /* lookup retains for caller on hit */
             /* note: ptr lifetime must be managed by producer */
             /* cache capacity is small and bounded */
-            extern kc_desc_id kc_alias_lru_lookup(struct kc_chan*, const void*, size_t);
             id = kc_alias_lru_lookup(ch, ptr, len);
             if (id) return id;
         }
         id = kc_desc_make_alias((void*)ptr, len);
         if (id && ch->alias_lru_enabled) {
-            extern void kc_alias_lru_insert(struct kc_chan*, void*, size_t, kc_desc_id);
             kc_alias_lru_insert(ch, (void*)ptr, len, id);
             kc_desc_retain(id); /* retain for caller use in addition to LRU hold */
         }
@@ -254,11 +316,7 @@ int kc_chan_make(kc_chan_t **out, int kind, size_t elem_sz, size_t capacity)
     *out = ch;
     kc_desc_global_init();
     /* init optional alias LRU */
-    {
-        /* local decls for static helpers */
-        extern void kc_alias_lru_init(struct kc_chan *);
-        kc_alias_lru_init(ch);
-    }
+    kc_alias_lru_init(ch);
     return 0;
 }
 
