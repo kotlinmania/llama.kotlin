@@ -56,6 +56,12 @@ void koro_cont_destroy(koro_cont_t* k)
 {
     if (!k) return;
     
+    /* Free any pending arena ticket */
+    if (k->arena_ticket) {
+        free(k->arena_ticket);
+        k->arena_ticket = NULL;
+    }
+    
     /* Free user data if allocated */
     if (k->user_data) {
         free(k->user_data);
@@ -81,6 +87,12 @@ static void koro_send_resume_callback(void* user_data)
     int rc = kc_token_kernel_consume_payload(&result);
     k->last_park_result = rc;
     
+    /* Clear the ticket as operation completed */
+    if (k->arena_ticket) {
+        free(k->arena_ticket);
+        k->arena_ticket = NULL;
+    }
+    
     /* Re-enqueue continuation in scheduler's ready queue */
     koro_sched_enqueue_ready(k);
 }
@@ -104,9 +116,13 @@ void* koro_send_stackless(koro_cont_t* k, struct kc_chan* ch, void* data, size_t
         (void(*)(void))koro_send_resume_callback
     );
     
-    /* TODO: Store ticket for cancellation—requires heap allocation or arena ticket pool */
-    /* k->arena_ticket = &ticket; */
-    (void)ticket; /* Silence unused warning for now */
+    /* Store ticket for cancellation support.
+     * Note: kc_ticket is a value type, but we need to store it somewhere.
+     * The stackless model requires heap allocation for this. */
+    k->arena_ticket = malloc(sizeof(kc_ticket));
+    if (k->arena_ticket) {
+        memcpy(k->arena_ticket, &ticket, sizeof(kc_ticket));
+    }
     
     /* Check if send completed immediately (fast path) */
     kc_payload immediate_result;
@@ -141,6 +157,12 @@ static void koro_recv_resume_callback(void* user_data)
         k->arena_desc_id = result.desc_id;
     }
     
+    /* Clear the ticket as operation completed */
+    if (k->arena_ticket) {
+        free(k->arena_ticket);
+        k->arena_ticket = NULL;
+    }
+    
     /* Re-enqueue continuation in scheduler's ready queue */
     koro_sched_enqueue_ready(k);
 }
@@ -159,9 +181,11 @@ void* koro_recv_stackless(koro_cont_t* k, struct kc_chan* ch)
         (void(*)(void))koro_recv_resume_callback
     );
     
-    /* TODO: Store ticket for cancellation—requires heap allocation or arena ticket pool */
-    /* k->arena_ticket = &ticket; */
-    (void)ticket; /* Silence unused warning for now */
+    /* Store ticket for cancellation support */
+    k->arena_ticket = malloc(sizeof(kc_ticket));
+    if (k->arena_ticket) {
+        memcpy(k->arena_ticket, &ticket, sizeof(kc_ticket));
+    }
     
     /* Check if data is immediately available (fast path) */
     kc_payload immediate_result;

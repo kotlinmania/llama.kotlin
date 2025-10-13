@@ -139,7 +139,15 @@ static kc_token_block *ready_dequeue(kc_token_ready_queue *q) {
 }
 
 static void kc_token_process_block(kc_token_block *blk) {
-    if (blk->owner_co) {
+    /* Priority 1: Stackless continuation (resume_pc callback) */
+    if (blk->resume_pc) {
+        /* Invoke the continuation's resume callback directly.
+         * The callback (e.g., koro_send_resume_callback from kcoro_stackless.c)
+         * will handle payload consumption and re-enqueuing the continuation. */
+        blk->resume_pc();
+    }
+    /* Priority 2: Stackful coroutine (owner_co) */
+    else if (blk->owner_co) {
         kcoro_t *co = blk->owner_co;
         co->token_payload_ptr = blk->payload.ptr;
         co->token_payload_len = blk->payload.len;
@@ -148,7 +156,6 @@ static void kc_token_process_block(kc_token_block *blk) {
         atomic_store_explicit(&co->token_payload_ready, 1, memory_order_release);
         kcoro_unpark(co);
     }
-    // TODO(token-kernel): honor blk->resume_pc once interpreter hand-off is implemented.
     freelist_push(&g_kernel.freelist, blk);
 }
 
