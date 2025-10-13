@@ -1049,8 +1049,42 @@ again_send:
                 return KC_EAGAIN;
             }
         }
-        /* Rendezvous: always enqueue sender with stashed payload and park.
-         * Receiver will pop us, commit, do direct handoff, and wake us. */
+        /* Check if a receiver is already waiting; if so, do immediate rendezvous without enqueuing sender */
+        if (ch->wq_recv_head != NULL && !ch->has_value) {
+            struct kc_waiter *rw = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail);
+            if (rw) {
+                struct kc_wake wake_r = {0};
+                int cl = kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r);
+                if (cl == 0) {
+                    if (rw->recv_copy_buf) {
+                        /* Direct handoff into receiver's buffer without staging */
+                        memcpy(rw->recv_copy_buf, msg, ch->elem_sz);
+                        ch->rv_matches++;
+                        kc_chan_update_send_stats_locked(ch);
+                        kc_chan_update_recv_stats_locked(ch);
+                        KC_MUTEX_UNLOCK(&ch->mu);
+                        kc_chan_schedule_wake(wake_r);
+                        kc_waiter_dispose(rw);
+                        return 0;
+                    } else {
+                        /* Stage to slot, wake receiver to consume */
+                        memcpy(ch->slot, msg, ch->elem_sz);
+                        ch->has_value = 1;
+                        kc_chan_update_send_stats_locked(ch);
+                        KC_COND_SIGNAL(&ch->cv_recv);
+                        KC_MUTEX_UNLOCK(&ch->mu);
+                        kc_chan_schedule_wake(wake_r);
+                        kc_waiter_dispose(rw);
+                        return 0;
+                    }
+                }
+                /* Claim failed; push receiver back and fall through to enqueue sender */
+                rw->next = ch->wq_recv_head;
+                ch->wq_recv_head = rw;
+                if (!ch->wq_recv_tail) ch->wq_recv_tail = rw;
+            }
+        }
+        /* No receiver ready: enqueue sender with stashed payload and park */
         struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
         if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
         w->send_buf = malloc(ch->elem_sz);
@@ -1058,16 +1092,11 @@ again_send:
         memcpy(w->send_buf, msg, ch->elem_sz);
         w->send_len = ch->elem_sz;
         kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
-        /* Nudge a receiver if one is waiting to consume us immediately */
-        if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
         KC_MUTEX_UNLOCK(&ch->mu);
-        if (wake_recv.co || wake_recv.sel) kc_chan_schedule_wake(wake_recv);
         if (timed) {
-            /* Timed: park with deadline */
             kcoro_park();
             if (kc_now_ns() >= deadline_ns) {
                 KC_MUTEX_LOCK(&ch->mu);
-                /* Try to dequeue ourselves if not consumed */
                 struct kc_waiter **pprev = &ch->wq_send_head;
                 for (struct kc_waiter *wp = ch->wq_send_head; wp; pprev = &wp->next, wp = wp->next) {
                     if (wp == w) {
@@ -1079,14 +1108,13 @@ again_send:
                     }
                 }
                 KC_MUTEX_UNLOCK(&ch->mu);
+                return 0;
             }
             goto again_send;
         }
-        /* Infinite: park until consumed or closed */
         kcoro_t *self = kcoro_current();
-        if (self) self->last_park_result = 0; /* clear before park */
+        if (self) self->last_park_result = 0;
         kcoro_park();
-        /* After waking: check result set by recv or close */
         int result = (self ? self->last_park_result : 0);
         return result;
     }
