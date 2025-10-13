@@ -69,6 +69,7 @@ kcoro_t* kcoro_create_main(void)
     atomic_init(&main_co->refcount, 1);
     main_co->last_send_delivered = 0;
     main_co->last_recv_delivered = 0;
+    main_co->last_park_result = 0;
     
     /* Set as current */
     current_kcoro = main_co;
@@ -119,6 +120,7 @@ kcoro_t* kcoro_create(kcoro_fn_t fn, void* arg, size_t stack_size)
     atomic_init(&co->refcount, 1);
     co->last_send_delivered = 0;
     co->last_recv_delivered = 0;
+    co->last_park_result = 0;
     
     /* Set up stack and entry point (ARM64 ABI compliant) */
     uintptr_t stack_top = (uintptr_t)stack_mem + total_size;

@@ -945,7 +945,11 @@ void kc_chan_close(kc_chan_t *c)
     struct kc_waiter *w;
     while ((w = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail)) != NULL) {
         if (w->kind == KC_WAITER_CORO) {
-            if (w->co) kcoro_retain(w->co);
+            /* Mark sender coroutine: closed (result=KC_EPIPE) */
+            if (w->co) {
+                w->co->last_park_result = KC_EPIPE;
+                kcoro_retain(w->co);
+            }
             struct kc_wake wake = { .co = w->co };
             kc_wake_list_append(&wakes, wake);
         } else if (w->sel) {
@@ -1071,9 +1075,13 @@ again_send:
             }
             goto again_send;
         }
-        /* Infinite: park until consumed */
+        /* Infinite: park until consumed or closed */
+        kcoro_t *self = kcoro_current();
+        if (self) self->last_park_result = 0; /* clear before park */
         kcoro_park();
-        return 0;
+        /* After waking: check result set by recv or close */
+        int result = (self ? self->last_park_result : 0);
+        return result;
     }
 
     /* buffered/unlimited */
@@ -1332,8 +1340,8 @@ again_recv:
             }
             kc_chan_trace_state("recv_match", ch);
             kc_dbg("chan%p recv rv ok", (void*)ch);
-        } else if (rc == 0 && !ch->has_value && ch->wq_send_head != NULL) {
-            /* Direct handoff: claim sender, copy payload, commit, wake sender */
+        } else if (rc == 0 && !ch->closed && !ch->has_value && ch->wq_send_head != NULL) {
+            /* Direct handoff: claim sender, copy payload, commit, wake sender (only if not closed) */
             struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
             struct kc_wake wake = {0};
             if (sw && sw->send_buf && sw->send_len >= (size_t)ch->elem_sz &&
@@ -1342,6 +1350,8 @@ again_recv:
                 ch->rv_matches++;
                 kc_chan_update_send_stats_locked(ch);
                 kc_chan_update_recv_stats_locked(ch);
+                /* Mark sender coroutine: successfully consumed (result=0) */
+                if (sw->co) sw->co->last_park_result = 0;
                 kc_waiter_dispose(sw);
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake);

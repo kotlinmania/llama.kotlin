@@ -79,6 +79,7 @@ struct kcoro {
      * flags so the coroutine can return immediately after wake without retry. */
     int last_send_delivered;     /* 1 if last parked send was delivered by recv */
     int last_recv_delivered;     /* 1 if last parked recv had data delivered by send */
+    int last_park_result;        /* result code after park: 0=success, KC_EPIPE=closed, KC_ETIME=timeout */
 };
 
 /** ARM64 assembly context switching primitive (internal). */

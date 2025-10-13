@@ -28,7 +28,8 @@ struct kc_waiter {
     int freed;
     /* Rendezvous waiter state machine (coarse-grained under channel lock). */
     enum { W_INIT = 0, W_ENQ = 1, W_CLAIMED = 2, W_CANCELLED = 3 } state;
-    int committed; /* set when the waiter is the single winner (resume committed) */
+    int committed;     /* set when the waiter is the single winner (resume committed) */
+    int wake_result;   /* set on wake: 0=success, KC_EPIPE=closed, KC_ETIME=timeout */
     void **recv_ptr_slot;
     size_t *recv_len_slot;
     /* Copy rendezvous: destination buffer for direct handoff (coroutine recv) */
@@ -185,6 +186,7 @@ static inline struct kc_waiter* kc_waiter_new_coro(enum kc_select_clause_kind ki
     w->freed = 0;
     w->state = W_INIT;
     w->committed = 0;
+    w->wake_result = 0;
     w->recv_ptr_slot = NULL;
     w->recv_len_slot = NULL;
     w->recv_copy_buf = NULL;
