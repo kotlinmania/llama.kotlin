@@ -26,6 +26,14 @@ extern "C" {
 /* Forward declarations */
 struct koro_cont;
 struct koro_scheduler;
+struct kc_chan;
+typedef uint64_t kc_token_id_t;
+
+/* Ticket for arena operations (opaque to user) */
+typedef struct {
+    kc_token_id_t id;
+    struct kc_chan* channel;
+} kc_ticket;
 
 /* Continuation function pointer type.
  * Returns NULL when suspended, non-NULL when complete.
@@ -57,6 +65,8 @@ typedef struct koro_cont {
     int last_park_result;   /* Result from last suspension (arena status) */
     void* arena_payload;    /* Cached arena payload pointer */
     size_t arena_payload_len; /* Cached arena payload length */
+    uint64_t arena_desc_id; /* Descriptor ID for zero-copy payloads */
+    kc_ticket arena_ticket; /* Pending ticket for cancellation */
 } koro_cont_t;
 
 /* Protothread-style macros for user code.
@@ -126,36 +136,37 @@ static inline int koro_cont_is_done(koro_cont_t* k) {
 /* Stackless arena primitives.
  * These are CPS versions of the arena operations. */
 
-/* Attempt to send to arena ticket.
+/* Attempt to send to arena channel.
  * Returns immediately if successful.
  * Suspends and returns NULL if blocked. */
-void* koro_send_stackless(koro_cont_t* k, int ticket, void* data, size_t len);
+void* koro_send_stackless(koro_cont_t* k, struct kc_chan* ch, void* data, size_t len);
 
-/* Attempt to receive from arena ticket.
+/* Attempt to receive from arena channel.
  * Returns immediately if data available (stores in k->arena_payload).
  * Suspends and returns NULL if blocked. */
-void* koro_recv_stackless(koro_cont_t* k, int ticket);
+void* koro_recv_stackless(koro_cont_t* k, struct kc_chan* ch);
 
 /* Macros for arena operations in user code */
 
-/* Send data through arena, suspending if necessary.
+/* Send data through arena channel, suspending if necessary.
  * After resume, check k->last_park_result for status. */
-#define KORO_SEND(k, ticket, data, len) \
+#define KORO_SEND(k, ch, data, len) \
     do { \
         (k)->state = __LINE__; \
         case __LINE__: { \
-            void* _res = koro_send_stackless((k), (ticket), (data), (len)); \
+            void* _res = koro_send_stackless((k), (ch), (data), (len)); \
             if (!_res) return NULL; \
         } \
     } while (0)
 
-/* Receive data from arena, suspending if necessary.
- * After resume, data is in k->arena_payload with length k->arena_payload_len. */
-#define KORO_RECV(k, ticket) \
+/* Receive data from arena channel, suspending if necessary.
+ * After resume, data is in k->arena_payload with length k->arena_payload_len.
+ * For zero-copy descriptors, k->arena_desc_id contains the descriptor ID. */
+#define KORO_RECV(k, ch) \
     do { \
         (k)->state = __LINE__; \
         case __LINE__: { \
-            void* _res = koro_recv_stackless((k), (ticket)); \
+            void* _res = koro_recv_stackless((k), (ch)); \
             if (!_res) return NULL; \
         } \
     } while (0)
