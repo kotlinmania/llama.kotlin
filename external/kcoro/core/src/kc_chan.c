@@ -1057,12 +1057,11 @@ again_send:
                 int cl = kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r);
                 if (cl == 0) {
                     if (rw->recv_copy_buf) {
-                        /* Direct handoff into receiver's buffer without staging */
+                        /* Direct handoff into receiver's buffer without staging.
+                         * Receiver will update stats when it wakes—prevents double-count. */
                         memcpy(rw->recv_copy_buf, msg, ch->elem_sz);
                         ch->rv_matches++;
-                        kc_chan_update_send_stats_locked(ch);
-                        kc_chan_update_recv_stats_locked(ch);
-                        /* Mark receiver so it knows handoff was completed */
+                        /* Mark receiver so it updates stats on wake */
                         if (rw->co) rw->co->last_recv_delivered = 1;
                         KC_MUTEX_UNLOCK(&ch->mu);
                         kc_chan_schedule_wake(wake_r);
@@ -1227,6 +1226,11 @@ again_recv:
                 kcoro_t *me = kcoro_current();
                 if (me && me->last_recv_delivered) {
                     me->last_recv_delivered = 0;
+                    /* Update stats atomically—sender didn't update them */
+                    KC_MUTEX_LOCK(&ch->mu);
+                    kc_chan_update_send_stats_locked(ch);
+                    kc_chan_update_recv_stats_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
                     kc_chan_trace("recv_direct_ok co=%p", (void*)me);
                     return 0;
                 }
@@ -1321,6 +1325,11 @@ again_recv:
                 /* Check if sender did direct handoff into our buffer */
                 if (kcoro_current() && kcoro_current()->last_recv_delivered) {
                     kcoro_current()->last_recv_delivered = 0;
+                    /* Update stats atomically—sender didn't update them */
+                    KC_MUTEX_LOCK(&ch->mu);
+                    kc_chan_update_send_stats_locked(ch);
+                    kc_chan_update_recv_stats_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
                     return 0;
                 }
                 /* Retry to check for data or closure */
@@ -1341,6 +1350,11 @@ again_recv:
                     /* Check if sender did direct handoff */
                     if (kcoro_current() && kcoro_current()->last_recv_delivered) {
                         kcoro_current()->last_recv_delivered = 0;
+                        /* Update stats atomically */
+                        KC_MUTEX_LOCK(&ch->mu);
+                        kc_chan_update_send_stats_locked(ch);
+                        kc_chan_update_recv_stats_locked(ch);
+                        KC_MUTEX_UNLOCK(&ch->mu);
                         return 0;
                     }
                     goto again_recv;
@@ -1355,6 +1369,11 @@ again_recv:
                 /* Check if sender did direct handoff */
                 if (kcoro_current() && kcoro_current()->last_recv_delivered) {
                     kcoro_current()->last_recv_delivered = 0;
+                    /* Update stats atomically */
+                    KC_MUTEX_LOCK(&ch->mu);
+                    kc_chan_update_send_stats_locked(ch);
+                    kc_chan_update_recv_stats_locked(ch);
+                    KC_MUTEX_UNLOCK(&ch->mu);
                     return 0;
                 }
                 goto again_recv;
