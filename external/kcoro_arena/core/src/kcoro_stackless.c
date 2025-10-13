@@ -46,8 +46,7 @@ koro_cont_t* koro_cont_create(koro_step_fn initial_step,
     k->arena_payload = NULL;
     k->arena_payload_len = 0;
     k->arena_desc_id = 0;
-    k->arena_ticket.id = 0;
-    k->arena_ticket.channel = NULL;
+    k->arena_ticket = NULL; /* No pending ticket yet */
     
     return k;
 }
@@ -105,8 +104,9 @@ void* koro_send_stackless(koro_cont_t* k, struct kc_chan* ch, void* data, size_t
         (void(*)(void))koro_send_resume_callback
     );
     
-    /* Store ticket in continuation for potential cancellation */
-    k->arena_ticket = ticket;
+    /* TODO: Store ticket for cancellation—requires heap allocation or arena ticket pool */
+    /* k->arena_ticket = &ticket; */
+    (void)ticket; /* Silence unused warning for now */
     
     /* Check if send completed immediately (fast path) */
     kc_payload immediate_result;
@@ -159,8 +159,9 @@ void* koro_recv_stackless(koro_cont_t* k, struct kc_chan* ch)
         (void(*)(void))koro_recv_resume_callback
     );
     
-    /* Store ticket in continuation for potential cancellation */
-    k->arena_ticket = ticket;
+    /* TODO: Store ticket for cancellation—requires heap allocation or arena ticket pool */
+    /* k->arena_ticket = &ticket; */
+    (void)ticket; /* Silence unused warning for now */
     
     /* Check if data is immediately available (fast path) */
     kc_payload immediate_result;

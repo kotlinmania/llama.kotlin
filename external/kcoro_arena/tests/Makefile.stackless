@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Makefile for stackless primitives test suite
+
+CC ?= cc
+CFLAGS = -std=c11 -Wall -Wextra -Werror -pthread -I../include -I../core/src -O2 -g
+LDFLAGS = -pthread
+
+BUILD_DIR = build/stackless
+OBJ_DIR = $(BUILD_DIR)/obj
+
+# Core implementation files
+CORE_SRCS = ../core/src/kcoro_stackless.c
+CORE_OBJS = $(patsubst ../core/src/%.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
+
+# Test files (including stubs)
+TEST_SRCS = test_stackless_primitives.c test_stubs_stackless.c
+TEST_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
+
+# Combined
+ALL_OBJS = $(CORE_OBJS) $(TEST_OBJS)
+TEST_BIN = $(BUILD_DIR)/test_stackless_primitives
+
+.PHONY: all clean test
+
+all: $(TEST_BIN)
+
+$(BUILD_DIR) $(OBJ_DIR):
+	mkdir -p $@
+
+# Core implementation objects
+$(OBJ_DIR)/%.o: ../core/src/%.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Test objects
+$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TEST_BIN): $(ALL_OBJS) | $(BUILD_DIR)
+	$(CC) $(ALL_OBJS) $(LDFLAGS) -o $@
+
+test: $(TEST_BIN)
+	@echo "Running stackless primitives tests..."
+	@$(TEST_BIN)
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Stress test variant (runs tests multiple times)
+stress: $(TEST_BIN)
+	@echo "Running stress test (20 iterations)..."
+	@for i in $$(seq 1 20); do \
+		echo "=== Iteration $$i ==="; \
+		$(TEST_BIN) || exit 1; \
+	done
+	@echo "Stress test PASSED"

@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Makefile for atomic operations test suite
+
+CC ?= cc
+CFLAGS = -std=c11 -Wall -Wextra -Werror -pthread -I../core/include -I../include -O2 -g
+LDFLAGS = -pthread -L../core/build/lib -lkcoro_arena
+
+BUILD_DIR = build/atomic
+OBJ_DIR = $(BUILD_DIR)/obj
+
+TEST_SRCS = test_atomic_operations.c
+TEST_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
+TEST_BIN = $(BUILD_DIR)/test_atomic_operations
+
+.PHONY: all clean test
+
+all: $(TEST_BIN)
+
+$(BUILD_DIR) $(OBJ_DIR):
+	mkdir -p $@
+
+$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TEST_BIN): $(TEST_OBJS) | $(BUILD_DIR)
+	$(CC) $(TEST_OBJS) $(LDFLAGS) -o $@
+
+test: $(TEST_BIN)
+	@echo "Running atomic operations tests..."
+	@$(TEST_BIN)
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Stress test variant (runs tests multiple times)
+stress: $(TEST_BIN)
+	@echo "Running stress test (10 iterations)..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		echo "=== Iteration $$i ==="; \
+		$(TEST_BIN) || exit 1; \
+	done
+	@echo "Stress test PASSED"

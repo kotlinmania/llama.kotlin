@@ -27,13 +27,10 @@ extern "C" {
 struct koro_cont;
 struct koro_scheduler;
 struct kc_chan;
-typedef uint64_t kc_token_id_t;
 
-/* Ticket for arena operations (opaque to user) */
-typedef struct {
-    kc_token_id_t id;
-    struct kc_chan* channel;
-} kc_ticket;
+/* Token kernel definitions (from kcoro_token_kernel.h) */
+typedef uint64_t kc_token_id_t;
+typedef struct kc_ticket kc_ticket;  /* Opaque forward declaration */
 
 /* Continuation function pointer type.
  * Returns NULL when suspended, non-NULL when complete.
@@ -66,7 +63,7 @@ typedef struct koro_cont {
     void* arena_payload;    /* Cached arena payload pointer */
     size_t arena_payload_len; /* Cached arena payload length */
     uint64_t arena_desc_id; /* Descriptor ID for zero-copy payloads */
-    kc_ticket arena_ticket; /* Pending ticket for cancellation */
+    kc_ticket* arena_ticket; /* Pending ticket pointer for cancellation (NULL if none) */
 } koro_cont_t;
 
 /* Protothread-style macros for user code.
