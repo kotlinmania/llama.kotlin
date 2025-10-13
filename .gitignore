@@ -159,3 +159,4 @@ tools/kotlinx-coroutines-core-macosarm64-1.9.0.klib
 tools/kotlinx.coroutines/
 .github/copilot-instructions.md
 tools/kotlin-native-prebuilt-macos-aarch64-2.2.20/**/
+.notes_private/

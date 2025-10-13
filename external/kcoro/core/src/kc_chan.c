@@ -1042,8 +1042,7 @@ again_send:
             }
         }
         /* Rendezvous: always enqueue sender with stashed payload and park.
-         * Receiver will pop us, do direct handoff, and wake us.
-         * This matches Kotlin's suspend-until-consumed model. */
+         * Receiver will pop us, do direct handoff, and wake us. */
         struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
         if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
         w->send_buf = malloc(ch->elem_sz);
