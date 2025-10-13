@@ -1,0 +1,312 @@
+# Stackless Coroutines via Continuation-Passing Style (CPS)
+
+## Overview
+
+This document describes the architectural transition from stack-based coroutines to **stackless coroutines** using Continuation-Passing Style (CPS). This redesign eliminates per-coroutine stack allocation entirely, removing the 64KB memory overhead and enabling millions of concurrent coroutines.
+
+## Motivation
+
+### Stack-Based Limitations
+
+The current implementation allocates a 64KB stack per coroutine via `mmap`:
+- **Memory overhead**: 64KB × 10,000 coroutines = 640MB of address space
+- **TLB pressure**: Each stack requires page table entries
+- **Cache inefficiency**: Wide memory dispersal reduces cache locality
+- **Scalability barrier**: Practical limit around 100K-1M coroutines per process
+
+### Stackless Advantages
+
+- **Zero per-coroutine overhead**: Only the continuation state struct (~128 bytes)
+- **Heap locality**: All continuation data adjacent in memory
+- **Unlimited scale**: Millions of coroutines limited only by heap, not address space
+- **Cache friendly**: Tight data structures improve CPU cache utilization
+- **Simpler code**: No stack copying, guard pages, or mmap management
+
+## Core Concept
+
+### Traditional Stack-Based Model
+
+```
+┌─────────────────┐
+│  Stack (64KB)   │ ← SP
+│  ┌──────────┐   │
+│  │ locals   │   │
+│  ├──────────┤   │
+│  │ caller   │   │
+│  ├──────────┤   │
+│  │ ...      │   │
+│  └──────────┘   │
+└─────────────────┘
+```
+
+Each `kcoro_t` owns a dedicated stack. Context switch = save/restore SP, FP, LR, callee-saved registers.
+
+### Stackless CPS Model
+
+```
+┌────────────────────────┐
+│  Continuation Record   │
+│  ┌──────────────────┐  │
+│  │ state_id         │  │
+│  │ fn_resume        │ ─┼──→ Function pointer
+│  │ captured_vars    │  │
+│  │ result_dest      │  │
+│  └──────────────────┘  │
+└────────────────────────┘
+```
+
+No stack. Each suspension point produces a **continuation record** on the heap containing:
+- **state_id**: Which suspension point (for switch/goto dispatch)
+- **fn_resume**: Function pointer to resume logic
+- **captured_vars**: All local state needed across suspension
+- **result_dest**: Where to store result when resuming
+
+## Implementation Strategy
+
+### 1. Continuation Record Structure
+
+Replace `kcoro_t.reg[32]` and stack pointer with:
+
+```c
+typedef struct kc_continuation {
+    int state;                          /* Which suspension point (0=start) */
+    void (*resume_fn)(struct kc_continuation*, void* result);  /* Resume handler */
+    void* captured[16];                 /* Captured local variables */
+    void* result;                       /* Result from last suspension */
+    struct kc_continuation* caller;     /* Caller's continuation (for return) */
+} kc_continuation_t;
+```
+
+### 2. User Function Transformation
+
+#### Before (Stack-Based)
+
+```c
+void my_coroutine(void* arg) {
+    int x = compute();
+    void* data = kcoro_recv(ticket);  // Suspension point
+    process(data, x);
+}
+```
+
+#### After (Stackless CPS)
+
+The compiler (or manual transformation) converts this to a state machine:
+
+```c
+struct my_coro_state {
+    int state;           /* 0=start, 1=after_recv */
+    int x;               /* Captured across suspension */
+};
+
+void my_coroutine_resume(kc_continuation_t* k, void* result) {
+    struct my_coro_state* s = (struct my_coro_state*)k->captured[0];
+    
+    switch (s->state) {
+        case 0: {  // Initial entry
+            s->x = compute();
+            s->state = 1;
+            // Suspend: register continuation for recv
+            kcoro_recv_async(ticket, k);
+            return;  // Yielded control
+        }
+        case 1: {  // After recv resumed
+            void* data = result;  // Result from recv
+            process(data, s->x);
+            // Function complete: invoke caller's continuation
+            if (k->caller) {
+                k->caller->resume_fn(k->caller, NULL);
+            }
+            free(s);
+            free(k);
+            return;
+        }
+    }
+}
+
+kc_continuation_t* my_coroutine_start(void* arg) {
+    struct my_coro_state* s = malloc(sizeof(*s));
+    s->state = 0;
+    
+    kc_continuation_t* k = malloc(sizeof(*k));
+    k->state = 0;
+    k->resume_fn = my_coroutine_resume;
+    k->captured[0] = s;
+    k->caller = NULL;
+    
+    // Kick off initial execution
+    my_coroutine_resume(k, NULL);
+    return k;
+}
+```
+
+### 3. Suspension Points API
+
+Replace blocking calls with async + continuation:
+
+#### Old API (Blocking)
+```c
+void* kcoro_recv(int ticket);  // Blocks, uses stack
+```
+
+#### New API (Async + Continuation)
+```c
+void kcoro_recv_async(int ticket, kc_continuation_t* k);
+// Returns immediately. When data available, calls k->resume_fn(k, data)
+```
+
+### 4. Arena Integration
+
+The `RendezvousCell` now stores continuations instead of stack-based waiters:
+
+```c
+struct RendezvousCell {
+    atomic_int state;
+    kc_continuation_t* sender_cont;    /* Sender's continuation */
+    kc_continuation_t* receiver_cont;  /* Receiver's continuation */
+    void* payload;
+    // ...
+};
+```
+
+When a match occurs:
+1. Extract both sender and receiver continuations
+2. Call `receiver_cont->resume_fn(receiver_cont, payload)`
+3. Call `sender_cont->resume_fn(sender_cont, NULL)` (ack)
+
+### 5. Worker Loop Simplification
+
+Workers no longer switch stacks—they just dispatch continuations:
+
+```c
+void arena_worker_loop(void) {
+    while (true) {
+        int ticket = await_event();  // Blocking wait on event queue
+        RendezvousCell* cell = &arena[ticket];
+        
+        if (try_match(cell)) {
+            // Matched: resume both continuations
+            if (cell->receiver_cont) {
+                cell->receiver_cont->resume_fn(cell->receiver_cont, cell->payload);
+            }
+            if (cell->sender_cont) {
+                cell->sender_cont->resume_fn(cell->sender_cont, NULL);
+            }
+        }
+    }
+}
+```
+
+No `kcoro_switch` assembly call. Just plain C function calls.
+
+### 6. Eliminating Assembly Code
+
+The `kc_ctx_switch.S` files become **optional stubs** for backward compatibility. Core logic no longer depends on them.
+
+New entry point:
+```c
+void kc_go(void (*fn)(void*), void* arg) {
+    kc_continuation_t* k = malloc(sizeof(*k));
+    k->state = 0;
+    k->resume_fn = fn;  // First call is direct
+    k->captured[0] = arg;
+    k->caller = NULL;
+    
+    // Directly invoke (no stack setup)
+    fn(arg);
+}
+```
+
+## Migration Path
+
+### Phase 1: Parallel Implementation
+
+Keep existing stack-based code; add new stackless API alongside:
+- `kcoro_arena/core/src/kc_stackless.c`
+- `kcoro_arena/core/src/kc_stackless.h`
+- Tests prove equivalence
+
+### Phase 2: Arena Integration
+
+Modify `kc_arena.c` to use stackless API:
+- `RendezvousCell` stores `kc_continuation_t*` instead of `WaiterToken`
+- Workers call `resume_fn` directly
+
+### Phase 3: User API Evolution
+
+Provide helper macros for common patterns:
+
+```c
+#define KC_ASYNC_BEGIN(state_var) \
+    switch (state_var) { case 0:
+
+#define KC_AWAIT(expr, state_id) \
+    state_var = state_id; \
+    return (expr); \
+    case state_id:
+
+#define KC_ASYNC_END \
+    }
+```
+
+Usage:
+```c
+void my_func(kc_continuation_t* k, void* arg) {
+    struct state* s = k->captured[0];
+    
+    KC_ASYNC_BEGIN(s->state)
+        s->x = compute();
+        KC_AWAIT(kcoro_recv_async(42, k), 1)
+        process(s->x, k->result);
+    KC_ASYNC_END
+}
+```
+
+### Phase 4: Deprecation
+
+Mark stack-based APIs deprecated; document migration:
+- Keep old code under `#ifdef KC_USE_STACKS`
+- Remove assembly files from default build
+
+## Performance Implications
+
+### Memory
+
+- **Before**: 64KB × N coroutines
+- **After**: ~256 bytes × N coroutines
+- **Savings**: 250× reduction
+
+### CPU
+
+- **Stack switch overhead**: ~50-100 cycles (save/restore registers, mmap TLB miss)
+- **CPS call overhead**: ~5-10 cycles (indirect function call)
+- **Net gain**: 5-10× faster context switch
+
+### Cache
+
+- Continuation records packed in heap → better L1/L2 utilization
+- No dispersed stack allocations → fewer TLB misses
+
+## Testing Strategy
+
+1. **Unit tests**: Single coroutine lifecycle (start → suspend → resume → finish)
+2. **Concurrency tests**: 10K+ coroutines ping-ponging via arena
+3. **Stress tests**: 1M+ coroutines (impossible with stack-based model)
+4. **Benchmark**: Compare latency/throughput against stack-based version
+
+## Open Questions
+
+- **Automatic transformation**: Can we use Clang plugins to auto-convert user functions to CPS?
+- **Debug experience**: How to map CPS state machine back to source lines in gdb/lldb?
+- **Interop**: Can stackless coroutines call stack-based library code?
+
+## References
+
+- BizTalk MessageBox: Durable subscriptions without per-instance stacks
+- Protothreads: Classic stackless coroutine library in C
+- Boost.Context: Stack-based coroutines for comparison
+- Duff's Device: Original C state machine pattern
+
+---
+
+This architectural shift enables **true zero-spin, zero-stack coroutines** that scale to millions of concurrent tasks, perfectly aligned with the BizTalk-inspired arena design.

@@ -429,3 +429,109 @@ After implementing:
 5. **No priority scheduling**: all C coroutines have equal priority
 
 These are acceptable for v1; can be addressed in future iterations if needed.
+
+---
+
+## Appendix: Future Stackless Architecture
+
+### Motivation for Stackless Migration
+
+The current FFI design allocates a 64KB stack per coroutine (`aligned_alloc` in `koro_go()`). This creates the same scaling limitations as the core kcoro implementation:
+
+- **Memory overhead**: 64KB × 10,000 coroutines = 640MB
+- **TLB pressure**: Each stack occupies multiple page table entries
+- **Address space exhaustion**: Practical limit around 100K-1M coroutines
+- **Cache inefficiency**: Dispersed stacks reduce spatial locality
+
+### Stackless CPS Alternative
+
+A future iteration will replace stack-based dispatch with **Continuation-Passing Style (CPS)**:
+
+#### Stackless Data Structure
+
+```c
+typedef struct kc_continuation {
+    int state_id;                         /* Suspension point index */
+    void (*resume_fn)(struct kc_continuation*, void*);
+    void* captured[16];                   /* Captured local vars */
+    void* result;                         /* Result from suspension */
+    struct kc_continuation* caller;       /* Return continuation */
+} kc_continuation_t;
+```
+
+#### Stackless `koro_go()`
+
+```c
+void koro_go_stackless(void (*func)(void*), void* arg) {
+    kc_continuation_t* k = malloc(sizeof(*k));  // Only ~256 bytes!
+    k->state_id = 0;
+    k->resume_fn = func;  // Direct function pointer
+    k->captured[0] = arg;
+    k->caller = NULL;
+    
+    // Directly invoke (no stack setup, no trampoline)
+    func(arg);
+}
+```
+
+#### User Code Transformation
+
+**Original (stack-based):**
+```c
+void my_func(void* arg) {
+    int x = compute();
+    void* data = koro_recv(ticket);  // Suspension point
+    process(x, data);
+}
+```
+
+**Transformed (stackless CPS):**
+```c
+struct my_state {
+    int state;  // 0=start, 1=after_recv
+    int x;      // Captured variable
+};
+
+void my_func_resume(kc_continuation_t* k, void* result) {
+    struct my_state* s = k->captured[0];
+    
+    switch (s->state) {
+        case 0:  // Initial entry
+            s->x = compute();
+            s->state = 1;
+            koro_recv_async(ticket, k);  // Suspend
+            return;
+        
+        case 1:  // Resumed after recv
+            void* data = result;
+            process(s->x, data);
+            kc_cont_destroy(k);  // Done
+            return;
+    }
+}
+```
+
+#### Benefits
+
+- **250× memory reduction**: ~256 bytes vs 64KB per coroutine
+- **No assembly code**: Pure C implementation
+- **Millions of coroutines**: Only limited by heap, not address space
+- **Cache friendly**: Continuation records packed together
+
+#### Migration Path
+
+Phase 1: Keep stack-based implementation under `#ifdef KC_USE_STACKS`  
+Phase 2: Add parallel stackless API (`koro_go_async`, `koro_recv_async`)  
+Phase 3: Provide macro DSL to auto-transform user code to CPS  
+Phase 4: Deprecate stack-based API; make stackless default
+
+See `docs/STACKLESS_MIGRATION_PLAN.md` for full details.
+
+### Impact on This FFI Design
+
+The stackless migration primarily affects:
+1. **`koro_go()` implementation**: No `aligned_alloc`, just `malloc(continuation)`
+2. **Suspension API**: Replace blocking `koro_send/recv` with async + callbacks
+3. **Assembly code**: Optional for backward compatibility; not required
+
+The high-level FFI contract remains unchanged: C functions still appear to "block" at suspension points, but internally use CPS under the hood.
