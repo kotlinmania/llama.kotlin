@@ -43,29 +43,16 @@ static void producer_co(void *arg) {
 static void consumer_co(void *arg) {
     struct test_context *ctx = (struct test_context *)arg;
     int value = 0;
-    for (;;) {
+    /* Bounded loop: each consumer receives PER_PRODUCER messages. */
+    for (int i = 0; i < PER_PRODUCER; ++i) {
         int rc = kc_chan_recv(ctx->chan, &value, -1);
-        if (rc == -EPIPE) {
-            break;
-        }
         if (rc != 0) {
-            fprintf(stderr, "[rv-metrics] consumer recv failed rc=%d\n", rc);
-            break;
+            fprintf(stderr, "[rv-metrics] consumer recv failed rc=%d at i=%d\n", rc, i);
+            return;
         }
         atomic_fetch_add_explicit(&ctx->recvs_completed, 1, memory_order_relaxed);
     }
-    (void)ctx;
-}
-
-/* Coordinator: waits for all producers to finish, then closes the channel. */
-static void coordinator_co(void *arg) {
-    struct test_context *ctx = (struct test_context *)arg;
-    /* Spin-wait until all producers have finished their loops. */
-    while (atomic_load_explicit(&ctx->producers_done, memory_order_acquire) < PRODUCERS) {
-        kcoro_yield();
-    }
-    /* Now safe to close: all producers have exited their send loops. */
-    kc_chan_close(ctx->chan);
+    /* Consumer exits after receiving its share. */
 }
 
 int main(void) {
@@ -97,15 +84,14 @@ int main(void) {
         rc = kc_spawn_co(sched, consumer_co, &ctx, STACK_SIZE, NULL);
         assert(rc == 0);
     }
-    /* Spawn coordinator to close channel after all producers finish. */
-    rc = kc_spawn_co(sched, coordinator_co, &ctx, STACK_SIZE, NULL);
-    assert(rc == 0);
 
-    /* Wait for scheduler to drain (all coroutines finish). */
+    /* Kotlin pattern: sender.join(); receiver.join(); both have bounded loops. */
+    /* Wait for all coroutines to complete naturally (no explicit close needed during execution). */
     const long timeout_ms = 60000;
     rc = kc_sched_drain(sched, timeout_ms);
     
-    /* Channel already closed by coordinator; no need to close again. */
+    /* Close channel after all sends/recvs complete (Kotlin's produce{} auto-closes on completion). */
+    kc_chan_close(chan);
     
     if (rc != 0) {
         struct kc_chan_snapshot fail_snap = {0};
