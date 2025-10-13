@@ -1281,12 +1281,14 @@ again_recv:
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_send);
                 kcoro_park();
+                /* After waking, token is implicitly consumed; reset for potential retry */
                 kc_waiter_token_reset(&recv_token);
                 /* Check if sender did direct handoff into our buffer */
                 if (kcoro_current() && kcoro_current()->last_recv_delivered) {
                     kcoro_current()->last_recv_delivered = 0;
                     return 0;
                 }
+                /* Retry to check for data or closure */
                 goto again_recv;
             }
         } else {
@@ -1314,7 +1316,7 @@ again_recv:
                 kc_waiter_append(&ch->wq_recv_head, &ch->wq_recv_tail, w);
                 kc_chan_trace("recv_enqueue ch=%p waiter=%p", (void*)ch, (void*)w);
                 KC_MUTEX_UNLOCK(&ch->mu);
-                kcoro_yield();
+                kcoro_park(); /* Park, not yield, to properly suspend until woken */
                 /* Check if sender did direct handoff */
                 if (kcoro_current() && kcoro_current()->last_recv_delivered) {
                     kcoro_current()->last_recv_delivered = 0;
