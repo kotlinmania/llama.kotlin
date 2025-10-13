@@ -1,8 +1,16 @@
 # Assembly Context Switching: AArch64 Register Preservation
 
-## Overview
+## ⚠️ DEPRECATED - LEGACY STACKFUL DESIGN
 
-The context switch primitives (`kc_vm_capture` and `kc_vm_apply`) implement **hand-coded assembly routines** for saving and restoring CPU register state, enabling cooperative coroutine switching with **sub-50ns latency**. This is the lowest-level foundation of the entire kcoro arena system.
+**Status**: This document describes the OBSOLETE stackful context-switching implementation.  
+**Current Architecture**: kcoro_arena now uses **stackless continuations** with **zero context switching**.  
+**Replacement**: See `docs/components/stackless_runtime/` and `docs/components/token_kernel/`
+
+---
+
+## Historical Overview
+
+The context switch primitives (`kc_vm_capture` and `kc_vm_apply`) implemented **hand-coded assembly routines** for saving and restoring CPU register state in the original stackful design. This approach has been **completely eliminated** in favor of stackless CPS.
 
 ## Implementation: `kc_vm_apply.S`
 
