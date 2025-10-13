@@ -253,19 +253,21 @@ static void* producer_thread(void* arg)
     
     for (int i = 0; i < MSGS_PER_PRODUCER; i++) {
         /* Simulate token publish operation */
-        kc_token_id_t tok = kc_token_kernel_next_id();
+        int *data = malloc(sizeof(int));
+        *data = ctx->id * 10000 + i;
         
-        /* Publish with payload */
-        kc_payload p;
-        p.type = KC_PAYLOAD_COPY;
-        p.data.copy.size = sizeof(int);
-        p.data.copy.data = malloc(sizeof(int));
-        *(int*)p.data.copy.data = ctx->id * 10000 + i;
+        kc_ticket ticket = kc_token_kernel_publish_send(
+            NULL,  // channel
+            data,  // payload ptr
+            sizeof(int),  // payload len
+            NULL   // resume callback
+        );
         
-        int rc = kc_token_kernel_publish_send(tok, NULL, p, NULL);
-        if (rc == 0) {
+        if (ticket.id != 0) {
             atomic_fetch_add(&ctx->sent, 1);
         }
+        
+        free(data);  // In real code, payload lifetime would be managed by the kernel
         
         /* Small delay to increase contention */
         for (volatile int j = 0; j < 100; j++);
