@@ -1042,7 +1042,7 @@ again_send:
             }
         }
         /* Rendezvous: always enqueue sender with stashed payload and park.
-         * Receiver will pop us, do direct handoff, and wake us. */
+         * Receiver will pop us, commit, do direct handoff, and wake us. */
         struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
         if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
         w->send_buf = malloc(ch->elem_sz);
@@ -1050,10 +1050,10 @@ again_send:
         memcpy(w->send_buf, msg, ch->elem_sz);
         w->send_len = ch->elem_sz;
         kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
-        /* If a receiver is waiting, wake it to consume immediately */
+        /* Nudge a receiver if one is waiting to consume us immediately */
         if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
         KC_MUTEX_UNLOCK(&ch->mu);
-        kc_chan_schedule_wake(wake_recv);
+        if (wake_recv.co || wake_recv.sel) kc_chan_schedule_wake(wake_recv);
         if (timed) {
             /* Timed: park with deadline */
             kcoro_park();
