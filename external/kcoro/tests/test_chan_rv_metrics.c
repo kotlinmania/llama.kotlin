@@ -92,9 +92,17 @@ int main(void) {
     /* Producers finish → close channel → consumers drain to EPIPE → all done. */
     const long timeout_ms = 60000;
     
-    /* Spin until all producers report done, then close (mimics Kotlin produce{} auto-close on completion). */
+    /* Spin until all producers report done, then close. */
+    int spin_iters = 0;
     while (atomic_load_explicit(&ctx.producers_done, memory_order_acquire) < PRODUCERS) {
         kc_sleep_ms(10);
+        if (++spin_iters > 1000) {
+            fprintf(stderr, "[rv-metrics] STUCK waiting for producers: producers_done=%d/%d sends=%lu recvs=%lu\n",
+                    atomic_load_explicit(&ctx.producers_done, memory_order_relaxed), PRODUCERS,
+                    (unsigned long)atomic_load_explicit(&ctx.sends_completed, memory_order_relaxed),
+                    (unsigned long)atomic_load_explicit(&ctx.recvs_completed, memory_order_relaxed));
+            break;
+        }
     }
     kc_chan_close(chan);
     

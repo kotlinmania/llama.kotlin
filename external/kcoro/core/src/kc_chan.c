@@ -1262,9 +1262,14 @@ again_recv:
                         kc_chan_schedule_wake(wake_s);  /* Wake the sender! */
                         return 0;
                     }
-                    /* Claim failed or no payload - dispose and retry recv loop */
+                    /* Claim failed or no payload: ensure sender wakes to retry/error */
+                    if (sw->kind == KC_WAITER_CORO && sw->co) {
+                        wake_s.co = sw->co;
+                        kcoro_retain(wake_s.co);
+                    }
                     kc_waiter_dispose(sw);
                     KC_MUTEX_UNLOCK(&ch->mu);
+                    if (wake_s.co) kc_chan_schedule_wake(wake_s);
                     goto again_recv;
                 }
                 int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV, out);
