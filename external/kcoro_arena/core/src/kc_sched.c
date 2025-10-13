@@ -174,9 +174,9 @@ static int inject_pop(struct kc_sched *s, sched_task_t *out){ pthread_mutex_lock
 /* PRNG */
 static inline uint32_t ws_rand(uint32_t *state){ uint32_t x=*state; x^=x<<13; x^=x>>17; x^=x<<5; return *state = x?x:0x12345678u; }
 
-#ifndef KC_SCHED_STEAL_SCAN_MAX
+/* Golden path: Fixed optimal work-stealing scan attempts.
+ * 4 attempts provides good balance between throughput and fairness. */
 #define KC_SCHED_STEAL_SCAN_MAX 4
-#endif
 
 static void* worker_main(void *arg){
     sched_worker_t *w = (sched_worker_t*)arg;

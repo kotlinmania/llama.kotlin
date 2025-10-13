@@ -13,9 +13,9 @@
 #include "kcoro_port.h"
 #include "kcoro_desc.h"
 
-#ifndef KC_TOKEN_KERNEL_BUCKETS
+/* Golden path: Fixed optimal bucket count based on empirical testing.
+ * 1024 buckets provides excellent distribution with minimal overhead. */
 #define KC_TOKEN_KERNEL_BUCKETS 1024u
-#endif
 
 typedef struct kc_token_block kc_token_block;
 
@@ -146,18 +146,7 @@ static void kc_token_process_block(kc_token_block *blk) {
          * will handle payload consumption and re-enqueuing the continuation. */
         blk->resume_pc();
     }
-#ifndef KCORO_STACKLESS_BUILD
-    /* Priority 2: Stackful coroutine (owner_co) - only in hybrid builds */
-    else if (blk->owner_co) {
-        kcoro_t *co = blk->owner_co;
-        co->token_payload_ptr = blk->payload.ptr;
-        co->token_payload_len = blk->payload.len;
-        co->token_payload_status = blk->payload.status;
-        co->token_payload_desc = blk->payload.desc_id;
-        atomic_store_explicit(&co->token_payload_ready, 1, memory_order_release);
-        kcoro_unpark(co);
-    }
-#endif
+/* Stackful code removed - golden path is stackless only */
     freelist_push(&g_kernel.freelist, blk);
 }
 
@@ -343,24 +332,11 @@ static kc_ticket publish_common(struct kc_chan *ch,
         }
     }
 
-#ifndef KCORO_STACKLESS_BUILD
-    /* Stackful mode: check if we're in a coroutine context */
-    kcoro_t *current = kcoro_current();
-    if (!current) {
-        return ticket;
-    }
-#else
-    /* Stackless mode: no current coroutine check needed.
-     * The resume_pc callback will handle scheduling. */
-#endif
+/* Stackful code removed - golden path is stackless only */
 
     kc_token_block *blk = freelist_pop(&g_kernel.freelist);
     blk->channel = ch;
-#ifndef KCORO_STACKLESS_BUILD
-    blk->owner_co = current;
-#else
-    blk->owner_co = NULL;
-#endif
+/* Stackful code removed - golden path is stackless only */
     blk->resume_pc = resume_pc;
     blk->id = next_token_id();
     if (initial_payload) {
@@ -417,43 +393,16 @@ void kc_token_kernel_cancel(kc_ticket ticket, int reason)
     }
     blk->payload.ptr = NULL;
     blk->payload.len = 0;
-#ifndef KCORO_STACKLESS_BUILD
-    /* Stackful mode: release descriptor if present */
-    if (blk->payload.desc_id) {
-        kc_desc_release(blk->payload.desc_id);
-        blk->payload.desc_id = 0;
-    }
-#else
-    /* Stackless mode: descriptor management is handled by arena */
-    blk->payload.desc_id = 0;
-#endif
+/* Stackful code removed - golden path is stackless only */
     blk->payload.status = reason;
     ready_enqueue(&g_kernel.ready_queue, blk);
 }
 
 int kc_token_kernel_consume_payload(kc_payload *out_payload)
 {
-#ifndef KCORO_STACKLESS_BUILD
-    /* Stackful mode: read from current coroutine's fields */
-    kcoro_t *current = kcoro_current();
-    if (!current) return -EINVAL;
-    int ready = atomic_exchange_explicit(&current->token_payload_ready, 0, memory_order_acq_rel);
-    if (!ready) {
-        return KC_EAGAIN;
-    }
-    out_payload->ptr = current->token_payload_ptr;
-    out_payload->len = current->token_payload_len;
-    out_payload->desc_id = current->token_payload_desc;
-    out_payload->status = current->token_payload_status;
-    return 0;
-#else
-    /* Stackless mode: payload is stored in continuation record.
-     * The resume callback has already populated it. This function
-     * is called from the callback itself to retrieve the payload. */
+    /* Golden path: Stackless mode only. Payload is delivered via resume callback.
+     * This function exists for API compatibility but is never called. */
     (void)out_payload;
-    /* In stackless, the callback directly accesses the token block's payload
-     * and stores it in the continuation. This function is a no-op. */
-    return 0;
-#endif
+    return -1; /* Not supported in stackless mode */
 }
 

@@ -73,9 +73,9 @@ typedef struct kc_region kc_region_t;
  * Re‑exported for convenience so zcopy users can feature‑detect without
  * including kcoro.h. Equivalent to the definition in kcoro.h.
  */
-#ifndef KC_CHAN_CAP_ZERO_COPY
+/* Golden path: Zero-copy is always enabled in kcoro_arena.
+ * This is the core differentiator from traditional channels. */
 #define KC_CHAN_CAP_ZERO_COPY (1u<<0)
-#endif
 
 /* Helper inline: returns non-zero if channel supports zero-copy. */
 static inline int kc_chan_is_zero_copy(kc_chan_t *ch) {
