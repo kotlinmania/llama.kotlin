@@ -136,3 +136,26 @@ free(pending);
 3. Review arena close logic for descriptor handling
 4. Test arena version after each sync
 
+
+---
+
+## Sync Log
+
+### 2025-10-13: Scheduler Alive Tracking ✅
+
+**Commit:** 29d63f09
+
+**Synced pattern:** Base commit 21f81a7f scheduler alive tracking
+
+**Changes:**
+- `struct kc_sched`: Added `_Atomic(int) alive`
+- `kc_sched_init()`: Initialize `alive=0`
+- `kc_spawn_co()`: Increment alive after create
+- Worker loop: Decrement alive when `KCORO_FINISHED`
+- `kc_sched_drain()`: Check `alive==0` in addition to `approx_idle()`
+
+**Status:** ✅ Core builds successfully  
+**Blocker:** Arena tests have pre-existing link errors (kc_alias_lru symbols missing)
+
+**Next:** Investigate double-callback protection once link issues resolved
+
