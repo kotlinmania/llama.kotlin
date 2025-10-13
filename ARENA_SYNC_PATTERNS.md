@@ -159,3 +159,26 @@ free(pending);
 
 **Next:** Investigate double-callback protection once link issues resolved
 
+
+### 2025-10-13: Alias LRU Implementation ✅
+
+**Commit:** f77a3266
+
+**Fixed:** Missing symbol link errors for arena tests
+
+**Implementation:**
+- Added `kc_alias_lru_init()`: Reads `KC_DESC_ALIAS_LRU` env var; initializes 32-entry cache
+- Added `kc_alias_lru_lookup()`: Linear scan (cache is small); retains descriptor on hit
+- Added `kc_alias_lru_insert()`: LRU eviction (tracks `last_used` clock); retains for cache
+
+**Pattern:** Simple clock-based LRU with retained refs (prevents premature descriptor free)
+
+**Test fixes:**
+- `test_desc_alias_lru.c`: Added scheduler + producer/consumer coroutines (RV requires async)
+- Validation: Use `memcmp` not pointer equality (descriptors may create aliases)
+
+**Status:**  
+✅ All arena tests compile and link  
+✅ Non-RV tests pass (sched_basic, buffered)  
+⏸️  RV tests hang (pre-existing; being fixed in base kcoro)
+
