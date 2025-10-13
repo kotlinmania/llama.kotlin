@@ -115,7 +115,7 @@ typedef struct sched_worker {
 } sched_worker_t;
 
 struct kc_sched { /* unified */
-    int workers; sched_worker_t *w; _Atomic(int) stop;
+    int workers; sched_worker_t *w; _Atomic(int) stop; _Atomic(int) alive;
     _Atomic(unsigned long) tasks_submitted, tasks_completed;
     _Atomic(unsigned long) steals_probes, steals_succeeded, steals_failures;
     _Atomic(unsigned long) fastpath_hits, fastpath_misses, inject_pulls, donations;
@@ -234,6 +234,7 @@ static void* worker_main(void *arg){
             } else if (co->state == KCORO_FINISHED) {
                 atomic_store_explicit(&co->running_flag, 0, memory_order_release);
                 kcoro_release(co);
+                atomic_fetch_sub_explicit(&s->alive, 1, memory_order_acq_rel);
             } else {
                 atomic_store_explicit(&co->running_flag, 0, memory_order_release);
                 kcoro_release(co);
@@ -385,6 +386,7 @@ kc_sched_t* kc_sched_init(const kc_sched_opts_t *opts){
     pthread_mutex_init(&s->park_mu,NULL);
     pthread_cond_init(&s->park_cv,NULL);
     pthread_mutex_init(&s->rq_mu,NULL);
+    atomic_store(&s->alive, 0);
     /* Initialize timer subsystem state explicitly */
     atomic_store(&s->timer_started, 0);
     atomic_store(&s->next_timer_id, 0);
@@ -547,6 +549,7 @@ int kc_spawn_co(kc_sched_t* s, kcoro_fn_t fn, void* arg, size_t stack_size, kcor
     if(!co) return -1;
     co->scheduler = (kcoro_sched_t*)s;
     if(out_co) *out_co=co;
+    atomic_fetch_add_explicit(&s->alive, 1, memory_order_acq_rel);
     /* Ready queue takes ownership; retain before enqueue so rq_pop_locked releases the queue hold. */
     kcoro_retain(co);
     pthread_mutex_lock(&s->rq_mu);
@@ -621,14 +624,14 @@ static int approx_idle(struct kc_sched *s){
 
 int kc_sched_drain(struct kc_sched *s, long timeout_ms){
     if (!s) return -1;
-    if (timeout_ms == 0) return approx_idle(s) ? 0 : -ETIME;
+    if (timeout_ms == 0) return (approx_idle(s) && atomic_load_explicit(&s->alive, memory_order_acquire) == 0) ? 0 : -ETIME;
     long waited = 0;
     const long slice = 5; /* ms */
     if (timeout_ms < 0){
-        for(;;){ if (approx_idle(s)) return 0; kc_sleep_ms((int)slice); }
+        for(;;){ if (approx_idle(s) && atomic_load_explicit(&s->alive, memory_order_acquire) == 0) return 0; kc_sleep_ms((int)slice); }
     }
     while (waited <= timeout_ms){
-        if (approx_idle(s)) return 0;
+        if (approx_idle(s) && atomic_load_explicit(&s->alive, memory_order_acquire) == 0) return 0;
         kc_sleep_ms((int)slice);
         waited += slice;
     }
