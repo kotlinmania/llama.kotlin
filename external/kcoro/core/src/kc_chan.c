@@ -1070,20 +1070,11 @@ again_send:
             kc_chan_schedule_wake(wake_r);
             return 0;
         }
-        /* If claim failed (e.g., canceled), push back receiver and enqueue sender; receiver will handoff */
-        if (rw) { rw->next = ch->wq_recv_head; ch->wq_recv_head = rw; if (!ch->wq_recv_tail) ch->wq_recv_tail = rw; }
-        struct kc_waiter *w2 = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
-        if (!w2) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
-        w2->send_buf = malloc(ch->elem_sz);
-        if (!w2->send_buf) { kc_waiter_dispose(w2); KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
-        memcpy(w2->send_buf, msg, ch->elem_sz);
-        w2->send_len = ch->elem_sz;
-        kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w2);
-        if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
+        /* Claim failed (cancelled/already resumed) - dispose waiter and retry the send.
+         * DON'T push back! Kotlin marks as interrupted and continues outer loop. */
+        kc_waiter_dispose(rw);
         KC_MUTEX_UNLOCK(&ch->mu);
-        kc_chan_schedule_wake(wake_recv);
-        kcoro_park();
-        return 0;
+        goto again_send;  /* Retry - may find another receiver or enqueue */
     }
 
     /* buffered/unlimited */
@@ -1233,33 +1224,25 @@ again_recv:
             }
         } else if (timeout_ms < 0) {
             if (!ch->has_value && !ch->closed) {
-                /* Pop-first: if sender waiting, perform direct handoff under lock */
+                /* Pop-first: if sender waiting, try to claim and complete handoff */
                 if (ch->wq_send_head != NULL) {
                     struct kc_waiter *sw = kc_waiter_pop(&ch->wq_send_head, &ch->wq_send_tail);
-                    if (sw && sw->send_buf && sw->send_len >= (size_t)ch->elem_sz) {
+                    struct kc_wake wake_s = {0};
+                    int cl = kc_waiter_claim_prepare_wake_locked(sw, 0, &wake_s);
+                    if (cl == 0 && sw->send_buf && sw->send_len >= (size_t)ch->elem_sz) {
+                        /* Direct handoff: copy from stashed payload and wake sender */
                         memcpy(out, sw->send_buf, ch->elem_sz);
-                        /* Count both sides of the transfer here */
+                        ch->rv_matches++;
                         kc_chan_update_send_stats_locked(ch);
                         kc_chan_update_recv_stats_locked(ch);
-                        /* Mark sender as delivered and wake it */
-                        struct kc_wake wake = {0};
-                        if (sw->kind == KC_WAITER_CORO && sw->co) {
-                            sw->co->last_send_delivered = 1;
-                            wake.co = sw->co;
-                            kcoro_retain(wake.co);
-                        }
                         kc_waiter_dispose(sw);
                         KC_MUTEX_UNLOCK(&ch->mu);
-                        kc_chan_schedule_wake(wake);
+                        kc_chan_schedule_wake(wake_s);  /* Wake the sender! */
                         return 0;
                     }
-                    /* Fallback: wake normal sender */
-                    if (sw) { /* push back if not used */ sw->next = ch->wq_send_head; ch->wq_send_head = sw; if (!ch->wq_send_tail) ch->wq_send_tail = sw; }
-                    kc_dbg("chan%p recv wake sender", (void*)ch);
-                    wake_send = kc_chan_wake_send_locked(ch);
+                    /* Claim failed or no payload - dispose and retry recv loop */
+                    kc_waiter_dispose(sw);
                     KC_MUTEX_UNLOCK(&ch->mu);
-                    kc_chan_schedule_wake(wake_send);
-                    kcoro_yield();
                     goto again_recv;
                 }
                 int ensure_rc = kc_waiter_token_ensure_enqueued(&recv_token, ch, KC_SELECT_CLAUSE_RECV, out);
