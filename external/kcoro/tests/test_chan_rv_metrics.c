@@ -43,16 +43,19 @@ static void producer_co(void *arg) {
 static void consumer_co(void *arg) {
     struct test_context *ctx = (struct test_context *)arg;
     int value = 0;
-    /* Bounded loop: each consumer receives PER_PRODUCER messages. */
-    for (int i = 0; i < PER_PRODUCER; ++i) {
+    /* Unbounded loop: drain until channel closes (Kotlin pattern: consumeAsFlow/consumeEach). */
+    for (;;) {
         int rc = kc_chan_recv(ctx->chan, &value, -1);
+        if (rc == -EPIPE) {
+            /* Channel closed; consumer done. */
+            break;
+        }
         if (rc != 0) {
-            fprintf(stderr, "[rv-metrics] consumer recv failed rc=%d at i=%d\n", rc, i);
+            fprintf(stderr, "[rv-metrics] consumer recv failed rc=%d\n", rc);
             return;
         }
         atomic_fetch_add_explicit(&ctx->recvs_completed, 1, memory_order_relaxed);
     }
-    /* Consumer exits after receiving its share. */
 }
 
 int main(void) {
@@ -85,13 +88,18 @@ int main(void) {
         assert(rc == 0);
     }
 
-    /* Kotlin pattern: sender.join(); receiver.join(); both have bounded loops. */
-    /* Wait for all coroutines to complete naturally (no explicit close needed during execution). */
+    /* Wait for all producers to finish their sends (drain respects alive coroutines). */
+    /* Producers finish → close channel → consumers drain to EPIPE → all done. */
     const long timeout_ms = 60000;
-    rc = kc_sched_drain(sched, timeout_ms);
     
-    /* Close channel after all sends/recvs complete (Kotlin's produce{} auto-closes on completion). */
+    /* Spin until all producers report done, then close (mimics Kotlin produce{} auto-close on completion). */
+    while (atomic_load_explicit(&ctx.producers_done, memory_order_acquire) < PRODUCERS) {
+        kc_sleep_ms(10);
+    }
     kc_chan_close(chan);
+    
+    /* Now drain: consumers will see EPIPE and exit, scheduler waits for alive==0. */
+    rc = kc_sched_drain(sched, timeout_ms);
     
     if (rc != 0) {
         struct kc_chan_snapshot fail_snap = {0};

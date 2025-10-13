@@ -1030,51 +1030,50 @@ again_send:
     }
 
     if (ch->kind == KC_RENDEZVOUS) {
-        if (ch->wq_recv_head == NULL || ch->has_value) {
-            if (timeout_ms == 0) { ch->send_eagain++; KC_MUTEX_UNLOCK(&ch->mu); return KC_EAGAIN; }
-            if (timed) {
+        if (timeout_ms == 0) {
+            if (ch->wq_recv_head == NULL || ch->has_value) {
+                ch->send_eagain++;
                 KC_MUTEX_UNLOCK(&ch->mu);
-                if (kc_now_ns() >= deadline_ns) return KC_ETIME;
-                kcoro_yield();
-                goto again_send;
+                return KC_EAGAIN;
             }
-            /* Infinite: enqueue sender and park; receiver will commit and deliver. */
-            struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
-            if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
-            /* Always stash payload for direct handoff */
-            w->send_buf = malloc(ch->elem_sz);
-            if (!w->send_buf) { kc_waiter_dispose(w); KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
-            memcpy(w->send_buf, msg, ch->elem_sz);
-            w->send_len = ch->elem_sz;
-            kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
-            /* If a receiver is waiting and slot is empty, let it consume immediately */
-            if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
-            KC_MUTEX_UNLOCK(&ch->mu);
-            kc_chan_schedule_wake(wake_recv);
-            kcoro_park();
-            /* Sender resumes only when committed by receiver. */
-            return 0;
         }
-        /* Receiver present and slot empty: use claim protocol for single-winner semantics */
-        struct kc_waiter *rw = kc_waiter_pop(&ch->wq_recv_head, &ch->wq_recv_tail);
-        struct kc_wake wake_r = {0};
-        int cl = kc_waiter_claim_prepare_wake_locked(rw, 0, &wake_r);
-        if (cl == 0) {
-            /* Successfully claimed receiver - stage value and wake */
-            memcpy(ch->slot, msg, ch->elem_sz);
-            ch->has_value = 1;
-            kc_chan_update_send_stats_locked(ch);
-            KC_COND_SIGNAL(&ch->cv_recv);
-            kc_waiter_dispose(rw);
-            KC_MUTEX_UNLOCK(&ch->mu);
-            kc_chan_schedule_wake(wake_r);
-            return 0;
-        }
-        /* Claim failed (cancelled/already resumed) - dispose waiter and retry the send.
-         * DON'T push back! Kotlin marks as interrupted and continues outer loop. */
-        kc_waiter_dispose(rw);
+        /* Rendezvous: always enqueue sender with stashed payload and park.
+         * Receiver will pop us, do direct handoff, and wake us.
+         * This matches Kotlin's suspend-until-consumed model. */
+        struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_SEND);
+        if (!w) { KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+        w->send_buf = malloc(ch->elem_sz);
+        if (!w->send_buf) { kc_waiter_dispose(w); KC_MUTEX_UNLOCK(&ch->mu); return -ENOMEM; }
+        memcpy(w->send_buf, msg, ch->elem_sz);
+        w->send_len = ch->elem_sz;
+        kc_waiter_append(&ch->wq_send_head, &ch->wq_send_tail, w);
+        /* If a receiver is waiting, wake it to consume immediately */
+        if (ch->wq_recv_head != NULL && !ch->has_value) wake_recv = kc_chan_wake_recv_locked(ch);
         KC_MUTEX_UNLOCK(&ch->mu);
-        goto again_send;  /* Retry - may find another receiver or enqueue */
+        kc_chan_schedule_wake(wake_recv);
+        if (timed) {
+            /* Timed: park with deadline */
+            kcoro_park();
+            if (kc_now_ns() >= deadline_ns) {
+                KC_MUTEX_LOCK(&ch->mu);
+                /* Try to dequeue ourselves if not consumed */
+                struct kc_waiter **pprev = &ch->wq_send_head;
+                for (struct kc_waiter *wp = ch->wq_send_head; wp; pprev = &wp->next, wp = wp->next) {
+                    if (wp == w) {
+                        *pprev = w->next;
+                        if (ch->wq_send_tail == w) ch->wq_send_tail = (struct kc_waiter*)*pprev;
+                        kc_waiter_dispose(w);
+                        KC_MUTEX_UNLOCK(&ch->mu);
+                        return KC_ETIME;
+                    }
+                }
+                KC_MUTEX_UNLOCK(&ch->mu);
+            }
+            goto again_send;
+        }
+        /* Infinite: park until consumed */
+        kcoro_park();
+        return 0;
     }
 
     /* buffered/unlimited */
@@ -1174,6 +1173,14 @@ again_recv:
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kc_chan_schedule_wake(wake_send);
                 kcoro_yield();
+                /* Check if sender did direct handoff into our buffer */
+                kcoro_t *me = kcoro_current();
+                if (me && me->last_recv_delivered) {
+                    me->last_recv_delivered = 0;
+                    kc_chan_trace("recv_direct_ok co=%p", (void*)me);
+                    return 0;
+                }
+                kc_chan_trace("recv_retry co=%p", (void*)me);
                 goto again_recv;
             }
         } else {
@@ -1255,6 +1262,11 @@ again_recv:
                 kc_chan_schedule_wake(wake_send);
                 kcoro_park();
                 kc_waiter_token_reset(&recv_token);
+                /* Check if sender did direct handoff into our buffer */
+                if (kcoro_current() && kcoro_current()->last_recv_delivered) {
+                    kcoro_current()->last_recv_delivered = 0;
+                    return 0;
+                }
                 goto again_recv;
             }
         } else {
@@ -1269,6 +1281,11 @@ again_recv:
                     KC_MUTEX_UNLOCK(&ch->mu);
                     kc_chan_schedule_wake(wake_send);
                     kcoro_yield();
+                    /* Check if sender did direct handoff */
+                    if (kcoro_current() && kcoro_current()->last_recv_delivered) {
+                        kcoro_current()->last_recv_delivered = 0;
+                        return 0;
+                    }
                     goto again_recv;
                 }
                 struct kc_waiter *w = kc_waiter_new_coro(KC_SELECT_CLAUSE_RECV);
@@ -1278,6 +1295,11 @@ again_recv:
                 kc_chan_trace("recv_enqueue ch=%p waiter=%p", (void*)ch, (void*)w);
                 KC_MUTEX_UNLOCK(&ch->mu);
                 kcoro_yield();
+                /* Check if sender did direct handoff */
+                if (kcoro_current() && kcoro_current()->last_recv_delivered) {
+                    kcoro_current()->last_recv_delivered = 0;
+                    return 0;
+                }
                 goto again_recv;
             }
         }
