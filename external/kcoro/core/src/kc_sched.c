@@ -116,6 +116,7 @@ typedef struct sched_worker {
 
 struct kc_sched { /* unified */
     int workers; sched_worker_t *w; _Atomic(int) stop; _Atomic(int) alive;
+    _Atomic(int) parked_in_channels; /* coroutines parked in channel wait queues */
     _Atomic(unsigned long) tasks_submitted, tasks_completed;
     _Atomic(unsigned long) steals_probes, steals_succeeded, steals_failures;
     _Atomic(unsigned long) fastpath_hits, fastpath_misses, inject_pulls, donations;
@@ -397,6 +398,7 @@ kc_sched_t* kc_sched_init(const kc_sched_opts_t *opts){
     s->w=(sched_worker_t*)calloc((size_t)n,sizeof(sched_worker_t));
     if(!s->w){ free(s); return NULL; }
     atomic_store(&s->alive, 0);
+    atomic_store(&s->parked_in_channels, 0);
     for(int i=0;i<n;i++){
         sched_worker_t *w=&s->w[i];
         w->id=i; w->sched=s; atomic_store(&w->last_task,NULL);
@@ -619,7 +621,9 @@ static int approx_idle(struct kc_sched *s){
 
     /* All workers idle? */
     int idle = (atomic_load(&s->idle_workers) == s->workers);
-    return (inject_empty && rq_empty && idle) ? 1 : 0;
+    /* Channel-aware: not idle if coroutines are parked in channel wait queues */
+    int parked = atomic_load_explicit(&s->parked_in_channels, memory_order_acquire);
+    return (inject_empty && rq_empty && idle && parked == 0) ? 1 : 0;
 }
 
 int kc_sched_drain(struct kc_sched *s, long timeout_ms){
@@ -636,4 +640,12 @@ int kc_sched_drain(struct kc_sched *s, long timeout_ms){
         waited += slice;
     }
     return -ETIME;
+}
+
+void kc_sched_mark_parked_in_channel(kc_sched_t* s) {
+    if (s) atomic_fetch_add_explicit(&s->parked_in_channels, 1, memory_order_acq_rel);
+}
+
+void kc_sched_mark_unparked_from_channel(kc_sched_t* s) {
+    if (s) atomic_fetch_sub_explicit(&s->parked_in_channels, 1, memory_order_acq_rel);
 }

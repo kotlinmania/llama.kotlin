@@ -106,6 +106,10 @@ void kc_sched_get_stats(kc_sched_t *s, kc_sched_stats_t *out);
  */
 int kc_sched_drain(kc_sched_t *s, long timeout_ms);
 
+/* Internal helpers for channel park/wake tracking (used by kc_chan.c) */
+void kc_sched_mark_parked_in_channel(kc_sched_t* s);
+void kc_sched_mark_unparked_from_channel(kc_sched_t* s);
+
 /** Timer API (cooperative timers) -------------------------------------------
  * Minimal parity with C++ scheduler timers. Timers wake coroutines at/after
  * deadlines without blocking worker threads. Cancellation is best‑effort.
