@@ -2,27 +2,32 @@
 # Makefile for stackless primitives test suite
 
 CC ?= cc
-CFLAGS = -std=c11 -Wall -Wextra -Werror -pthread -I../include -I../core/src -O2 -g
+CFLAGS = -std=c11 -Wall -Wextra -Werror -pthread -I../include -I../core/src -O2 -g -DKCORO_STACKLESS_BUILD
 LDFLAGS = -pthread
 
 BUILD_DIR = build/stackless
 OBJ_DIR = $(BUILD_DIR)/obj
 
-# Core implementation files
-CORE_SRCS = ../core/src/kcoro_stackless.c
-CORE_OBJS = $(patsubst ../core/src/%.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
+# Core implementation files needed for stackless
+STACKLESS_SRCS = ../core/src/kcoro_stackless.c \
+                 ../core/src/koro_sched_stackless.c \
+                 ../core/src/kc_token_kernel.c
+STACKLESS_OBJS = $(patsubst ../core/src/%.c,$(OBJ_DIR)/%.o,$(STACKLESS_SRCS))
 
 # Test files (including stubs)
 TEST_SRCS = test_stackless_primitives.c test_stubs_stackless.c
 TEST_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
 
-# Combined
-ALL_OBJS = $(CORE_OBJS) $(TEST_OBJS)
+# Example binary
+EXAMPLE_BIN = $(BUILD_DIR)/example_stackless
+EXAMPLE_OBJ = $(OBJ_DIR)/example_stackless.o
+
+# Test binary
 TEST_BIN = $(BUILD_DIR)/test_stackless_primitives
 
-.PHONY: all clean test
+.PHONY: all clean test example
 
-all: $(TEST_BIN)
+all: $(TEST_BIN) $(EXAMPLE_BIN)
 
 $(BUILD_DIR) $(OBJ_DIR):
 	mkdir -p $@
@@ -35,8 +40,13 @@ $(OBJ_DIR)/%.o: ../core/src/%.c | $(OBJ_DIR)
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(TEST_BIN): $(ALL_OBJS) | $(BUILD_DIR)
-	$(CC) $(ALL_OBJS) $(LDFLAGS) -o $@
+$(TEST_BIN): $(STACKLESS_OBJS) $(TEST_OBJS) | $(BUILD_DIR)
+	$(CC) $(STACKLESS_OBJS) $(TEST_OBJS) $(LDFLAGS) -o $@
+
+$(EXAMPLE_BIN): $(STACKLESS_OBJS) $(EXAMPLE_OBJ) | $(BUILD_DIR)
+	$(CC) $(STACKLESS_OBJS) $(EXAMPLE_OBJ) $(LDFLAGS) -o $@
+
+example: $(EXAMPLE_BIN)
 
 test: $(TEST_BIN)
 	@echo "Running stackless primitives tests..."
