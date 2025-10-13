@@ -32,8 +32,9 @@ extern "C" {
 typedef struct kcoro kcoro_t;
 typedef struct kcoro_sched kcoro_sched_t;
 
-/* Coroutine function type */
-typedef void (*kcoro_fn_t)(void* arg);
+/* Stackless continuation step function type.
+ * Returns NULL to signal suspension, or a pointer to the next step. */
+typedef void* (*kcoro_step_fn_t)(struct kcoro* self);
 
 /* Coroutine state */
 typedef enum {
@@ -45,15 +46,14 @@ typedef enum {
     KCORO_FINISHED           /* Completed execution */
 } kcoro_state_t;
 
-/* Core coroutine structure - matches ARM64 assembly requirements */
+/* Core coroutine structure - stackless CPS model */
 struct kcoro {
-    /* Register save area - MUST be first field for assembly */
-    void* reg[32];               /* ARM64: x19-x28, x30, sp, x29 at specific indices */
+    /* Stackless continuation: next step to execute */
+    kcoro_step_fn_t next_step;   /* Function pointer to next continuation step */
     
     /* Coroutine metadata */
     kcoro_state_t state;         /* Current execution state */
-    kcoro_fn_t fn;               /* Task function */
-    void* arg;                   /* Task argument */
+    void* user_data;             /* User-defined state (replaces stack) */
     uint64_t id;                 /* Unique coroutine ID */
 
     /* Execution context */
@@ -62,10 +62,6 @@ struct kcoro {
     bool ready_enqueued;         /* Scheduler ready-queue flag */
     atomic_int running_flag;     /* 0 = idle, 1 = running */
     atomic_int refcount;         /* Reference count for lifetime management */
-
-    /* Stack management */
-    void* stack_ptr;             /* Private stack (if not using shared) */
-    size_t stack_size;           /* Stack size */
     
     /* Scheduler linkage */
     kcoro_t* next;               /* Next in queue */
@@ -74,26 +70,19 @@ struct kcoro {
     /* Debug info */
     const char* name;            /* Optional name for debugging */
 
-    /* Lightweight rendezvous handshake hint:
-     * When a parked sender/receiver has data directly delivered, set these
-     * flags so the coroutine can return immediately after wake without retry. */
+    /* Channel handshake hints */
     int last_send_delivered;     /* 1 if last parked send was delivered by recv */
     int last_recv_delivered;     /* 1 if last parked recv had data delivered by send */
     int last_park_result;        /* result code after park: 0=success, KC_EPIPE=closed, KC_ETIME=timeout */
 };
 
-/** ARM64 assembly context switching primitive (internal). */
-extern void* kcoro_switch(kcoro_t* from_co, kcoro_t* to_co);
-
-/* Function protector for proper stack cleanup */
-extern void kcoro_funcp_protector_asm(void);
-void kcoro_funcp_protector(void);
-
 /**
- * @name Core coroutine API
+ * @name Core coroutine API (Stackless CPS Model)
  * Create/destroy coroutines and control execution.
  * @{ */
-kcoro_t* kcoro_create(kcoro_fn_t fn, void* arg, size_t stack_size);
+
+/* Create a stackless coroutine with initial step function */
+kcoro_t* kcoro_create_cps(kcoro_step_fn_t initial_step, void* user_data);
 void kcoro_destroy(kcoro_t* co);
 
 /* Set optional name for debugging */

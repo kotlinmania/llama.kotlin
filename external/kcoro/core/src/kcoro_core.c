@@ -9,16 +9,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
-#include <sys/mman.h>
 #include <unistd.h>
 #include <pthread.h>
-
-#ifndef MAP_ANON
-#define MAP_ANON 0x1000
-#endif
-#ifndef MAP_ANONYMOUS
-#define MAP_ANONYMOUS MAP_ANON
-#endif
 
 #include "kcoro_core.h"
 #include "kcoro_sched.h"
@@ -31,36 +23,15 @@ static __thread kcoro_t* main_kcoro = NULL;
 /* Coroutine ID counter */
 static uint64_t next_kcoro_id = 1;
 
-/* Default stack size */
-#define KCORO_DEFAULT_STACK_SIZE (64 * 1024)  /* 64KB */
-
-/* Function protector implementation */
-void kcoro_funcp_protector(void)
-{
-    kcoro_t *current = current_kcoro;
-    int state = current ? (int)current->state : -1;
-    fprintf(stderr,
-            "kcoro: coroutine function returned unexpectedly (co=%p state=%d main=%p fn=%p)\n",
-            (void*)current,
-            state,
-            current ? (void*)current->main_co : NULL,
-            current ? (void*)current->fn : NULL);
-    abort();
-}
-
-/* Internal function: coroutine trampoline */
-static void kcoro_trampoline(void);
-
 kcoro_t* kcoro_create_main(void)
 {
     kcoro_t* main_co = (kcoro_t*)calloc(1, sizeof(kcoro_t));
     if (!main_co) return NULL;
 
     /* Initialize main coroutine */
-    memset(main_co->reg, 0, sizeof(main_co->reg));
+    main_co->next_step = NULL;
     main_co->state = KCORO_RUNNING;
-    main_co->fn = NULL;  /* Main has no function */
-    main_co->arg = NULL;
+    main_co->user_data = NULL;
     main_co->id = 0;     /* Special ID for main */
     main_co->main_co = NULL;  /* Main has no parent */
     main_co->name = "main";
@@ -84,67 +55,46 @@ void kcoro_set_thread_main(kcoro_t* main_co)
     current_kcoro = main_co;
 }
 
-kcoro_t* kcoro_create(kcoro_fn_t fn, void* arg, size_t stack_size)
+kcoro_t* kcoro_create_cps(kcoro_step_fn_t initial_step, void* user_data)
 {
-    if (!fn) return NULL;
-    if (stack_size == 0) stack_size = KCORO_DEFAULT_STACK_SIZE;
+    if (!initial_step) return NULL;
     
     kcoro_t* co = (kcoro_t*)calloc(1, sizeof(kcoro_t));
     if (!co) return NULL;
     
-    /* Allocate stack with mmap for guard page support */
-    long page_size = sysconf(_SC_PAGESIZE);
-    if (page_size < 0) page_size = 4096;
-    
-    /* Align stack size to page boundary */
-    size_t total_size = (stack_size + page_size - 1) & ~(page_size - 1);
-    
-    void* stack_mem = mmap(NULL, total_size, PROT_READ | PROT_WRITE,
-                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (stack_mem == MAP_FAILED) {
-        free(co);
-        return NULL;
-    }
-    
-    /* Initialize coroutine */
-    memset(co->reg, 0, sizeof(co->reg));
+    /* Initialize stackless coroutine */
+    co->next_step = initial_step;
     co->state = KCORO_CREATED;
-    co->fn = fn;
-    co->arg = arg;
-    co->id = __sync_fetch_and_add(&next_kcoro_id, 1);
-    co->main_co = main_kcoro;     /* Default yield target */
-    co->stack_ptr = stack_mem;
-    co->stack_size = total_size;
+    co->user_data = user_data;
+    co->id = __atomic_fetch_add(&next_kcoro_id, 1, __ATOMIC_RELAXED);
+    co->main_co = main_kcoro;
+    co->scheduler = NULL;
+    co->name = NULL;
     co->ready_enqueued = false;
     atomic_init(&co->running_flag, 0);
     atomic_init(&co->refcount, 1);
     co->last_send_delivered = 0;
     co->last_recv_delivered = 0;
     co->last_park_result = 0;
-    
-    /* Set up stack and entry point (ARM64 ABI compliant) */
-    uintptr_t stack_top = (uintptr_t)stack_mem + total_size;
-    stack_top = stack_top & ~0xFUL;  /* 16-byte align */
-    stack_top -= 16;  /* Leave space */
-    
-    co->reg[14] = (void*)stack_top;           /* SP at reg[14] */
-    co->reg[15] = (void*)stack_top;           /* FP at reg[15] */  
-    co->reg[13] = (void*)kcoro_trampoline;    /* LR at reg[13] - entry point */
-    
+    co->next = NULL;
+    co->prev = NULL;
+
     return co;
 }
 
 static void kcoro_free(kcoro_t* co)
 {
     if (!co) return;
-    if (co->stack_ptr && co->stack_size > 0) {
-        munmap(co->stack_ptr, co->stack_size);
-    }
+    
+    /* Stackless: no stack to free, just the coroutine object itself */
     if (current_kcoro == co) {
         current_kcoro = NULL;
     }
     if (main_kcoro == co) {
         main_kcoro = NULL;
+    }
+    if (kcoro_ref_debug_enabled()) {
+        fprintf(stderr, "[kcoro][ref] freed co=%p\n", (void*)co);
     }
     free(co);
 }
@@ -205,48 +155,39 @@ void kcoro_release(kcoro_t* co)
 void kcoro_resume(kcoro_t* co)
 {
     if (!co || co->state == KCORO_FINISHED) return;
+    if (!co->next_step) return;
     
-    kcoro_t* yield_co = current_kcoro;
-    kcoro_t* from_co = yield_co ? yield_co : main_kcoro;
-    if (!from_co) {
-        from_co = co->main_co;
-    }
+    /* Stackless: just run one step of the continuation */
+    kcoro_t* prev_current = current_kcoro;
     
-    /* Update states */
-    if (yield_co && yield_co != co) {
-        yield_co->state = KCORO_SUSPENDED;
-    }
     co->state = KCORO_RUNNING;
     current_kcoro = co;
     
-    /* Context switch */
-    kcoro_switch(from_co, co);
-
-    /* Returned from context switch - restore current */
-    current_kcoro = yield_co ? yield_co : main_kcoro;
-    if (yield_co) {
-        yield_co->state = KCORO_RUNNING;
-    } else if (main_kcoro) {
-        main_kcoro->state = KCORO_RUNNING;
+    /* Execute the coroutine's next step function */
+    co->next_step = co->next_step(co);
+    
+    /* If next_step is NULL, the coroutine has finished */
+    if (!co->next_step) {
+        co->state = KCORO_FINISHED;
+    } else {
+        co->state = KCORO_SUSPENDED;
     }
+    
+    current_kcoro = prev_current;
 }
 
 void kcoro_yield(void)
 {
+    /* Stackless: yield is just a return to scheduler.
+     * The coroutine's continuation state is preserved in its struct.
+     * Scheduler will call kcoro_resume again later. */
     kcoro_t* current = current_kcoro;
-    kcoro_t* main_co = main_kcoro ? main_kcoro : (current ? current->main_co : NULL);
-    if (!current || !main_co) {
-        /* No main coroutine to yield to - this might be in a different context */
-        return;
-    }
-
-    /* Update states */
-    current->state = KCORO_SUSPENDED;
-    main_co->state = KCORO_RUNNING;
-    current_kcoro = main_co;
+    if (!current) return;
     
-    /* Context switch back to main */
-    kcoro_switch(current, main_co);
+    current->state = KCORO_SUSPENDED;
+    /* In stackless model, we don't actually switch stacks.
+     * The function simply returns and scheduler continues. */
+}
     
     /* When resumed, we'll be back here */
     current->state = KCORO_RUNNING;
@@ -279,20 +220,14 @@ void kcoro_yield_to(kcoro_t* target_co)
 /* Park current coroutine: transitions to KCORO_PARKED and switches to main */
 void kcoro_park(void)
 {
+    /* Stackless park: mark as parked and return to scheduler.
+     * Scheduler will skip this coroutine until something explicitly unparks it. */
     kcoro_t* current = current_kcoro;
-    kcoro_t* main_co = main_kcoro ? main_kcoro : (current ? current->main_co : NULL);
-    if (!current || !main_co) return;
+    if (!current) return;
     if (current->state == KCORO_FINISHED) return;
+    
     current->state = KCORO_PARKED;
-    main_co->state = KCORO_RUNNING;
-    current_kcoro = main_co;
-    kcoro_switch(current, main_co);
-    /* When unparked & resumed, state will be set by kcoro_unpark before scheduling */
-    if (current->state == KCORO_PARKED) {
-        /* Defensive: if resumed without state change, mark running */
-        current->state = KCORO_RUNNING;
-    }
-    current_kcoro = current;
+}
 }
 
 void kcoro_unpark(kcoro_t* co)
