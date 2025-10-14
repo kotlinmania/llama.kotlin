@@ -520,7 +520,7 @@ void my_func_resume(kc_continuation_t* k, void* result) {
 
 #### Migration Path
 
-The stack-based implementation has been retired; the repository now ships only the stackless CPS engine. For historical notes see `docs/STACKLESS_MIGRATION_PLAN.md` in git history.
+The stack-based implementation has been retired; the repository now ships only the stackless CPS engine. For historical notes, refer to the repository history prior to the stackless consolidation.
 
 ### Impact on This FFI Design
 
