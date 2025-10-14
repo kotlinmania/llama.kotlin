@@ -150,8 +150,7 @@ typedef int (*kc_transform_fn)(const void *in, void *out, void *user);
 
 int  kc_scope_init(kc_scope_t **out, const kc_cancel_t *parent);
 void kc_scope_cancel(kc_scope_t *scope);
-int  kc_scope_launch(kc_scope_t *scope, kcoro_fn_t fn, void *arg,
-                     size_t stack_size, kcoro_t **out_co);
+int  kc_scope_launch_legacy(kc_scope_t *scope, kcoro_fn_t fn, void *arg, kcoro_t **out_co);
 kc_actor_t kc_scope_actor(kc_scope_t *scope, const kc_actor_ctx_t *ctx);
 kc_chan_t* kc_scope_produce(kc_scope_t *scope, int kind, size_t elem_sz, size_t capacity,
                             kc_producer_fn fn, void *user);

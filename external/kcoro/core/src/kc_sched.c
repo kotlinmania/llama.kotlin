@@ -544,10 +544,41 @@ int kc_sched_timer_cancel(kc_sched_t* s, kc_timer_handle_t h)
     return 0;
 }
 
-/* ---- Coroutine API (legacy names) ---- */
-int kc_spawn_co(kc_sched_t* s, kcoro_fn_t fn, void* arg, size_t stack_size, kcoro_t** out_co){
-    if(!s||!fn) return -1;
-    kcoro_t *co=kcoro_create(fn,arg,stack_size);
+/* ---- Coroutine API (stackless) ---- */
+
+/* Spawn a stackless coroutine (new CPS API) */
+/* Legacy wrapper to adapt old-style function pointers to CPS */
+struct legacy_wrapper {
+    void (*fn)(void*);
+    void *arg;
+};
+
+static void *legacy_trampoline(kcoro_t *co) {
+    struct legacy_wrapper *w = (struct legacy_wrapper*)co->user_data;
+    if (!w) return NULL;
+    
+    w->fn(w->arg);
+    free(w);
+    
+    return NULL; /* Signal completion */
+}
+
+int kc_spawn_co_legacy(kc_sched_t* s, void (*fn)(void*), void* arg, kcoro_t** out_co)
+{
+    if (!s || !fn) return -EINVAL;
+    
+    struct legacy_wrapper *w = (struct legacy_wrapper*)malloc(sizeof(*w));
+    if (!w) return -ENOMEM;
+    
+    w->fn = fn;
+    w->arg = arg;
+    
+    return kc_spawn_co_cps(s, legacy_trampoline, w, out_co);
+}
+
+int kc_spawn_co_cps(kc_sched_t* s, kcoro_step_fn_t initial_step, void* user_data, kcoro_t** out_co){
+    if(!s||!initial_step) return -1;
+    kcoro_t *co=kcoro_create_cps(initial_step, user_data);
     if(!co) return -1;
     co->scheduler = (kcoro_sched_t*)s;
     if(out_co) *out_co=co;
@@ -558,6 +589,7 @@ int kc_spawn_co(kc_sched_t* s, kcoro_fn_t fn, void* arg, size_t stack_size, kcor
     rq_push_locked(s,co);
     pthread_mutex_unlock(&s->rq_mu);
     if(atomic_load(&s->idle_workers)>0){ pthread_mutex_lock(&s->park_mu); pthread_cond_signal(&s->park_cv); pthread_mutex_unlock(&s->park_mu);} return 0; }
+
 void kc_sched_enqueue_ready(kc_sched_t* s, kcoro_t* co)
 {
     if (!s || !co) return;

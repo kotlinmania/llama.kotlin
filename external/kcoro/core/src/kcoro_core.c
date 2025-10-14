@@ -82,6 +82,16 @@ kcoro_t* kcoro_create_cps(kcoro_step_fn_t initial_step, void* user_data)
     return co;
 }
 
+static int kcoro_ref_debug_enabled(void)
+{
+    static int cached = -1;
+    if (__builtin_expect(cached == -1, 0)) {
+        const char *env = getenv("KCORO_REF_DEBUG");
+        cached = (env && *env && env[0] != '0');
+    }
+    return cached;
+}
+
 static void kcoro_free(kcoro_t* co)
 {
     if (!co) return;
@@ -97,16 +107,6 @@ static void kcoro_free(kcoro_t* co)
         fprintf(stderr, "[kcoro][ref] freed co=%p\n", (void*)co);
     }
     free(co);
-}
-
-static int kcoro_ref_debug_enabled(void)
-{
-    static int cached = -1;
-    if (__builtin_expect(cached == -1, 0)) {
-        const char *env = getenv("KCORO_REF_DEBUG");
-        cached = (env && *env && env[0] != '0');
-    }
-    return cached;
 }
 
 void kcoro_destroy(kcoro_t* co)
@@ -178,24 +178,22 @@ void kcoro_resume(kcoro_t* co)
 
 void kcoro_yield(void)
 {
-    /* Stackless: yield is just a return to scheduler.
-     * The coroutine's continuation state is preserved in its struct.
-     * Scheduler will call kcoro_resume again later. */
+    /* Stackless: yield is just a state change. The actual control return
+     * happens when the current CPS step function returns NULL.
+     * Scheduler will call kcoro_resume to invoke the next_step later. */
     kcoro_t* current = current_kcoro;
     if (!current) return;
     
     current->state = KCORO_SUSPENDED;
-    /* In stackless model, we don't actually switch stacks.
-     * The function simply returns and scheduler continues. */
-}
-    
-    /* When resumed, we'll be back here */
-    current->state = KCORO_RUNNING;
-    current_kcoro = current;
+    /* No stack switch needed in stackless model.
+     * When this function returns to the CPS step function, that function
+     * will return NULL, giving control back to the scheduler. */
 }
 
 void kcoro_yield_to(kcoro_t* target_co)
 {
+    /* Stackless: just update current coroutine pointer and states.
+     * No actual stack switching. Control flow is managed by scheduler. */
     if (!target_co) return;
     
     kcoro_t* current = current_kcoro;
@@ -207,27 +205,21 @@ void kcoro_yield_to(kcoro_t* target_co)
     target_co->state = KCORO_RUNNING;
     current_kcoro = target_co;
     
-    /* Context switch */
-    kcoro_switch(current, target_co);
-    
-    /* When resumed, restore our state */
-    if (current) {
-        current->state = KCORO_RUNNING;
-        current_kcoro = current;
-    }
+    /* Stackless: no context switch needed. When the current CPS step
+     * returns, scheduler will see the new current_kcoro and continue there. */
 }
 
-/* Park current coroutine: transitions to KCORO_PARKED and switches to main */
+/* Park current coroutine: transitions to KCORO_PARKED and suspends execution */
 void kcoro_park(void)
 {
-    /* Stackless park: mark as parked and return to scheduler.
+    /* Stackless park: mark as parked and return control to scheduler.
      * Scheduler will skip this coroutine until something explicitly unparks it. */
     kcoro_t* current = current_kcoro;
     if (!current) return;
     if (current->state == KCORO_FINISHED) return;
     
     current->state = KCORO_PARKED;
-}
+    /* No stack switch. When CPS step returns NULL, scheduler sees PARKED state. */
 }
 
 void kcoro_unpark(kcoro_t* co)
@@ -250,30 +242,4 @@ void kcoro_unpark(kcoro_t* co)
 int kcoro_is_parked(const kcoro_t* co)
 {
     return co && co->state == KCORO_PARKED;
-}
-
-/* Internal coroutine trampoline function */
-static void kcoro_trampoline(void)
-{
-    kcoro_t* current = current_kcoro;
-    assert(current && current->fn);
-    
-    /* Mark as running and call the function */
-    current->state = KCORO_RUNNING;
-    current->fn(current->arg);
-    
-    /* Function completed - mark as finished */
-    current->state = KCORO_FINISHED;
-    
-    /* Yield back to main coroutine */
-    if (main_kcoro) {
-        kcoro_t* main_co = main_kcoro;
-        main_co->state = KCORO_RUNNING;
-        current_kcoro = main_co;
-        kcoro_switch(current, main_co);
-        return;
-    }
-
-    /* Should never reach here, but if we do, call protector */
-    kcoro_funcp_protector();
 }

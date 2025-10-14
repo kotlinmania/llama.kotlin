@@ -24,32 +24,38 @@ struct kc_actor_state {
     void *on_done_arg;
 };
 
-static void kc_actor_coro(void *arg)
+/* Actor coroutine state machine (stackless CPS) */
+struct actor_cont_state {
+    struct kc_actor_state *st;
+    int rc;
+};
+
+
+static void* actor_step_loop(struct kcoro *k)
 {
-    struct kc_actor_state *st = (struct kc_actor_state*)arg;
-    for (;;) {
-        if (atomic_load(&st->stop)) break;
-        if (st->cancel && kc_cancel_is_set(st->cancel)) break;
+    struct actor_cont_state *s = (struct actor_cont_state*)k->user_data;
+    struct kc_actor_state *st = s->st;
+    
+    if (atomic_load(&st->stop)) goto done;
+    if (st->cancel && kc_cancel_is_set(st->cancel)) goto done;
 
-        /* Non-blocking receive loop with cooperative yield */
-        int rc = 0;
-        if (st->cancel)
-            rc = kc_chan_recv_c(st->ctx.chan, st->buf, 0, st->cancel);
-        else
-            rc = kc_chan_recv(st->ctx.chan, st->buf, 0);
+    /* Try non-blocking receive */
+    if (st->cancel)
+        s->rc = kc_chan_recv_c(st->ctx.chan, st->buf, 0, st->cancel);
+    else
+        s->rc = kc_chan_recv(st->ctx.chan, st->buf, 0);
 
-        if (rc == 0) {
-            if (st->ctx.process) st->ctx.process(st->buf, st->ctx.user);
-            /* Yield to let others run */
-            kcoro_yield();
-            continue;
-        }
-        if (rc == KC_EPIPE || rc == KC_ECANCELED) {
-            break;
-        }
-        /* EAGAIN or ETIME: yield and retry */
-        kcoro_yield();
+    if (s->rc == 0) {
+        if (st->ctx.process) st->ctx.process(st->buf, st->ctx.user);
+        return actor_step_loop; /* Continue loop */
     }
+    if (s->rc == KC_EPIPE || s->rc == KC_ECANCELED) {
+        goto done;
+    }
+    /* EAGAIN or ETIME: yield and retry */
+    return actor_step_loop;
+
+done:
     KC_MUTEX_LOCK(&st->mu);
     st->done = 1;
     KC_COND_BROADCAST(&st->cv);
@@ -59,6 +65,7 @@ static void kc_actor_coro(void *arg)
     st->on_done_arg = NULL;
     KC_MUTEX_UNLOCK(&st->mu);
     if (cb) cb(cb_arg);
+    return NULL; /* Actor complete */
 }
 
 kc_actor_t kc_actor_start(const kc_actor_ctx_t *ctx)
@@ -80,7 +87,20 @@ kc_actor_t kc_actor_start(const kc_actor_ctx_t *ctx)
     st->buf = malloc(ctx->msg_size);
     if (!st->buf) { KC_COND_DESTROY(&st->cv); KC_MUTEX_DESTROY(&st->mu); free(st); return NULL; }
 
-    if (kc_spawn_co(st->sched, kc_actor_coro, st, 0, &st->co) != 0) {
+    /* Allocate actor continuation state */
+    struct actor_cont_state *actor_state = calloc(1, sizeof(*actor_state));
+    if (!actor_state) {
+        free(st->buf);
+        KC_COND_DESTROY(&st->cv);
+        KC_MUTEX_DESTROY(&st->mu);
+        free(st);
+        return NULL;
+    }
+    actor_state->st = st;
+    actor_state->rc = 0;
+
+    if (kc_spawn_co_cps(st->sched, actor_step_loop, actor_state, &st->co) != 0) {
+        free(actor_state);
         free(st->buf);
         KC_COND_DESTROY(&st->cv);
         KC_MUTEX_DESTROY(&st->mu);

@@ -66,7 +66,11 @@ void kc_sleep_ms(int ms);
 kc_sched_t* kc_sched_default(void);
 
 /** Spawn a coroutine on the scheduler (M:N). out_co optional. */
-int kc_spawn_co(kc_sched_t* s, kcoro_fn_t fn, void* arg, size_t stack_size, kcoro_t** out_co);
+/* Spawn a stackless coroutine into the scheduler */
+int kc_spawn_co_cps(kc_sched_t* s, kcoro_step_fn_t initial_step, void* user_data, kcoro_t** out_co);
+
+/* Legacy stackful spawn (deprecated) - wraps function in a CPS trampoline */
+int kc_spawn_co_legacy(kc_sched_t* s, void (*fn)(void*), void* arg, kcoro_t** out_co);
 
 /** Enqueue a coroutine to be resumed by the scheduler. */
 void kc_sched_enqueue_ready(kc_sched_t* s, kcoro_t* co);

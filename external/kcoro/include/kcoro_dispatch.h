@@ -21,11 +21,17 @@ kc_dispatcher_t* kc_dispatcher_new(int workers);
 kc_sched_t* kc_dispatcher_scheduler(kc_dispatcher_t* dispatcher);
 
 int kc_dispatcher_spawn(kc_dispatcher_t* dispatcher, kc_task_fn fn, void* arg);
-int kc_dispatcher_spawn_co(kc_dispatcher_t* dispatcher,
-                           kcoro_fn_t fn,
-                           void* arg,
-                           size_t stack_size,
-                           kcoro_t** out_co);
+/* Spawn a stackless CPS coroutine into this dispatcher */
+int kc_dispatcher_spawn_cps(kc_dispatcher_t* dispatcher,
+                            kcoro_step_fn_t initial_step,
+                            void* user_data,
+                            kcoro_t** out_co);
+
+/* Legacy compatibility: spawn a traditional function-style coroutine */
+int kc_dispatcher_spawn_legacy(kc_dispatcher_t* dispatcher,
+                               kcoro_fn_t fn,
+                               void* arg,
+                               kcoro_t** out_co);
 
 #ifdef __cplusplus
 }

@@ -160,11 +160,11 @@ int kc_bench_chan_start(const kc_bench_params_t *p,
     /* Spawn */
     for (int i = 0; i < p->consumers; ++i) {
         cons_arg_t *ca = malloc(sizeof(*ca)); if (!ca) return -ENOMEM; ca->h = h;
-        kc_spawn_co(h->sched, p->pointer_mode ? co_consumer_ptr : co_consumer_int, ca, 0, NULL);
+        kc_spawn_co_legacy(h->sched, p->pointer_mode ? co_consumer_ptr : co_consumer_int, ca, NULL);
     }
     for (int i = 0; i < p->producers; ++i) {
         prod_arg_t *pa = malloc(sizeof(*pa)); if (!pa) return -ENOMEM; pa->h = h; pa->id = i;
-        kc_spawn_co(h->sched, p->pointer_mode ? co_producer_ptr : co_producer_int, pa, 0, NULL);
+        kc_spawn_co_legacy(h->sched, p->pointer_mode ? co_producer_ptr : co_producer_int, pa, NULL);
     }
 
     if (out_chan) *out_chan = h->ch;

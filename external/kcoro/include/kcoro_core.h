@@ -32,6 +32,9 @@ extern "C" {
 typedef struct kcoro kcoro_t;
 typedef struct kcoro_sched kcoro_sched_t;
 
+/* Legacy stackful function type (for backward compatibility) */
+typedef void (*kcoro_fn_t)(void* arg);
+
 /* Stackless continuation step function type.
  * Returns NULL to signal suspension, or a pointer to the next step. */
 typedef void* (*kcoro_step_fn_t)(struct kcoro* self);
@@ -74,6 +77,11 @@ struct kcoro {
     int last_send_delivered;     /* 1 if last parked send was delivered by recv */
     int last_recv_delivered;     /* 1 if last parked recv had data delivered by send */
     int last_park_result;        /* result code after park: 0=success, KC_EPIPE=closed, KC_ETIME=timeout */
+    
+    /* Stackless CPS state (used by kc_spawn_co and kc_actor) */
+    struct {
+        void* user_data;         /* User state for CPS functions */
+    } cps_state;
 };
 
 /**

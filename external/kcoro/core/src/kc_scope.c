@@ -81,12 +81,22 @@ static struct kc_scope_child* kc_scope_child_add(kc_scope_t *scope, enum kc_scop
     return child;
 }
 
-static void kc_scope_coro_entry(void *arg)
+/* Trampoline to adapt old-style entry to CPS API */
+static void *kc_scope_coro_entry_cps(kcoro_t *co)
 {
-    struct kc_scope_coro_wrapper *wrap = (struct kc_scope_coro_wrapper*)arg;
+    /* Get the wrapper from co->user_data */
+    struct kc_scope_coro_wrapper *wrap = (struct kc_scope_coro_wrapper*)co->user_data;
+    if (!wrap) return NULL;
+    
+    /* Call the original entry function */
     wrap->fn(wrap->arg);
+    
+    /* Complete and cleanup */
     kc_scope_child_complete(wrap->scope, wrap->child);
     free(wrap);
+    
+    /* Signal completion by returning NULL (no next step) */
+    return NULL;
 }
 
 static void kc_scope_actor_on_done(void *arg)
@@ -185,8 +195,8 @@ void kc_scope_cancel(kc_scope_t *scope)
     }
 }
 
-int kc_scope_launch(kc_scope_t *scope, kcoro_fn_t fn, void *arg,
-                    size_t stack_size, kcoro_t **out_co)
+/* Legacy function wrapper for scopes */
+int kc_scope_launch_legacy(kc_scope_t *scope, kcoro_fn_t fn, void *arg, kcoro_t **out_co)
 {
     if (!scope || !fn) return -EINVAL;
 
@@ -213,7 +223,8 @@ int kc_scope_launch(kc_scope_t *scope, kcoro_fn_t fn, void *arg,
 
     kc_sched_t *sched = kc_sched_default();
     kcoro_t *co = NULL;
-    int rc = kc_spawn_co(sched, kc_scope_coro_entry, wrap, stack_size, &co);
+    /* Use stackless spawn with CPS entry point, passing wrap via user_data */
+    int rc = kc_spawn_co_cps(sched, kc_scope_coro_entry_cps, wrap, &co);
     if (rc != 0) {
         kc_scope_child_complete(scope, child);
         free(wrap);
@@ -273,7 +284,7 @@ kc_chan_t* kc_scope_produce(kc_scope_t *scope, int kind, size_t elem_sz, size_t 
     state->fn = fn;
     state->user = user;
 
-    int rc = kc_scope_launch(scope, kc_scope_producer_entry, state, 0, NULL);
+    int rc = kc_scope_launch_legacy(scope, kc_scope_producer_entry, state, NULL);
     if (rc != 0) {
         kc_chan_destroy(ch);
         free(state);

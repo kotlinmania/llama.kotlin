@@ -103,11 +103,20 @@ int kc_dispatcher_spawn(kc_dispatcher_t* dispatcher, kc_task_fn fn, void* arg) {
     return kc_spawn(dispatcher->sched, fn, arg);
 }
 
-int kc_dispatcher_spawn_co(kc_dispatcher_t* dispatcher,
-                           kcoro_fn_t fn,
+/* Spawn a coroutine (CPS style) */
+int kc_dispatcher_spawn_cps(kc_dispatcher_t* dispatcher,
+                            kcoro_step_fn_t initial_step,
+                            void* user_data,
+                            kcoro_t** out_co) {
+    if (!dispatcher || !initial_step) return -1;
+    return kc_spawn_co_cps(dispatcher->sched, initial_step, user_data, out_co);
+}
+
+/* Legacy compatibility: spawn a traditional function-style coroutine */
+int kc_dispatcher_spawn_legacy(kc_dispatcher_t* dispatcher,
+                               kcoro_fn_t fn,
                            void* arg,
-                           size_t stack_size,
                            kcoro_t** out_co) {
     if (!dispatcher || !fn) return -1;
-    return kc_spawn_co(dispatcher->sched, fn, arg, stack_size, out_co);
+    return kc_spawn_co_legacy(dispatcher->sched, fn, arg, out_co);
 }
