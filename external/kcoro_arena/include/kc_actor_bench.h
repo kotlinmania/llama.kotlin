@@ -54,11 +54,6 @@ typedef struct {
 /* Run actor benchmark */
 int run_actor_benchmark(const kc_bench_config_t* config);
 
-#ifdef KC_SCHED
-/* Run async actor benchmark with scheduler support */
-int run_actor_benchmark_async(const kc_bench_config_t* config);
-#endif
-
 #ifdef __cplusplus
 }
 #endif

@@ -16,7 +16,7 @@ All previously configurable parameters are now hardcoded to empirically optimal 
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| `KC_SCHED_STEAL_SCAN_MAX` | 4 | Optimal work-stealing balance (throughput vs fairness) |
+| Scheduler steal scan attempts | 4 | Fixed number of victim probes per steal; empirically optimal |
 | `KC_UNLIMITED_INIT_CAP` | 256 | Best memory overhead vs resize frequency trade-off |
 | `KC_CHAN_CAP_ZERO_COPY` | Always enabled | Core architectural advantage; non-negotiable feature |
 

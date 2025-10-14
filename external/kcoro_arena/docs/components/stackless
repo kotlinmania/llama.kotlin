@@ -265,7 +265,7 @@ void my_func(kc_continuation_t* k, void* arg) {
 ### Phase 4: Deprecation
 
 Mark stack-based APIs deprecated; document migration:
-- Keep old code under `#ifdef KC_USE_STACKS`
+- The stack-based implementation has been removed from the active tree (history retains it for reference).
 - Remove assembly files from default build
 
 ## Performance Implications

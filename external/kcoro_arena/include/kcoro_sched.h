@@ -90,15 +90,6 @@ typedef struct kc_sched_stats {
 /** Obtain a snapshot of scheduler counters (best‑effort, racy). */
 void kc_sched_get_stats(kc_sched_t *s, kc_sched_stats_t *out);
 
-/* Steal scan tunable (was KC_SCHED2_STEAL_SCAN_MAX during migration) */
-/**
- * @brief Upper bound on victim deques probed during a steal attempt.
- * Lower values reduce probe cost; higher may improve fairness under skew.
- */
-#ifndef KC_SCHED_STEAL_SCAN_MAX
-#define KC_SCHED_STEAL_SCAN_MAX 4
-#endif
-
 /**
  * @brief Best‑effort drain to a quiescent state.
  * Waits until ready queues and deques are empty and workers appear idle, or

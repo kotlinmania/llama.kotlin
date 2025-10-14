@@ -124,26 +124,6 @@ static void kc_send_complete_cb(void *user_ctx, const kc_payload *payload)
     kcoro_resume(sender_co);
 }
 
-static void kc_recv_complete_cb(void *user_ctx, const kc_payload *payload)
-{
-    kcoro_t *receiver_co = (kcoro_t*)user_ctx;
-    if (!receiver_co) return;
-
-    if (payload) {
-        receiver_co->token_payload_ptr = payload->ptr;
-        receiver_co->token_payload_len = payload->len;
-        receiver_co->token_payload_desc = payload->desc_id;
-        receiver_co->token_payload_status = payload->status;
-    } else {
-        receiver_co->token_payload_ptr = NULL;
-        receiver_co->token_payload_len = 0;
-        receiver_co->token_payload_desc = 0;
-        receiver_co->token_payload_status = KC_EPIPE;
-    }
-    atomic_store(&receiver_co->token_payload_ready, 1);
-    kcoro_resume(receiver_co);
-}
-
 /* ========================================================================
  * Stackless Send/Receive Primitives
  * ======================================================================== */

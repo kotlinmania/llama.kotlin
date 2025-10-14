@@ -520,12 +520,7 @@ void my_func_resume(kc_continuation_t* k, void* result) {
 
 #### Migration Path
 
-Phase 1: Keep stack-based implementation under `#ifdef KC_USE_STACKS`  
-Phase 2: Add parallel stackless API (`koro_go_async`, `koro_recv_async`)  
-Phase 3: Provide macro DSL to auto-transform user code to CPS  
-Phase 4: Deprecate stack-based API; make stackless default
-
-See `docs/STACKLESS_MIGRATION_PLAN.md` for full details.
+The stack-based implementation has been retired; the repository now ships only the stackless CPS engine. For historical notes see `docs/STACKLESS_MIGRATION_PLAN.md` in git history.
 
 ### Impact on This FFI Design
 

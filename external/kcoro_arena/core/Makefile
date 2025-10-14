@@ -4,7 +4,7 @@ AR ?= ar
 ARFLAGS ?= rcs
 
 # Public include path
-CFLAGS += -I../include -DKC_SCHED=1
+CFLAGS += -I../include
 
 # Always kill lingering kcoro test processes before builds (can disable with KILL_BEFORE=0)
 KILL_BEFORE ?= 1
@@ -16,23 +16,7 @@ BINDIR := build/lib
 # C sources  
 SRCS := src/kc_chan.c src/kc_actor.c src/kc_cancel.c src/kc_sched.c src/kcoro_core.c src/kc_scope.c src/kc_select.c src/kc_zcopy.c src/kc_runtime_config.c src/kc_bench.c src/kc_dispatch.c src/kc_token_kernel.c src/kc_desc.c src/kc_arena.c
 
-# Architecture-specific assembly source selection
-UNAME_M := $(shell uname -m)
-ifeq ($(UNAME_M),x86_64)
-ASM_DIR := ../arch/x86_64
-else ifeq ($(UNAME_M),amd64)
-ASM_DIR := ../arch/x86_64
-else ifeq ($(UNAME_M),arm64)
-ASM_DIR := ../arch/aarch64
-else ifeq ($(UNAME_M),aarch64)
-ASM_DIR := ../arch/aarch64
-else
-ASM_DIR := ../arch/aarch64
-endif
-ASM_SRCS_ARCH := $(ASM_DIR)/kc_ctx_switch.S
-
-OBJS := $(patsubst src/%.c,$(OBJDIR)/%.o,$(SRCS)) \
-        $(patsubst $(ASM_DIR)/%.S,$(OBJDIR)/%.o,$(ASM_SRCS_ARCH))
+OBJS := $(patsubst src/%.c,$(OBJDIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
 LIB := $(BINDIR)/libkcoro.a
@@ -43,9 +27,6 @@ $(BINDIR) $(OBJDIR):
 	@mkdir -p $@
 
 $(OBJDIR)/%.o: src/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-$(OBJDIR)/%.o: $(ASM_DIR)/%.S | $(OBJDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(LIB): $(BINDIR) $(OBJS)
@@ -67,7 +48,7 @@ kill-tests:
 # Verify library freshness: fails if any source newer than built archive
 .PHONY: verify-fresh
 verify-fresh: $(LIB)
- @latest_src=$(shell find src $(ASM_DIR) -type f \( -name '*.c' -o -name '*.S' \) -printf '%T@\n' | sort -n | tail -1); \
+ @latest_src=$(shell find src -type f -name '*.c' -printf '%T@\n' | sort -n | tail -1); \
 	 lib_time=$(shell stat -c %Y $(LIB) 2>/dev/null || echo 0); \
 	 latest_int=$$(printf '%.0f' $$latest_src); \
 	 if [ $$lib_time -lt $$latest_int ]; then \
