@@ -43,6 +43,8 @@ koro_cont_t* koro_cont_create(koro_step_fn initial_step,
     k->id = __atomic_fetch_add(&next_koro_id, 1, __ATOMIC_SEQ_CST);
     k->name = "stackless";
     k->completed = 0;
+    k->managed = 0;
+    k->tracked = 0;
     k->last_park_result = 0;
     k->arena_payload = NULL;
     k->arena_payload_len = 0;
@@ -68,6 +70,9 @@ void koro_cont_destroy(koro_cont_t* k)
         free(k->user_data);
         k->user_data = NULL;
     }
+
+    k->managed = 0;
+    k->tracked = 0;
     
     /* Free the continuation itself */
     free(k);

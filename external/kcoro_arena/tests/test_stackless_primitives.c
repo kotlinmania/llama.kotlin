@@ -13,6 +13,8 @@
 #include <string.h>
 #include <assert.h>
 #include <pthread.h>
+#include <time.h>
+#include <time.h>
 
 #include "kcoro_stackless.h"
 #include "koro_sched_stackless.h"
@@ -284,52 +286,213 @@ static void test_user_data_isolation(void)
 }
 
 /* ================================================================
- * Test 5: Scheduler ready queue (if scheduler is available)
+ * Scheduler integration tests
  * ================================================================ */
-#ifdef HAS_KORO_SCHEDULER
-static void test_scheduler_ready_queue(void)
+
+struct scheduler_auto_state {
+    int executed;
+};
+
+static int scheduler_hits = 0;
+
+static void* scheduler_auto_step(koro_cont_t* k)
 {
-    TEST_START("Scheduler ready queue");
+    struct scheduler_auto_state* state = (struct scheduler_auto_state*)k->user_data;
     
-    /* Initialize scheduler */
-    koro_scheduler_t* sched = koro_scheduler_create();
-    ASSERT_NOT_NULL(sched, "Scheduler creation failed");
+    if (k->state == 0) {
+        state->executed = 0;
+    }
     
-    /* Create continuations */
-    koro_cont_t* k1 = koro_cont_create(simple_step, NULL, 0);
-    koro_cont_t* k2 = koro_cont_create(simple_step, NULL, 0);
-    koro_cont_t* k3 = koro_cont_create(simple_step, NULL, 0);
+    KORO_BEGIN(k);
     
-    ASSERT_NOT_NULL(k1, "k1 creation failed");
-    ASSERT_NOT_NULL(k2, "k2 creation failed");
-    ASSERT_NOT_NULL(k3, "k3 creation failed");
+    state->executed = 1;
+    scheduler_hits++;
     
-    /* Enqueue in order */
-    koro_scheduler_enqueue(sched, k1);
-    koro_scheduler_enqueue(sched, k2);
-    koro_scheduler_enqueue(sched, k3);
+    KORO_END(k);
+}
+
+static void test_scheduler_run_loop(void)
+{
+    TEST_START("Scheduler run loop (managed coroutines)");
     
-    /* Dequeue and verify FIFO order */
-    koro_cont_t* deq1 = koro_scheduler_dequeue(sched);
-    koro_cont_t* deq2 = koro_scheduler_dequeue(sched);
-    koro_cont_t* deq3 = koro_scheduler_dequeue(sched);
+    ASSERT_EQ(0, koro_sched_init(), "koro_sched_init failed");
+    scheduler_hits = 0;
     
-    ASSERT_TRUE(deq1 == k1, "First dequeue should be k1");
-    ASSERT_TRUE(deq2 == k2, "Second dequeue should be k2");
-    ASSERT_TRUE(deq3 == k3, "Third dequeue should be k3");
+    ASSERT_EQ(0, koro_go(scheduler_auto_step, NULL, sizeof(struct scheduler_auto_state)),
+              "koro_go (1) failed");
+    ASSERT_EQ(0, koro_go(scheduler_auto_step, NULL, sizeof(struct scheduler_auto_state)),
+              "koro_go (2) failed");
     
-    /* Queue should be empty */
-    koro_cont_t* deq4 = koro_scheduler_dequeue(sched);
-    ASSERT_NULL(deq4, "Queue should be empty");
-    
-    koro_cont_destroy(k1);
-    koro_cont_destroy(k2);
-    koro_cont_destroy(k3);
-    koro_scheduler_destroy(sched);
+    ASSERT_EQ(0, koro_run(), "koro_run failed");
+    ASSERT_EQ(2, scheduler_hits, "Managed coroutines did not execute twice");
     
     TEST_PASS();
 }
-#endif
+
+struct scheduler_manual_state {
+    int executions;
+};
+
+static void* scheduler_manual_step(koro_cont_t* k)
+{
+    struct scheduler_manual_state* state = (struct scheduler_manual_state*)k->user_data;
+    
+    if (k->state == 0) {
+        state->executions = 0;
+    }
+    
+    KORO_BEGIN(k);
+    
+    state->executions++;
+    
+    KORO_END(k);
+}
+
+static void test_scheduler_manual_continuation(void)
+{
+    TEST_START("Scheduler manual continuation");
+    
+    ASSERT_EQ(0, koro_sched_init(), "koro_sched_init failed");
+    
+    koro_cont_t* k = koro_cont_create(scheduler_manual_step, NULL, sizeof(struct scheduler_manual_state));
+    ASSERT_NOT_NULL(k, "Manual continuation creation failed");
+    
+    struct scheduler_manual_state* state = (struct scheduler_manual_state*)k->user_data;
+    state->executions = 0;
+    
+    koro_sched_enqueue_ready(k);
+    ASSERT_EQ(0, koro_run(), "koro_run failed");
+    ASSERT_EQ(1, state->executions, "Manual continuation should execute once");
+    
+    ASSERT_TRUE(k->completed, "Manual continuation should remain completed");
+    ASSERT_TRUE(k->managed == 0, "Manual continuation should not be auto-managed");
+    
+    koro_cont_destroy(k);
+    
+    TEST_PASS();
+}
+
+struct scheduler_resumable_state {
+    int stage;
+};
+
+static void* scheduler_resumable_step(koro_cont_t* k)
+{
+    struct scheduler_resumable_state* state = (struct scheduler_resumable_state*)k->user_data;
+    
+    if (k->state == 0) {
+        state->stage = 0;
+    }
+    
+    KORO_BEGIN(k);
+    
+    state->stage = 1;
+    KORO_YIELD(k);
+    
+    state->stage = 2;
+    
+    KORO_END(k);
+}
+
+static void* enqueue_after_pause(void* arg)
+{
+    koro_cont_t* k = (koro_cont_t*)arg;
+    struct timespec ts = { .tv_sec = 0, .tv_nsec = 10 * 1000 * 1000 }; /* 10 ms */
+    nanosleep(&ts, NULL);
+    koro_sched_enqueue_ready(k);
+    return NULL;
+}
+
+static void test_scheduler_cross_thread_enqueue(void)
+{
+    TEST_START("Scheduler cross-thread enqueue");
+    
+    ASSERT_EQ(0, koro_sched_init(), "koro_sched_init failed");
+    
+    koro_cont_t* k = koro_cont_create(scheduler_resumable_step, NULL,
+                                      sizeof(struct scheduler_resumable_state));
+    ASSERT_NOT_NULL(k, "Resumable continuation creation failed");
+    
+    struct scheduler_resumable_state* state = (struct scheduler_resumable_state*)k->user_data;
+    state->stage = 0;
+    
+    koro_sched_enqueue_ready(k);
+    
+    pthread_t worker;
+    pthread_create(&worker, NULL, enqueue_after_pause, k);
+    
+    ASSERT_EQ(0, koro_run(), "koro_run failed");
+    pthread_join(worker, NULL);
+    
+    ASSERT_EQ(2, state->stage, "Continuation should reach stage 2");
+    
+    koro_cont_destroy(k);
+    
+    TEST_PASS();
+}
+
+/* Scheduler stop signal */
+static void* request_stop_later(void* arg)
+{
+    (void)arg;
+    struct timespec ts = { .tv_sec = 0, .tv_nsec = 5 * 1000 * 1000 }; /* 5 ms */
+    nanosleep(&ts, NULL);
+    koro_stop();
+    return NULL;
+}
+
+static void test_scheduler_stop_signal(void)
+{
+    TEST_START("Scheduler stop signal");
+    
+    ASSERT_EQ(0, koro_sched_init(), "koro_sched_init failed");
+    
+    koro_cont_t* k = koro_cont_create(scheduler_resumable_step, NULL,
+                                      sizeof(struct scheduler_resumable_state));
+    ASSERT_NOT_NULL(k, "Continuation creation failed");
+    
+    struct scheduler_resumable_state* state = (struct scheduler_resumable_state*)k->user_data;
+    state->stage = 0;
+    
+    koro_sched_enqueue_ready(k);
+    
+    pthread_t stopper;
+    pthread_create(&stopper, NULL, request_stop_later, NULL);
+    
+    ASSERT_EQ(0, koro_run(), "koro_run failed to honour stop");
+    pthread_join(stopper, NULL);
+    
+    ASSERT_EQ(1, state->stage, "Continuation should run first stage before stop");
+    
+    /* Allow graceful completion afterwards */
+    koro_sched_enqueue_ready(k);
+    ASSERT_EQ(0, koro_run(), "koro_run failed to complete after stop");
+    ASSERT_EQ(2, state->stage, "Continuation should complete after resume");
+    
+    koro_cont_destroy(k);
+    
+    TEST_PASS();
+}
+
+static void test_scheduler_multiple_runs(void)
+{
+    TEST_START("Scheduler multiple runs");
+    
+    ASSERT_EQ(0, koro_sched_init(), "koro_sched_init failed");
+    scheduler_hits = 0;
+    
+    ASSERT_EQ(0, koro_go(scheduler_auto_step, NULL, sizeof(struct scheduler_auto_state)),
+              "koro_go (first run) failed");
+    ASSERT_EQ(0, koro_run(), "First koro_run failed");
+    ASSERT_EQ(1, scheduler_hits, "First managed coroutine did not execute");
+    
+    ASSERT_EQ(0, koro_go(scheduler_auto_step, NULL, sizeof(struct scheduler_auto_state)),
+              "koro_go (second run) failed");
+    ASSERT_EQ(0, koro_run(), "Second koro_run failed");
+    ASSERT_EQ(2, scheduler_hits, "Second managed coroutine did not execute");
+    
+    TEST_PASS();
+}
 
 /* ================================================================
  * Test 6: Memory safety - double destroy
@@ -434,11 +597,13 @@ int main(void)
     test_state_machine_progression();
     test_wait_until_primitive();
     test_user_data_isolation();
-    
-#ifdef HAS_KORO_SCHEDULER
-    test_scheduler_ready_queue();
-#endif
-    
+    /* Scheduler-oriented tests */
+    test_scheduler_run_loop();
+    test_scheduler_manual_continuation();
+    test_scheduler_cross_thread_enqueue();
+    test_scheduler_stop_signal();
+    test_scheduler_multiple_runs();
+
     test_double_destroy_safety();
     test_stress_many_continuations();
     test_concurrent_create_destroy();

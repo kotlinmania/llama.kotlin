@@ -93,7 +93,61 @@ struct koro_cont* dequeue_next_runnable() {
 }
 ```
 
-No locks needed (single thread).
+In practice the arena runtime must accept wakeups from the token kernel's
+background worker thread, so the production implementation wraps this queue
+with a `pthread_mutex_t`/`pthread_cond_t` pair. Callbacks safely append ready
+continuations, signal the condition variable, and the main `koro_run()` loop
+dequeues under the same lock. The cooperative semantics stay the same—the
+mutex only protects the queue data structure.
+
+### Managed vs. manual continuations
+
+The scheduler now recognises two kinds of continuations:
+
+| Launch path                        | `managed` flag | Lifetime owner        | Typical use                            |
+|------------------------------------|---------------|-----------------------|----------------------------------------|
+| `koro_go(step, arg, local_size)`   | `1`           | Scheduler             | Fire-and-forget tasks                  |
+| `koro_cont_create(...)` + enqueue | `0`           | Caller                | Reusable continuations / custom pools  |
+
+- `koro_go()` calls `koro_cont_create`, marks the resulting continuation as **managed**, and enqueues it. When the continuation reports completion, the scheduler automatically calls `koro_cont_destroy()` on your behalf.
+- If you need to recycle continuations or add custom metadata, create them yourself with `koro_cont_create(...)`, enqueue via `koro_sched_enqueue_ready(...)`, and destroy (or reuse) them explicitly once they finish.
+
+Example:
+
+```c
+/* Managed coroutine: scheduler owns lifetime */
+static void* worker_step(koro_cont_t* k) {
+    KORO_BEGIN(k);
+    do_work();
+    KORO_END(k);
+}
+
+void launch_worker(void) {
+    koro_sched_init();
+    koro_go(worker_step, NULL, 0);  /* auto destroyed when done */
+    koro_run();
+}
+
+/* Manual coroutine: caller recycles object */
+static void* manual_step(koro_cont_t* k) {
+    struct state* st = k->user_data;
+    KORO_BEGIN(k);
+    process(st);
+    KORO_END(k);
+}
+
+void reuse_manual(struct state_pool* pool) {
+    koro_cont_t* c = state_pool_checkout(pool);
+    if (!c) {
+        c = koro_cont_create(manual_step, NULL, sizeof(struct state));
+    }
+    init_state((struct state*)c->user_data);
+    koro_sched_enqueue_ready(c);
+    koro_run();
+    /* manual: return to pool instead of destroying */
+    state_pool_return(pool, c);
+}
+```
 
 ## Event Notification (The Zero-Spin Magic)
 
@@ -138,7 +192,12 @@ void on_receiver_arrives(int ticket) {
 }
 ```
 
-The key: **no CPU usage between events**. The scheduler blocks in `wait_for_event()` (which could be `epoll_wait`, or in our case, a simple condition variable).
+The key: **no CPU usage between events**. The scheduler blocks on the ready
+condition variable—`koro_run()` sleeps when the queue is empty and no
+continuations are active, and callbacks wake it up by signalling the condvar.
+`koro_go()` marks continuations as managed so the scheduler can automatically
+destroy them once they report completion, leaving manually managed continuations
+to callers that still want direct control.
 
 ## Example Execution Trace
 

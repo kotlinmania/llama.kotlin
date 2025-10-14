@@ -57,6 +57,8 @@ typedef struct koro_cont {
     uint64_t id;            /* Unique coroutine ID */
     const char* name;       /* Debug name */
     int completed;          /* True when coroutine has finished */
+    int managed;            /* Scheduler owns lifetime (set by koro_go) */
+    int tracked;            /* Scheduler has counted this coroutine as active */
     
     /* Arena integration */
     int last_park_result;   /* Result from last suspension (arena status) */

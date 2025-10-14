@@ -15,7 +15,7 @@ STACKLESS_SRCS = ../core/src/kcoro_stackless.c \
 STACKLESS_OBJS = $(patsubst ../core/src/%.c,$(OBJ_DIR)/%.o,$(STACKLESS_SRCS))
 
 # Test files (including stubs)
-TEST_SRCS = test_stackless_primitives.c test_stubs_stackless.c
+TEST_SRCS = test_stackless_primitives.c
 TEST_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
 
 # Example binary
