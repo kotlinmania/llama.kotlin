@@ -3,6 +3,12 @@
 This file provides guidance for future agents working on the Kotlin port of `llama.cpp`.
 It summarizes the current project state and lists recommended next steps. Before starting new work, read `KOTLIN_PORT_CHECKLIST.md` in the repository root for a detailed roadmap.
 
+## Documentation Philosophy
+- Write docs the way you'd brief the next engineer on shift: approachable voice first, precise details alongside.
+- Define domain jargon the first time it appears so future readers never have to guess.
+- When you describe a workflow, include a tiny example or checklist so it can be followed step by step.
+- Keep accuracy non-negotiable—if something is nuanced, spell it out clearly without slipping into cryptic shorthand.
+
 ## Project Overview
 - **Goal**: Create a Kotlin/Native implementation of llama.cpp with an optimized CPU backend (future accelerators can plug into the same abstractions)
 - **Current Status**: Phase 3-4 (Advanced Core Implementation & Backend Development) with substantial infrastructure complete
