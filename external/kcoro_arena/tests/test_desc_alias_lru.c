@@ -42,9 +42,6 @@ static void consumer(void *arg) {
 }
 
 int main(void) {
-    /* Enable alias LRU */
-    setenv("KC_DESC_ALIAS_LRU", "1", 1);
-    
     kc_sched_t *sched = kc_sched_init(NULL);
     assert(sched);
 

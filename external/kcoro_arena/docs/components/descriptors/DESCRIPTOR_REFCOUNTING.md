@@ -259,12 +259,8 @@ static void kc_alias_lru_insert(struct kc_chan *ch,
 }
 ```
 
-**Configuration:**
-
-```bash
-# Enable LRU cache (default: disabled)
-export KC_DESC_ALIAS_LRU=1
-```
+**Configuration:**  
+The golden path keeps the descriptor alias LRU permanently enabled with a 32-entry cache per channel.
 
 ### Performance Impact
 

@@ -36,12 +36,7 @@ static int kc_get_nprocs(void)
 
 static int kc_sched_debug_enabled(void)
 {
-    static int cached = -1;
-    if (__builtin_expect(cached == -1, 0)) {
-        const char *env = getenv("KC_SCHED_DEBUG");
-        cached = (env && *env && env[0] != '0');
-    }
-    return cached;
+    return 0;
 }
 
 #define KC_SCHED_DEBUG(fmt, ...)                                                     \

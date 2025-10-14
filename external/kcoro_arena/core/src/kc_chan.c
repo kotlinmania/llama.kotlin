@@ -25,21 +25,18 @@
 static void kc_alias_lru_init(struct kc_chan *ch)
 {
     if (!ch) return;
-    const char *env = getenv("KC_DESC_ALIAS_LRU");
-    ch->alias_lru_enabled = (env && atoi(env) > 0);
-    if (ch->alias_lru_enabled) {
-        ch->alias_lru_size = 32;
-        ch->alias_lru_clock = 0;
-        for (unsigned i = 0; i < ch->alias_lru_size; ++i) {
-            ch->alias_lru[i].ptr = NULL;
-            ch->alias_lru[i].len = 0;
-            ch->alias_lru[i].id = 0;
-            ch->alias_lru[i].last_used = 0;
-        }
-        ch->alias_lru_hits = 0;
-        ch->alias_lru_misses = 0;
-        ch->alias_lru_evicts = 0;
+    ch->alias_lru_enabled = 1;
+    ch->alias_lru_size = 32;
+    ch->alias_lru_clock = 0;
+    for (unsigned i = 0; i < ch->alias_lru_size; ++i) {
+        ch->alias_lru[i].ptr = NULL;
+        ch->alias_lru[i].len = 0;
+        ch->alias_lru[i].id = 0;
+        ch->alias_lru[i].last_used = 0;
     }
+    ch->alias_lru_hits = 0;
+    ch->alias_lru_misses = 0;
+    ch->alias_lru_evicts = 0;
 }
 
 static kc_desc_id kc_alias_lru_lookup(struct kc_chan *ch, const void *ptr, size_t len)

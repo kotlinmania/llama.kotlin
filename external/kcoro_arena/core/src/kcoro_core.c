@@ -155,12 +155,7 @@ static void kcoro_free(kcoro_t* co)
 
 static int kcoro_ref_debug_enabled(void)
 {
-    static int cached = -1;
-    if (__builtin_expect(cached == -1, 0)) {
-        const char *env = getenv("KCORO_REF_DEBUG");
-        cached = (env && *env && env[0] != '0');
-    }
-    return cached;
+    return 0;
 }
 
 void kcoro_destroy(kcoro_t* co)
