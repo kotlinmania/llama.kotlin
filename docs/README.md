@@ -17,6 +17,8 @@ To keep things approachable, we’ve grouped the docs by subsystem. Start with t
   | Zero-copy descriptors | Work with arena-backed payloads safely and efficiently | `external/kcoro_arena/docs/components/descriptors/` |
   | Migration & roadmap | Check what’s next or how to port older code | `external/kcoro/docs/components/roadmap/` and the issue tracker |
 
+  _Verified vs. future docs_: when you see `*_VERIFIED.md`, it matches shipping code. The sibling `*_FUTURE.md` files capture ideas and open questions so we can brainstorm without muddying the ground truth.
+
   Connectedness (stackless pieces at a glance)
 
   ```mermaid
