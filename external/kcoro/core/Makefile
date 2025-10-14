@@ -17,21 +17,9 @@ BINDIR := build/lib
 SRCS := src/kc_chan.c src/kc_actor.c src/kc_cancel.c src/kc_sched.c src/kcoro_core.c src/kc_scope.c src/kc_select.c src/kc_zcopy.c src/kc_runtime_config.c src/kc_bench.c src/kc_dispatch.c
 
 # Architecture-specific assembly source selection
-UNAME_M := $(shell uname -m)
-ifeq ($(UNAME_M),x86_64)
-ASM_DIR := ../arch/x86_64
-else ifeq ($(UNAME_M),amd64)
-ASM_DIR := ../arch/x86_64
-else ifeq ($(UNAME_M),arm64)
-ASM_DIR := ../arch/aarch64
-else ifeq ($(UNAME_M),aarch64)
-ASM_DIR := ../arch/aarch64
-else
-ASM_DIR := ../arch/aarch64
-endif
-ASM_SRCS := $(ASM_DIR)/kc_ctx_switch.S
+# Stackless coroutines - no assembly needed
 
-OBJS := $(patsubst src/%.c,$(OBJDIR)/%.o,$(SRCS)) $(patsubst $(ASM_DIR)/%.S,$(OBJDIR)/%.o,$(ASM_SRCS))
+OBJS := $(patsubst src/%.c,$(OBJDIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
 LIB := $(BINDIR)/libkcoro.a
@@ -42,9 +30,6 @@ $(BINDIR) $(OBJDIR):
 	@mkdir -p $@
 
 $(OBJDIR)/%.o: src/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-$(OBJDIR)/%.o: $(ASM_DIR)/%.S | $(OBJDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(LIB): $(BINDIR) $(OBJS)
