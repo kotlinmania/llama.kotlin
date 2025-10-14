@@ -1,3 +1,5 @@
+_Backlog: related issues #115_
+
 <!-- Related issues: #115 -->
 # Channel Design Ideas (Future)
 

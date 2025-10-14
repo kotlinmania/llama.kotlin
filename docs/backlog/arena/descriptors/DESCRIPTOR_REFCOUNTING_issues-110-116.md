@@ -1,3 +1,5 @@
+_Backlog: related issues #110, 116_
+
 <!-- Related issues: #110, #116 -->
 # Descriptor Reference Counting — Future Ideas
 
