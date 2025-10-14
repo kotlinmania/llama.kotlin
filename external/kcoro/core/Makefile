@@ -4,7 +4,7 @@ AR ?= ar
 ARFLAGS ?= rcs
 
 # Public include path
-CFLAGS += -I../include -DKC_SCHED=1
+CFLAGS += -I../include
 
 # Always kill lingering kcoro test processes before builds (can disable with KILL_BEFORE=0)
 KILL_BEFORE ?= 1
@@ -51,7 +51,7 @@ kill-tests:
 # Verify library freshness: fails if any source newer than built archive
 .PHONY: verify-fresh
 verify-fresh: $(LIB)
- @latest_src=$(shell find src $(ASM_DIR) -type f \( -name '*.c' -o -name '*.S' \) -printf '%T@\n' | sort -n | tail -1); \
+ @latest_src=$(shell find src -type f -name '*.c' -printf '%T@\n' | sort -n | tail -1); \
 	 lib_time=$(shell stat -c %Y $(LIB) 2>/dev/null || echo 0); \
 	 latest_int=$$(printf '%.0f' $$latest_src); \
 	 if [ $$lib_time -lt $$latest_int ]; then \

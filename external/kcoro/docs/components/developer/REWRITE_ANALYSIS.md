@@ -6,7 +6,7 @@
 - The repository previously contained archived compatibility sources (shared-stack experiments). Those files have been removed from the active tree and are retained in `src/kcoro/lab/archive_removed/legacy-compat-2025-09-29/` for legal/history review. Active code and deliverables must remain free of third-party runtime sources that could affect licensing.
 - Within `kcoro/`, there are no alternate files like `kcoro_ctx.c` or `kcoro_stack.c`; all active coroutine logic is the private-stack clean-room implementation. Future work must continue to avoid incorporating legacy compatibility sources.
 - Channels, cancellation, scopes, actors, select, and the distributed IPC layer all have functioning C sources under `user/src/` and `ipc/posix/src/`. They rely on the kcoro core and were not removed during the rewrite.
-- Several subsystems are only partially integrated: channel wait paths fall back to `kcoro_yield()` spin/yield loops for timeout handling, `kc_task.c` is a stub, and the scheduler offers a single global FIFO queue without work stealing.
+- Several subsystems are only partially integrated: channel wait paths fall back to `kcoro_yield()` spin/yield loops for timeout handling, and the scheduler offers a single global FIFO queue without work stealing. The historical `kc_task` layer has been removed pending a redesigned structured task API.
 
 ## Capability Matrix (Ground Truth — 2025-09-17)
 | Area | Status | Notes / Evidence |
@@ -22,7 +22,7 @@
 | Cancellation tokens/contexts | ✅ Implemented | `user/src/kc_cancel.c`; hierarchical propagation via linked children |
 | Structured scopes | ✅ Implemented | `user/src/kc_scope.c`; tracks child coroutines/actors, auto-cancels on destroy |
 | Actor helpers | ✅ Implemented | `user/src/kc_actor.c`; coroutine-backed loop with optional cancellation |
-| Task abstraction (`kc_task.c`) | ❌ Skeleton only | Functions exist but just call `sched_yield()`; unused by scheduler |
+| Task abstraction | ❌ Removed | Historical `kc_task` layer was dropped; structured task API is future work |
 | Distributed IPC | ✅ Implemented | `ipc/posix/src/*.c`; TLV protocol, remote channel ops |
 | Bench/tests harness | ⚠️ Present but brittle | `tests/run`, `tests/*.c`, bench logs/scripts exist; some commands reference missing build outputs |
 | Documentation | ❌ Out-of-date | Many docs still describe legacy shared-stack internals or refer to upstream-inspired dispatcher work. Update docs to reflect the active private-stack kcoro implementation and remove direct comparisons to archived compatibility experiments. |
