@@ -34,26 +34,6 @@ static int kc_get_nprocs(void)
 
 #include "kcoro_core.h"
 
-static int kc_sched_debug_enabled(void)
-{
-    static int cached = -1;
-    if (__builtin_expect(cached == -1, 0)) {
-        const char *env = getenv("KC_SCHED_DEBUG");
-        cached = (env && *env && env[0] != '0');
-    }
-    return cached;
-}
-
-#define KC_SCHED_DEBUG(fmt, ...)                                                     \
-    do {                                                                             \
-        if (kc_sched_debug_enabled()) {                                             \
-            fprintf(stderr, "[kcoro][sched] " fmt "\n", ##__VA_ARGS__);         \
-        }                                                                            \
-    } while (0)
-
-/* Debug logging: production code uses runtime logging (KCORO_DEBUG env) if needed.
- * No compile-time debug split macros. */
-
 /* ---- Timers (ported from C++ scheduler concept) ---- */
 
 typedef struct kc_timer_item {
@@ -138,15 +118,10 @@ static void rq_push_locked(struct kc_sched *s, kcoro_t *co)
 {
     if (!co) return;
     if (co->ready_enqueued) {
-        KC_SCHED_DEBUG("skip enqueue co=%p (already enqueued)", (void*)co);
         return;
-    }
-    if (co->next) {
-        KC_SCHED_DEBUG("enqueue co=%p while next=%p -- clearing", (void*)co, (void*)co->next);
     }
     co->next = NULL;
     kcoro_t *tail = s->rq_tail;
-    KC_SCHED_DEBUG("push co=%p prev_tail=%p head=%p", (void*)co, (void*)tail, (void*)s->rq_head);
     if (tail) tail->next = co; else s->rq_head = co;
     s->rq_tail = co;
     co->ready_enqueued = true;
@@ -157,7 +132,6 @@ static kcoro_t* rq_pop_locked(struct kc_sched *s)
     kcoro_t *co = s->rq_head;
     if (co) {
         kcoro_t *next = co->next;
-        KC_SCHED_DEBUG("pop co=%p next=%p head=%p tail=%p", (void*)co, (void*)next, (void*)s->rq_head, (void*)s->rq_tail);
         s->rq_head = next;
         if (!s->rq_head) s->rq_tail = NULL;
         co->next = NULL;
@@ -185,7 +159,6 @@ static void* worker_main(void *arg){
     tls_current_sched = s;
     w->main_co = kcoro_create_main();
     if (!w->main_co) {
-        KC_SCHED_DEBUG("worker %d failed to create main coroutine", w->id);
         return NULL;
     }
     kcoro_set_thread_main(w->main_co);
@@ -209,7 +182,6 @@ static void* worker_main(void *arg){
         kcoro_t *co = rq_pop_locked(s);
         pthread_mutex_unlock(&s->rq_mu);
         if (co) {
-            KC_SCHED_DEBUG("worker %d resume co=%p state=%d tail=%p head=%p", w->id, (void*)co, co->state, (void*)s->rq_tail, (void*)s->rq_head);
             int expected = 0;
             if (!atomic_compare_exchange_strong_explicit(&co->running_flag, &expected, 1,
                                                          memory_order_acq_rel, memory_order_relaxed)) {
@@ -292,7 +264,6 @@ static void* worker_main(void *arg){
         atomic_fetch_add(&s->tasks_completed, 1);
     }
     if (w->main_co) {
-        KC_SCHED_DEBUG("worker %d destroy main_co=%p", w->id, (void*)w->main_co);
         kcoro_destroy(w->main_co);
         w->main_co = NULL;
     }
@@ -599,7 +570,6 @@ void kc_sched_enqueue_ready(kc_sched_t* s, kcoro_t* co)
         return;
     }
     if (co->state == KCORO_FINISHED) {
-        KC_SCHED_DEBUG("skip enqueue finished co=%p", (void*)co);
         pthread_mutex_unlock(&s->rq_mu);
         return;
     }

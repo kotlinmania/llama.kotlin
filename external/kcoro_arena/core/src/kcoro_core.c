@@ -153,11 +153,6 @@ static void kcoro_free(kcoro_t* co)
     free(co);
 }
 
-static int kcoro_ref_debug_enabled(void)
-{
-    return 0;
-}
-
 void kcoro_destroy(kcoro_t* co)
 {
     kcoro_release(co);
@@ -183,19 +178,13 @@ kcoro_t* kcoro_thread_main(void)
 void kcoro_retain(kcoro_t* co)
 {
     if (!co) return;
-    int prev = atomic_fetch_add_explicit(&co->refcount, 1, memory_order_relaxed);
-    if (kcoro_ref_debug_enabled()) {
-        fprintf(stderr, "[kcoro][ref] retain co=%p -> %d\n", (void*)co, prev + 1);
-    }
+    atomic_fetch_add_explicit(&co->refcount, 1, memory_order_relaxed);
 }
 
 void kcoro_release(kcoro_t* co)
 {
     if (!co) return;
     int prev = atomic_fetch_sub_explicit(&co->refcount, 1, memory_order_acq_rel);
-    if (kcoro_ref_debug_enabled()) {
-        fprintf(stderr, "[kcoro][ref] release co=%p prev=%d\n", (void*)co, prev);
-    }
     if (prev == 1) {
         kcoro_free(co);
     }

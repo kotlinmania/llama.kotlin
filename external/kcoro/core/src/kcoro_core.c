@@ -82,29 +82,16 @@ kcoro_t* kcoro_create_cps(kcoro_step_fn_t initial_step, void* user_data)
     return co;
 }
 
-static int kcoro_ref_debug_enabled(void)
-{
-    static int cached = -1;
-    if (__builtin_expect(cached == -1, 0)) {
-        const char *env = getenv("KCORO_REF_DEBUG");
-        cached = (env && *env && env[0] != '0');
-    }
-    return cached;
-}
-
 static void kcoro_free(kcoro_t* co)
 {
     if (!co) return;
-    
+
     /* Stackless: no stack to free, just the coroutine object itself */
     if (current_kcoro == co) {
         current_kcoro = NULL;
     }
     if (main_kcoro == co) {
         main_kcoro = NULL;
-    }
-    if (kcoro_ref_debug_enabled()) {
-        fprintf(stderr, "[kcoro][ref] freed co=%p\n", (void*)co);
     }
     free(co);
 }
@@ -134,19 +121,13 @@ kcoro_t* kcoro_thread_main(void)
 void kcoro_retain(kcoro_t* co)
 {
     if (!co) return;
-    int prev = atomic_fetch_add_explicit(&co->refcount, 1, memory_order_relaxed);
-    if (kcoro_ref_debug_enabled()) {
-        fprintf(stderr, "[kcoro][ref] retain co=%p -> %d\n", (void*)co, prev + 1);
-    }
+    atomic_fetch_add_explicit(&co->refcount, 1, memory_order_relaxed);
 }
 
 void kcoro_release(kcoro_t* co)
 {
     if (!co) return;
     int prev = atomic_fetch_sub_explicit(&co->refcount, 1, memory_order_acq_rel);
-    if (kcoro_ref_debug_enabled()) {
-        fprintf(stderr, "[kcoro][ref] release co=%p prev=%d\n", (void*)co, prev);
-    }
     if (prev == 1) {
         kcoro_free(co);
     }
