@@ -260,7 +260,8 @@ static void* producer_thread(void* arg)
             NULL,  // channel
             data,  // payload ptr
             sizeof(int),  // payload len
-            NULL   // resume callback
+            NULL, // resume callback
+            NULL
         );
         
         if (ticket.id != 0) {

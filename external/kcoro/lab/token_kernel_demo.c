@@ -9,6 +9,21 @@ typedef struct demo_ctx {
     kc_ticket ticket;
 } demo_ctx;
 
+static kc_payload g_last_payload = {0};
+static int g_payload_ready = 0;
+
+static void demo_resume_callback(void *ctx, const kc_payload *payload)
+{
+    (void)ctx;
+    if (payload) {
+        g_last_payload = *payload;
+    } else {
+        memset(&g_last_payload, 0, sizeof(g_last_payload));
+        g_last_payload.status = -1;
+    }
+    g_payload_ready = 1;
+}
+
 static void demo_coroutine(void *arg)
 {
     demo_ctx *ctx = (demo_ctx*)arg;
@@ -16,6 +31,7 @@ static void demo_coroutine(void *arg)
     kc_ticket ticket = kc_token_kernel_publish_send(NULL,
                                                     (void*)message,
                                                     strlen(message) + 1,
+                                                    demo_resume_callback,
                                                     NULL);
     ctx->ticket = ticket;
     printf("[coroutine] published ticket id=%llu, parking...\n",
@@ -23,10 +39,8 @@ static void demo_coroutine(void *arg)
     fflush(stdout);
     kcoro_park();
 
-    kc_payload payload = {0};
-    int rc = kc_token_kernel_consume_payload(&payload);
-    printf("[coroutine] resumed rc=%d payload_ptr=%p len=%zu status=%d\n",
-           rc, payload.ptr, payload.len, payload.status);
+    printf("[coroutine] resumed payload_ptr=%p len=%zu status=%d\n",
+           g_last_payload.ptr, g_last_payload.len, g_last_payload.status);
     fflush(stdout);
 }
 

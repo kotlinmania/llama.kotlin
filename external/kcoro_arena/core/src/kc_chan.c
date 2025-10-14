@@ -100,16 +100,79 @@ static void kc_chan_note_op_locked(struct kc_chan *ch, int is_send, size_t len)
     ch->last_op_time_ns = now;
 }
 
+/* ========================================================================
+ * Token Kernel Callbacks
+ * ======================================================================== */
+
+static void kc_send_complete_cb(void *user_ctx, const kc_payload *payload)
+{
+    kcoro_t *sender_co = (kcoro_t*)user_ctx;
+    if (!sender_co) return;
+
+    if (payload) {
+        sender_co->token_payload_ptr = payload->ptr;
+        sender_co->token_payload_len = payload->len;
+        sender_co->token_payload_desc = payload->desc_id;
+        sender_co->token_payload_status = payload->status;
+    } else {
+        sender_co->token_payload_ptr = NULL;
+        sender_co->token_payload_len = 0;
+        sender_co->token_payload_desc = 0;
+        sender_co->token_payload_status = KC_EPIPE;
+    }
+    atomic_store(&sender_co->token_payload_ready, 1);
+    kcoro_resume(sender_co);
+}
+
+static void kc_recv_complete_cb(void *user_ctx, const kc_payload *payload)
+{
+    kcoro_t *receiver_co = (kcoro_t*)user_ctx;
+    if (!receiver_co) return;
+
+    if (payload) {
+        receiver_co->token_payload_ptr = payload->ptr;
+        receiver_co->token_payload_len = payload->len;
+        receiver_co->token_payload_desc = payload->desc_id;
+        receiver_co->token_payload_status = payload->status;
+    } else {
+        receiver_co->token_payload_ptr = NULL;
+        receiver_co->token_payload_len = 0;
+        receiver_co->token_payload_desc = 0;
+        receiver_co->token_payload_status = KC_EPIPE;
+    }
+    atomic_store(&receiver_co->token_payload_ready, 1);
+    kcoro_resume(receiver_co);
+}
+
+/* ========================================================================
+ * Stackless Send/Receive Primitives
+ * ======================================================================== */
+
 static int kc_wait_for_token_payload(kc_payload *ack)
 {
     if (!ack) return -EINVAL;
-    for (;;) {
-        int rc = kc_token_kernel_consume_payload(ack);
-        if (rc != KC_EAGAIN) {
-            return rc;
-        }
-        sched_yield();
-    }
+    
+    /* Park the current coroutine. The token kernel callback will resume it and
+     * populate the token payload fields on the coroutine struct. */
+    kcoro_park();
+    
+    /* When we resume, read the payload from our coroutine state */
+    kcoro_t *self = kcoro_current();
+    if (!self) return -EINVAL;
+    
+    /* Transfer payload to ack structure */
+    ack->ptr = self->token_payload_ptr;
+    ack->len = self->token_payload_len;
+    ack->status = self->token_payload_status;
+    ack->desc_id = self->token_payload_desc;
+    
+    /* Clear coroutine fields for next use */
+    self->token_payload_ptr = NULL;
+    self->token_payload_len = 0;
+    self->token_payload_desc = 0;
+    atomic_store(&self->token_payload_ready, 0);
+    
+    return ack->status;
 }
 
 unsigned kc_chan_len(kc_chan_t *c)
@@ -127,6 +190,7 @@ unsigned kc_chan_len(kc_chan_t *c)
 
 static void pending_send_enqueue(struct kc_chan *ch, struct kc_pending_send *node)
 {
+    int was_empty = (ch->token_send_head == NULL);
     node->next = NULL;
     if (ch->token_send_tail) {
         ch->token_send_tail->next = node;
@@ -134,6 +198,9 @@ static void pending_send_enqueue(struct kc_chan *ch, struct kc_pending_send *nod
         ch->token_send_head = node;
     }
     ch->token_send_tail = node;
+    if (was_empty) {
+        kc_token_kernel_notify_event(KC_TOKEN_EVENT_EMPTY_TO_SENDER_READY, ch, NULL);
+    }
 }
 
 static struct kc_pending_send *pending_send_dequeue(struct kc_chan *ch)
@@ -148,6 +215,7 @@ static struct kc_pending_send *pending_send_dequeue(struct kc_chan *ch)
 
 static void pending_recv_enqueue(struct kc_chan *ch, struct kc_pending_recv *node)
 {
+    int was_empty = (ch->token_recv_head == NULL);
     node->next = NULL;
     if (ch->token_recv_tail) {
         ch->token_recv_tail->next = node;
@@ -155,6 +223,9 @@ static void pending_recv_enqueue(struct kc_chan *ch, struct kc_pending_recv *nod
         ch->token_recv_head = node;
     }
     ch->token_recv_tail = node;
+    if (was_empty) {
+        kc_token_kernel_notify_event(KC_TOKEN_EVENT_EMPTY_TO_RECEIVER_READY, ch, NULL);
+    }
 }
 
 static struct kc_pending_recv *pending_recv_dequeue(struct kc_chan *ch)
@@ -357,6 +428,17 @@ void kc_chan_close(kc_chan_t *c)
 
     while (ps) {
         struct kc_pending_send *next = ps->next;
+        kc_payload cancel_payload = { .ptr = NULL, .len = 0, .status = KC_EPIPE, .desc_id = 0 };
+        if (ps->desc_id) {
+            kc_payload tmp = {0};
+            if (kc_desc_payload(ps->desc_id, &tmp) == 0) {
+                cancel_payload = tmp;
+                cancel_payload.status = KC_EPIPE;
+            }
+        }
+        kc_token_kernel_notify_event(KC_TOKEN_EVENT_ANY_TO_CANCELLED,
+                                     ps->ticket.channel,
+                                     &cancel_payload);
         if (ps->role == KC_PENDING_ROLE_CORO && ps->ticket.id) {
             kc_token_kernel_cancel(ps->ticket, KC_EPIPE);
         } else if (ps->role == KC_PENDING_ROLE_SELECT) {
@@ -368,6 +450,17 @@ void kc_chan_close(kc_chan_t *c)
     }
     while (pr) {
         struct kc_pending_recv *next = pr->next;
+        kc_payload cancel_payload = { .ptr = NULL, .len = 0, .status = KC_EPIPE, .desc_id = 0 };
+        if (pr->desc_id) {
+            kc_payload tmp = {0};
+            if (kc_desc_payload(pr->desc_id, &tmp) == 0) {
+                cancel_payload = tmp;
+                cancel_payload.status = KC_EPIPE;
+            }
+        }
+        kc_token_kernel_notify_event(KC_TOKEN_EVENT_ANY_TO_CANCELLED,
+                                     pr->ticket.channel,
+                                     &cancel_payload);
         if (pr->role == KC_PENDING_ROLE_CORO && pr->ticket.id) {
             kc_token_kernel_cancel(pr->ticket, KC_EPIPE);
         } else if (pr->role == KC_PENDING_ROLE_SELECT) {
@@ -394,6 +487,9 @@ static void fulfill_coroutine_send(struct kc_pending_send *node, kc_desc_id desc
         payload.ptr = NULL;
         payload.len = 0;
         payload.desc_id = 0;
+        kc_token_kernel_notify_event(KC_TOKEN_EVENT_ANY_TO_CANCELLED,
+                                     node->ticket.channel,
+                                     &payload);
         kc_token_kernel_callback(node->ticket, payload);
         kc_desc_release(desc);
         free(node);
@@ -401,6 +497,9 @@ static void fulfill_coroutine_send(struct kc_pending_send *node, kc_desc_id desc
     }
     kc_desc_retain(desc);
     payload.desc_id = desc;
+    kc_token_kernel_notify_event(KC_TOKEN_EVENT_SENDER_TO_MATCHED,
+                                 node->ticket.channel,
+                                 &payload);
     kc_token_kernel_callback(node->ticket, payload);
     kc_desc_release(desc);
     free(node);
@@ -414,6 +513,9 @@ static void fulfill_coroutine_recv(struct kc_pending_recv *node, kc_desc_id desc
         payload.ptr = NULL;
         payload.len = 0;
         payload.desc_id = 0;
+        kc_token_kernel_notify_event(KC_TOKEN_EVENT_ANY_TO_CANCELLED,
+                                     node->ticket.channel,
+                                     &payload);
         kc_token_kernel_callback(node->ticket, payload);
         kc_desc_release(desc);
         free(node);
@@ -421,6 +523,9 @@ static void fulfill_coroutine_recv(struct kc_pending_recv *node, kc_desc_id desc
     }
     kc_desc_retain(desc);
     payload.desc_id = desc;
+    kc_token_kernel_notify_event(KC_TOKEN_EVENT_RECEIVER_TO_MATCHED,
+                                 node->ticket.channel,
+                                 &payload);
     kc_token_kernel_callback(node->ticket, payload);
     kc_desc_release(desc);
     free(node);
@@ -434,6 +539,10 @@ static void fulfill_select_send(struct kc_chan *ch, struct kc_pending_send *node
     struct kc_chan_ptrmsg msg = { .ptr = payload.ptr, .len = payload.len };
     void *dst = kc_select_recv_buffer(node->sel, node->clause_index);
     if (rc == 0 && dst) memcpy(dst, &msg, sizeof(msg));
+    kc_token_kernel_notify_event(rc == 0 ? KC_TOKEN_EVENT_SENDER_TO_MATCHED
+                                         : KC_TOKEN_EVENT_ANY_TO_CANCELLED,
+                                 ch,
+                                 (rc == 0) ? &payload : NULL);
     complete_select(node->sel, node->clause_index, (rc == 0 && dst) ? 0 : KC_ECANCELED);
     kc_desc_release(desc);
     free(node);
@@ -447,6 +556,10 @@ static void fulfill_select_recv(struct kc_chan *ch, struct kc_pending_recv *node
     struct kc_chan_ptrmsg msg = { .ptr = payload.ptr, .len = payload.len };
     void *dst = kc_select_recv_buffer(node->sel, node->clause_index);
     if (rc == 0 && dst) memcpy(dst, &msg, sizeof(msg));
+    kc_token_kernel_notify_event(rc == 0 ? KC_TOKEN_EVENT_RECEIVER_TO_MATCHED
+                                         : KC_TOKEN_EVENT_ANY_TO_CANCELLED,
+                                 ch,
+                                 (rc == 0) ? &payload : NULL);
     complete_select(node->sel, node->clause_index, (rc == 0 && dst) ? 0 : KC_ECANCELED);
     kc_desc_release(desc);
     free(node);
@@ -525,7 +638,14 @@ static int kc_chan_send_ptr_rendezvous(struct kc_chan *ch, void *ptr, size_t len
             free(node);
             return KC_EPIPE;
         }
-        kc_ticket ticket = kc_token_kernel_publish_send(ch, payload.ptr, payload.len, NULL);
+        kcoro_t *self = kcoro_current();
+        if (!self) {
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            free(node);
+            return -EINVAL;
+        }
+        kc_ticket ticket = kc_token_kernel_publish_send(ch, payload.ptr, payload.len, kc_send_complete_cb, self);
         if (ticket.id == 0) {
             KC_MUTEX_UNLOCK(&ch->mu);
             kc_desc_release(desc);
@@ -540,7 +660,6 @@ static int kc_chan_send_ptr_rendezvous(struct kc_chan *ch, void *ptr, size_t len
         desc = 0;
         KC_MUTEX_UNLOCK(&ch->mu);
 
-        kcoro_park();
         kc_payload ack = {0};
         int rc = kc_wait_for_token_payload(&ack);
         if (ack.desc_id) kc_desc_release(ack.desc_id);
@@ -824,7 +943,14 @@ static int kc_chan_send_bytes_rendezvous(struct kc_chan *ch, const void *msg, lo
             kc_desc_release(desc);
             return -ENOMEM;
         }
-        kc_ticket ticket = kc_token_kernel_publish_send(ch, payload.ptr, payload.len, NULL);
+        kcoro_t *self = kcoro_current();
+        if (!self) {
+            KC_MUTEX_UNLOCK(&ch->mu);
+            kc_desc_release(desc);
+            free(node);
+            return -EINVAL;
+        }
+        kc_ticket ticket = kc_token_kernel_publish_send(ch, payload.ptr, payload.len, kc_send_complete_cb, self);
         if (ticket.id == 0) {
             KC_MUTEX_UNLOCK(&ch->mu);
             kc_desc_release(desc);
@@ -839,7 +965,6 @@ static int kc_chan_send_bytes_rendezvous(struct kc_chan *ch, const void *msg, lo
         desc = 0;
         KC_MUTEX_UNLOCK(&ch->mu);
 
-        kcoro_park();
         kc_payload ack = {0};
         int rc = kc_wait_for_token_payload(&ack);
         if (ack.desc_id) kc_desc_release(ack.desc_id);

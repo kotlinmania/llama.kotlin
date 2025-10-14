@@ -15,9 +15,10 @@ kc_ticket kc_token_kernel_publish_send(
     struct kc_chan* ch,
     void* ptr,
     size_t len,
-    void (*resume_callback)(void)
+    kc_token_resume_fn resume_cb,
+    void *user_ctx
 ) {
-    (void)ptr; (void)len; (void)resume_callback;
+    (void)ptr; (void)len; (void)resume_cb; (void)user_ctx;
     kc_ticket t = { .id = 1, .channel = ch };
     printf("[stub] publish_send ticket=%lu\n", (unsigned long)t.id);
     return t;
@@ -26,22 +27,28 @@ kc_ticket kc_token_kernel_publish_send(
 /* Stub: publish receive token to arena */
 kc_ticket kc_token_kernel_publish_recv(
     struct kc_chan* ch,
-    void (*resume_callback)(void)
+    kc_token_resume_fn resume_cb,
+    void *user_ctx
 ) {
-    (void)resume_callback;
+    (void)resume_cb; (void)user_ctx;
     kc_ticket t = { .id = 2, .channel = ch };
     printf("[stub] publish_recv ticket=%lu\n", (unsigned long)t.id);
     return t;
 }
 
-/* Stub: try to consume payload from matched token */
-int kc_token_kernel_consume_payload(kc_payload* out) {
-    (void)out;
-    /* Return -1 to indicate no payload yet (suspension required) */
-    return -1;
-}
-
 /* Stub: enqueue a ready continuation */
 void koro_sched_enqueue_ready(struct koro_cont* k) {
     printf("[stub] sched_enqueue k=%p state=%d\n", (void*)k, k->state);
+}
+
+int kc_token_kernel_subscribe(kc_token_event_type event,
+                              kc_token_event_cb cb,
+                              void *user_ctx) {
+    (void)event; (void)cb; (void)user_ctx; return 0;
+}
+
+int kc_token_kernel_notify_event(kc_token_event_type event,
+                                 struct kc_chan *channel,
+                                 const kc_payload *payload) {
+    (void)event; (void)channel; (void)payload; return 0;
 }

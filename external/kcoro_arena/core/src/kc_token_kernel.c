@@ -2,6 +2,8 @@
 #include "kcoro_token_kernel.h"
 
 #include <stdatomic.h>
+#include <pthread.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,14 +20,28 @@
 #define KC_TOKEN_KERNEL_BUCKETS 1024u
 
 typedef struct kc_token_block kc_token_block;
+typedef struct kc_token_event_subscriber kc_token_event_subscriber;
+typedef struct kc_token_event_task kc_token_event_task;
 
 struct kc_token_block {
-    kc_token_block    *next_hash;
-    struct kc_chan    *channel;
-    kcoro_t           *owner_co;
-    kc_payload         payload;
-    void              (*resume_pc)(void);
-    kc_token_id_t      id;
+    kc_token_block       *next_hash;
+    struct kc_chan       *channel;
+    kc_payload            payload;
+    kc_token_resume_fn    resume_cb;
+    void                 *resume_ctx;
+    kc_token_id_t         id;
+};
+
+struct kc_token_event_subscriber {
+    kc_token_event_subscriber *next;
+    kc_token_event_cb          cb;
+    void                      *ctx;
+};
+
+struct kc_token_event_task {
+    kc_token_event_type event;
+    struct kc_chan     *channel;
+    kc_payload          payload;
 };
 
 typedef struct kc_token_bucket {
@@ -49,6 +65,9 @@ typedef struct kc_token_ready_queue {
 static kc_token_block *ready_dequeue(kc_token_ready_queue *q);
 static void ready_enqueue(kc_token_ready_queue *q, kc_token_block *blk);
 static void freelist_push(kc_token_freelist *fl, kc_token_block *blk);
+static int kc_token_kernel_notify_event_async(kc_token_event_type event,
+                                              struct kc_chan *channel,
+                                              const kc_payload *payload);
 
 enum {
     KC_TOKEN_INIT_UNINITIALIZED = 0,
@@ -65,6 +84,7 @@ static struct {
     pthread_t            worker;
     int                  worker_started;
     atomic_int           initialized;
+    _Atomic(kc_token_event_subscriber *) event_heads[KC_TOKEN_EVENT_COUNT];
 } g_kernel = {
     .next_id = ATOMIC_VAR_INIT(1),
     .buckets = NULL,
@@ -139,15 +159,23 @@ static kc_token_block *ready_dequeue(kc_token_ready_queue *q) {
 }
 
 static void kc_token_process_block(kc_token_block *blk) {
-    /* Priority 1: Stackless continuation (resume_pc callback) */
-    if (blk->resume_pc) {
-        /* Invoke the continuation's resume callback directly.
-         * The callback (e.g., koro_send_resume_callback from kcoro_stackless.c)
-         * will handle payload consumption and re-enqueuing the continuation. */
-        blk->resume_pc();
+    if (blk->resume_cb) {
+        blk->resume_cb(blk->resume_ctx, &blk->payload);
     }
-/* Stackful code removed - golden path is stackless only */
     freelist_push(&g_kernel.freelist, blk);
+}
+
+static void kc_token_event_dispatch(void *ctx, const kc_payload *unused)
+{
+    (void)unused;
+    kc_token_event_task *task = (kc_token_event_task*)ctx;
+    kc_token_event_subscriber *sub = atomic_load_explicit(
+        &g_kernel.event_heads[task->event], memory_order_acquire);
+    while (sub) {
+        sub->cb(task->channel, &task->payload, sub->ctx);
+        sub = sub->next;
+    }
+    free(task);
 }
 
 static void *kc_token_worker_main(void *arg) {
@@ -180,8 +208,8 @@ static void freelist_push(kc_token_freelist *fl, kc_token_block *blk)
     if (!blk) return;
     memset(&blk->payload, 0, sizeof(blk->payload));
     blk->channel = NULL;
-    blk->owner_co = NULL;
-    blk->resume_pc = NULL;
+    blk->resume_cb = NULL;
+    blk->resume_ctx = NULL;
     blk->id = 0;
 
     pthread_mutex_lock(&fl->mu);
@@ -271,6 +299,9 @@ int kc_token_kernel_global_init(void)
                                                         memory_order_acquire)) {
                 freelist_init(&g_kernel.freelist);
                 ready_queue_init(&g_kernel.ready_queue);
+                for (int i = 0; i < KC_TOKEN_EVENT_COUNT; ++i) {
+                    atomic_store_explicit(&g_kernel.event_heads[i], NULL, memory_order_relaxed);
+                }
                 int rc = bucket_init_many(KC_TOKEN_KERNEL_BUCKETS);
                 if (rc != 0) {
                     ready_queue_destroy(&g_kernel.ready_queue);
@@ -313,6 +344,15 @@ void kc_token_kernel_global_shutdown(void)
     ready_queue_destroy(&g_kernel.ready_queue);
     bucket_destroy_many();
     freelist_destroy(&g_kernel.freelist);
+    for (int i = 0; i < KC_TOKEN_EVENT_COUNT; ++i) {
+        kc_token_event_subscriber *cur = atomic_load_explicit(&g_kernel.event_heads[i], memory_order_acquire);
+        while (cur) {
+            kc_token_event_subscriber *next = cur->next;
+            free(cur);
+            cur = next;
+        }
+        atomic_store_explicit(&g_kernel.event_heads[i], NULL, memory_order_release);
+    }
     atomic_store_explicit(&g_kernel.initialized, KC_TOKEN_INIT_UNINITIALIZED, memory_order_release);
 }
 
@@ -323,7 +363,8 @@ static kc_token_id_t next_token_id(void)
 
 static kc_ticket publish_common(struct kc_chan *ch,
                                 const kc_payload *initial_payload,
-                                void (*resume_pc)(void))
+                                kc_token_resume_fn resume_cb,
+                                void *user_ctx)
 {
     kc_ticket ticket = {0, ch};
     if (!atomic_load(&g_kernel.initialized)) {
@@ -332,12 +373,10 @@ static kc_ticket publish_common(struct kc_chan *ch,
         }
     }
 
-/* Stackful code removed - golden path is stackless only */
-
     kc_token_block *blk = freelist_pop(&g_kernel.freelist);
     blk->channel = ch;
-/* Stackful code removed - golden path is stackless only */
-    blk->resume_pc = resume_pc;
+    blk->resume_cb = resume_cb;
+    blk->resume_ctx = user_ctx;
     blk->id = next_token_id();
     if (initial_payload) {
         blk->payload = *initial_payload;
@@ -357,16 +396,18 @@ static kc_ticket publish_common(struct kc_chan *ch,
 kc_ticket kc_token_kernel_publish_send(struct kc_chan *ch,
                                        void *ptr,
                                        size_t len,
-                                       void (*resume_pc)(void))
+                                       kc_token_resume_fn resume_cb,
+                                       void *user_ctx)
 {
     kc_payload payload = { .ptr = ptr, .len = len, .status = 0, .desc_id = 0 };
-    return publish_common(ch, &payload, resume_pc);
+    return publish_common(ch, &payload, resume_cb, user_ctx);
 }
 
 kc_ticket kc_token_kernel_publish_recv(struct kc_chan *ch,
-                                       void (*resume_pc)(void))
+                                       kc_token_resume_fn resume_cb,
+                                       void *user_ctx)
 {
-    return publish_common(ch, NULL, resume_pc);
+    return publish_common(ch, NULL, resume_cb, user_ctx);
 }
 
 void kc_token_kernel_callback(kc_ticket ticket, kc_payload payload)
@@ -393,16 +434,89 @@ void kc_token_kernel_cancel(kc_ticket ticket, int reason)
     }
     blk->payload.ptr = NULL;
     blk->payload.len = 0;
-/* Stackful code removed - golden path is stackless only */
     blk->payload.status = reason;
+    kc_token_kernel_notify_event_async(KC_TOKEN_EVENT_ANY_TO_CANCELLED,
+                                       blk->channel,
+                                       &blk->payload);
     ready_enqueue(&g_kernel.ready_queue, blk);
 }
 
-int kc_token_kernel_consume_payload(kc_payload *out_payload)
+int kc_token_kernel_subscribe(kc_token_event_type event,
+                              kc_token_event_cb cb,
+                              void *user_ctx)
 {
-    /* Golden path: Stackless mode only. Payload is delivered via resume callback.
-     * This function exists for API compatibility but is never called. */
-    (void)out_payload;
-    return -1; /* Not supported in stackless mode */
+    if (event < 0 || event >= KC_TOKEN_EVENT_COUNT || cb == NULL) {
+        return -EINVAL;
+    }
+
+    if (atomic_load_explicit(&g_kernel.initialized, memory_order_acquire) != KC_TOKEN_INIT_READY) {
+        int rc = kc_token_kernel_global_init();
+        if (rc != 0 && atomic_load_explicit(&g_kernel.initialized, memory_order_acquire) != KC_TOKEN_INIT_READY) {
+            return rc;
+        }
+    }
+
+    kc_token_event_subscriber *node = (kc_token_event_subscriber *)calloc(1, sizeof(*node));
+    if (!node) return -ENOMEM;
+    node->cb = cb;
+    node->ctx = user_ctx;
+
+    kc_token_event_subscriber *head;
+    do {
+        head = atomic_load_explicit(&g_kernel.event_heads[event], memory_order_acquire);
+        node->next = head;
+    } while (!atomic_compare_exchange_weak_explicit(&g_kernel.event_heads[event],
+                                                    &head,
+                                                    node,
+                                                    memory_order_release,
+                                                    memory_order_acquire));
+    return 0;
 }
 
+static int kc_token_kernel_notify_event_async(kc_token_event_type event,
+                                              struct kc_chan *channel,
+                                              const kc_payload *payload)
+{
+    kc_token_event_subscriber *head = atomic_load_explicit(&g_kernel.event_heads[event], memory_order_acquire);
+    if (!head) return 0;
+
+    kc_token_event_task *task = (kc_token_event_task *)calloc(1, sizeof(*task));
+    if (!task) return -ENOMEM;
+    task->event = event;
+    task->channel = channel;
+    if (payload) {
+        task->payload = *payload;
+    } else {
+        memset(&task->payload, 0, sizeof(task->payload));
+    }
+
+    kc_token_block *blk = freelist_pop(&g_kernel.freelist);
+    if (!blk) {
+        free(task);
+        return -ENOMEM;
+    }
+    blk->channel = channel;
+    blk->resume_cb = kc_token_event_dispatch;
+    blk->resume_ctx = task;
+    blk->payload.ptr = NULL;
+    blk->payload.len = 0;
+    blk->payload.status = 0;
+    blk->payload.desc_id = 0;
+    blk->id = 0;
+    ready_enqueue(&g_kernel.ready_queue, blk);
+    return 0;
+}
+
+int kc_token_kernel_notify_event(kc_token_event_type event,
+                                 struct kc_chan *channel,
+                                 const kc_payload *payload)
+{
+    if (event < 0 || event >= KC_TOKEN_EVENT_COUNT) return -EINVAL;
+    if (atomic_load_explicit(&g_kernel.initialized, memory_order_acquire) != KC_TOKEN_INIT_READY) {
+        int rc = kc_token_kernel_global_init();
+        if (rc != 0 && atomic_load_explicit(&g_kernel.initialized, memory_order_acquire) != KC_TOKEN_INIT_READY) {
+            return rc;
+        }
+    }
+    return kc_token_kernel_notify_event_async(event, channel, payload);
+}

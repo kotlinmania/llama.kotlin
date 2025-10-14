@@ -26,21 +26,44 @@ typedef struct kc_ticket {
     struct kc_chan *channel;
 } kc_ticket;
 
+typedef void (*kc_token_resume_fn)(void *user_ctx, const kc_payload *payload);
+
+typedef enum {
+    KC_TOKEN_EVENT_EMPTY_TO_SENDER_READY = 0,
+    KC_TOKEN_EVENT_EMPTY_TO_RECEIVER_READY = 1,
+    KC_TOKEN_EVENT_SENDER_TO_MATCHED = 2,
+    KC_TOKEN_EVENT_RECEIVER_TO_MATCHED = 3,
+    KC_TOKEN_EVENT_ANY_TO_CANCELLED = 4,
+    KC_TOKEN_EVENT_COUNT
+} kc_token_event_type;
+
+typedef void (*kc_token_event_cb)(struct kc_chan *channel,
+                                  const kc_payload *payload,
+                                  void *user_ctx);
+
 int kc_token_kernel_global_init(void);
 void kc_token_kernel_global_shutdown(void);
 
 kc_ticket kc_token_kernel_publish_send(struct kc_chan *ch,
                                        void *ptr,
                                        size_t len,
-                                       void (*resume_pc)(void));
+                                       kc_token_resume_fn resume_cb,
+                                       void *user_ctx);
 
 kc_ticket kc_token_kernel_publish_recv(struct kc_chan *ch,
-                                       void (*resume_pc)(void));
+                                       kc_token_resume_fn resume_cb,
+                                       void *user_ctx);
 
 void kc_token_kernel_callback(kc_ticket ticket, kc_payload payload);
 void kc_token_kernel_cancel(kc_ticket ticket, int reason);
 
-int kc_token_kernel_consume_payload(kc_payload *out_payload);
+int kc_token_kernel_subscribe(kc_token_event_type event,
+                              kc_token_event_cb cb,
+                              void *user_ctx);
+
+int kc_token_kernel_notify_event(kc_token_event_type event,
+                                 struct kc_chan *channel,
+                                 const kc_payload *payload);
 
 #ifdef __cplusplus
 }
