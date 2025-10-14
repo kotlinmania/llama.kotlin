@@ -126,11 +126,12 @@ This is acceptable for `kcoro_arena` because:
 - The token kernel is explicitly designed for async handoff
 - User code is wrapped in macros that handle CPS transformation
 
-## Next Steps
+## Next steps
 
-- Read [CONTINUATION_MODEL.md](./CONTINUATION_MODEL.md) for the `koro_cont` structure details
-- Read [SCHEDULER.md](./SCHEDULER.md) for the event-driven dispatch loop
-- Read [MACROS.md](./MACROS.md) for how users write coroutines without manual CPS
+- Start with [CONTINUATION_GUIDE.md](./CONTINUATION_GUIDE.md) for a gentle walkthrough of writing a continuation.
+- Dive deeper with [CONTINUATION_MODEL.md](./CONTINUATION_MODEL.md) if you need the exact struct layout.
+- Read [SCHEDULER.md](./SCHEDULER.md) for the event-driven dispatch loop.
+- Check [MACROS.md](./MACROS.md) to see the helper wrappers most user code relies on.
 
 ## References
 
