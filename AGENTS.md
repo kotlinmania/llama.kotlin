@@ -258,3 +258,41 @@ The project includes research into hybrid architectures beyond the core llama.cp
 - **Quantization Precision**: Ensuring accuracy across all quantization formats
 
 Follow this guide when extending the Kotlin port. Keep commits focused and include relevant tests whenever possible. For detailed implementation status, always reference `KOTLIN_PORT_CHECKLIST.md` for the most current progress information.
+
+## Documentation Workflow: Verified vs. Backlog
+
+This repository uses a clear, low-friction split between ground truth and aspirational ideas.
+
+- Voice and tone: Write like you’re briefing the next engineer on shift. Friendly first, precise alongside. Avoid compressed “note-to-self” shorthand.
+- Navigation: Folder structure is the linkage. We avoid nested READMEs for navigation. One top-level index exists: `architectural_index.md`.
+
+What goes where
+- Component folders (e.g., `external/kcoro_arena/docs/components/stackless_runtime/`):
+  - `*_VERIFIED.md` — shipping behavior and tests (ground truth).
+  - `*_FUTURE.md` — a stub that stays in place and points to the centralized backlog (preserves local links and traceability).
+- Central backlog (`docs/backlog/...`):
+  - Files are named `NAME_issues-<id>[-<id>...].md` (example: `SCHEDULER_issues-108-113.md`).
+  - Each backlog file starts with `_Backlog: related issues #…_` and also includes an HTML comment listing the issue IDs.
+
+Adding new future work
+1) Capture notes in the component’s `*_FUTURE.md` or ensure its pointer exists.
+2) Open GitHub issues for those items; record issue numbers in the backlog filename.
+3) Write/update the backlog file under `docs/backlog/<area>/<component>/NAME_issues-<ids>.md`.
+4) Update `architectural_index.md` to link the VERIFIED doc and the backlog file.
+
+Renaming convention
+- Backlog filenames intentionally drop the word “FUTURE”.
+- Keep the original `*_FUTURE.md` stubs in component folders for familiarity and link stability.
+
+Close-out workflow
+- When work ships, update the backlog file with the outcome and PR links.
+- Reflect shipped changes in the sibling `*_VERIFIED.md`.
+- In the `*_FUTURE.md` stub, replace the “Moved” note with: “Resolved via #<id> → incorporated into VERIFIED on <YYYY‑MM‑DD>”, and remove the backlog pointer.
+- If fully consumed, move the backlog file to `docs/backlog/_archive/` (same filename) for history.
+
+Notes
+- No pre-commit/CI checks enforce this. Keep edits small and consistent.
+- Useful greps:
+  - List backlog files: `rg --files docs/backlog -n`
+  - Find active backlog headers: `rg '^_Backlog: related issues #' docs/backlog`
+  - Find FUTURE stubs: `rg --files -g '*FUTURE.md' external -n`
