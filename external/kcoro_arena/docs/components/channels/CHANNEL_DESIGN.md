@@ -40,6 +40,20 @@ The “ptr” variants (e.g., `kc_chan_send_ptr`) wrap arena descriptors. The im
 - The alias-LRU cache remembers recently seen descriptors so repeat sends of the same pointer avoid new lookups.
 - Descriptors carry their own reference counts. The channel retains references while a message is in-flight and releases them once the consumer finishes.
 
+## Flow at a glance
+
+```mermaid
+flowchart TD
+    Sender -->|enqueue/park| SendQueue
+    Receiver -->|enqueue/park| RecvQueue
+    SendQueue --> TokenKernel
+    RecvQueue --> TokenKernel
+    TokenKernel -->|match| ChannelSlot
+    ChannelSlot --> Scheduler
+    Scheduler --> Continuation
+    Continuation --> Receiver
+```
+
 ## Cancellation and close
 
 - Cancelling a waiter removes it from the queue immediately and signals the coroutine with `KC_ECANCELED`.

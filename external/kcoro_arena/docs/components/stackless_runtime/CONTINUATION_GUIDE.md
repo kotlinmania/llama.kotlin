@@ -46,6 +46,21 @@ static void* counter_step(koro_cont_t* k) {
 }
 ```
 
+## Quick visual: suspend and resume
+
+```mermaid
+sequenceDiagram
+    participant Step as Coroutine step
+    participant Sched as Scheduler
+    participant Token as Token kernel
+
+    Step->>Sched: return NULL (sets next_step)
+    Sched->>Token: park continuation
+    Token-->>Sched: data ready (enqueue)
+    Sched->>Step: call next_step(k)
+    Step->>Step: resume work (state restored)
+```
+
 ## Using the helper macros
 
 For day-to-day code, prefer the macros because they:
