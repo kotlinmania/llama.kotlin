@@ -1,10 +1,12 @@
-# Coroutine Core — As‑Built, Code‑Backed Design
+# Coroutine Core — How the Stackful Engine Works Today
 
-Abstract: This document describes the internal coroutine object model (kcoro), lifecycle, state machine, trampoline/protector, and integration with the minimal context‑switch primitive. It is a clean‑room explanation based on the code in user/src and include/ headers. It stands alone; names are provided only for orientation.
+> kcoro (the original runtime) still relies on private stacks and an assembly context switch. This guide walks through that design in plain language first, then calls out the precise data structures so you can line it up with the source.
+
+We keep kcoro around for historical and compatibility reasons, even though kcoro_arena is the stackless future. Understanding kcoro helps when you read older tests or compare behaviour between the two runtimes.
 
 ## 1) Coroutine Core (kcoro_core.c, kcoro_core.h)
 
-Structure (struct kcoro in include/kcoro_core.h)
+### Structure (look at `include/kcoro_core.h`)
 - reg[32]: register save area used by the ARM64 switcher.
   - Indices: x19..x28 → reg[0..9], LR(x30) → reg[13], SP → reg[14], FP(x29) → reg[15].
 - state: KCORO_CREATED | KCORO_READY | KCORO_RUNNING | KCORO_SUSPENDED | KCORO_PARKED | KCORO_FINISHED.
@@ -15,7 +17,7 @@ Structure (struct kcoro in include/kcoro_core.h)
 - stack_ptr/stack_size: private stack allocated with mmap; 16‑byte aligned SP.
 - next/prev: ready‑queue links; name: optional string for debugging.
 
-Lifecycle
+### Lifecycle at a glance
 - kcoro_create(fn,arg,stack): allocates struct, mmaps a private stack (default 64 KiB if 0), aligns SP, and seeds reg[13]=kcoro_trampoline, reg[14]=SP, reg[15]=FP. State=CREATED.
 - kcoro_resume(co): switches from current to co via kcoro_switch. State transitions: caller→SUSPENDED, target→RUNNING; upon return, restore current and mark RUNNING.
 - kcoro_yield(): switch back to main_co; marks current SUSPENDED, main RUNNING, then resumes later and restores RUNNING.
@@ -24,11 +26,11 @@ Lifecycle
 - kcoro_destroy(co): unmaps private stack and frees struct. Coroutines owned by a scheduler are destroyed by the scheduler once resumption completes.
 - kcoro_current(): TLS pointer to current coroutine; kcoro_create_main(): constructs a special “main” coroutine per worker thread.
 
-Trampoline & Protector
+### Trampoline & protector
 - kcoro_trampoline: internal entry that calls fn(arg), then marks FINISHED and switches back to main; if user code ever returns past the trampoline unexpectedly, a protector aborts to avoid undefined behaviour.
 - kcoro_funcp_protector_asm: assembly stub that preserves LR while calling kcoro_funcp_protector (diagnostics).
 
-## 2) Refcount / Retire Queue (Lifecycle Hardening)
+## 2) Refcount / retire queue (lifecycle hardening)
 
 Goal: avoid use‑after‑free races observed in stress runs when one thread frees a coroutine while another still references it.
 
@@ -38,11 +40,11 @@ Plan
 3. A cleanup stage drains the retire list and calls kcoro_destroy only when the refcount reaches zero. This guarantees no worker holds a pointer to freed memory during concurrent resumes.
 4. Special‑case main coroutines to maintain a permanent reference while their hosting thread is alive.
 
-Notes
+**Implementation notes**
 - Fast resume/yield paths remain lightweight (only atomic refcount ops); heavier reclamation work is deferred to the cleanup path.
 - In debug builds, assertions ensure `refcount >= 1` for any coroutine reachable from queues; negative refcounts or double‑frees assert.
 
-Diagnostic validation notes
+**Diagnostic validation notes**
 - Repro: a headless monitor run combined with an ASan harness previously exposed UAF in the ready‑queue path.
 - Validation: after converting the ready queue to intrusive links and adding the retire/refcount scheme, repeated runs produced no ASan reports; addresses remained stable and reuse patterns were clean.
 
