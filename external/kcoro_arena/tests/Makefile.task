@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Makefile for task abstraction test suite
+
+CC ?= cc
+CFLAGS = -std=c11 -Wall -Wextra -Werror -pthread -I../include -I../core/src -O2 -g -DKCORO_STACKLESS_BUILD
+LDFLAGS = -pthread
+
+BUILD_DIR = build/task
+OBJ_DIR = $(BUILD_DIR)/obj
+
+# Core implementation files needed for task abstraction
+CORE_SRCS = ../core/src/kcoro_stackless.c \
+            ../core/src/koro_sched_stackless.c \
+            ../core/src/kc_token_kernel.c \
+            ../core/src/koro_task.c
+CORE_OBJS = $(patsubst ../core/src/%.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
+
+# Test binary
+TEST_BIN = $(BUILD_DIR)/test_task_basic
+TEST_OBJ = $(OBJ_DIR)/test_task_basic.o
+
+# Example binaries
+EXAMPLE_BIN = $(BUILD_DIR)/example_task
+EXAMPLE_OBJ = $(OBJ_DIR)/example_task.o
+
+EXAMPLE_SIMPLE_BIN = $(BUILD_DIR)/example_task_simple
+EXAMPLE_SIMPLE_OBJ = $(OBJ_DIR)/example_task_simple.o
+
+.PHONY: all clean test example example-simple
+
+all: $(TEST_BIN) $(EXAMPLE_BIN) $(EXAMPLE_SIMPLE_BIN)
+
+$(BUILD_DIR) $(OBJ_DIR):
+	mkdir -p $@
+
+# Core implementation objects
+$(OBJ_DIR)/%.o: ../core/src/%.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Test objects
+$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TEST_BIN): $(CORE_OBJS) $(TEST_OBJ) | $(BUILD_DIR)
+	$(CC) $(CORE_OBJS) $(TEST_OBJ) $(LDFLAGS) -o $@
+
+$(EXAMPLE_BIN): $(CORE_OBJS) $(EXAMPLE_OBJ) | $(BUILD_DIR)
+	$(CC) $(CORE_OBJS) $(EXAMPLE_OBJ) $(LDFLAGS) -o $@
+
+$(EXAMPLE_SIMPLE_BIN): $(CORE_OBJS) $(EXAMPLE_SIMPLE_OBJ) | $(BUILD_DIR)
+	$(CC) $(CORE_OBJS) $(EXAMPLE_SIMPLE_OBJ) $(LDFLAGS) -o $@
+
+example: $(EXAMPLE_BIN)
+	@echo "Running task example..."
+	@$(EXAMPLE_BIN)
+
+example-simple: $(EXAMPLE_SIMPLE_BIN)
+	@echo "Running simple task example..."
+	@$(EXAMPLE_SIMPLE_BIN)
+
+test: $(TEST_BIN)
+	@echo "Running task abstraction tests..."
+	@$(TEST_BIN)
+
+clean:
+	rm -rf $(BUILD_DIR)
