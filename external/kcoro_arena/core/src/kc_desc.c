@@ -294,13 +294,13 @@ int kc_desc_get_metrics(kc_desc_metrics *out)
 {
     if (!out) return -EINVAL;
     
-    out->alias_created_total = atomic_load(&g_desc.metrics_alias_created);
-    out->copy_created_total = atomic_load(&g_desc.metrics_copy_created);
-    out->retain_total = atomic_load(&g_desc.metrics_retain);
-    out->release_total = atomic_load(&g_desc.metrics_release);
-    out->descriptor_evicts = atomic_load(&g_desc.metrics_evicts);
-    out->lookup_hits = atomic_load(&g_desc.metrics_lookup_hits);
-    out->lookup_misses = atomic_load(&g_desc.metrics_lookup_misses);
+    out->alias_created_total = atomic_load_explicit(&g_desc.metrics_alias_created, memory_order_relaxed);
+    out->copy_created_total = atomic_load_explicit(&g_desc.metrics_copy_created, memory_order_relaxed);
+    out->retain_total = atomic_load_explicit(&g_desc.metrics_retain, memory_order_relaxed);
+    out->release_total = atomic_load_explicit(&g_desc.metrics_release, memory_order_relaxed);
+    out->descriptor_evicts = atomic_load_explicit(&g_desc.metrics_evicts, memory_order_relaxed);
+    out->lookup_hits = atomic_load_explicit(&g_desc.metrics_lookup_hits, memory_order_relaxed);
+    out->lookup_misses = atomic_load_explicit(&g_desc.metrics_lookup_misses, memory_order_relaxed);
     
     return 0;
 }
