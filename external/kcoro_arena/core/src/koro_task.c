@@ -216,39 +216,74 @@ void koro_task_release(koro_task_t* task)
     int old_count = atomic_fetch_sub(&task->refcount, 1);
     if (old_count <= 1) {
         /* Last reference released - destroy task */
-        
+
+        koro_task_t* parent = NULL;
+        koro_task_t** children = NULL;
+        size_t child_count = 0;
+        size_t i = 0;
+
         pthread_mutex_lock(&g_task_tree_lock);
-        
-        /* Remove from parent if still attached */
+
+        /* Remove from parent if still attached, and save parent pointer */
         if (task->parent) {
+            parent = task->parent;
             task_remove_child_locked(task->parent, task);
-            koro_task_release(task->parent);
+            task->parent = NULL;
         }
-        
+
         /* Cancel all children */
         task_cancel_children_locked(task);
-        
-        /* Release all children */
+
+        /* Count children */
         koro_task_t* child = task->first_child;
         while (child) {
-            koro_task_t* next = child->next_sibling;
-            koro_task_release(child);
-            child = next;
+            child_count++;
+            child = child->next_sibling;
         }
-        
+
+        if (child_count > 0) {
+            children = (koro_task_t**)malloc(child_count * sizeof(koro_task_t*));
+            if (children) {
+                child = task->first_child;
+                for (i = 0; i < child_count; ++i) {
+                    children[i] = child;
+                    koro_task_t* next = child->next_sibling;
+                    /* Detach child from the list */
+                    child->parent = NULL;
+                    child->next_sibling = NULL;
+                    child = next;
+                }
+            }
+        }
+        /* Clear the child list */
+        task->first_child = NULL;
+
         /* Clear joiners */
         free(task->joiners);
-        
+        task->joiners = NULL;
+
         /* Unregister from global registry */
         task_unregister_locked(task);
-        
+
         pthread_mutex_unlock(&g_task_tree_lock);
-        
+
+        /* Release parent outside lock */
+        if (parent) {
+            koro_task_release(parent);
+        }
+
+        /* Release all children outside lock */
+        if (children) {
+            for (i = 0; i < child_count; ++i) {
+                koro_task_release(children[i]);
+            }
+            free(children);
+        }
+
         /* Destroy continuation */
         if (task->cont) {
             koro_cont_destroy(task->cont);
         }
-        
         /* Free task structure */
         free(task);
     }
