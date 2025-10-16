@@ -307,11 +307,11 @@ int kc_desc_get_metrics(kc_desc_metrics *out)
 
 void kc_desc_reset_metrics(void)
 {
-    atomic_store(&g_desc.metrics_alias_created, 0);
-    atomic_store(&g_desc.metrics_copy_created, 0);
-    atomic_store(&g_desc.metrics_retain, 0);
-    atomic_store(&g_desc.metrics_release, 0);
-    atomic_store(&g_desc.metrics_evicts, 0);
-    atomic_store(&g_desc.metrics_lookup_hits, 0);
-    atomic_store(&g_desc.metrics_lookup_misses, 0);
+    atomic_store_explicit(&g_desc.metrics_alias_created, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_copy_created, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_retain, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_release, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_evicts, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_lookup_hits, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_lookup_misses, 0, memory_order_relaxed);
 }
