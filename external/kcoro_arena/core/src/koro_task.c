@@ -93,17 +93,22 @@ static void task_mark_completed(koro_task_t* task, void* result)
     /* Notify joiners */
     task_notify_joiners_locked(task);
     
-    /* Call completion callback if registered */
-    if (task->completion_cb) {
-        task->completion_cb(task, task->result, task->completion_arg);
-    }
-    
+    /* Prepare to call completion callback after unlocking */
+    void (*completion_cb)(koro_task_t*, void*, void*) = task->completion_cb;
+    void* completion_result = task->result;
+    void* completion_arg = task->completion_arg;
+
     /* Remove from parent's child list */
     if (task->parent) {
         task_remove_child_locked(task->parent, task);
     }
     
     pthread_mutex_unlock(&g_task_tree_lock);
+
+    /* Call completion callback if registered (after unlocking) */
+    if (completion_cb) {
+        completion_cb(task, completion_result, completion_arg);
+    }
 }
 
 /* Cancel all child tasks recursively.
