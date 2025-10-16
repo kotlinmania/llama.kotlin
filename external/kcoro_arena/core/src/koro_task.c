@@ -196,7 +196,7 @@ koro_task_t* koro_task_create(void* (*func)(koro_cont_t*),
     task_register_locked(task);
     if (parent) {
         task_add_child_locked(parent, task);
-        koro_task_retain(parent);  /* Parent holds reference to child */
+        koro_task_retain(task);  /* Parent holds reference to child */
     }
     pthread_mutex_unlock(&g_task_tree_lock);
     
