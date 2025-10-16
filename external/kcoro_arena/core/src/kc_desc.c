@@ -267,14 +267,12 @@ int kc_desc_payload(kc_desc_id id, kc_payload *out_payload)
     kc_desc_bucket *bucket = &g_desc.buckets[bucket_index(id)];
     pthread_mutex_lock(&bucket->mu);
     kc_desc_entry *cur = bucket->head;
-    int found = 0;
     while (cur) {
         if (cur->id == id) {
             out_payload->ptr = cur->data;
             out_payload->len = cur->len;
             out_payload->status = 0;
             out_payload->desc_id = id;
-            found = 1;
             pthread_mutex_unlock(&bucket->mu);
             
             if (g_desc.metrics_enabled) {
