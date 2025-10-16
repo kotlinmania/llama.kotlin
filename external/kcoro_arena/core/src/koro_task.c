@@ -7,11 +7,14 @@
 #include <string.h>
 #include <pthread.h>
 
-/* Thread-local current task pointer */
-static _Thread_local koro_task_t* g_current_task = NULL;
-
 /* Mutex for protecting task tree modifications */
 static pthread_mutex_t g_task_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Simple linear list to map continuations to tasks.
+ * In production, this could be a hash table for better performance. */
+#define MAX_TASKS 1024
+static koro_task_t* g_task_registry[MAX_TASKS];
+static int g_task_count = 0;
 
 /* ============================================================================
  * Internal Helper Functions
@@ -67,6 +70,42 @@ static void task_notify_joiners_locked(koro_task_t* task)
     task->joiner_capacity = 0;
 }
 
+/* Mark a task as completed and handle notifications.
+ * This should be called when the continuation completes. */
+static void task_mark_completed(koro_task_t* task, void* result)
+{
+    if (!task) return;
+    
+    pthread_mutex_lock(&g_task_tree_lock);
+    
+    /* Update task state */
+    if (atomic_load(&task->cancel_requested)) {
+        atomic_store(&task->state, KORO_TASK_CANCELLED);
+    } else {
+        atomic_store(&task->state, KORO_TASK_COMPLETED);
+    }
+    
+    /* Store result if provided */
+    if (result != NULL) {
+        task->result = result;
+    }
+    
+    /* Notify joiners */
+    task_notify_joiners_locked(task);
+    
+    /* Call completion callback if registered */
+    if (task->completion_cb) {
+        task->completion_cb(task, task->result, task->completion_arg);
+    }
+    
+    /* Remove from parent's child list */
+    if (task->parent) {
+        task_remove_child_locked(task->parent, task);
+    }
+    
+    pthread_mutex_unlock(&g_task_tree_lock);
+}
+
 /* Cancel all child tasks recursively.
  * Must be called with g_task_tree_lock held. */
 static void task_cancel_children_locked(koro_task_t* task)
@@ -81,70 +120,30 @@ static void task_cancel_children_locked(koro_task_t* task)
     }
 }
 
-/* Wrapper continuation step function that updates task state.
- * This wraps the user's step function to maintain task bookkeeping. */
-static void* task_cont_wrapper(koro_cont_t* k)
+/* Register a task in the global registry for lookup.
+ * Must be called with g_task_tree_lock held. */
+static void task_register_locked(koro_task_t* task)
 {
-    koro_task_t* task = (koro_task_t*)k->user_arg;
-    if (!task) {
-        /* Shouldn't happen, but handle gracefully */
-        return (void*)1;
+    if (!task || g_task_count >= MAX_TASKS) return;
+    g_task_registry[g_task_count++] = task;
+}
+
+/* Unregister a task from the global registry.
+ * Must be called with g_task_tree_lock held. */
+static void task_unregister_locked(koro_task_t* task)
+{
+    if (!task) return;
+    
+    for (int i = 0; i < g_task_count; i++) {
+        if (g_task_registry[i] == task) {
+            /* Shift remaining tasks down */
+            for (int j = i; j < g_task_count - 1; j++) {
+                g_task_registry[j] = g_task_registry[j + 1];
+            }
+            g_task_count--;
+            return;
+        }
     }
-    
-    /* Set current task for thread-local access */
-    koro_task_t* prev_task = g_current_task;
-    g_current_task = task;
-    
-    /* Update task state to running */
-    int prev_state = atomic_load(&task->state);
-    if (!(prev_state & KORO_TASK_COMPLETED) && 
-        !(prev_state & KORO_TASK_CANCELLED) &&
-        !(prev_state & KORO_TASK_FAILED)) {
-        atomic_store(&task->state, KORO_TASK_RUNNING);
-    }
-    
-    /* Call the actual continuation step */
-    void* result = koro_cont_step(k);
-    
-    /* Check if task completed */
-    if (result != NULL || k->completed) {
-        pthread_mutex_lock(&g_task_tree_lock);
-        
-        /* Update task state */
-        if (atomic_load(&task->cancel_requested)) {
-            atomic_store(&task->state, KORO_TASK_CANCELLED);
-        } else {
-            atomic_store(&task->state, KORO_TASK_COMPLETED);
-        }
-        
-        /* Store result if provided */
-        if (result != NULL) {
-            task->result = result;
-        }
-        
-        /* Notify joiners */
-        task_notify_joiners_locked(task);
-        
-        /* Call completion callback if registered */
-        if (task->completion_cb) {
-            task->completion_cb(task, task->result, task->completion_arg);
-        }
-        
-        /* Remove from parent's child list */
-        if (task->parent) {
-            task_remove_child_locked(task->parent, task);
-        }
-        
-        pthread_mutex_unlock(&g_task_tree_lock);
-    } else {
-        /* Task suspended */
-        atomic_store(&task->state, KORO_TASK_SUSPENDED);
-    }
-    
-    /* Restore previous current task */
-    g_current_task = prev_task;
-    
-    return result;
 }
 
 /* ============================================================================
@@ -192,13 +191,14 @@ koro_task_t* koro_task_create(void* (*func)(koro_cont_t*),
     task->joiner_count = 0;
     task->joiner_capacity = 0;
     
-    /* Add to parent's child list if parent provided */
+    /* Register task and add to parent's child list if parent provided */
+    pthread_mutex_lock(&g_task_tree_lock);
+    task_register_locked(task);
     if (parent) {
-        pthread_mutex_lock(&g_task_tree_lock);
         task_add_child_locked(parent, task);
         koro_task_retain(parent);  /* Parent holds reference to child */
-        pthread_mutex_unlock(&g_task_tree_lock);
     }
+    pthread_mutex_unlock(&g_task_tree_lock);
     
     return task;
 }
@@ -239,6 +239,9 @@ void koro_task_release(koro_task_t* task)
         /* Clear joiners */
         free(task->joiners);
         
+        /* Unregister from global registry */
+        task_unregister_locked(task);
+        
         pthread_mutex_unlock(&g_task_tree_lock);
         
         /* Destroy continuation */
@@ -249,6 +252,11 @@ void koro_task_release(koro_task_t* task)
         /* Free task structure */
         free(task);
     }
+}
+
+void koro_task_complete(koro_task_t* task, void* result)
+{
+    task_mark_completed(task, result);
 }
 
 koro_task_t* koro_task_spawn(void* (*func)(koro_cont_t*),
@@ -264,8 +272,8 @@ koro_task_t* koro_task_spawn(void* (*func)(koro_cont_t*),
     /* Mark continuation as managed so scheduler will clean it up */
     task->cont->managed = 1;
     
-    /* Store task pointer in continuation for wrapper access */
-    task->cont->user_arg = (void*)task;
+    /* Update state to show task is scheduled */
+    atomic_store(&task->state, KORO_TASK_RUNNING);
     
     /* Schedule task for execution */
     koro_sched_enqueue_ready(task->cont);
@@ -385,13 +393,27 @@ koro_task_t* koro_task_from_cont(koro_cont_t* cont)
     if (!cont) {
         return NULL;
     }
-    /* Task pointer stored in continuation's user_arg by spawn */
-    return (koro_task_t*)cont->user_arg;
+    
+    /* Linear search through registry to find task with matching continuation */
+    pthread_mutex_lock(&g_task_tree_lock);
+    for (int i = 0; i < g_task_count; i++) {
+        if (g_task_registry[i] && g_task_registry[i]->cont == cont) {
+            koro_task_t* task = g_task_registry[i];
+            pthread_mutex_unlock(&g_task_tree_lock);
+            return task;
+        }
+    }
+    pthread_mutex_unlock(&g_task_tree_lock);
+    
+    return NULL;
 }
 
 koro_task_t* koro_task_current(void)
 {
-    return g_current_task;
+    /* TODO: In a real implementation, we'd need the scheduler to track
+     * the currently executing continuation and pass it to this function.
+     * For now, this returns NULL indicating no task context available. */
+    return NULL;
 }
 
 void* koro_task_get_result(koro_task_t* task)

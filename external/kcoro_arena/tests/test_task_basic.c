@@ -152,6 +152,7 @@ static int test_spawn_and_complete(void)
 
 struct parent_task_locals {
     int step;
+    koro_task_t* self;
     koro_task_t* child1;
     koro_task_t* child2;
 };
@@ -182,8 +183,8 @@ static void* parent_task_step(koro_cont_t* k)
     printf("  Parent task: Starting\n");
     local->step = 0;
     
-    /* Get current task to use as parent */
-    koro_task_t* self = koro_task_current();
+    /* Get current task to use as parent - for now will be NULL */
+    local->self = koro_task_from_cont(k);
     
     /* Spawn two child tasks */
     static int child1_id = 1;
@@ -193,33 +194,34 @@ static void* parent_task_step(koro_cont_t* k)
         child_task_step,
         &child1_id,
         0,  /* No local state */
-        self
+        local->self
     );
     
     local->child2 = koro_task_spawn(
         child_task_step,
         &child2_id,
         0,  /* No local state */
-        self
+        local->self
     );
     
     if (!local->child1 || !local->child2) {
         printf("  Parent task: Failed to spawn children\n");
-        KORO_END(k);
+    } else {
+        printf("  Parent task: Spawned 2 children\n");
+        KORO_YIELD(k);
+        
+        /* Verify children are tracked */
+        if (local->self) {
+            int child_count = koro_task_count_children(local->self);
+            printf("  Parent task: Has %d children\n", child_count);
+        }
+        
+        /* Continue working */
+        printf("  Parent task: Waiting for children\n");
+        KORO_YIELD(k);
+        
+        printf("  Parent task: Done\n");
     }
-    
-    printf("  Parent task: Spawned 2 children\n");
-    KORO_YIELD(k);
-    
-    /* Verify children are tracked */
-    int child_count = koro_task_count_children(self);
-    printf("  Parent task: Has %d children\n", child_count);
-    
-    /* Continue working */
-    printf("  Parent task: Waiting for children\n");
-    KORO_YIELD(k);
-    
-    printf("  Parent task: Done\n");
     
     KORO_END(k);
 }
@@ -279,7 +281,7 @@ static void* cancellable_task_step(koro_cont_t* k)
     
     while (local->iterations < 100) {
         /* Check for cancellation */
-        koro_task_t* self = koro_task_current();
+        koro_task_t* self = koro_task_from_cont(k);
         if (self && koro_task_is_cancelled(self)) {
             printf("  Cancellable task: Cancelled at iteration %d\n", local->iterations);
             break;

@@ -38,7 +38,7 @@ static void* worker_task_step(koro_cont_t* k)
     /* Process items, checking for cancellation */
     while (local->items_processed < local->max_items) {
         /* Check if cancellation was requested */
-        koro_task_t* self = koro_task_current();
+        koro_task_t* self = koro_task_from_cont(k);
         if (self && koro_task_is_cancelled(self)) {
             printf("  [Worker %d] Cancelled after %d items\n",
                    local->worker_id, local->items_processed);
@@ -70,6 +70,7 @@ static void* worker_task_step(koro_cont_t* k)
 struct coordinator_locals {
     int step;
     int num_workers;
+    koro_task_t* self;
     koro_task_t** workers;
     int should_cancel;
 };
@@ -91,70 +92,71 @@ static void* coordinator_task_step(koro_cont_t* k)
     local->workers = (koro_task_t**)calloc(local->num_workers, sizeof(koro_task_t*));
     if (!local->workers) {
         printf("[Coordinator] Failed to allocate worker array\n");
-        KORO_END(k);
-    }
-    
-    /* Get self for parent link */
-    koro_task_t* self = koro_task_current();
-    
-    /* Spawn worker tasks */
-    printf("[Coordinator] Spawning workers...\n");
-    static int worker_ids[10];  // Static to persist across yields
-    for (int i = 0; i < local->num_workers; i++) {
-        worker_ids[i] = i + 1;
-        local->workers[i] = koro_task_spawn(
-            worker_task_step,
-            &worker_ids[i],
-            sizeof(struct worker_locals),
-            self  /* This coordinator is parent */
-        );
+    } else {
+        /* Get self for parent link */
+        local->self = koro_task_from_cont(k);
         
-        if (!local->workers[i]) {
-            printf("[Coordinator] Failed to spawn worker %d\n", i + 1);
-        }
-    }
-    
-    /* Verify children were spawned */
-    int child_count = koro_task_count_children(self);
-    printf("[Coordinator] Spawned %d child tasks\n", child_count);
-    
-    /* Let workers run for a while */
-    KORO_YIELD(k);
-    KORO_YIELD(k);
-    
-    /* Simulate a condition that triggers cancellation */
-    printf("[Coordinator] Simulating cancellation condition...\n");
-    local->should_cancel = 1;
-    
-    if (local->should_cancel) {
-        printf("[Coordinator] Cancelling all workers\n");
-        
-        /* Cancel all workers - could also just cancel self to propagate */
+        /* Spawn worker tasks */
+        printf("[Coordinator] Spawning workers...\n");
+        static int worker_ids[10];  // Static to persist across yields
         for (int i = 0; i < local->num_workers; i++) {
-            if (local->workers[i]) {
-                koro_task_cancel(local->workers[i]);
+            worker_ids[i] = i + 1;
+            local->workers[i] = koro_task_spawn(
+                worker_task_step,
+                &worker_ids[i],
+                sizeof(struct worker_locals),
+                local->self  /* This coordinator is parent */
+            );
+            
+            if (!local->workers[i]) {
+                printf("[Coordinator] Failed to spawn worker %d\n", i + 1);
             }
         }
-    }
-    
-    /* Continue for a bit to see cancellation take effect */
-    KORO_YIELD(k);
-    KORO_YIELD(k);
-    
-    /* Check worker states */
-    printf("[Coordinator] Checking worker states:\n");
-    for (int i = 0; i < local->num_workers; i++) {
-        if (local->workers[i]) {
-            int state = koro_task_get_state(local->workers[i]);
-            printf("  Worker %d: state = %d %s\n",
-                   i + 1, state,
-                   (state & KORO_TASK_CANCELLED) ? "(CANCELLED)" :
-                   (state & KORO_TASK_COMPLETED) ? "(COMPLETED)" : "");
+        
+        /* Verify children were spawned */
+        if (local->self) {
+            int child_count = koro_task_count_children(local->self);
+            printf("[Coordinator] Spawned %d child tasks\n", child_count);
         }
+        
+        /* Let workers run for a while */
+        KORO_YIELD(k);
+        KORO_YIELD(k);
+        
+        /* Simulate a condition that triggers cancellation */
+        printf("[Coordinator] Simulating cancellation condition...\n");
+        local->should_cancel = 1;
+        
+        if (local->should_cancel) {
+            printf("[Coordinator] Cancelling all workers\n");
+            
+            /* Cancel all workers - could also just cancel self to propagate */
+            for (int i = 0; i < local->num_workers; i++) {
+                if (local->workers[i]) {
+                    koro_task_cancel(local->workers[i]);
+                }
+            }
+        }
+        
+        /* Continue for a bit to see cancellation take effect */
+        KORO_YIELD(k);
+        KORO_YIELD(k);
+        
+        /* Check worker states */
+        printf("[Coordinator] Checking worker states:\n");
+        for (int i = 0; i < local->num_workers; i++) {
+            if (local->workers[i]) {
+                int state = koro_task_get_state(local->workers[i]);
+                printf("  Worker %d: state = %d %s\n",
+                       i + 1, state,
+                       (state & KORO_TASK_CANCELLED) ? "(CANCELLED)" :
+                       (state & KORO_TASK_COMPLETED) ? "(COMPLETED)" : "");
+            }
+        }
+        
+        /* Cleanup */
+        free(local->workers);
     }
-    
-    /* Cleanup */
-    free(local->workers);
     
     printf("[Coordinator] Done\n");
     

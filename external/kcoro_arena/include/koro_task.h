@@ -97,6 +97,11 @@ void koro_task_retain(koro_task_t* task);
  * Destroys task when refcount reaches zero. */
 void koro_task_release(koro_task_t* task);
 
+/* Mark task as completed with optional result.
+ * Call this when task's continuation completes (after KORO_END).
+ * Usually not needed as managed tasks are cleaned up automatically. */
+void koro_task_complete(koro_task_t* task, void* result);
+
 /* Spawn a task and schedule it for execution.
  * Equivalent to koro_task_create() + schedule.
  * Returns task handle or NULL on failure. */
