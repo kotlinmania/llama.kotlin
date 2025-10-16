@@ -12,6 +12,7 @@ Note on convention:
   - [Continuation Guide](external/kcoro_arena/docs/components/stackless_runtime/CONTINUATION_GUIDE_VERIFIED.md)
   - [Continuation Model](external/kcoro_arena/docs/components/stackless_runtime/CONTINUATION_MODEL_VERIFIED.md)
   - [Scheduler](external/kcoro_arena/docs/components/stackless_runtime/SCHEDULER_VERIFIED.md)
+  - [Task API](external/kcoro_arena/docs/components/stackless_runtime/TASK_API.md) (experimental)
 - Backlog
   - [Overview — issues 107, 117](docs/backlog/arena/stackless_runtime/OVERVIEW_issues-107-117.md)
   - [Continuation Guide — issue 114](docs/backlog/arena/stackless_runtime/CONTINUATION_GUIDE_issues-114.md)

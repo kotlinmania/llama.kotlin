@@ -19,13 +19,16 @@ CORE_OBJS = $(patsubst ../core/src/%.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
 TEST_BIN = $(BUILD_DIR)/test_task_basic
 TEST_OBJ = $(OBJ_DIR)/test_task_basic.o
 
-# Example binary
+# Example binaries
 EXAMPLE_BIN = $(BUILD_DIR)/example_task
 EXAMPLE_OBJ = $(OBJ_DIR)/example_task.o
 
-.PHONY: all clean test example
+EXAMPLE_SIMPLE_BIN = $(BUILD_DIR)/example_task_simple
+EXAMPLE_SIMPLE_OBJ = $(OBJ_DIR)/example_task_simple.o
 
-all: $(TEST_BIN) $(EXAMPLE_BIN)
+.PHONY: all clean test example example-simple
+
+all: $(TEST_BIN) $(EXAMPLE_BIN) $(EXAMPLE_SIMPLE_BIN)
 
 $(BUILD_DIR) $(OBJ_DIR):
 	mkdir -p $@
@@ -44,9 +47,16 @@ $(TEST_BIN): $(CORE_OBJS) $(TEST_OBJ) | $(BUILD_DIR)
 $(EXAMPLE_BIN): $(CORE_OBJS) $(EXAMPLE_OBJ) | $(BUILD_DIR)
 	$(CC) $(CORE_OBJS) $(EXAMPLE_OBJ) $(LDFLAGS) -o $@
 
+$(EXAMPLE_SIMPLE_BIN): $(CORE_OBJS) $(EXAMPLE_SIMPLE_OBJ) | $(BUILD_DIR)
+	$(CC) $(CORE_OBJS) $(EXAMPLE_SIMPLE_OBJ) $(LDFLAGS) -o $@
+
 example: $(EXAMPLE_BIN)
 	@echo "Running task example..."
 	@$(EXAMPLE_BIN)
+
+example-simple: $(EXAMPLE_SIMPLE_BIN)
+	@echo "Running simple task example..."
+	@$(EXAMPLE_SIMPLE_BIN)
 
 test: $(TEST_BIN)
 	@echo "Running task abstraction tests..."
