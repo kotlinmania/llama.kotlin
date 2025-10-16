@@ -150,19 +150,17 @@ int koro_task_join_impl(koro_cont_t* current_cont, koro_task_t* target_task);
 /* Macro for joining a task within a continuation.
  * Suspends current task until target completes. */
 #define KORO_TASK_JOIN(k, task) \
-    do { \
-        (k)->state = __LINE__; \
-        case __LINE__: { \
-            koro_task_t* _self_task = koro_task_from_cont(k); \
-            int _join_res = koro_task_join_impl((k), (task)); \
-            if (_join_res < 0) { \
-                /* Join failed - continue immediately */ \
-            } else if (!koro_task_get_state(task) & KORO_TASK_COMPLETED) { \
-                /* Task not complete yet - suspend */ \
-                return NULL; \
-            } \
+    (k)->state = __LINE__; \
+    case __LINE__: { \
+        koro_task_t* _self_task = koro_task_from_cont(k); \
+        int _join_res = koro_task_join_impl((k), (task)); \
+        if (_join_res < 0) { \
+            /* Join failed - continue immediately */ \
+        } else if (!(koro_task_get_state(task) & KORO_TASK_COMPLETED)) { \
+            /* Task not complete yet - suspend */ \
+            return NULL; \
         } \
-    } while (0)
+    }
 
 /* ============================================================================
  * Task Introspection API
