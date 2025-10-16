@@ -27,10 +27,12 @@ external/kcoro/lab/lab_token_vm_bench
 external/kcoro/tests/bench_chan_metrics
 external/kcoro/tests/bench_chan_metrics.d
 
-# kcoro_arena test binaries
-external/kcoro_arena/test_*
-external/kcoro_arena/tests/test_*
-!external/kcoro_arena/tests/test_*.c
+# kcoro_arena test binaries (exclude compiled tests, keep source .c files)
+external/kcoro_arena/test_metrics_basic
+external/kcoro_arena/test_metrics_enabled
+external/kcoro_arena/test_token_kernel_basic
+external/kcoro_arena/tests/test_*.o
+external/kcoro_arena/tests/test_*.d
 
 # IDE / OS
 
