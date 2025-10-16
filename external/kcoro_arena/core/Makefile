@@ -38,9 +38,9 @@ clean:
 
 .PHONY: prekill kill-tests
 prekill:
-@if [ "$(KILL_BEFORE)" = "1" ] && [ -x $(PREKILL) ]; then \
-  bash $(PREKILL); \
-fi
+	@if [ "$(KILL_BEFORE)" = "1" ] && [ -x $(PREKILL) ]; then \
+	  bash $(PREKILL); \
+	fi
 
 kill-tests:
 	@if [ -x $(PREKILL) ]; then bash $(PREKILL); fi

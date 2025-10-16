@@ -353,7 +353,9 @@ kc_sched_t* kc_sched_init(const kc_sched_opts_t *opts){
     if(!s) return NULL;
     int ncpu=kc_get_nprocs();
     int n=(opts && opts->workers>0)? opts->workers : (ncpu>0?ncpu:1);
-    if(n<1) n=1; if(n>256) n=256; s->workers=n;
+    if(n<1) n=1;
+    if(n>256) n=256;
+    s->workers=n;
     pthread_mutex_init(&s->park_mu,NULL);
     pthread_cond_init(&s->park_cv,NULL);
     pthread_mutex_init(&s->rq_mu,NULL);

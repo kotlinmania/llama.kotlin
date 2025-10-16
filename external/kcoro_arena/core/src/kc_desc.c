@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include "kcoro_desc.h"
+#include "kcoro_desc_metrics.h"
 #include "kc_arena.h"
+#include "kcoro_config_runtime.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -34,9 +36,27 @@ static struct {
     kc_desc_bucket buckets[KC_DESC_BUCKETS];
     atomic_uint_fast64_t next_id;
     atomic_int initialized;
+    
+    /* Metrics (atomic for thread-safety) */
+    atomic_uint_fast64_t metrics_alias_created;
+    atomic_uint_fast64_t metrics_copy_created;
+    atomic_uint_fast64_t metrics_retain;
+    atomic_uint_fast64_t metrics_release;
+    atomic_uint_fast64_t metrics_evicts;
+    atomic_uint_fast64_t metrics_lookup_hits;
+    atomic_uint_fast64_t metrics_lookup_misses;
+    int                  metrics_enabled;
 } g_desc = {
     .next_id = ATOMIC_VAR_INIT(1),
     .initialized = ATOMIC_VAR_INIT(0),
+    .metrics_alias_created = ATOMIC_VAR_INIT(0),
+    .metrics_copy_created = ATOMIC_VAR_INIT(0),
+    .metrics_retain = ATOMIC_VAR_INIT(0),
+    .metrics_release = ATOMIC_VAR_INIT(0),
+    .metrics_evicts = ATOMIC_VAR_INIT(0),
+    .metrics_lookup_hits = ATOMIC_VAR_INIT(0),
+    .metrics_lookup_misses = ATOMIC_VAR_INIT(0),
+    .metrics_enabled = 0,
 };
 
 static size_t bucket_index(kc_desc_id id)
@@ -55,6 +75,18 @@ int kc_desc_global_init(void)
         g_desc.buckets[i].head = NULL;
     }
     atomic_store(&g_desc.next_id, 1);
+    
+    /* Initialize metrics based on config */
+    const struct kc_runtime_config *cfg = kc_runtime_config_get();
+    g_desc.metrics_enabled = cfg ? cfg->chan_metrics_auto_enable : 0;
+    atomic_store(&g_desc.metrics_alias_created, 0);
+    atomic_store(&g_desc.metrics_copy_created, 0);
+    atomic_store(&g_desc.metrics_retain, 0);
+    atomic_store(&g_desc.metrics_release, 0);
+    atomic_store(&g_desc.metrics_evicts, 0);
+    atomic_store(&g_desc.metrics_lookup_hits, 0);
+    atomic_store(&g_desc.metrics_lookup_misses, 0);
+    
     atomic_store(&g_desc.initialized, 2);
     return 0;
 }
@@ -117,6 +149,9 @@ kc_desc_id kc_desc_make_alias(void *ptr, size_t len)
         if (kc_desc_global_init() != 0) return 0;
     }
     kc_desc_entry *entry = kc_desc_insert(ptr, len, KC_DESC_FLAG_ALIAS, UINT_MAX, 0, 0);
+    if (entry && g_desc.metrics_enabled) {
+        atomic_fetch_add(&g_desc.metrics_alias_created, 1);
+    }
     return entry ? entry->id : 0;
 }
 
@@ -136,6 +171,9 @@ kc_desc_id kc_desc_make_copy(const void *src, size_t len)
         kc_arena_free(0, copy, len);
         return 0;
     }
+    if (g_desc.metrics_enabled) {
+        atomic_fetch_add(&g_desc.metrics_copy_created, 1);
+    }
     return entry->id;
 }
 
@@ -145,14 +183,25 @@ void kc_desc_retain(kc_desc_id id)
     kc_desc_bucket *bucket = &g_desc.buckets[bucket_index(id)];
     pthread_mutex_lock(&bucket->mu);
     kc_desc_entry *cur = bucket->head;
+    int found = 0;
     while (cur) {
         if (cur->id == id) {
             atomic_fetch_add_explicit(&cur->refcount, 1, memory_order_relaxed);
+            found = 1;
             break;
         }
         cur = cur->next;
     }
     pthread_mutex_unlock(&bucket->mu);
+    
+    if (g_desc.metrics_enabled) {
+        atomic_fetch_add(&g_desc.metrics_retain, 1);
+        if (found) {
+            atomic_fetch_add(&g_desc.metrics_lookup_hits, 1);
+        } else {
+            atomic_fetch_add(&g_desc.metrics_lookup_misses, 1);
+        }
+    }
 }
 
 static void kc_desc_remove_locked(kc_desc_bucket *bucket, kc_desc_entry *target)
@@ -179,18 +228,37 @@ void kc_desc_release(kc_desc_id id)
     kc_desc_bucket *bucket = &g_desc.buckets[idx];
     pthread_mutex_lock(&bucket->mu);
     kc_desc_entry *cur = bucket->head;
+    int found = 0;
+    int evicted = 0;
     while (cur) {
         if (cur->id == id) {
+            found = 1;
             unsigned prev = atomic_fetch_sub_explicit(&cur->refcount, 1, memory_order_acq_rel);
             if (prev == 1) {
                 kc_desc_remove_locked(bucket, cur);
+                evicted = 1;
             }
             pthread_mutex_unlock(&bucket->mu);
+            
+            if (g_desc.metrics_enabled) {
+                atomic_fetch_add(&g_desc.metrics_release, 1);
+                if (evicted) {
+                    atomic_fetch_add(&g_desc.metrics_evicts, 1);
+                }
+                atomic_fetch_add(&g_desc.metrics_lookup_hits, 1);
+            }
             return;
         }
         cur = cur->next;
     }
     pthread_mutex_unlock(&bucket->mu);
+    
+    if (g_desc.metrics_enabled) {
+        atomic_fetch_add(&g_desc.metrics_release, 1);
+        if (!found) {
+            atomic_fetch_add(&g_desc.metrics_lookup_misses, 1);
+        }
+    }
 }
 
 int kc_desc_payload(kc_desc_id id, kc_payload *out_payload)
@@ -206,10 +274,44 @@ int kc_desc_payload(kc_desc_id id, kc_payload *out_payload)
             out_payload->status = 0;
             out_payload->desc_id = id;
             pthread_mutex_unlock(&bucket->mu);
+            
+            if (g_desc.metrics_enabled) {
+                atomic_fetch_add(&g_desc.metrics_lookup_hits, 1);
+            }
             return 0;
         }
         cur = cur->next;
     }
     pthread_mutex_unlock(&bucket->mu);
+    
+    if (g_desc.metrics_enabled) {
+        atomic_fetch_add(&g_desc.metrics_lookup_misses, 1);
+    }
     return -ENOENT;
+}
+
+int kc_desc_get_metrics(kc_desc_metrics *out)
+{
+    if (!out) return -EINVAL;
+    
+    out->alias_created_total = atomic_load_explicit(&g_desc.metrics_alias_created, memory_order_relaxed);
+    out->copy_created_total = atomic_load_explicit(&g_desc.metrics_copy_created, memory_order_relaxed);
+    out->retain_total = atomic_load_explicit(&g_desc.metrics_retain, memory_order_relaxed);
+    out->release_total = atomic_load_explicit(&g_desc.metrics_release, memory_order_relaxed);
+    out->descriptor_evicts = atomic_load_explicit(&g_desc.metrics_evicts, memory_order_relaxed);
+    out->lookup_hits = atomic_load_explicit(&g_desc.metrics_lookup_hits, memory_order_relaxed);
+    out->lookup_misses = atomic_load_explicit(&g_desc.metrics_lookup_misses, memory_order_relaxed);
+    
+    return 0;
+}
+
+void kc_desc_reset_metrics(void)
+{
+    atomic_store_explicit(&g_desc.metrics_alias_created, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_copy_created, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_retain, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_release, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_evicts, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_lookup_hits, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_desc.metrics_lookup_misses, 0, memory_order_relaxed);
 }

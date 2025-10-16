@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include "kcoro_token_kernel.h"
+#include "kcoro_token_metrics.h"
 
 #include <stdatomic.h>
 #include <pthread.h>
@@ -14,6 +15,7 @@
 #include "kcoro_core.h"
 #include "kcoro_port.h"
 #include "kcoro_desc.h"
+#include "kcoro_config_runtime.h"
 
 /* Golden path: Fixed optimal bucket count based on empirical testing.
  * 1024 buckets provides excellent distribution with minimal overhead. */
@@ -85,12 +87,30 @@ static struct {
     int                  worker_started;
     atomic_int           initialized;
     _Atomic(kc_token_event_subscriber *) event_heads[KC_TOKEN_EVENT_COUNT];
+    
+    /* Metrics (atomic for thread-safety) */
+    atomic_uint_fast64_t metrics_matches;
+    atomic_uint_fast64_t metrics_retries;
+    atomic_uint_fast64_t metrics_cas_failures;
+    atomic_uint_fast64_t metrics_publish_send;
+    atomic_uint_fast64_t metrics_publish_recv;
+    atomic_uint_fast64_t metrics_callback;
+    atomic_uint_fast64_t metrics_cancel;
+    int                  metrics_enabled;
 } g_kernel = {
     .next_id = ATOMIC_VAR_INIT(1),
     .buckets = NULL,
     .bucket_count = 0,
     .worker_started = 0,
     .initialized = ATOMIC_VAR_INIT(KC_TOKEN_INIT_UNINITIALIZED),
+    .metrics_matches = ATOMIC_VAR_INIT(0),
+    .metrics_retries = ATOMIC_VAR_INIT(0),
+    .metrics_cas_failures = ATOMIC_VAR_INIT(0),
+    .metrics_publish_send = ATOMIC_VAR_INIT(0),
+    .metrics_publish_recv = ATOMIC_VAR_INIT(0),
+    .metrics_callback = ATOMIC_VAR_INIT(0),
+    .metrics_cancel = ATOMIC_VAR_INIT(0),
+    .metrics_enabled = 0,
 };
 
 static void freelist_init(kc_token_freelist *fl)
@@ -310,6 +330,18 @@ int kc_token_kernel_global_init(void)
                     return rc;
                 }
                 atomic_store_explicit(&g_kernel.next_id, 1, memory_order_relaxed);
+                
+                /* Initialize metrics based on config */
+                const struct kc_runtime_config *cfg = kc_runtime_config_get();
+                g_kernel.metrics_enabled = cfg ? cfg->chan_metrics_auto_enable : 0;
+                atomic_store_explicit(&g_kernel.metrics_matches, 0, memory_order_relaxed);
+                atomic_store_explicit(&g_kernel.metrics_retries, 0, memory_order_relaxed);
+                atomic_store_explicit(&g_kernel.metrics_cas_failures, 0, memory_order_relaxed);
+                atomic_store_explicit(&g_kernel.metrics_publish_send, 0, memory_order_relaxed);
+                atomic_store_explicit(&g_kernel.metrics_publish_recv, 0, memory_order_relaxed);
+                atomic_store_explicit(&g_kernel.metrics_callback, 0, memory_order_relaxed);
+                atomic_store_explicit(&g_kernel.metrics_cancel, 0, memory_order_relaxed);
+                
                 if (pthread_create(&g_kernel.worker, NULL, kc_token_worker_main, NULL) != 0) {
                     ready_queue_destroy(&g_kernel.ready_queue);
                     freelist_destroy(&g_kernel.freelist);
@@ -399,6 +431,9 @@ kc_ticket kc_token_kernel_publish_send(struct kc_chan *ch,
                                        kc_token_resume_fn resume_cb,
                                        void *user_ctx)
 {
+    if (g_kernel.metrics_enabled) {
+        atomic_fetch_add_explicit(&g_kernel.metrics_publish_send, 1, memory_order_relaxed);
+    }
     kc_payload payload = { .ptr = ptr, .len = len, .status = 0, .desc_id = 0 };
     return publish_common(ch, &payload, resume_cb, user_ctx);
 }
@@ -407,6 +442,9 @@ kc_ticket kc_token_kernel_publish_recv(struct kc_chan *ch,
                                        kc_token_resume_fn resume_cb,
                                        void *user_ctx)
 {
+    if (g_kernel.metrics_enabled) {
+        atomic_fetch_add_explicit(&g_kernel.metrics_publish_recv, 1, memory_order_relaxed);
+    }
     return publish_common(ch, NULL, resume_cb, user_ctx);
 }
 
@@ -417,7 +455,14 @@ void kc_token_kernel_callback(kc_ticket ticket, kc_payload payload)
     }
     kc_token_block *blk = bucket_remove(ticket.id);
     if (!blk) {
+        if (g_kernel.metrics_enabled) {
+            atomic_fetch_add_explicit(&g_kernel.metrics_cas_failures, 1, memory_order_relaxed);
+        }
         return;
+    }
+    if (g_kernel.metrics_enabled) {
+        atomic_fetch_add_explicit(&g_kernel.metrics_callback, 1, memory_order_relaxed);
+        atomic_fetch_add_explicit(&g_kernel.metrics_matches, 1, memory_order_relaxed);
     }
     blk->payload = payload;
     ready_enqueue(&g_kernel.ready_queue, blk);
@@ -431,6 +476,9 @@ void kc_token_kernel_cancel(kc_ticket ticket, int reason)
     kc_token_block *blk = bucket_remove(ticket.id);
     if (!blk) {
         return;
+    }
+    if (g_kernel.metrics_enabled) {
+        atomic_fetch_add_explicit(&g_kernel.metrics_cancel, 1, memory_order_relaxed);
     }
     blk->payload.ptr = NULL;
     blk->payload.len = 0;
@@ -519,4 +567,30 @@ int kc_token_kernel_notify_event(kc_token_event_type event,
         }
     }
     return kc_token_kernel_notify_event_async(event, channel, payload);
+}
+
+int kc_token_kernel_get_metrics(kc_token_kernel_metrics *out)
+{
+    if (!out) return -EINVAL;
+    
+    out->matches_total = atomic_load_explicit(&g_kernel.metrics_matches, memory_order_relaxed);
+    out->retries_total = atomic_load_explicit(&g_kernel.metrics_retries, memory_order_relaxed);
+    out->cas_failures_total = atomic_load_explicit(&g_kernel.metrics_cas_failures, memory_order_relaxed);
+    out->publish_send_total = atomic_load_explicit(&g_kernel.metrics_publish_send, memory_order_relaxed);
+    out->publish_recv_total = atomic_load_explicit(&g_kernel.metrics_publish_recv, memory_order_relaxed);
+    out->callback_total = atomic_load_explicit(&g_kernel.metrics_callback, memory_order_relaxed);
+    out->cancel_total = atomic_load_explicit(&g_kernel.metrics_cancel, memory_order_relaxed);
+    
+    return 0;
+}
+
+void kc_token_kernel_reset_metrics(void)
+{
+    atomic_store_explicit(&g_kernel.metrics_matches, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_kernel.metrics_retries, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_kernel.metrics_cas_failures, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_kernel.metrics_publish_send, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_kernel.metrics_publish_recv, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_kernel.metrics_callback, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_kernel.metrics_cancel, 0, memory_order_relaxed);
 }
