@@ -594,3 +594,8 @@ void kc_token_kernel_reset_metrics(void)
     atomic_store_explicit(&g_kernel.metrics_callback, 0, memory_order_relaxed);
     atomic_store_explicit(&g_kernel.metrics_cancel, 0, memory_order_relaxed);
 }
+
+pthread_t kc_token_kernel_get_worker_thread(void)
+{
+    return g_kernel.worker;
+}

@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <pthread.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,6 +65,8 @@ int kc_token_kernel_subscribe(kc_token_event_type event,
 int kc_token_kernel_notify_event(kc_token_event_type event,
                                  struct kc_chan *channel,
                                  const kc_payload *payload);
+
+pthread_t kc_token_kernel_get_worker_thread(void);
 
 #ifdef __cplusplus
 }

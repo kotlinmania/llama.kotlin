@@ -14,7 +14,7 @@ OBJDIR := build/obj
 BINDIR := build/lib
 
 # C sources  
-SRCS := src/kc_chan.c src/kc_actor.c src/kc_cancel.c src/kc_sched.c src/kcoro_core.c src/kc_scope.c src/kc_select.c src/kc_zcopy.c src/kc_runtime_config.c src/kc_bench.c src/kc_dispatch.c src/kc_token_kernel.c src/kc_desc.c src/kc_arena.c
+SRCS := src/kc_chan.c src/kc_actor.c src/kc_cancel.c src/kc_sched.c src/kcoro_core.c src/kc_scope.c src/kc_select.c src/kc_zcopy.c src/kc_runtime_config.c src/kc_bench.c src/kc_dispatch.c src/kc_token_kernel.c src/kc_desc.c src/kc_arena.c src/kc_cpu_monitor.c
 
 OBJS := $(patsubst src/%.c,$(OBJDIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
