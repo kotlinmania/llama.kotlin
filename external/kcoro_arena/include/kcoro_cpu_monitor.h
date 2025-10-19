@@ -13,8 +13,11 @@ extern "C" {
  * CPU Monitor - Thread CPU Time Measurement
  * 
  * Provides utilities to measure per-thread CPU usage for verifying
- * zero-spin operation. Uses clock_gettime(CLOCK_THREAD_CPUTIME_ID)
- * to measure actual CPU time consumed by threads.
+ * zero-spin operation. Uses /proc filesystem on Linux to measure
+ * actual CPU time consumed by specific threads.
+ * 
+ * Note: CLOCK_THREAD_CPUTIME_ID only works for the calling thread,
+ * so we use /proc/<pid>/task/<tid>/stat for cross-thread monitoring.
  */
 
 typedef struct kc_cpu_sample {

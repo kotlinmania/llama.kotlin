@@ -5,6 +5,54 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <unistd.h>
+
+/* Get thread CPU time from /proc filesystem (Linux-specific)
+ * Returns CPU time in clock ticks, or 0 on error */
+static uint64_t get_thread_cpu_ticks(pid_t tid)
+{
+#ifdef __linux__
+    char path[256];
+    snprintf(path, sizeof(path), "/proc/self/task/%d/stat", (int)tid);
+    
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        return 0;
+    }
+    
+    /* Format of /proc/<pid>/task/<tid>/stat:
+     * pid comm state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt 
+     * utime stime cutime cstime ...
+     * We want utime (field 14) + stime (field 15) */
+    
+    unsigned long utime = 0, stime = 0;
+    int matched = fscanf(f, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
+                        &utime, &stime);
+    fclose(f);
+    
+    if (matched != 2) {
+        return 0;
+    }
+    
+    return utime + stime;
+#else
+    (void)tid;
+    return 0;
+#endif
+}
+
+/* Get clock ticks per second */
+static long get_clock_ticks_per_sec(void)
+{
+    static long ticks = 0;
+    if (ticks == 0) {
+        ticks = sysconf(_SC_CLK_TCK);
+        if (ticks <= 0) {
+            ticks = 100; // fallback
+        }
+    }
+    return ticks;
+}
 
 uint64_t kc_cpu_get_thread_time_ns(void)
 {
@@ -52,21 +100,31 @@ int kc_cpu_monitor_sample(kc_cpu_monitor *mon, kc_cpu_sample *sample)
         return -1;
     }
     
-    uint64_t cpu_time = kc_cpu_get_thread_time_ns();
     uint64_t wall_time = kc_cpu_get_monotonic_ns();
-    
-    if (cpu_time == 0 || wall_time == 0) {
+    if (wall_time == 0) {
         return -1;
     }
     
-    // Initialize baseline on first sample
+    /* Get CPU time for the monitored thread using /proc */
+    pid_t tid = (pid_t)mon->thread_id;
+    uint64_t cpu_ticks = get_thread_cpu_ticks(tid);
+    if (cpu_ticks == 0 && mon->baseline_ns != 0) {
+        /* Could not read /proc, might not be Linux or permissions issue */
+        return -1;
+    }
+    
+    /* Convert ticks to nanoseconds */
+    long ticks_per_sec = get_clock_ticks_per_sec();
+    uint64_t cpu_time_ns = (cpu_ticks * 1000000000ULL) / (uint64_t)ticks_per_sec;
+    
+    /* Initialize baseline on first sample */
     if (mon->baseline_ns == 0) {
-        mon->baseline_ns = cpu_time;
+        mon->baseline_ns = cpu_time_ns;
         mon->baseline_wall_ns = wall_time;
     }
     
     sample->timestamp_ns = wall_time;
-    sample->cpu_time_ns = cpu_time;
+    sample->cpu_time_ns = cpu_time_ns;
     sample->thread_id = mon->thread_id;
     
     return 0;

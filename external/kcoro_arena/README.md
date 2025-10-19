@@ -148,9 +148,10 @@ The worker thread blocks on `pthread_cond_wait`, using **zero CPU** until an eve
 ## Status
 
 - **Core Runtime**: Production-ready, fully tested
-- **Token Kernel**: Complete with zero-spin worker
+- **Token Kernel**: Complete with zero-spin worker ✅ **[Verified < 0.001% CPU idle]**
 - **Arena Channels**: Working, deterministic rendezvous
 - **Scheduler**: Stable, efficient main loop
+- **Zero-Spin Operation**: **Verified** - See `tests/ZERO_SPIN_VERIFICATION.md`
 - **FFI/koro_go**: Planned, not yet implemented (Issue #XXX)
 
 ## Documentation
@@ -159,6 +160,8 @@ See `docs/` for detailed component documentation:
 - `components/stackless_runtime/` - Continuation model
 - `components/token_kernel/` - Event dispatcher
 - `components/arena/` - Memory and channel architecture
+- `docs/ZERO_SPIN_PERFORMANCE_VERIFICATION.md` - CPU measurement and verification
+- `tests/ZERO_SPIN_VERIFICATION.md` - Test results and usage
 - `DOCUMENTATION_STATUS.md` - Current doc coverage
 
 ## Building
