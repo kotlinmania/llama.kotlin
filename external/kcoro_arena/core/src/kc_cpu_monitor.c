@@ -105,7 +105,11 @@ int kc_cpu_monitor_sample(kc_cpu_monitor *mon, kc_cpu_sample *sample)
         return -1;
     }
     
-    /* Get CPU time for the monitored thread using /proc */
+    /* Get CPU time for the monitored thread using /proc
+     * NOTE: This implementation casts pthread_t to pid_t which works on Linux
+     * where pthread_t is typically the thread ID, but is not portable to other
+     * platforms. For production use, consider using syscall(SYS_gettid) within
+     * the monitored thread or storing the actual TID separately. */
     pid_t tid = (pid_t)mon->thread_id;
     uint64_t cpu_ticks = get_thread_cpu_ticks(tid);
     if (cpu_ticks == 0 && mon->baseline_ns != 0) {

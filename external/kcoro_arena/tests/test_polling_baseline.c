@@ -97,6 +97,12 @@ static void *polling_worker_main(void *arg) {
     (void)arg;
     volatile uint64_t spin_counter = 0;
     
+    /* NOTE: This spinning implementation is intentionally simple to demonstrate
+     * the concept of polling-based workers. In practice, polling implementations
+     * vary in their busy-wait patterns and may be more or less CPU-intensive.
+     * The key point is that any polling approach wastes CPU during idle periods,
+     * while the zero-spin design (pthread_cond_wait) uses zero CPU when idle. */
+    
     while (!atomic_load(&g_poll_queue.stop)) {
         // Check queue for work (busy-wait)
         polling_task_t *task = polling_queue_pop(&g_poll_queue);
@@ -258,6 +264,7 @@ int main(void) {
     }
     
     printf("Polling worker started (thread ID: %lu)\n", (unsigned long)g_poll_worker);
+    printf("NOTE: Thread ID display is Linux-specific and may not be portable\n");
     
     // Give worker time to start spinning
     sleep_ms(100);
