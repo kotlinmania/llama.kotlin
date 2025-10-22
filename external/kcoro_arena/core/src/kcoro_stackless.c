@@ -6,6 +6,7 @@
  */
 #include "kcoro_stackless.h"
 #include "kcoro_token_kernel.h"
+#include "kc_chan_api.h"
 #include "kcoro_port.h"
 #include <stdlib.h>
 #include <string.h>
@@ -59,12 +60,6 @@ void koro_cont_destroy(koro_cont_t* k)
 {
     if (!k) return;
     
-    /* Free any pending arena ticket */
-    if (k->arena_ticket) {
-        free(k->arena_ticket);
-        k->arena_ticket = NULL;
-    }
-    
     /* Free user data if allocated */
     if (k->user_data) {
         free(k->user_data);
@@ -81,115 +76,52 @@ void koro_cont_destroy(koro_cont_t* k)
 /* Forward declaration of scheduler enqueue (implemented in scheduler) */
 extern void koro_sched_enqueue_ready(koro_cont_t* k);
 
-static void koro_clear_ticket(koro_cont_t *k)
-{
-    if (k && k->arena_ticket) {
-        free(k->arena_ticket);
-        k->arena_ticket = NULL;
-    }
-}
-
-static void koro_send_resume_callback(void *user_data, const kc_payload *payload)
-{
-    koro_cont_t *k = (koro_cont_t*)user_data;
-    if (!k) return;
-
-    if (payload) {
-        k->arena_payload = payload->ptr;
-        k->arena_payload_len = payload->len;
-        k->arena_desc_id = payload->desc_id;
-        k->last_park_result = payload->status;
-    } else {
-        k->arena_payload = NULL;
-        k->arena_payload_len = 0;
-        k->arena_desc_id = 0;
-        k->last_park_result = KC_EPIPE;
-    }
-
-    koro_clear_ticket(k);
-    koro_sched_enqueue_ready(k);
-}
-
 /* Arena integration: Stackless send operation.
  * This is a CPS transformation of the blocking arena send.
  * Returns NULL if suspended, non-NULL if complete. */
 void* koro_send_stackless(koro_cont_t* k, struct kc_chan* ch, void* data, size_t len)
 {
     if (!k || !ch) {
-        k->last_park_result = -EINVAL;
+        if (k) k->last_park_result = -EINVAL;
         return (void*)1; /* Complete with error */
     }
     
-    kc_ticket ticket = kc_token_kernel_publish_send(
-        ch,
-        data,
-        len,
-        koro_send_resume_callback,
-        k
-    );
+    /* Use new stackless channel API */
+    int result = kc_chan_send_stackless(k, ch, data, len);
     
-    /* Store ticket for cancellation support */
-    k->arena_ticket = malloc(sizeof(kc_ticket));
-    if (k->arena_ticket) {
-        memcpy(k->arena_ticket, &ticket, sizeof(kc_ticket));
-    }
-
-    if (ticket.id == 0) {
-        koro_clear_ticket(k);
-        k->last_park_result = KC_EAGAIN;
+    if (result == 0) {
+        /* Completed immediately */
+        return (void*)1;
+    } else if (result == 1) {
+        /* Suspended - will be resumed by channel callback */
+        return NULL;
+    } else {
+        /* Error */
+        k->last_park_result = result;
         return (void*)1;
     }
-
-    k->last_park_result = KC_EAGAIN;
-    return NULL; /* Suspended */
-}
-
-static void koro_recv_resume_callback(void *user_data, const kc_payload *payload)
-{
-    koro_cont_t *k = (koro_cont_t*)user_data;
-    if (!k) return;
-
-    if (payload) {
-        k->arena_payload = payload->ptr;
-        k->arena_payload_len = payload->len;
-        k->arena_desc_id = payload->desc_id;
-        k->last_park_result = payload->status;
-    } else {
-        k->arena_payload = NULL;
-        k->arena_payload_len = 0;
-        k->arena_desc_id = 0;
-        k->last_park_result = KC_EPIPE;
-    }
-
-    koro_clear_ticket(k);
-    koro_sched_enqueue_ready(k);
 }
 
 /* Arena integration: Stackless receive operation. */
 void* koro_recv_stackless(koro_cont_t* k, struct kc_chan* ch)
 {
     if (!k || !ch) {
-        k->last_park_result = -EINVAL;
+        if (k) k->last_park_result = -EINVAL;
         return (void*)1; /* Complete with error */
     }
     
-    kc_ticket ticket = kc_token_kernel_publish_recv(
-        ch,
-        koro_recv_resume_callback,
-        k
-    );
+    /* Use new stackless channel API */
+    int result = kc_chan_recv_stackless(k, ch);
     
-    k->arena_ticket = malloc(sizeof(kc_ticket));
-    if (k->arena_ticket) {
-        memcpy(k->arena_ticket, &ticket, sizeof(kc_ticket));
-    }
-
-    if (ticket.id == 0) {
-        koro_clear_ticket(k);
-        k->last_park_result = KC_EAGAIN;
+    if (result == 0) {
+        /* Completed immediately - data in k->arena_payload */
+        return (void*)1;
+    } else if (result == 1) {
+        /* Suspended - will be resumed by channel callback */
+        return NULL;
+    } else {
+        /* Error */
+        k->last_park_result = result;
         return (void*)1;
     }
-
-    k->last_park_result = KC_EAGAIN;
-    return NULL; /* Suspended */
 }

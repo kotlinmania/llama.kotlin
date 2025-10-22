@@ -1,7 +1,7 @@
 include ../mk/common.mk
 
 CFLAGS += -I../include
-LDFLAGS += -L../core/build/lib -lkcoro -pthread
+LDFLAGS += -L../core/build/lib -lkcoro_arena -pthread
 
 # Always kill lingering kcoro test processes before builds/runs (can disable with KILL_BEFORE=0)
 KILL_BEFORE ?= 1

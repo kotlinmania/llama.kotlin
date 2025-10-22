@@ -2,11 +2,12 @@
 /* example_stackless.c - Demonstration of stackless arena coroutines
  *
  * This shows how to write producer/consumer coroutines using the
- * stackless API with BizTalk-style ticket-based coordination.
+ * stackless API with real stackless channels.
  */
 #include "kcoro_stackless.h"
 #include "koro_sched_stackless.h"
 #include "kcoro_token_kernel.h"
+#include "kc_chan_api.h"
 #include <stdio.h>
 #include <stdint.h>
 
@@ -102,10 +103,13 @@ int main(void)
         return 1;
     }
     
-    /* Create a shared channel for producer/consumer coordination.
-     * In a real implementation, this would use kc_chan_make().
-     * For now, we'll pass NULL and document the integration point. */
-    struct kc_chan* shared_channel = NULL; /* TODO: kc_chan_make() */
+    /* Create a shared rendezvous channel for producer/consumer coordination.
+     * Rendezvous channels have zero buffer: sender waits for receiver. */
+    struct kc_chan* shared_channel = kc_chan_make_stackless(KC_CHAN_RENDEZVOUS, 0);
+    if (!shared_channel) {
+        fprintf(stderr, "Failed to create channel\n");
+        return 1;
+    }
     
     /* Spawn producer coroutine */
     printf("Main: Spawning producer...\n");
@@ -130,6 +134,8 @@ int main(void)
     printf("\n=== All coroutines completed ===\n");
     
     /* Cleanup */
+    kc_chan_close(shared_channel);
+    kc_chan_destroy(shared_channel);
     kc_token_kernel_global_shutdown();
     
     return 0;
