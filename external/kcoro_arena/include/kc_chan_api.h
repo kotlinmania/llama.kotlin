@@ -34,14 +34,14 @@ typedef enum {
  * Returns channel handle or NULL on error. */
 struct kc_chan* kc_chan_make_stackless(kc_chan_type_t type, size_t capacity);
 
-/* Close a channel.
+/* Close a stackless channel.
  * Wakes all waiting coroutines with error status.
  * Returns 0 on success, negative on error. */
-int kc_chan_close(struct kc_chan* ch);
+int kc_chan_close_stackless(struct kc_chan* ch);
 
-/* Destroy a channel and free resources.
+/* Destroy a stackless channel and free resources.
  * Channel must be closed first. */
-void kc_chan_destroy(struct kc_chan* ch);
+void kc_chan_destroy_stackless(struct kc_chan* ch);
 
 /* Stackless channel operations */
 
@@ -63,9 +63,9 @@ int kc_chan_recv_stackless(struct koro_cont* k, struct kc_chan* ch);
 
 /* Channel introspection */
 
-/* Get number of items currently in channel buffer.
+/* Get number of items currently in stackless channel buffer.
  * Returns count or 0 if channel is empty/rendezvous. */
-size_t kc_chan_len(struct kc_chan* ch);
+size_t kc_chan_len_stackless(struct kc_chan* ch);
 
 /* Get channel capacity.
  * Returns 0 for rendezvous, N for buffered, 1 for conflated. */

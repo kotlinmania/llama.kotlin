@@ -152,7 +152,9 @@ void* koro_recv_stackless(koro_cont_t* k, struct kc_chan* ch);
 #define KORO_SEND(k, ch, data, len) \
     do { \
         (k)->state = __LINE__; \
-        case __LINE__: { \
+        __attribute__((fallthrough)); \
+        case __LINE__:; \
+        { \
             void* _res = koro_send_stackless((k), (ch), (data), (len)); \
             if (!_res) return NULL; \
         } \
@@ -164,7 +166,9 @@ void* koro_recv_stackless(koro_cont_t* k, struct kc_chan* ch);
 #define KORO_RECV(k, ch) \
     do { \
         (k)->state = __LINE__; \
-        case __LINE__: { \
+        __attribute__((fallthrough)); \
+        case __LINE__:; \
+        { \
             void* _res = koro_recv_stackless((k), (ch)); \
             if (!_res) return NULL; \
         } \

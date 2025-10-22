@@ -101,8 +101,8 @@ struct kc_chan* kc_chan_make_stackless(kc_chan_type_t type, size_t capacity) {
     return ch;
 }
 
-/* Close a channel */
-int kc_chan_close(struct kc_chan* ch) {
+/* Close a stackless channel */
+int kc_chan_close_stackless(struct kc_chan* ch) {
     if (!ch) return -EINVAL;
     
     pthread_mutex_lock(&ch->lock);
@@ -131,8 +131,8 @@ int kc_chan_close(struct kc_chan* ch) {
     return 0;
 }
 
-/* Destroy a channel */
-void kc_chan_destroy(struct kc_chan* ch) {
+/* Destroy a stackless channel */
+void kc_chan_destroy_stackless(struct kc_chan* ch) {
     if (!ch) return;
     
     pthread_mutex_lock(&ch->lock);
@@ -198,6 +198,7 @@ int kc_chan_send_stackless(struct koro_cont* k, struct kc_chan* ch,
         enqueue_waiter(&ch->send_waiters, w);
         
         pthread_mutex_unlock(&ch->lock);
+        k->last_park_result = 0;  /* Will be set when matched */
         return 1;  /* Suspended */
     }
     
@@ -242,6 +243,7 @@ int kc_chan_send_stackless(struct koro_cont* k, struct kc_chan* ch,
         enqueue_waiter(&ch->send_waiters, w);
         
         pthread_mutex_unlock(&ch->lock);
+        k->last_park_result = 0;  /* Will be set when matched */
         return 1;  /* Suspended */
     }
     
@@ -322,6 +324,7 @@ int kc_chan_recv_stackless(struct koro_cont* k, struct kc_chan* ch) {
         enqueue_waiter(&ch->recv_waiters, w);
         
         pthread_mutex_unlock(&ch->lock);
+        k->last_park_result = 0;  /* Will be set when matched */
         return 1;  /* Suspended */
     }
     
@@ -366,6 +369,7 @@ int kc_chan_recv_stackless(struct koro_cont* k, struct kc_chan* ch) {
         enqueue_waiter(&ch->recv_waiters, w);
         
         pthread_mutex_unlock(&ch->lock);
+        k->last_park_result = 0;  /* Will be set when matched */
         return 1;  /* Suspended */
     }
     
@@ -396,6 +400,7 @@ int kc_chan_recv_stackless(struct koro_cont* k, struct kc_chan* ch) {
         enqueue_waiter(&ch->recv_waiters, w);
         
         pthread_mutex_unlock(&ch->lock);
+        k->last_park_result = 0;  /* Will be set when matched */
         return 1;  /* Suspended */
     }
     
@@ -404,8 +409,8 @@ int kc_chan_recv_stackless(struct koro_cont* k, struct kc_chan* ch) {
     return -EINVAL;
 }
 
-/* Get number of items in channel */
-size_t kc_chan_len(struct kc_chan* ch) {
+/* Get number of items in stackless channel */
+size_t kc_chan_len_stackless(struct kc_chan* ch) {
     if (!ch) return 0;
     pthread_mutex_lock(&ch->lock);
     size_t count = ch->count;

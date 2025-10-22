@@ -26,6 +26,9 @@ void* producer_step(koro_cont_t* k)
     
     KORO_BEGIN(k);
     
+    /* Initialize channel reference from user_arg */
+    local->ch = (struct kc_chan*)k->user_arg;
+    
     printf("Producer: Starting\n");
     
     for (local->i = 0; local->i < 5; local->i++) {
@@ -62,6 +65,9 @@ void* consumer_step(koro_cont_t* k)
     struct consumer_locals* local = (struct consumer_locals*)k->user_data;
     
     KORO_BEGIN(k);
+    
+    /* Initialize channel reference from user_arg */
+    local->ch = (struct kc_chan*)k->user_arg;
     
     printf("Consumer: Starting\n");
     
@@ -134,8 +140,8 @@ int main(void)
     printf("\n=== All coroutines completed ===\n");
     
     /* Cleanup */
-    kc_chan_close(shared_channel);
-    kc_chan_destroy(shared_channel);
+    kc_chan_close_stackless(shared_channel);
+    kc_chan_destroy_stackless(shared_channel);
     kc_token_kernel_global_shutdown();
     
     return 0;
