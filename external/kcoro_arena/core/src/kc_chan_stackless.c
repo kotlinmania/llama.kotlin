@@ -221,7 +221,13 @@ int kc_chan_send_stackless(struct koro_cont* k, struct kc_chan* ch,
     if (ch->type == KC_CHAN_BUFFERED) {
         if (ch->count < ch->capacity) {
             /* Space available */
-            ch->buffer[ch->tail] = copy_data(data, len);
+            void* data_copy = copy_data(data, len);
+            if (!data_copy) {
+                pthread_mutex_unlock(&ch->lock);
+                k->last_park_result = -ENOMEM;
+                return -ENOMEM;
+            }
+            ch->buffer[ch->tail] = data_copy;
             ch->lengths[ch->tail] = len;
             ch->tail = (ch->tail + 1) % ch->capacity;
             ch->count++;
