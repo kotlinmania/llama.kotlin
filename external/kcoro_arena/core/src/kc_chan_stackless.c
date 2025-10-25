@@ -203,6 +203,12 @@ int kc_chan_send_stackless(struct koro_cont* k, struct kc_chan* ch,
         
         w->cont = k;
         w->send_data_copy = copy_data(data, len);
+        if (!w->send_data_copy) {
+            free(w);
+            pthread_mutex_unlock(&ch->lock);
+            k->last_park_result = -ENOMEM;
+            return -ENOMEM;
+        }
         w->send_len = len;
         enqueue_waiter(&ch->send_waiters, w);
         
