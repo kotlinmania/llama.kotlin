@@ -190,7 +190,7 @@ cc -o build/example_stackless build/obj/example_stackless.o \
 ## Files Modified/Created
 
 ### Created
-- `external/kcoro_arena/core/src/kc_chan_stackless.c` (403 lines)
+- `external/kcoro_arena/core/src/kc_chan_stackless.c` (434 lines)
 - `external/kcoro_arena/include/kc_chan_api.h` (83 lines)
 - `external/kcoro_arena/core/src/kc_select_internal.h` (52 lines, stub)
 - `external/kcoro_arena/STACKLESS_CUTOVER_SUMMARY.md` (this file)
