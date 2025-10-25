@@ -139,8 +139,9 @@ void kc_chan_destroy_stackless(struct kc_chan* ch) {
     
     /* Free buffered data */
     if (ch->buffer) {
-        for (size_t i = 0; i < ch->capacity; i++) {
-            free(ch->buffer[i]);
+        for (size_t i = 0; i < ch->count; i++) {
+            size_t idx = (ch->head + i) % ch->capacity;
+            free(ch->buffer[idx]);
         }
         free(ch->buffer);
     }
