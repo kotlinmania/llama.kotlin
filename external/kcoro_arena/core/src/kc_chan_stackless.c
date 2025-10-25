@@ -341,6 +341,11 @@ int kc_chan_recv_stackless(struct koro_cont* k, struct kc_chan* ch) {
         waiter_t* send = dequeue_waiter(&ch->send_waiters);
         if (send) {
             /* Direct handoff - transfer ownership of data */
+            /*
+             * Ownership of send->send_data_copy is transferred to the receiver's k->arena_payload.
+             * The receiver (k) is now responsible for eventually freeing k->arena_payload,
+             * or otherwise documenting its expected lifecycle.
+             */
             k->arena_payload = send->send_data_copy;
             k->arena_payload_len = send->send_len;
             k->last_park_result = 0;
