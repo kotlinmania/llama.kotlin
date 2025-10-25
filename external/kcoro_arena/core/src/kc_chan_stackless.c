@@ -176,6 +176,14 @@ int kc_chan_send_stackless(struct koro_cont* k, struct kc_chan* ch,
         if (recv) {
             /* Direct handoff */
             recv->cont->arena_payload = copy_data(data, len);
+            if (!recv->cont->arena_payload) {
+                recv->cont->arena_payload_len = 0;
+                recv->cont->last_park_result = -ENOMEM;
+                k->last_park_result = -ENOMEM;
+                free(recv);
+                pthread_mutex_unlock(&ch->lock);
+                return -ENOMEM;
+            }
             recv->cont->arena_payload_len = len;
             recv->cont->last_park_result = 0;
             koro_sched_enqueue_ready(recv->cont);
