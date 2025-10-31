@@ -278,21 +278,11 @@ int kc_chan_send_stackless(struct koro_cont* k, struct kc_chan* ch,
                 pthread_mutex_unlock(&ch->lock);
                 k->last_park_result = -ENOMEM;
                 return -ENOMEM;
-            ch->buffer[0] = copy_data(data, len);
-            if (!ch->buffer[0]) {
-                pthread_mutex_unlock(&ch->lock);
-                k->last_park_result = -ENOMEM;
-                return -ENOMEM;
             }
             ch->lengths[0] = len;
         } else {
             /* Store new value */
             ch->buffer[0] = copy_data(data, len);
-            if (!ch->buffer[0]) {
-                pthread_mutex_unlock(&ch->lock);
-                k->last_park_result = -ENOMEM;
-                return -ENOMEM;
-            }
             if (!ch->buffer[0]) {
                 pthread_mutex_unlock(&ch->lock);
                 k->last_park_result = -ENOMEM;
