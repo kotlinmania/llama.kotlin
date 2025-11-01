@@ -1,6 +1,6 @@
 # Channel Design Overview (Verified)
 
-_Last reviewed: 2025-10-14_
+_Last reviewed: 2025-11-01_
 
 This file reflects the behaviour of `kc_chan.c` as implemented today. Update it alongside code changes that affect rendezvous, buffering, or zero-copy flows.
 
@@ -60,6 +60,28 @@ flowchart TD
 
 - Cancelling a waiter removes it from the queue immediately and signals the coroutine with `KC_ECANCELED`.
 - Closing a channel wakes both senders and receivers. Rendezvous pairs finish their current transfer first; buffered data is drained before close reports `KC_EPIPE`.
+
+## Priority support (Added 2025-11-01)
+
+The pending send and receive structures now include a `priority` field (uint8_t, 0-255) to support fairness in mixed workloads:
+
+- **Priority constants**: `KC_CHAN_PRIORITY_LOW` (64), `KC_CHAN_PRIORITY_NORMAL` (128), `KC_CHAN_PRIORITY_HIGH` (192)
+- **APIs**: `kc_chan_send_priority()` and `kc_chan_recv_priority()` accept a priority parameter
+- **Queue insertion**: `kc_pending_send_insert_priority()` and `kc_pending_recv_insert_priority()` functions insert waiters by priority (higher values serviced first)
+
+**Current status**: API infrastructure is in place. The public APIs currently delegate to standard send/recv operations. Full integration requires modifying the internal channel paths to use priority-aware insertion when the priority APIs are called.
+
+## Broadcast/fanout utilities (Added 2025-11-01)
+
+Helper functions for multi-recipient broadcast patterns:
+
+- **`kc_chan_fanout_best_effort()`**: Attempts non-blocking send to multiple channels, returns count of successful operations. Suitable for fire-and-forget scenarios where partial delivery is acceptable.
+
+- **`kc_chan_fanout_all_or_nothing()`**: Attempts to send to all channels, returns success only if all succeed. Note: true atomicity is difficult due to races; this function makes a best-effort attempt.
+
+Both functions accept an array of channel pointers and a timeout parameter for individual send operations.
+
+**Implementation note**: These are application-level utilities built on top of existing channel primitives, not new channel types.
 
 ## Further reading
 
