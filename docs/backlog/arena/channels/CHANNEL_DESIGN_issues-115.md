@@ -86,9 +86,9 @@ Add timeout variants to channel APIs:
 
 ```c
 // New timeout-aware APIs
-int kc_chan_send_timeout(kc_chan_t *ch, const void *data, size_t len, 
+int kc_chan_send_timeout(kc_chan_t *ch, const void *data, size_t len,
                          long timeout_ns);
-int kc_chan_recv_timeout(kc_chan_t *ch, void *buf, size_t len, 
+int kc_chan_recv_timeout(kc_chan_t *ch, void *buf, size_t len,
                          long timeout_ns);
 
 // Return codes:
@@ -207,7 +207,7 @@ for (int i = 0; i < N; i++) {
 }
 
 // Utility function fans out
-int kc_chan_fanout(const void *data, size_t len, 
+int kc_chan_fanout(const void *data, size_t len,
                    kc_chan_t **channels, int n_channels);
 // Returns: number of successful sends (may be partial)
 ```
@@ -255,7 +255,7 @@ Start with **Option B** (fan-out combinator) as a library utility. This provides
 **Example Implementation Sketch (Option B):**
 
 ```c
-int kc_chan_fanout_best_effort(const void *data, size_t len, 
+int kc_chan_fanout_best_effort(const void *data, size_t len,
                                 kc_chan_t **channels, int n) {
     int successful = 0;
     for (int i = 0; i < n; i++) {
@@ -273,7 +273,7 @@ int kc_chan_fanout_all_or_nothing(const void *data, size_t len,
             return -EAGAIN;  // At least one channel not ready
         }
     }
-    
+
     // Phase 2: Send to all (races possible, but best effort)
     int successful = 0;
     for (int i = 0; i < n; i++) {
@@ -281,7 +281,7 @@ int kc_chan_fanout_all_or_nothing(const void *data, size_t len,
             successful++;
         }
     }
-    
+
     return (successful == n) ? 0 : -EAGAIN;
 }
 ```
