@@ -478,3 +478,4 @@ int kc_chan_is_closed(struct kc_chan* ch) {
     pthread_mutex_unlock(&ch->lock);
     return closed;
 }
+

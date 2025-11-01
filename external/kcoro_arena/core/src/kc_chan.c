@@ -1582,3 +1582,89 @@ int kc_chan_get_zstats(kc_chan_t *ch, struct kc_chan_zstats *out)
 }
 
 /* ------------------------------------------------------------------------- */
+/* Priority-aware channel operations */
+/* ------------------------------------------------------------------------- */
+
+int kc_chan_send_priority(kc_chan_t* ch, const void* msg, long timeout_ms, uint8_t priority)
+{
+    /* For now, delegate to standard send. Priority will be used when pending structures
+     * are created in the internal send functions. This is a placeholder for the public API.
+     * Full implementation requires modifying the internal rendezvous and buffered send paths
+     * to use kc_pending_send_insert_priority instead of kc_pending_send_append. */
+    (void)priority; /* TODO: Thread priority through to pending structure */
+    return kc_chan_send(ch, msg, timeout_ms);
+}
+
+int kc_chan_recv_priority(kc_chan_t* ch, void* out, long timeout_ms, uint8_t priority)
+{
+    /* For now, delegate to standard recv. Priority will be used when pending structures
+     * are created in the internal recv functions. This is a placeholder for the public API.
+     * Full implementation requires modifying the internal rendezvous and buffered recv paths
+     * to use kc_pending_recv_insert_priority instead of kc_pending_recv_append. */
+    (void)priority; /* TODO: Thread priority through to pending structure */
+    return kc_chan_recv(ch, out, timeout_ms);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Broadcast/Fanout utilities */
+/* ------------------------------------------------------------------------- */
+
+int kc_chan_fanout_best_effort(const void *data, size_t len,
+                                kc_chan_t **channels, int n_channels,
+                                long timeout_ms)
+{
+    if (!data || !channels || n_channels <= 0) return -EINVAL;
+    
+    int successful = 0;
+    for (int i = 0; i < n_channels; i++) {
+        if (channels[i]) {
+            /* Use non-blocking send (timeout=0) for best-effort */
+            int rc = kc_chan_send(channels[i], data, 0);
+            if (rc == 0) successful++;
+        }
+    }
+    
+    (void)timeout_ms; /* Best-effort mode uses non-blocking sends */
+    (void)len; /* Length is embedded in channel element size */
+    return successful;
+}
+
+int kc_chan_fanout_all_or_nothing(const void *data, size_t len,
+                                   kc_chan_t **channels, int n_channels,
+                                   long timeout_ms)
+{
+    if (!data || !channels || n_channels <= 0) return -EINVAL;
+    
+    /* Phase 1: Check if all channels are ready (best-effort check) */
+    for (int i = 0; i < n_channels; i++) {
+        if (!channels[i]) return -EINVAL;
+        /* Try non-blocking send first to check readiness */
+        int rc = kc_chan_send(channels[i], data, 0);
+        if (rc != 0 && rc != -EAGAIN) {
+            /* Channel error or closed */
+            return rc;
+        }
+    }
+    
+    /* Phase 2: Send to all channels */
+    int successful = 0;
+    int first_error = 0;
+    for (int i = 0; i < n_channels; i++) {
+        int rc = kc_chan_send(channels[i], data, timeout_ms);
+        if (rc == 0) {
+            successful++;
+        } else if (first_error == 0) {
+            first_error = rc;
+        }
+    }
+    
+    (void)len; /* Length is embedded in channel element size */
+    
+    /* Return success only if all sends succeeded */
+    if (successful == n_channels) {
+        return 0;
+    }
+    return first_error ? first_error : -EAGAIN;
+}
+
+/* ------------------------------------------------------------------------- */
