@@ -41,6 +41,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 #include "kcoro_abi.h"
 
 #ifdef __cplusplus
@@ -106,6 +107,23 @@ int  kc_chan_send_c(kc_chan_t* ch, const void* msg, long timeout_ms, const kc_ca
 int  kc_chan_recv_c(kc_chan_t* ch, void* out, long timeout_ms, const kc_cancel_t* cancel);
 /** @} */
 
+/**
+ * @name Priority constants for channel operations
+ * @{ */
+#define KC_CHAN_PRIORITY_LOW     64
+#define KC_CHAN_PRIORITY_NORMAL  128
+#define KC_CHAN_PRIORITY_HIGH    192
+/** @} */
+
+/**
+ * @name Priority-aware variants
+ * These allow specifying operation priority for fairness in mixed workloads.
+ * Higher priority operations (255) are serviced before lower priority (0).
+ * @{ */
+int  kc_chan_send_priority(kc_chan_t* ch, const void* msg, long timeout_ms, uint8_t priority);
+int  kc_chan_recv_priority(kc_chan_t* ch, void* out, long timeout_ms, uint8_t priority);
+/** @} */
+
 /* Non-blocking convenience wrappers */
 static inline int kc_chan_try_send(kc_chan_t* ch, const void* msg) {
     return kc_chan_send(ch, msg, 0);
@@ -165,6 +183,45 @@ void kc_select_reset(kc_select_t *sel);
 int  kc_select_add_recv(kc_select_t *sel, kc_chan_t *chan, void *out);
 int  kc_select_add_send(kc_select_t *sel, kc_chan_t *chan, const void *msg);
 int  kc_select_wait(kc_select_t *sel, long timeout_ms, int *selected_index, int *op_result);
+
+/**
+ * @name Broadcast/Fanout Utilities
+ * @brief Helper functions for multi-recipient patterns
+ * @{ */
+
+/**
+ * @brief Fan-out send to multiple channels (best-effort)
+ * @param data Pointer to data to send
+ * @param len Length of data
+ * @param channels Array of channel pointers
+ * @param n_channels Number of channels in array
+ * @param timeout_ms Timeout for each individual send operation
+ * @return Number of successful sends (0 to n_channels)
+ *
+ * Attempts non-blocking send to each channel. Returns count of successful operations.
+ * Partial success is possible and expected in best-effort mode.
+ */
+int kc_chan_fanout_best_effort(const void *data, size_t len,
+                                kc_chan_t **channels, int n_channels,
+                                long timeout_ms);
+
+/**
+ * @brief Fan-out send to multiple channels (all-or-nothing)
+ * @param data Pointer to data to send
+ * @param len Length of data
+ * @param channels Array of channel pointers
+ * @param n_channels Number of channels in array
+ * @param timeout_ms Timeout for each individual send operation
+ * @return 0 if all sends succeeded, negative error code if any failed
+ *
+ * Attempts to send to all channels. If any send fails, returns error.
+ * Note: Due to races, achieving true atomicity is difficult; this function
+ * makes a best-effort attempt but may result in partial sends.
+ */
+int kc_chan_fanout_all_or_nothing(const void *data, size_t len,
+                                   kc_chan_t **channels, int n_channels,
+                                   long timeout_ms);
+/** @} */
 
 /* --- Zero-Copy Channel Extensions (Phase Z) ---------------------------------
  * Portable surface: these APIs do not expose platform‑specific kernel or

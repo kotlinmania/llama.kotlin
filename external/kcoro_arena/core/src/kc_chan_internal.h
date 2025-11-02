@@ -34,6 +34,7 @@ struct kc_pending_send {
     kc_select_t            *sel;
     int                     clause_index;
     kc_desc_id              desc_id;
+    uint8_t                 priority;  /* 0 (low) to 255 (high), default 128 */
 };
 
 struct kc_pending_recv {
@@ -44,6 +45,7 @@ struct kc_pending_recv {
     kc_select_t            *sel;
     int                     clause_index;
     kc_desc_id              desc_id; /* for future buffered integration */
+    uint8_t                 priority;  /* 0 (low) to 255 (high), default 128 */
 };
 
 static inline void kc_pending_send_append(struct kc_pending_send **head,
@@ -84,6 +86,70 @@ static inline struct kc_pending_recv *kc_pending_recv_pop(struct kc_pending_recv
     if (!*head) *tail = NULL;
     node->next = NULL;
     return node;
+}
+
+/* Priority-aware insertion for send queue (higher priority inserts earlier) */
+static inline void kc_pending_send_insert_priority(struct kc_pending_send **head,
+                                                    struct kc_pending_send **tail,
+                                                    struct kc_pending_send *node)
+{
+    node->next = NULL;
+    if (!*head) {
+        *head = *tail = node;
+        return;
+    }
+    
+    /* Insert before first node with lower priority */
+    struct kc_pending_send *prev = NULL;
+    struct kc_pending_send *curr = *head;
+    while (curr && curr->priority >= node->priority) {
+        prev = curr;
+        curr = curr->next;
+    }
+    
+    if (!prev) {
+        /* Insert at head */
+        node->next = *head;
+        *head = node;
+        if (!*tail) *tail = node;
+    } else {
+        /* Insert after prev */
+        node->next = prev->next;
+        prev->next = node;
+        if (!node->next) *tail = node;
+    }
+}
+
+/* Priority-aware insertion for recv queue (higher priority inserts earlier) */
+static inline void kc_pending_recv_insert_priority(struct kc_pending_recv **head,
+                                                    struct kc_pending_recv **tail,
+                                                    struct kc_pending_recv *node)
+{
+    node->next = NULL;
+    if (!*head) {
+        *head = *tail = node;
+        return;
+    }
+    
+    /* Insert before first node with lower priority */
+    struct kc_pending_recv *prev = NULL;
+    struct kc_pending_recv *curr = *head;
+    while (curr && curr->priority >= node->priority) {
+        prev = curr;
+        curr = curr->next;
+    }
+    
+    if (!prev) {
+        /* Insert at head */
+        node->next = *head;
+        *head = node;
+        if (!*tail) *tail = node;
+    } else {
+        /* Insert after prev */
+        node->next = prev->next;
+        prev->next = node;
+        if (!node->next) *tail = node;
+    }
 }
 
 struct kc_chan {
