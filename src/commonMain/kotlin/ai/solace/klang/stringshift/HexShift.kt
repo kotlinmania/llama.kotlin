@@ -1,4 +1,4 @@
-package ai.solace.klang.stringshift
+package ai.solace.klangnative.stringshift
 
 import kotlin.math.min
 

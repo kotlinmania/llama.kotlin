@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 data class DoubleDouble(val hi: Double, val lo: Double) {
     operator fun plus(other: DoubleDouble): DoubleDouble {

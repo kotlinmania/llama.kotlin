@@ -1,6 +1,6 @@
-package ai.solace.klang.int.hpc
+package ai.solace.klangnative.int.hpc
 
-import ai.solace.klang.bitwise.ArrayBitShifts
+import ai.solace.klangnative.bitwise.ArrayBitShifts
 
 /**
  * HPC16x4: 64-bit unsigned integer stored as 4 little-endian 16-bit limbs.

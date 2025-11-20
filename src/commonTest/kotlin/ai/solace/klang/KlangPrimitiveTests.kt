@@ -1,12 +1,12 @@
-package ai.solace.klang
+package ai.solace.klangnative
 
-import ai.solace.klang.bitwise.BitPrimitives
-import ai.solace.klang.bitwise.Float32Math
-import ai.solace.klang.bitwise.PackOps
-import ai.solace.klang.buffer.MemoryOps
-import ai.solace.klang.common.StatOps
-import ai.solace.klang.fp.VectorOps
-import ai.solace.klang.int.hpc.HPC16x8
+import ai.solace.klangnative.bitwise.BitPrimitives
+import ai.solace.klangnative.bitwise.Float32Math
+import ai.solace.klangnative.bitwise.PackOps
+import ai.solace.klangnative.buffer.MemoryOps
+import ai.solace.klangnative.common.StatOps
+import ai.solace.klangnative.fp.VectorOps
+import ai.solace.klangnative.int.hpc.HPC16x8
 import kotlin.ExperimentalUnsignedTypes
 import kotlin.random.Random
 import kotlin.test.Test

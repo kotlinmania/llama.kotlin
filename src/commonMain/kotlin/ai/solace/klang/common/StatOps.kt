@@ -1,4 +1,4 @@
-package ai.solace.klang.common
+package ai.solace.klangnative.common
 
 import kotlin.math.abs
 import kotlin.random.Random

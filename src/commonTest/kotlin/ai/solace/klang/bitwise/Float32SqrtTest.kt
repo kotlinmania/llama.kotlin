@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 import kotlin.math.sqrt
 import kotlin.test.Test

@@ -1,6 +1,6 @@
-package ai.solace.klang.fp
+package ai.solace.klangnative.fp
 
-import ai.solace.klang.bitwise.Float32Math
+import ai.solace.klangnative.bitwise.Float32Math
 
 /** Deterministic floating point reduction helpers backed by the soft-float math. */
 object VectorOps {

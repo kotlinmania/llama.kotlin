@@ -179,7 +179,7 @@ kotlin {
             }
             kotlin.srcDir("src/commonMain/kotlin")
             // Add vendored klang sources
-            kotlin.srcDir("external/klang/src/commonMain/kotlin")
+            kotlin.srcDir("external/klangnative/src/commonMain/kotlin")
             resources.srcDir("src/commonMain/resources")
         }
         val commonTest by getting {
@@ -190,7 +190,7 @@ kotlin {
             }
             kotlin.srcDir("src/commonTest/kotlin")
             // Add vendored klang test sources
-            kotlin.srcDir("external/klang/src/commonTest/kotlin")
+            kotlin.srcDir("external/klangnative/src/commonTest/kotlin")
             resources.srcDir("src/commonTest/resources")
         }
 
@@ -198,7 +198,7 @@ kotlin {
             dependsOn(commonMain)
             kotlin.srcDir("src/nativeMain/kotlin")
             // Add vendored klang native sources
-            kotlin.srcDir("external/klang/src/nativeMain/kotlin")
+            kotlin.srcDir("external/klangnative/src/nativeMain/kotlin")
         }
 
         val linuxX64Main by getting { dependsOn(nativeMain) }
@@ -210,8 +210,8 @@ kotlin {
             dependencies {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-js:1.10.2")
             }
-            kotlin.srcDir("external/klang/src/jsMain/kotlin")
-            resources.srcDir("external/klang/src/jsMain/resources")
+            kotlin.srcDir("external/klangnative/src/jsMain/kotlin")
+            resources.srcDir("external/klangnative/src/jsMain/resources")
         }
         val jsTest by getting {
             dependencies {

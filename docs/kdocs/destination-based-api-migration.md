@@ -27,5 +27,5 @@ All compute ops now use destination tensors (no internal allocation). Legacy ret
 
 ## Related Docs
 - KOTLIN_PORT_CHECKLIST.md (Immediate Next Steps)
-- docs/kdocs/klang-soft-float-and-hpc16.md (numeric determinism)
+- docs/kdocs/klangnative-soft-float-and-hpc16.md (numeric determinism)
 - docs/kdocs/kotlin-native-simd-plan.md (SIMD on top of the unified API)
