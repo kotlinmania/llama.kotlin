@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 /**
  * Low-level helpers that mirror common C bit-manipulation intrinsics. These

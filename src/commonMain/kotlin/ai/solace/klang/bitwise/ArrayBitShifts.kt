@@ -1,5 +1,5 @@
-package ai.solace.klang.bitwise
-import ai.solace.klang.buffer.LimbBuffer
+package ai.solace.klangnative.bitwise
+import ai.solace.klangnative.buffer.LimbBuffer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope

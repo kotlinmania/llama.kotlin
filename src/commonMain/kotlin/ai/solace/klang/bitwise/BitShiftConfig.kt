@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 /** Global configuration for BitShiftEngine defaults. */
 object BitShiftConfig {

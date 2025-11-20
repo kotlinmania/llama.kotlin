@@ -1,4 +1,4 @@
-package ai.solace.klang.int.hpc
+package ai.solace.klangnative.int.hpc
 
 import kotlin.random.Random
 import kotlin.test.Test

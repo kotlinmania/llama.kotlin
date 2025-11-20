@@ -19,6 +19,6 @@ Updated: 2025‑09‑21
 3) Remove temporary diagnostics once parity is green; keep regression fixture
 
 ## Related Docs
-- docs/kdocs/klang-soft-float-and-hpc16.md
+- docs/kdocs/klangnative-soft-float-and-hpc16.md
 - docs/kdocs/kotlin-native-simd-plan.md (SIMD after parity)
 - docs/kdocs/test-triage-2025-09-21.md

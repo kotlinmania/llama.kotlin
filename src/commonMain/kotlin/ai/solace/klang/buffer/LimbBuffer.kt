@@ -1,6 +1,6 @@
-package ai.solace.klang.buffer
+package ai.solace.klangnative.buffer
 
-import ai.solace.klang.bitwise.ArithmeticBitwiseOps
+import ai.solace.klangnative.bitwise.ArithmeticBitwiseOps
 
 /**
  * LimbBuffer: packed little-endian 16-bit limb storage over a ByteArray.

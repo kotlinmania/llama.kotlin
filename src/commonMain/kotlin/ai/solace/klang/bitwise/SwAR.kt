@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 /**
  * SWAR (SIMD Within A Register) helpers for per-lane unsigned averages.

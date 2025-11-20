@@ -1,4 +1,4 @@
-package ai.solace.klang
+package ai.solace.klangnative
 
 import ai.solace.llamakotlin.core.makeQKX2Quants
 import ai.solace.llamakotlin.core.makeQKX3Quants

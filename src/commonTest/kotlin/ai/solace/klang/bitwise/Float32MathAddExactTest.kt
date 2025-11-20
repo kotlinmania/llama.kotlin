@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

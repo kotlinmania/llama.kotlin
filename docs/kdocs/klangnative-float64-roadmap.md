@@ -15,19 +15,19 @@ This note outlines the plan to implement IEEE‑754 binary64 (double) in pure Ko
   - Pending: full carry chain for 64×64→128 multiply; 128/64 division (Knuth D), wide shifts/compare utilities.
 
 ## Implementation Plan
-1) Integer backbone (ai.solace.klang.int.hpc)
+1) Integer backbone (ai.solace.klangnative.int.hpc)
    - Complete 64×64→128 multiply with full carry propagation (HPC16x8).
    - Implement 128/64 division (normalize → trial quotient → correction) in base 2¹⁶.
    - Add helpers: left/right shift by k bits, by limbs; compare; isZero.
 
-2) Float64 builtins (ai.solace.klang.bitwise)
+2) Float64 builtins (ai.solace.klangnative.bitwise)
    - Port `fp_add_impl.inc` / `fp_sub_impl.inc` variants for 52‑bit fraction + hidden bit.
    - Port `fp_mul_impl.inc`: exact 106‑bit product via HPC16x8; normalize and round.
    - Port `fp_div_impl.inc`: scaled quotient + remainder→sticky, normalization and rounding.
    - Port `fp_sqrt_impl.inc`.
    - Rounding: nearest‑even initially; keep hooks for other IEEE modes and for inexact/underflow/overflow flags (no‑ops for now).
 
-3) Public API (ai.solace.klang.fp)
+3) Public API (ai.solace.klangnative.fp)
    - `CFloat64` inline type with operators +, −, ×, ÷; `sqrt()` function.
    - Classification (NaN, sNaN/qNaN, ±inf, ±0, subnormal), `copysign`, `fmin/fmax` with signed‑zero rules.
    - Conversions: {i32,u32,i64,u64} ↔ f64; f32 ↔ f64 (ties‑to‑even).
@@ -55,6 +55,6 @@ This note outlines the plan to implement IEEE‑754 binary64 (double) in pure Ko
 - Cross‑platform determinism: rely solely on limb math and bit‑ops, not host FP, inside the core algorithms.
 
 ## Related
-- docs/kdocs/klang-soft-float-and-hpc16.md
+- docs/kdocs/klangnative-soft-float-and-hpc16.md
 - docs/kdocs/kotlin-native-simd-plan.md
 - docs/kdocs/test-triage-2025-09-21.md

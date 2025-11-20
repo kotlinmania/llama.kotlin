@@ -1,7 +1,7 @@
 package ai.solace.bench
 
 // Engine-based benchmark: use ArrayBitShifts/BitShiftEngine for apples-to-apples comparison.
-import ai.solace.klang.bitwise.ArrayBitShifts
+import ai.solace.klangnative.bitwise.ArrayBitShifts
 import kotlin.time.TimeSource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking

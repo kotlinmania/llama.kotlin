@@ -1,4 +1,4 @@
-package ai.solace.klang.int.hpc
+package ai.solace.klangnative.int.hpc
 
 /**
  * HPC16x8: 128-bit unsigned integer stored as 8 little-endian 16-bit limbs.

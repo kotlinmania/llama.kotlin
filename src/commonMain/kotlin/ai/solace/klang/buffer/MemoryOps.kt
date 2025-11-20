@@ -1,4 +1,4 @@
-package ai.solace.klang.buffer
+package ai.solace.klangnative.buffer
 
 /** Portable equivalents of common C memory primitives. */
 object MemoryOps {

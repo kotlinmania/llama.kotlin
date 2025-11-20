@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 /**
  * Helpers for compact packing/unpacking of small-width lanes (nibbles, bitplanes,

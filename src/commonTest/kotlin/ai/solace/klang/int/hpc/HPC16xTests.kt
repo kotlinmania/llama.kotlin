@@ -1,4 +1,4 @@
-package ai.solace.klang.int.hpc
+package ai.solace.klangnative.int.hpc
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

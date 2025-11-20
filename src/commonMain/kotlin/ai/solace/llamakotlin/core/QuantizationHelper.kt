@@ -1,5 +1,6 @@
 package ai.solace.llamakotlin.core
 
+import ai.solace.klangnative.fp.CFloat32
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -155,15 +156,15 @@ internal fun makeQKX2Quants(
 ): QuantizationStats {
     var minVal = values[valuesOffset]
     var maxVal = minVal
-    var sumW = weights.weightAt(weightsOffset, 0)
+    var sumW = CFloat32.fromFloat(weights.weightAt(weightsOffset, 0))
     var sumX = sumW * values[valuesOffset]
     for (i in 1 until n) {
         val xi = values[valuesOffset + i]
         if (xi < minVal) minVal = xi
         if (xi > maxVal) maxVal = xi
-        val w = weights.weightAt(weightsOffset, i)
-        sumW += w
-        sumX += w * xi
+        val w = CFloat32.fromFloat(weights.weightAt(weightsOffset, i))
+        sumW = sumW + w
+        sumX = sumX + w * xi
     }
     if (minVal > 0f) minVal = 0f
     if (maxVal == minVal) {
@@ -193,42 +194,42 @@ internal fun makeQKX2Quants(
 
     for (step in 0..nstep) {
         val stepIscale = (rmin + rdelta * step + nmax) / (maxFixed - currentMin)
-        var sumL = 0f
-        var sumL2 = 0f
-        var sumXL = 0f
+        var sumL = CFloat32.fromFloat(0f)
+        var sumL2 = CFloat32.fromFloat(0f)
+        var sumXL = CFloat32.fromFloat(0f)
         for (i in 0 until n) {
             val xi = values[valuesOffset + i]
             var l = nearestIntFloat(stepIscale * (xi - currentMin))
             l = l.coerceIn(0, nmax)
             aux[auxOffset + i] = l.toByte()
-            val w = weights.weightAt(weightsOffset, i)
-            val lf = l.toFloat()
-            sumL += w * lf
-            sumL2 += w * lf * lf
-            sumXL += w * lf * xi
+            val w = CFloat32.fromFloat(weights.weightAt(weightsOffset, i))
+            val lf = CFloat32.fromFloat(l.toFloat())
+            sumL = sumL + (w * lf)
+            sumL2 = sumL2 + (w * lf * lf)
+            sumXL = sumXL + (w * lf * xi)
         }
         val D = sumW * sumL2 - sumL * sumL
-        if (D > 0f) {
+        if (D.toFloat() > 0f) {
             var scaleCand = (sumW * sumXL - sumX * sumL) / D
             var minCand = (sumL2 * sumX - sumL * sumXL) / D
-            if (minCand > 0f) {
-                minCand = 0f
+            if (minCand.toFloat() > 0f) {
+                minCand = CFloat32.fromFloat(0f)
                 scaleCand = sumXL / sumL2
             }
-            var metric = 0f
+            var metric = CFloat32.fromFloat(0f)
             for (i in 0 until n) {
-                val xi = values[valuesOffset + i]
-                val li = (aux[auxOffset + i].toInt() and 0xFF).toFloat()
+                val xi = CFloat32.fromFloat(values[valuesOffset + i])
+                val li = CFloat32.fromFloat((aux[auxOffset + i].toInt() and 0xFF).toFloat())
                 var diff = scaleCand * li + minCand - xi
-                diff = if (useMad) abs(diff) else diff * diff
-                val w = weights.weightAt(weightsOffset, i)
-                metric += w * diff
+                diff = if (useMad) CFloat32.fromFloat(abs(diff.toFloat())) else diff * diff
+                val w = CFloat32.fromFloat(weights.weightAt(weightsOffset, i))
+                metric = metric + w * diff
             }
-            if (metric < bestMetric) {
+            if (metric.toFloat() < bestMetric) {
                 for (i in 0 until n) dest[destOffset + i] = aux[auxOffset + i]
-                bestMetric = metric
-                scale = scaleCand
-                currentMin = minCand
+                bestMetric = metric.toFloat()
+                scale = scaleCand.toFloat()
+                currentMin = minCand.toFloat()
             }
         }
     }
@@ -257,15 +258,15 @@ internal fun makeQKX3Quants(
 ): QuantizationStats {
     var minVal = values[valuesOffset]
     var maxVal = minVal
-    var sumW = qkx3Weight(values, valuesOffset, weights, weightsOffset, 0)
+    var sumW = CFloat32.fromFloat(qkx3Weight(values, valuesOffset, weights, weightsOffset, 0))
     var sumX = sumW * values[valuesOffset]
     for (i in 1 until n) {
         val xi = values[valuesOffset + i]
         if (xi < minVal) minVal = xi
         if (xi > maxVal) maxVal = xi
-        val w = qkx3Weight(values, valuesOffset, weights, weightsOffset, i)
-        sumW += w
-        sumX += w * xi
+        val w = CFloat32.fromFloat(qkx3Weight(values, valuesOffset, weights, weightsOffset, i))
+        sumW = sumW + w
+        sumX = sumX + w * xi
     }
     if (minVal > 0f) minVal = 0f
     if (maxVal <= minVal) {
@@ -295,42 +296,42 @@ internal fun makeQKX3Quants(
 
     for (step in 0..nstep) {
         val stepIscale = (rmin + rdelta * step + nmax) / (maxFixed - currentMin)
-        var sumL = 0f
-        var sumL2 = 0f
-        var sumXL = 0f
+        var sumL = CFloat32.fromFloat(0f)
+        var sumL2 = CFloat32.fromFloat(0f)
+        var sumXL = CFloat32.fromFloat(0f)
         for (i in 0 until n) {
             val xi = values[valuesOffset + i]
             var l = nearestIntFloat(stepIscale * (xi - currentMin))
             l = l.coerceIn(0, nmax)
             aux[auxOffset + i] = l.toByte()
-            val w = qkx3Weight(values, valuesOffset, weights, weightsOffset, i)
-            val lf = l.toFloat()
-            sumL += w * lf
-            sumL2 += w * lf * lf
-            sumXL += w * lf * xi
+            val w = CFloat32.fromFloat(qkx3Weight(values, valuesOffset, weights, weightsOffset, i))
+            val lf = CFloat32.fromFloat(l.toFloat())
+            sumL = sumL + (w * lf)
+            sumL2 = sumL2 + (w * lf * lf)
+            sumXL = sumXL + (w * lf * xi)
         }
         val D = sumW * sumL2 - sumL * sumL
-        if (D > 0f) {
+        if (D.toFloat() > 0f) {
             var scaleCand = (sumW * sumXL - sumX * sumL) / D
             var minCand = (sumL2 * sumX - sumL * sumXL) / D
-            if (minCand > 0f) {
-                minCand = 0f
+            if (minCand.toFloat() > 0f) {
+                minCand = CFloat32.fromFloat(0f)
                 scaleCand = sumXL / sumL2
             }
-            var metric = 0f
+            var metric = CFloat32.fromFloat(0f)
             for (i in 0 until n) {
-                val xi = values[valuesOffset + i]
-                val li = (aux[auxOffset + i].toInt() and 0xFF).toFloat()
+                val xi = CFloat32.fromFloat(values[valuesOffset + i])
+                val li = CFloat32.fromFloat((aux[auxOffset + i].toInt() and 0xFF).toFloat())
                 var diff = scaleCand * li + minCand - xi
-                diff = if (useMad) abs(diff) else diff * diff
-                val w = qkx3Weight(values, valuesOffset, weights, weightsOffset, i)
-                metric += w * diff
+                diff = if (useMad) CFloat32.fromFloat(abs(diff.toFloat())) else diff * diff
+                val w = CFloat32.fromFloat(qkx3Weight(values, valuesOffset, weights, weightsOffset, i))
+                metric = metric + w * diff
             }
-            if (metric < bestMetric) {
+            if (metric.toFloat() < bestMetric) {
                 for (i in 0 until n) dest[destOffset + i] = aux[auxOffset + i]
-                bestMetric = metric
-                scale = scaleCand
-                currentMin = minCand
+                bestMetric = metric.toFloat()
+                scale = scaleCand.toFloat()
+                currentMin = minCand.toFloat()
             }
         }
     }

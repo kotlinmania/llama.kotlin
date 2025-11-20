@@ -1,4 +1,4 @@
-package ai.solace.klang.bitwise
+package ai.solace.klangnative.bitwise
 
 // Precomputed constants for 16-bit limb shifts
 internal object ShiftTables16 {
