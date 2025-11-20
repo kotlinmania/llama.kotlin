@@ -9,7 +9,11 @@ plugins {
     kotlin("multiplatform") version "2.2.20" apply true
     id("org.barfuin.gradle.taskinfo") version "2.2.0"
     idea
+    id("maven-publish")
 }
+
+group = "ai.solace"
+version = "0.7.1"
 
 //project.gradle.taskGraph.whenReady { println(project.gradle.taskGraph.allTasks) }
 

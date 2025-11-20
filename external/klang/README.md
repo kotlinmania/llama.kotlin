@@ -1,10 +1,10 @@
-# KLang
+# KLangNative
 
-**Pure Kotlin multiplatform systems programming library for exact C code porting** — providing deterministic, bit-exact low-level primitives across all platforms (JVM, JavaScript, Native) to enable reliable C-to-Kotlin code migration.
+**Native-first, C-layout systems programming library in pure Kotlin** — optimized for deterministic, bit-exact low-level primitives on Kotlin/Native (and JVM). JavaScript parity is out-of-scope until a native addon exists.
 
-## What is KLang?
+## What is KLangNative?
 
-KLang is **not** a cinterop wrapper or FFI layer. It's a **pure Kotlin implementation** that precisely replicates C's bitwise operations, memory model, and numeric behavior. This enables accurate porting of C code to idiomatic Kotlin multiplatform while maintaining exact bit-level compatibility.
+KLangNative is **not** a cinterop wrapper or FFI layer. It's a **pure Kotlin implementation** that precisely replicates C's bitwise operations, memory model, and numeric behavior—with a priority on native performance and ABI fidelity. JS support is deferred; native heap and C/Metal interop are the focus.
 
 ## Why KLang Exists
 

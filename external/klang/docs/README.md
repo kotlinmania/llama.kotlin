@@ -1,11 +1,11 @@
-# KLang Documentation
+# KLangNative Documentation
 
-KLang is a pure Kotlin multiplatform library that provides bit-exact C semantics for porting C code to Kotlin. This documentation is organized by topic to help you understand and use the library effectively.
+KLangNative is a pure Kotlin (native-first) library that provides bit-exact C semantics for porting C code to Kotlin. JS parity is deferred; native performance and ABI fidelity are the priority.
 
 ## Getting Started
 
 - **[Overview](general/overview.md)** - Goals, principles, and layout
-- **[Build and Run](general/build-and-run.md)** - How to build and run KLang
+- **[Build and Run](general/build-and-run.md)** - How to build and run KLangNative
 - **[Philosophy and Design](general/philosophy-and-design.md)** - Core design principles
 
 ## Core Components
@@ -30,7 +30,7 @@ KLang is a pure Kotlin multiplatform library that provides bit-exact C semantics
 
 ## Porting C Code
 
-- **[C to KLang Guide](components/porting/README.md)** - Authoritative rules for porting C code
+- **[C to KLangNative Guide](components/porting/README.md)** - Authoritative rules for porting C code
 - **[Quick Reference](components/porting/quick-reference.md)** - Quick lookup for common patterns
 - **[CLib Strings](general/clib-strings.md)** - String and memory functions (strlen, strcmp, memcpy, etc.)
 
@@ -45,7 +45,7 @@ KLang is a pure Kotlin multiplatform library that provides bit-exact C semantics
 ## Key Principles
 
 ### Pure Kotlin Multiplatform
-KLang is **not** cinterop. It's pure Kotlin code that replicates C semantics exactly, enabling C algorithm ports to work identically across JVM, Native, and JS targets.
+KLangNative is **not** cinterop. It's pure Kotlin code that replicates C semantics exactly, enabling C algorithm ports to work identically across JVM and Native; JS requires a native addon and is currently out-of-scope.
 
 ### Zero-Copy Heap Operations
 All data lives in GlobalHeap. Variables exist in-place, accessed via typed loads/stores. No copying to/from Kotlin arrays.

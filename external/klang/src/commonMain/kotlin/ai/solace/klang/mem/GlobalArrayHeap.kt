@@ -347,6 +347,26 @@ object GlobalHeap {
     fun memmove(dst: Int, src: Int, bytes: Int) = FastMem.memmove(dst, src, bytes)
 
     fun memset(addr: Int, value: Int, bytes: Int) = FastMem.memset(addr, value, bytes)
+
+    /** Copy an IntArray into heap as 32-bit little-endian words. */
+    fun copyFromIntArray(dst: Int, src: IntArray, count: Int = src.size) {
+        require(count <= src.size) { "count exceeds src size" }
+        var d = dst
+        for (i in 0 until count) {
+            sw(d, src[i])
+            d += 4
+        }
+    }
+
+    /** Copy heap 32-bit words into an IntArray. */
+    fun copyToIntArray(src: Int, dst: IntArray, count: Int = dst.size) {
+        require(count <= dst.size) { "count exceeds dst size" }
+        var s = src
+        for (i in 0 until count) {
+            dst[i] = lw(s)
+            s += 4
+        }
+    }
 }
 
 // (Pointer extension utilities live in default-package PointerExtensions.kt to avoid package visibility issues)
