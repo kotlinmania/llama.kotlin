@@ -17,7 +17,7 @@ It summarizes the current project state and lists recommended next steps. Before
 - The original C/C++ sources remain under `src` while porting progresses
 - Design notes and porting progress are documented in:
   - `KOTLIN_PORT_CHECKLIST.md` - Detailed development roadmap with current progress
-  - `KOTLIN_PORT_STATUS.md` - Overall project status and completion overview  
+  - `KOTLIN_PORT_STATUS.md` - Overall project status and completion overview
   - `GGML_COMPUTE_OPS_DESIGN.md` - Technical design for computation operations
   - `TENSOR_OPERATIONS_DESIGN.md` - Design patterns for tensor operations
   - `CPP_CORE_ANALYSIS.md` - Analysis of original C++ codebase
@@ -39,14 +39,14 @@ It summarizes the current project state and lists recommended next steps. Before
   - Multi-dimensional indexing with proper stride calculations
 - **Advanced Quantization Ecosystem**: Comprehensive quantization support implemented
   - Q8_0: F16 scale + 32xI8 weights (34 bytes per block)
-  - Q4_0: F16 scale + 32x4-bit packed weights (18 bytes per block)  
+  - Q4_0: F16 scale + 32x4-bit packed weights (18 bytes per block)
   - Q4_1: 2x F16 scale/min + 32x4-bit packed weights (20 bytes per block)
   - BitNet 1.58: Ternary quantization with F16 scale + base-3 packing (10 bytes per block)
   - Optimized dot product routines for all quantized operations
   - Direct quantized-to-quantized operations (Q×Q) avoiding expensive dequantization
 - **Matrix Multiplication Optimization Framework**: Complete optimization coverage
   - Symmetric F32×Q_type optimizations providing 2-3x speedups
-  - Direct Q_type×Q_type operations providing 3-5x speedups  
+  - Direct Q_type×Q_type operations providing 3-5x speedups
   - Mixed quantized operations (Q8_0×Q4_0, etc.)
   - Performance validation with comprehensive benchmarking suite
 - **Core Tensor Operations**: Element-wise and matrix operations with multi-type support
@@ -54,7 +54,7 @@ It summarizes the current project state and lists recommended next steps. Before
   - Activation functions: RELU, GELU, SILU, RMSNorm
   - Broadcasting and dimension validation with proper error handling
 - **GGUF File Format Support**: Complete model loading pipeline
-  - Binary GGUF file parsing with metadata extraction  
+  - Binary GGUF file parsing with metadata extraction
   - Tensor loading and integration with existing tensor system
   - Model validation through forward pass testing
   - Support for all standard GGUF data types and structures
@@ -69,15 +69,14 @@ It summarizes the current project state and lists recommended next steps. Before
   - Eliminated memory allocation within compute operations for improved efficiency
   - Aligned with GGML architecture patterns for memory reuse and graph optimization
 - **Comprehensive Testing Infrastructure**: Multi-tier validation and benchmarking
-  - Unit tests with complete coverage for all core operations  
+  - Unit tests with complete coverage for all core operations
   - Quantization accuracy testing with rigorous MSE, RMSE, MAD validation
   - Performance benchmarking suite with throughput and latency metrics
   - Integration tests for end-to-end workflows and mathematical expressions
   - Reference validation framework with analytical validation
   - Memory stress testing and allocation efficiency validation
-  - kcoro ping-pong benchmarks remain macOS arm64-specific under `src/macosArm64Test/...`.
 
-### 🔄 In Progress  
+### 🔄 In Progress
 - **Additional Quantization**: K-Quant types (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K)
 - **CPU Backend Formalization**: Structured CPU backend with multi-threading support
 - **Model Architecture Implementation**: LLaMA model structures and inference pipeline
@@ -127,7 +126,7 @@ It summarizes the current project state and lists recommended next steps. Before
   ```
   Alternatively set `GRADLE_OPTS="-Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts"` to use the system certificate store
 - **Target Platforms**: Currently targets macOS (x64 and arm64) - configured in `build.gradle.kts`
-- **Test Structure**: 
+- **Test Structure**:
   - Unit tests: `src/commonTest/kotlin/ai/solace/llamakotlin/core/`
   - Test categories: Core operations, memory allocation, quantization accuracy, data accessors
   - Run tests: `./gradlew allTests` (when build system is accessible)
@@ -137,7 +136,7 @@ It summarizes the current project state and lists recommended next steps. Before
 - **GGMLComputeOpsTest.kt**: Core tensor operations (ADD, MUL, MatMul, activations)
 - **GGMLComputeOpsDestinationTest.kt**: New destination-based compute operations interface
 - **GGMLQuantizationAccuracyTest.kt**: Q8_0, Q4_0, Q4_1 quantization accuracy validation
-- **GGMLAllocTest.kt**: Memory allocation and graph planning functionality  
+- **GGMLAllocTest.kt**: Memory allocation and graph planning functionality
 - **GGMLTypesTest.kt**: Tensor data accessors and type handling
 
 ## Implementation Priorities (Based on Current Checklist Status)
@@ -153,7 +152,7 @@ It summarizes the current project state and lists recommended next steps. Before
    - Implement multi-threading for graph computation using Kotlin coroutines
    - Explore SIMD optimizations within Kotlin/Native constraints
 
-3. **Additional Quantization Support** 
+3. **Additional Quantization Support**
    - Implement K-Quant types (Q4_K, Q2_K) with block structures and optimized operations
    - Extend matrix multiplication optimization framework to cover new quantization formats
    - Maintain comprehensive testing coverage for accuracy and performance
@@ -180,15 +179,15 @@ It summarizes the current project state and lists recommended next steps. Before
    - Integration examples and usage documentation
 
 ### 📚 Implementation Resources
-- **Memory Management Patterns**: See `GGMLAlloc.kt` for tensor and graph allocation strategies  
+- **Memory Management Patterns**: See `GGMLAlloc.kt` for tensor and graph allocation strategies
 - **Quantization Implementation**: Reference `GGMLComputeOps.kt` for Q8_0/Q4_0/Q4_1 patterns
 - **Data Access Patterns**: See `GGMLTensor` accessor methods for ByteArray-based storage
-- **Testing Patterns**: Follow existing test structure in `src/commonTest/kotlin/` 
+- **Testing Patterns**: Follow existing test structure in `src/commonTest/kotlin/`
 - **Utility Patterns**: Use `GGMLUtilities.kt` for formatting, display, and ByteArray operations
 - **DRY Implementation**: Reference centralized utilities to avoid code duplication:
   - `GGMLTensorUtils.calculateTotalSize()` for tensor size calculations
   - `ByteArrayExtensions` for consistent little-endian operations
-  - `DemoTextUtilities` for reusable demo components 
+  - `DemoTextUtilities` for reusable demo components
 
 ## Technical Implementation Guidance
 
@@ -200,7 +199,7 @@ allocator.reserve(graph, bufferSize)
 val tensor = allocator.allocateTensor(type, dimensions) // Automatically uses inplace when possible
 ```
 
-### Quantization Implementation Pattern  
+### Quantization Implementation Pattern
 ```kotlin
 // Follow block-based quantization pattern
 // 1. Define block structure (scale + packed weights)
@@ -214,12 +213,12 @@ val tensor = allocator.allocateTensor(type, dimensions) // Automatically uses in
 ```kotlin
 // 1. Add operation enum to GGMLOp
 // 2. Implement computation in GGMLComputeOps.kt using destination-based approach:
-fun computeNewOp(graphAllocator: GGMLGraphAllocator, context: GGMLContext, 
+fun computeNewOp(graphAllocator: GGMLGraphAllocator, context: GGMLContext,
                  a: GGMLTensor, b: GGMLTensor, dst: GGMLTensor) {
     // Write directly to dst tensor using allocator-managed memory
     dst.setFloat(graphAllocator, result, *indices)
 }
-// 3. Add high-level interface in GGMLOps.kt  
+// 3. Add high-level interface in GGMLOps.kt
 // 4. Create unit tests in GGMLComputeOpsDestinationTest.kt
 // 5. Add backward pass for automatic differentiation
 // 6. Use GGMLUtilities for consistent formatting and display
@@ -228,7 +227,7 @@ fun computeNewOp(graphAllocator: GGMLGraphAllocator, context: GGMLContext,
 
 ## Project Scope and Backend Support
 - **Supported Backends**: CPU (primary focus); additional accelerators are deferred
-- **Archived Backends**: CUDA, hipBLAS, Vulkan, SYCL, MUSA, and CANN backends moved to `archive/` 
+- **Archived Backends**: CUDA, hipBLAS, Vulkan, SYCL, MUSA, and CANN backends moved to `archive/`
 - **Platform Targets**: macOS (x64 and arm64) with future support for other Kotlin/Native targets
 - **Memory Model**: Adapted for Kotlin/Native's memory management (different from C++ original)
 
@@ -267,7 +266,7 @@ This repository uses a clear, low-friction split between ground truth and aspira
 - Navigation: Folder structure is the linkage. We avoid nested READMEs for navigation. One top-level index exists: `architectural_index.md`.
 
 What goes where
-- Component folders (e.g., `external/kcoro_arena/docs/components/stackless_runtime/`):
+- Component folders:
   - `*_VERIFIED.md` — shipping behavior and tests (ground truth).
   - `*_FUTURE.md` — a stub that stays in place and points to the centralized backlog (preserves local links and traceability).
 - Central backlog (`docs/backlog/...`):

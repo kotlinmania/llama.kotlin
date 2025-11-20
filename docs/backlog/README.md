@@ -15,8 +15,6 @@ This folder centralizes FUTURE docs, each filename carries the related GitHub is
   - CHANNEL_DESIGN_issues-115.md
 - arena/descriptors
   - DESCRIPTOR_REFCOUNTING_issues-110-116.md
-- kcoro/core
-  - CORE_issues-118.md
 
 Conventions:
 - Keep FUTURE content here up to date with referenced issues.

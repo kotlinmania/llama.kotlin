@@ -54,7 +54,7 @@ This checklist is based on the current state of the Kotlin Native port of llama.
 - [x] **Major Compute Operations Refactor** (Issue #42)
     - [x] Transformed all compute operations from memory-allocating functions to destination-based operations
     - [x] Updated function signatures: `computeAdd(...): GGMLTensor` → `computeAdd(..., dst: GGMLTensor)`
-    - [x] Eliminated memory allocation within compute operations for improved efficiency  
+    - [x] Eliminated memory allocation within compute operations for improved efficiency
     - [x] Operations now write directly into allocator-managed buffers using `dst.setFloat()`
     - [x] All core operations refactored: ADD, MUL, SUB, DIV, NEG, RELU, GELU, MatMul
     - [x] Maintained support for all tensor data types (F32, F16, I8, I16, I32, I64, quantized)
@@ -137,18 +137,18 @@ This checklist is based on the current state of the Kotlin Native port of llama.
     - [ ] Cross-check Kotlin vs merge-dev outputs on deterministic tensors; store fixtures for regression tests.
   - [x] **Comprehensive Matrix Multiplication Optimization** (Issue #48)
     - [x] Implemented symmetric F32 x Q_type optimizations replacing expensive dequantization fallbacks
-      - [x] `computeDotProductF32Q40` for F32 x Q4_0 operations  
+      - [x] `computeDotProductF32Q40` for F32 x Q4_0 operations
       - [x] `computeDotProductF32Q41` for F32 x Q4_1 operations
       - [x] `computeDotProductF32Q80` for F32 x Q8_0 operations
     - [x] Implemented direct quantized-to-quantized Q_type x Q_type operations
       - [x] `computeDotProductQ80Q80` for Q8_0 x Q8_0 operations
-      - [x] `computeDotProductQ40Q40` for Q4_0 x Q4_0 operations  
+      - [x] `computeDotProductQ40Q40` for Q4_0 x Q4_0 operations
       - [x] `computeDotProductQ41Q41` for Q4_1 x Q4_1 operations
     - [x] `computeDotProductQ80Q40` for mixed Q8_0 x Q4_0 operations
     - [x] Integrated all optimizations into `computeMatMul` with proper type dispatch
     - [x] **Performance Testing & Validation**
       - [x] `GGMLMatMulOptimizationTest.kt` - Comprehensive accuracy validation comparing optimized vs fallback paths
-      - [x] `GGMLMatMulBenchmarkTest.kt` - Performance microbenchmarking for common LLM matrix sizes  
+      - [x] `GGMLMatMulBenchmarkTest.kt` - Performance microbenchmarking for common LLM matrix sizes
       - [x] Performance profiling for individual dot product kernels
       - [x] Memory usage analysis and stress testing with large matrices
       - [x] Expected speedups: 2-5x for Q×Q operations, 1.5-3x for F32×Q operations
@@ -220,7 +220,6 @@ Why this matters now
   - [ ] Validate zero-copy pathways with existing quantization workflows
 
 - [ ] Revisit GPU/SIMD integration after CPU parity and tests are locked
-  - [ ] Capture lessons learned from kcoro experiments for any future accelerator work
 
 ## Phase 5: LLaMA Model Implementation
 
@@ -416,7 +415,7 @@ With the shared klang primitives in place, the remaining work focuses on merge-d
 
 2.  **Fixture & Test Regeneration**
     *   Generate golden K-Quant/BitNet blocks from the merge-dev C reference and add byte-for-byte regression tests.
-    *   Re-enable `macosArm64Test` (and other native suites) using the refreshed fixtures; keep coroutine benchmarks in the loop.
+    *   Re-enable `macosArm64Test` (and other native suites) using the refreshed fixtures.
 
 3.  **Documentation & Checklist**
     *   Update quantization/bitwise design docs and `KOTLIN_PORT_STATUS.md` to reflect parity progress and new helper modules.
@@ -425,10 +424,6 @@ With the shared klang primitives in place, the remaining work focuses on merge-d
 4.  **Backend Enablement**
     *   Resume CPU backend formalization (threading/SIMD) once quantizer parity is complete.
     *   Stage the GGUF parsing refresh so model loading consumes the corrected tensor layouts.
-
-5.  **Backend & kcoro Follow-Up**
-    *   Prototype coroutine-friendly block streaming on the CPU backend after parity is confirmed.
-    *   Expand `kcoroBench` coverage to include post-parity kernels and track Kotlin vs kcoro performance.
 
 ## Build Environment
 
@@ -440,9 +435,9 @@ The project is set up as a Kotlin Multiplatform project with the following struc
 - **Design Documents**: TENSOR_OPERATIONS_DESIGN.md, GGML_COMPUTE_OPS_DESIGN.md, GGUF_IMPLEMENTATION.md (in progress)
 - **Status Document**: KOTLIN_PORT_STATUS.md
 
-The project targets macOS platforms (both x64 and arm64) and uses Gradle for building. Key commands: `./gradlew build -x macosArm64Test` (current green) and `./gradlew macosArm64Test` (failing until fixtures are regenerated). KCoro benchmarks run via `./gradlew kcoroBench`.
+The project targets macOS platforms (both x64 and arm64) and uses Gradle for building. Key commands: `./gradlew build -x macosArm64Test` (current green) and `./gradlew macosArm64Test` (failing until fixtures are regenerated).
 
-Note: All legacy llama.cpp archives, GPU backends, and examples were removed in October 2025. The repo now retains only the Kotlin/Native sources, kcoro runtimes under `external/`, klang in `src/commonMain/kotlin/ai/solace/klang`, and header snapshots in `spm-headers/` for archival reference (e.g., potential Swift/Metal integration later).
+Note: All legacy llama.cpp archives, GPU backends, and examples were removed in October 2025. The repo now retains only the Kotlin/Native sources, runtimes under `external/`, klang in `src/commonMain/kotlin/ai/solace/klang`, and header snapshots in `spm-headers/` for archival reference (e.g., potential Swift/Metal integration later).
 
 ## Challenges and Considerations
 

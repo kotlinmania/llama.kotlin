@@ -17,12 +17,12 @@ That document provides:
 - **Fairness/priority hints**: Weighted round-robin scheduling, API extensions
 
 Current verified behavior is documented in:
-- [OVERVIEW_VERIFIED.md](../../../external/kcoro_arena/docs/components/token_kernel/OVERVIEW_VERIFIED.md)
+- [OVERVIEW_VERIFIED.md](../../../external/arena/docs/components/token_kernel/OVERVIEW_VERIFIED.md)
 
 ## Recommended priorities
 
 1. **Batching** (highest ROI, low risk)
-2. **Descriptor pooling** (medium ROI, coordinate with descriptor subsystem)  
+2. **Descriptor pooling** (medium ROI, coordinate with descriptor subsystem)
 3. **Fairness** (workload-dependent, higher complexity)
 
 ## Other future directions

@@ -26,9 +26,8 @@ This is a **Kotlin/Native implementation** of llama.cpp, designed to bring the p
 
 ## Status Snapshot (October 7, 2025)
 
-- kcoro interop is now gated behind `expect/actual` wrappers: non-Apple targets receive inert stubs while macOS/Arm64 keeps the native bindings. `./gradlew build -x macosArm64Test` succeeds across JVM/JS/native targets. Running `./gradlew macosArm64Test` currently fails: legacy llama.cpp-style tensor/model tests (BitNet 1.58, GGML integration, inference pipeline) expect archived fixtures and need to be reworked for the Kotlin port. The kcoro benchmark itself is opt-in—set `ENABLE_KCORO_BENCH=1` to exercise it on Apple Silicon.
-- The legacy `archive/` and `examples/` trees from the original llama.cpp have been removed. Kotlin sources now depend solely on the vendored `external/kcoro` / `external/kcoro_cpp` runtimes and the rewritten Kotlin/Native code.
-- macOS-specific kcoro benchmarks were moved to `src/macosArm64Test`. Other target test suites execute normally (JS/JVM/Native metadata), while kcoro tests are skipped when interop is unavailable.
+- The legacy `archive/` and `examples/` trees from the original llama.cpp have been removed.
+- macOS-specific benchmarks were moved to `src/macosArm64Test`. Other target test suites execute normally (JS/JVM/Native metadata).
 
 ## Current Status - Phase 3-4 (Advanced Core Implementation & Backend Development)
 
@@ -46,14 +45,14 @@ The project is actively under development with substantial progress across multi
   - Multi-dimensional tensor indexing with proper stride calculations
 - **Advanced Quantization Support**: Comprehensive quantization ecosystem implemented
   - **Q8_0**: F16 scale + 32xI8 weights (34 bytes per block)
-  - **Q4_0**: F16 scale + 32x4-bit packed weights (18 bytes per block)  
+  - **Q4_0**: F16 scale + 32x4-bit packed weights (18 bytes per block)
   - **Q4_1**: 2x F16 scale/min + 32x4-bit packed weights (20 bytes per block)
   - **BitNet 1.58**: Ternary quantization with F16 scale + base-3 packing (10 bytes per block)
   - Optimized dot product routines for all quantized operations
   - Direct quantized-to-quantized operations (Q×Q) avoiding expensive dequantization
 - **Matrix Multiplication Optimizations**: Complete optimization coverage for all quantization combinations
   - Symmetric F32×Q_type optimizations (2-3x speedup)
-  - Direct Q_type×Q_type operations (3-5x speedup)  
+  - Direct Q_type×Q_type operations (3-5x speedup)
   - Mixed quantized operations (Q8_0×Q4_0, etc.)
   - Performance validation with comprehensive benchmarking suite
 - **Core Tensor Operations**: Element-wise and matrix operations with multi-type support
@@ -67,7 +66,7 @@ The project is actively under development with substantial progress across multi
   - Support for all standard GGUF data types and structures
 - **Automatic Differentiation**: Backward pass implementation for core operations
   - ADD, SUB, MUL, NEG, DIV, SQR, SQRT operations
-  - RELU, GELU activation functions  
+  - RELU, GELU activation functions
   - MUL_MAT (matrix multiplication)
   - SUM, MEAN, REPEAT operations
 - **Compute Operations Architecture**: Major refactor to destination-based operations
@@ -76,7 +75,7 @@ The project is actively under development with substantial progress across multi
   - Eliminated memory allocation within compute operations for improved efficiency
   - Aligned with GGML architecture patterns for memory reuse and graph optimization
 
-### 🔄 In Progress  
+### 🔄 In Progress
 - **Additional Quantization**: K-Quant types (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K)
 - **CPU Backend Formalization**: Structured CPU backend with multi-threading support
 - **Model Architecture Implementation**: LLaMA model structures and inference pipeline
@@ -85,7 +84,7 @@ The project is actively under development with substantial progress across multi
 - **Unit Tests**: Complete coverage for core operations under `src/commonTest/kotlin`
   - Element-wise operations (ADD, MUL, SUB, DIV, NEG, SQR, SQRT)
   - Matrix operations with all quantization combinations
-  - Activation functions (RELU, GELU, SILU, RMSNorm) 
+  - Activation functions (RELU, GELU, SILU, RMSNorm)
   - Error handling and edge cases (scalar tensors, dimension mismatches)
 - **Quantization Accuracy Tests**: Rigorous validation with standardized metrics
   - MSE, RMSE, MAD, SNR analysis for all quantization types
@@ -93,13 +92,13 @@ The project is actively under development with substantial progress across multi
   - Synthetic, random, and edge case test vectors
   - Cross-quantization performance validation
 - **Performance Benchmarking**: Comprehensive performance validation suite
-  - Throughput (MB/s) and operations-per-second metrics  
+  - Throughput (MB/s) and operations-per-second metrics
   - Matrix multiplication optimization validation (2-5x speedups achieved)
   - Memory allocation efficiency testing
   - Scalability analysis across data sizes
 - **Integration Tests**: End-to-end workflow validation
   - Complex computation chains and mathematical expressions
-  - Mixed precision workflows (F32 ↔ F16) 
+  - Mixed precision workflows (F32 ↔ F16)
   - Memory stress testing with large-scale operations
   - GGUF model loading and forward pass validation
 - **Reference Validation Framework**: Mathematical accuracy assurance
@@ -116,7 +115,7 @@ The project is actively under development with substantial progress across multi
 
 For detailed development information, see:
 - [**KOTLIN_PORT_CHECKLIST.md**](KOTLIN_PORT_CHECKLIST.md) - Detailed development roadmap with current progress
-- [**KOTLIN_PORT_STATUS.md**](KOTLIN_PORT_STATUS.md) - Overall project status and completion overview  
+- [**KOTLIN_PORT_STATUS.md**](KOTLIN_PORT_STATUS.md) - Overall project status and completion overview
 - [**COMPUTE_OPERATIONS_REFACTOR_SUMMARY.md**](COMPUTE_OPERATIONS_REFACTOR_SUMMARY.md) - Major architectural refactor details
 - [**MATMUL_OPTIMIZATION_SUMMARY.md**](MATMUL_OPTIMIZATION_SUMMARY.md) - Comprehensive matrix multiplication optimizations
 - [**GGUF_IMPLEMENTATION.md**](GGUF_IMPLEMENTATION.md) - GGUF file format support implementation
@@ -147,12 +146,7 @@ This project uses **Kotlin Multiplatform** with **Gradle** as the build system.
 ./gradlew macosX64Test  # macOS tests (when on macOS)
 ```
 
-### kcoro Benchmarks
-```bash
-./gradlew kcoroBench  # macOS arm64 only
-```
-
-*Note: Legacy llama.cpp C/C++ and Python examples were removed in October 2025; only files required by the Kotlin/Native port remain. Expect kcoro and ggml headers to live under `external/`, `spm-headers/`, and `src/nativeInterop/`.*
+*Note: Legacy llama.cpp C/C++ and Python examples were removed in October 2025; only files required by the Kotlin/Native port remain. Expect ggml headers to live under `external/`, `spm-headers/`, and `src/nativeInterop/`.*
 
 ## Architecture Overview
 
@@ -197,7 +191,7 @@ We welcome contributions to the Kotlin port! Here's how you can help:
 ### Development Focus Areas
 - **Core tensor operations** and optimization
 - **Quantization methods** implementation
-- **CPU backend** development and optimization  
+- **CPU backend** development and optimization
 - **Future accelerator hooks** exposed via backend registry
 - **Testing and validation** against original implementations
 - **Documentation** and examples
@@ -217,7 +211,7 @@ We welcome contributions to the Kotlin port! Here's how you can help:
 
 ## Relationship to Original llama.cpp
 
-This project maintains **conceptual compatibility** with the original [llama.cpp](https://github.com/ggerganov/llama.cpp) while providing a **Kotlin/Native implementation**. 
+This project maintains **conceptual compatibility** with the original [llama.cpp](https://github.com/ggerganov/llama.cpp) while providing a **Kotlin/Native implementation**.
 
 - **Same core concepts**: Tensor operations, quantization methods, and model architectures
 - **Compatible file formats**: Plans to support GGUF and other formats from the original
@@ -228,7 +222,7 @@ This project maintains **conceptual compatibility** with the original [llama.cpp
 
 Beyond the core llama.cpp port, this project explores cutting-edge hybrid architectures:
 - **Liquid Neural Networks Integration**: Actor-based computation with adaptive time constants
-- **Quantum-Classical Hybrid Framework**: Meta-Cognitive Temporal Architecture (MCTA) research  
+- **Quantum-Classical Hybrid Framework**: Meta-Cognitive Temporal Architecture (MCTA) research
 - **Memory Cube Architecture**: Advanced caching and inference optimization strategies
 - **Actor-Coroutine Integration**: Leveraging Kotlin's concurrency model for neural computation
 
@@ -274,7 +268,7 @@ quantizeTensor(originalTensor, quantizedTensor) // Direct quantization
 
 // Optimized matrix multiplication with quantized tensors (2-5x speedup)
 val weights = allocator.allocateTensor(GGMLType.Q4_0, longArrayOf(128, 512))
-val input = allocator.allocateTensor(GGMLType.F32, longArrayOf(32, 128)) 
+val input = allocator.allocateTensor(GGMLType.F32, longArrayOf(32, 128))
 val output = allocator.allocateTensor(GGMLType.F32, longArrayOf(32, 512))
 computeMatMul(allocator, context, input, weights, output) // Uses optimized Q4_0×F32 kernel
 ```

@@ -24,7 +24,7 @@ The GGMLComputeOps.kt file provides the actual computation functionality for ten
 
 ## Kotlin/Native SIMD Roadmap (2025)
 
-We are porting ggml's SIMD-heavy dot-product kernels into idiomatic Kotlin/Native so the project can remain C-free while still leveraging the same AVX/NEON optimizations. The detailed plan lives in [`docs/kdocs/kotlin-native-simd-plan.md`](docs/kdocs/kotlin-native-simd-plan.md) and covers:
+We are porting ggml's SIMD-heavy dot-product kernels into idiomatic Kotlin/Native so the project can remain C-free while still leveraging the same AVX/NEON optimizations. The detailed plan lives in [`docs/kdocs/kotlin-native-simd-plan.md`](kdocs/kotlin-native-simd-plan.md) and covers:
 
 - Helpers that wrap `kotlinx.cinterop.Vector128` to mirror ggml's load/FMA/reduction macros for F32, F16, and BF16 paths.
 - Incremental migration of quantized dot products (Q4/Q5/Q8 and K-quant families) with scalar fallbacks for unsupported architectures.
@@ -40,9 +40,9 @@ All compute operations now follow this pattern:
 
 ```kotlin
 fun computeOperation(
-    graphAllocator: GGMLGraphAllocator, 
-    context: GGMLContext, 
-    inputTensors: ..., 
+    graphAllocator: GGMLGraphAllocator,
+    context: GGMLContext,
+    inputTensors: ...,
     dst: GGMLTensor
 ) {
     // 1. Validate destination tensor dimensions and type
@@ -62,14 +62,14 @@ fun computeOperation(
  * @param graphAllocator The graph allocator managing tensor memory
  * @param context The computation context
  * @param a First input tensor
- * @param b Second input tensor  
+ * @param b Second input tensor
  * @param dst Pre-allocated destination tensor for results
  */
 fun computeAdd(
-    graphAllocator: GGMLGraphAllocator, 
-    context: GGMLContext, 
-    a: GGMLTensor, 
-    b: GGMLTensor, 
+    graphAllocator: GGMLGraphAllocator,
+    context: GGMLContext,
+    a: GGMLTensor,
+    b: GGMLTensor,
     dst: GGMLTensor
 ) {
     // Validate destination tensor
@@ -77,14 +77,14 @@ fun computeAdd(
     require(dst.type == a.type) { "Destination type must match input" }
 
     val totalSize = calculateTotalSize(a.ne)
-    
+
     // Perform the addition based on the tensor type
     when (a.type) {
         GGMLType.F32 -> {
             // Use tensor accessors to write to allocator-managed buffer
             for (i in 0 until totalSize) {
                 val aVal = a.getFloat(graphAllocator, i)
-                val bVal = b.getFloat(graphAllocator, i) 
+                val bVal = b.getFloat(graphAllocator, i)
                 dst.setFloat(graphAllocator, aVal + bVal, i)
             }
         }
@@ -92,7 +92,7 @@ fun computeAdd(
             for (i in 0 until totalSize) {
                 val aVal = a.getInt(graphAllocator, i)
                 val bVal = b.getInt(graphAllocator, i)
-                dst.setInt(graphAllocator, aVal + bVal, i) 
+                dst.setInt(graphAllocator, aVal + bVal, i)
             }
         }
         // Handle other types...
@@ -109,14 +109,14 @@ fun computeAdd(
  * @param graphAllocator The graph allocator managing tensor memory
  * @param context The computation context
  * @param a First input tensor
- * @param b Second input tensor  
+ * @param b Second input tensor
  * @param dst Pre-allocated destination tensor for results
  */
 fun computeMul(
-    graphAllocator: GGMLGraphAllocator, 
-    context: GGMLContext, 
-    a: GGMLTensor, 
-    b: GGMLTensor, 
+    graphAllocator: GGMLGraphAllocator,
+    context: GGMLContext,
+    a: GGMLTensor,
+    b: GGMLTensor,
     dst: GGMLTensor
 ) {
     // Validate destination tensor
@@ -124,13 +124,13 @@ fun computeMul(
     require(dst.type == a.type) { "Destination type must match input" }
 
     val totalSize = calculateTotalSize(a.ne)
-    
+
     // Perform multiplication based on tensor type
     when (a.type) {
         GGMLType.F32 -> {
             for (i in 0 until totalSize) {
                 val aVal = a.getFloat(graphAllocator, i)
-                val bVal = b.getFloat(graphAllocator, i) 
+                val bVal = b.getFloat(graphAllocator, i)
                 dst.setFloat(graphAllocator, i, aVal * bVal)
             }
         }
@@ -329,7 +329,7 @@ fun add(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
     result.op = GGMLOp.ADD
     result.src[0] = a
     result.src[1] = b
-    
+
     // Pre-allocate destination tensor using graph allocator
     val dst = context.graphAllocator.allocateTensor(a.type, a.ne)
 

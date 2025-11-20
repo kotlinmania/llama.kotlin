@@ -4,9 +4,7 @@
 This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The goal is a Kotlin Multiplatform implementation anchored by an optimized CPU backend, with deterministic numeric behavior across targets via a new pure‑Kotlin soft‑float and limb engine (KLang). Accelerator work (Metal, SIMD, etc.) is deferred until the CPU path is fully hardened.
 
 ## Current Status (October 7, 2025)
-The Kotlin/Native port continues to evolve, with the repository now containing only actively maintained Kotlin sources plus the kcoro runtime. kcoro usage is gated via `expect/actual` wrappers: non-Apple targets receive inert stubs, while macOS/Arm64 builds the real C interop. `./gradlew build -x macosArm64Test` completes successfully; running the full `macosArm64Test` target today triggers numerous failures in legacy GGML/model suites (BitNet 1.58, inference pipeline, tensor integration) because those tests still reference data and helpers that lived in the removed `archive/` and `examples/` trees. A dedicated `./gradlew kcoroBench` task now runs the kcoro ping-pong benchmark (Apple Silicon only).
-
-The project has made substantial progress across multiple development phases. Here's what has been accomplished:
+The Kotlin/Native port continues to evolve, with the repository now containing only actively maintained Kotlin sources. The project has made substantial progress across multiple development phases. Here's what has been accomplished:
 
 1. **✅ Phase 1 - Project Setup**: Complete
    - Kotlin Multiplatform project structure established
@@ -91,7 +89,7 @@ Docs: `docs/kdocs/klang-soft-float-and-hpc16.md`.
 - **Dynamic allocation**: Efficient memory management within graphs
 - **Single-path allocation API**: `allocateGraph` / `reserveGraph` now route through shared helper logic to prevent divergent code paths and keep destination-based semantics consistent (Sep 19, 2025)
 
-### Comprehensive Quantization Ecosystem  
+### Comprehensive Quantization Ecosystem
 - **BitNet 1.58**: Ternary quantization with base-3 packing (10 bytes/block)
 - **Q8_0, Q4_0, Q4_1**: Standard quantization formats with optimized operations
 - **Direct quantized arithmetic**: Q×Q operations without dequantization overhead
@@ -112,7 +110,7 @@ Docs: `docs/kdocs/klang-soft-float-and-hpc16.md`.
 ### GGUF Model Loading Pipeline
 - **Binary format parsing**: Complete GGUF specification implementation
 - **Metadata extraction**: Support for all GGUF data types and structures
-- **Tensor integration**: Seamless integration with existing tensor system  
+- **Tensor integration**: Seamless integration with existing tensor system
 - **Validation framework**: Forward pass testing for loaded models
 
 ### Testing and Validation Infrastructure
@@ -182,7 +180,7 @@ Based on the substantial progress made, the immediate next steps are:
 
 ### 🔄 Phase 3: CPU Backend Implementation (In Progress)
 - [x] Translate CPU-Specific Code
-  - [x] Implement basic CPU tensor operations  
+  - [x] Implement basic CPU tensor operations
   - [ ] Implement BLAS integration for CPU
   - [ ] Implement ARM NEON optimizations for CPU
   - [ ] Implement x86 optimizations where possible
@@ -286,7 +284,7 @@ Based on the substantial progress made, the immediate next steps are:
   - [x] Advanced quantization optimizations (direct Q×Q operations)
 - [ ] Implement Advanced Optimizations
   - [ ] Implement speculative decoding
-  - [ ] Optimize KV cache management  
+  - [ ] Optimize KV cache management
   - [ ] Implement model-specific optimizations
 
 ## Current Documentation
@@ -294,21 +292,21 @@ Based on the substantial progress made, the immediate next steps are:
 The project includes comprehensive design and implementation documentation:
 
 - [**TENSOR_OPERATIONS_DESIGN.md**](TENSOR_OPERATIONS_DESIGN.md) - Comprehensive tensor operations design
-- [**GGML_COMPUTE_OPS_DESIGN.md**](GGML_COMPUTE_OPS_DESIGN.md) - Technical design for computation operations  
+- [**GGML_COMPUTE_OPS_DESIGN.md**](docs/GGML_COMPUTE_OPS_DESIGN.md) - Technical design for computation operations
 - [**COMPUTE_OPERATIONS_REFACTOR_SUMMARY.md**](COMPUTE_OPERATIONS_REFACTOR_SUMMARY.md) - Major architectural refactor details
 - [**MATMUL_OPTIMIZATION_SUMMARY.md**](MATMUL_OPTIMIZATION_SUMMARY.md) - Matrix multiplication optimizations
-- [**GGUF_IMPLEMENTATION.md**](GGUF_IMPLEMENTATION.md) - GGUF file format implementation
-- [**GGML_TESTING_SUMMARY.md**](GGML_TESTING_SUMMARY.md) - Comprehensive testing infrastructure
+- [**GGUF_IMPLEMENTATION.md**](docs/GGUF_IMPLEMENTATION.md) - GGUF file format implementation
+- [**GGML_TESTING_SUMMARY.md**](docs/GGML_TESTING_SUMMARY.md) - Comprehensive testing infrastructure
 - [**KOTLIN_PORT_CHECKLIST.md**](KOTLIN_PORT_CHECKLIST.md) - Detailed development roadmap
 
 ## Current Implementation Status Summary
 
 The project has made substantial progress with these key achievements:
 
-✅ **Complete Core Infrastructure**: Memory management, tensor operations, quantization ecosystem  
-✅ **Advanced Performance Optimizations**: 2-5x speedups in matrix operations achieved  
-✅ **GGUF Model Loading**: Complete pipeline for loading standard model files  
-✅ **Comprehensive Testing**: Multi-tier validation with benchmarking and accuracy frameworks  
+✅ **Complete Core Infrastructure**: Memory management, tensor operations, quantization ecosystem
+✅ **Advanced Performance Optimizations**: 2-5x speedups in matrix operations achieved
+✅ **GGUF Model Loading**: Complete pipeline for loading standard model files
+✅ **Comprehensive Testing**: Multi-tier validation with benchmarking and accuracy frameworks
 ✅ **Robust Documentation**: Detailed implementation summaries and design documents
 
 🔄 **Currently Active**: CPU backend refinements, LLaMA model architecture implementation
@@ -320,7 +318,7 @@ The foundation is solid and ready for the next phases of model implementation an
 Current development challenges and focus areas:
 
 1. **Model Architecture Implementation**: Beginning LLaMA attention and feed-forward implementations
-2. **Backend Integration**: Formalizing CPU backend and cataloging requirements for future accelerators  
+2. **Backend Integration**: Formalizing CPU backend and cataloging requirements for future accelerators
 3. **K-Quant Support**: Extending quantization ecosystem to include remaining K-Quant types
 4. **Multi-threading**: Implementing efficient parallel execution for graph computation
 5. **Real Model Testing**: Validating with actual LLaMA models once model architecture is complete

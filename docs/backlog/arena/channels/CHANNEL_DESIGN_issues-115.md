@@ -310,5 +310,5 @@ int kc_chan_fanout_all_or_nothing(const void *data, size_t len,
 ## References
 
 - Token kernel backlog: [OVERVIEW_issues-109-112-116.md](../../token_kernel/OVERVIEW_issues-109-112-116.md)
-- Channel implementation: `external/kcoro_arena/core/src/kc_chan.c`
-- Internal structures: `external/kcoro_arena/core/src/kc_chan_internal.h`
+- Channel implementation: `external/arena/core/src/kc_chan.c`
+- Internal structures: `external/arena/core/src/kc_chan_internal.h`

@@ -9,11 +9,11 @@ _Track structured concurrency and ergonomic improvements here._
 
 Issue #117 has been **partially addressed** with an experimental task abstraction implementation:
 
-- ✅ Task API header and implementation added (`koro_task.h`, `koro_task.c`)
+- ✅ Task API header and implementation added (`task.h`, `task.c`)
 - ✅ Parent-child relationships for structured concurrency
 - ✅ Reference counting for shared task ownership
 - ✅ Cancellation propagation API (cooperative)
-- ✅ Documentation in [TASK_API.md](../../../external/kcoro_arena/docs/components/stackless_runtime/TASK_API.md)
+- ✅ Documentation in [TASK_API.md](../../../external/arena/docs/components/stackless_runtime/TASK_API.md)
 - ⚠️ Task completion tracking is best-effort (not fully integrated with scheduler)
 - ⚠️ Join operations defined but require additional scheduler work
 
@@ -22,7 +22,7 @@ The task abstraction provides the core API surface for higher-level task managem
 ## Ideas under consideration
 
 - **Structured concurrency:** ✅ Basic parent/child relationships implemented
-- **Reference counting:** ✅ Implemented via `koro_task_retain()`/`release()`
+- **Reference counting:** ✅ Implemented via `task_retain()`/`release()`
 - **Debug introspection:** Provide APIs to snapshot continuation fields (state, next_step) for debugging tools.
 - **Tighter scheduler integration:** Automatic task state updates on continuation lifecycle events
 - **Task-local storage:** Per-task data that's automatically cleaned up

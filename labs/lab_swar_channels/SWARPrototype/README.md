@@ -1,18 +1,18 @@
 # SWARPrototype
 
-Swift sketch for the kcoro/SWAR tile executor. This binary mimics the CPU-side dequant stage by
+Swift sketch for the SWAR tile executor. This binary mimics the CPU-side dequant stage by
 streaming `block_q8_0` tiles (32×int8 + one fp16 scale) and converting them into `Float16` buffers.
 
 ## Why Swift?
 
-kcoro’s C++ coroutine layer is still stabilizing. This prototype lets us iterate on the SWAR math
+This prototype lets us iterate on the SWAR math
 and async orchestration without waiting on the C extension:
 
 - Uses Swift Structured Concurrency (`withTaskGroup`) to mirror the Kotlin coroutine chunking.
 - Emulates the gs=32 SWAR kernel so we can benchmark from user space (`swift run ... --configuration release`).
 - Provides a checksum to keep the optimizer honest while we profile.
 
-Once the kcoro_py bridge lands, this code maps directly onto the planned coroutine job graph:
+Once the python bridge lands, this code maps directly onto the planned coroutine job graph:
 GGUF reader → SWAR dequant → MLX upload → recycler.
 
 ## Running
@@ -65,10 +65,10 @@ or re-run with synthetic data until the `Q8_K` path is wired in.
 
 The executor now keeps everything in integer math: each tile returns `values` (Int32 numerators) plus
 an exponent per block so `value * 2^exponent` recreates the dequantized float. Throughput is reported
-as logical GB/s (raw quantized bytes) so we can compare directly with the coming kcoro/NEON helpers.
+as logical GB/s (raw quantized bytes) so we can compare directly with the coming NEON helpers.
 
 ## Next steps
 
-- Replace the `DispatchQueue` shim with kcoro once the extension is ready.
+- Replace the `DispatchQueue` shim once the extension is ready.
 - Tune the Metal kernel (tiling, vectorized loads) and compare sustained GB/s against the CPU path.
 - Feed real GGUF tiles by hooking this executable up to `gguf_direct.py` when the parser lands.
