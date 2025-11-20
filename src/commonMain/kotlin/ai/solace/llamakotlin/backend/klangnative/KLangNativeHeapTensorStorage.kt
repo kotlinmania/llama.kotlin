@@ -23,11 +23,15 @@ object KLangNativeHeapTensorStorage {
     /**
      * Allocate an aligned buffer for `count` float32 elements (4 bytes each).
      * Alignment defaults to 32 bytes for SIMD compatibility.
+     *
+     * @param count Number of float32 elements
+     * @param alignment Byte alignment (default 32 for SIMD)
+     * @param arena Optional arena for allocation; if null, uses KAligned
      */
-    fun mallocFloat32(count: Int, alignment: Int = 32): Buffer {
+    fun mallocFloat32(count: Int, alignment: Int = 32, arena: Arena? = null): Buffer {
         require(count >= 0) { "count must be non-negative" }
-        val bytes = count * 4
-        val ptr = KAligned.alignedCalloc(alignment, max(bytes, 1))
+        val bytes = max(count * 4, 1)
+        val ptr = arena?.alloc(bytes) ?: KAligned.alignedCalloc(alignment, bytes)
         return Buffer(ptr, bytes)
     }
 
@@ -101,11 +105,16 @@ object KLangNativeHeapTensorStorage {
 
     /**
      * Allocate buffer for bytes (used for quantized block storage).
+     *
+     * @param count Number of bytes
+     * @param alignment Byte alignment (default 32 for SIMD)
+     * @param arena Optional arena for allocation; if null, uses KAligned
      */
-    fun mallocBytes(count: Int, alignment: Int = 32): Buffer {
+    fun mallocBytes(count: Int, alignment: Int = 32, arena: Arena? = null): Buffer {
         require(count >= 0) { "count must be non-negative" }
-        val ptr = KAligned.alignedCalloc(alignment, max(count, 1))
-        return Buffer(ptr, count)
+        val bytes = max(count, 1)
+        val ptr = arena?.alloc(bytes) ?: KAligned.alignedCalloc(alignment, bytes)
+        return Buffer(ptr, bytes)
     }
 
     /**
