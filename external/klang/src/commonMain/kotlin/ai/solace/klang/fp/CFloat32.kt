@@ -2,6 +2,7 @@ package ai.solace.klang.fp
 
 import ai.solace.klang.bitwise.CFloatTrace
 import kotlin.math.abs
+import kotlin.jvm.JvmInline
 
 /**
  * Inline value representing a C-style 32-bit floating point number.
@@ -12,7 +13,8 @@ import kotlin.math.abs
  * behaviour explicitly, providing convenience operators that always truncate to
  * 32-bit precision after each arithmetic step.
  */
-class CFloat32 private constructor(private val bits: Int) {
+@JvmInline
+value class CFloat32 private constructor(private val bits: Int) {
     val value: Float get() = Float.fromBits(bits)
 
     fun toFloat(): Float = value
