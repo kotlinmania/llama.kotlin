@@ -2,18 +2,17 @@ package ai.solace.klang.fp
 
 import ai.solace.klang.bitwise.CFloatTrace
 import kotlin.math.abs
-import kotlin.jvm.JvmInline
 
 /**
- * Inline value representing a C-style 32-bit floating point number.
+ * Value class for C-style 32-bit floating point number.
  *
- * Kotlin/Native and the JVM both follow IEEE-754 semantics, but certain C code
- * (including ggml) relies on the fact that every intermediate operation is
- * rounded back to single precision immediately. This wrapper preserves that
- * behaviour explicitly, providing convenience operators that always truncate to
- * 32-bit precision after each arithmetic step.
+ * Provides bit-exact IEEE-754 semantics matching C behavior. Kotlin/Native automatically
+ * inlines value classes for zero-overhead abstraction without requiring JVM-specific annotations.
+ *
+ * This type ensures every intermediate operation is rounded back to single precision immediately,
+ * which certain C code (including ggml) relies on. The explicit truncation after each arithmetic
+ * step prevents platform-dependent float drift that occurs with Kotlin's native Float type.
  */
-@JvmInline
 value class CFloat32 private constructor(private val bits: Int) {
     val value: Float get() = Float.fromBits(bits)
 
