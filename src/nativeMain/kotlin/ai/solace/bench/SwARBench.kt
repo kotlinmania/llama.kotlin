@@ -1,6 +1,6 @@
 package ai.solace.bench
 
-import ai.solace.klangnative.bitwise.SwAR
+import ai.solace.klang.bitwise.SwAR
 import kotlin.time.TimeSource
 import kotlinx.coroutines.*
 

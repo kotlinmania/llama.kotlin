@@ -1,8 +1,8 @@
 package ai.solace.llamakotlin.core
 
-import ai.solace.klangnative.fp.CFloat32
-import ai.solace.klangnative.mem.GlobalHeap
-import ai.solace.klangnative.mem.KAligned
+import ai.solace.klang.fp.CFloat32
+import ai.solace.klang.mem.GlobalHeap
+import ai.solace.klang.mem.KAligned
 import kotlin.math.abs
 
 /**
@@ -34,7 +34,7 @@ import kotlin.math.abs
  * @param useMad Use MAD (mean absolute deviation) instead of MSE
  * @return Pair of (scale, min)
  */
-fun makeQKX2QuantsHeap(
+internal fun makeQKX2QuantsHeap(
     valuesPtr: Int,
     weightsPtr: Int,
     destPtr: Int,
@@ -172,7 +172,7 @@ fun makeQKX2QuantsHeap(
  * For maximum performance, buffers should be allocated once and reused
  * across multiple quantization operations.
  */
-fun makeQKX2QuantsWithHeap(
+internal fun makeQKX2QuantsWithHeap(
     n: Int,
     nmax: Int,
     values: FloatArray,
@@ -239,7 +239,7 @@ fun makeQKX2QuantsWithHeap(
  * @param useXiSquared If true, use xi^2 for weights instead of weightsPtr
  * @return Pair of (scale, min)
  */
-fun makeQKX3QuantsHeap(
+internal fun makeQKX3QuantsHeap(
     valuesPtr: Int,
     weightsPtr: Int,
     destPtr: Int,
