@@ -8,8 +8,8 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
-import ai.solace.klang.bitwise.BitPrimitives
-import ai.solace.klang.bitwise.PackOps
+import ai.solace.klangnative.bitwise.BitPrimitives
+import ai.solace.klangnative.bitwise.PackOps
 import kotlin.Short.Companion.SIZE_BYTES
 
 /**

@@ -2,6 +2,19 @@
 
 This checklist is based on the current state of the Kotlin Native port of llama.cpp and the requirements specified in the issue description. It provides a detailed roadmap for continuing the development of the port.
 
+## ⚠️ CRITICAL BUILD STATUS (Updated: December 2025)
+
+**Current Status: BUILD FAILING**
+
+The project currently does not compile due to klang integration issues:
+
+- **KLang Integration**: klang is now a separate repository at https://github.com/Kotlinmania/klang
+- **Package Naming Conflicts**: Vendored klang sources in `external/klangnative/` have internal package naming inconsistencies
+- **Affected Modules**: Core quantization, GGML compute operations, backend implementations
+- **Action Required**: Fix klang integration (publish as library, fix vendored sources, or use submodule)
+
+See `CHECKLIST_UPDATE_NOTES.md` for detailed analysis.
+
 ## Phase 1: Project Setup and Initial Analysis (Partially Complete)
 
 - [x] Setup Kotlin Native Development Environment
@@ -178,21 +191,39 @@ This checklist is based on the current state of the Kotlin Native port of llama.
   - [ ] Port quantized dot-product kernels (Q4/Q5/Q8/K families)
   - [ ] Benchmark Kotlin SIMD vs. scalar fallbacks across supported targets
 
-## Phase 2.5: KLang Soft‑Float + Wide Integer Backbone (New)
+## Phase 2.5: KLang Soft‑Float + Wide Integer Backbone (Integration Issues)
+
+⚠️ **CRITICAL**: KLang is now a separate repository at https://github.com/Kotlinmania/klang
+
+### Current Integration Status
+- [ ] **BLOCKED**: Resolve klang integration strategy
+  - Current: Vendored sources in `external/klangnative/` with package naming conflicts
+  - Options: 
+    1. Publish klang as Maven/Gradle library
+    2. Use git submodule
+    3. Fix vendored source package names
+- [ ] **BLOCKED**: Fix package naming inconsistencies
+  - llama.kotlin imports `ai.solace.klangnative.*`
+  - Vendored klang has mixed `ai.solace.klang.*` and `ai.solace.klangnative.*`
+- [ ] **BLOCKED**: Remove duplicate klang sources
+  - Removed from `src/commonMain/kotlin/ai/solace/klang/` (December 2025)
+  - Need to verify external sources are authoritative
+
+### KLang Features (When Integration Fixed)
 
 We introduced a portable, pure‑Kotlin numeric core to remove cross‑platform float drift and make SIMD/GPU backends optional rather than required for correctness.
 
 - [x] KLang namespace and modules
-  - [x] `ai.solace.klang.fp`: `CFloat32` (inline) with operators +, −, ×, ÷ delegating to bit‑exact soft‑float
-  - [x] `ai.solace.klang.bitwise.Float32Math`: transliterations of compiler‑rt float32 builtins
+  - [x] `ai.solace.klangnative.fp`: `CFloat32` (inline) with operators +, −, ×, ÷ delegating to bit‑exact soft‑float
+  - [x] `ai.solace.klangnative.bitwise.Float32Math`: transliterations of compiler‑rt float32 builtins
     - [x] Division: faithful `fp_div_impl.inc` (normalize, quotient bounds, remainder→sticky, nearest‑even)
     - [ ] Multiplication: tighten to `fp_mul_impl.inc` (currently functional, not yet bit‑diff clean on all ties)
     - [ ] Square root: implement `fp_sqrt_impl.inc`
     - [ ] Conversions: int/uint ↔ float32; float32 ↔ float64
   - [x] Float-on-LHS operators (`Float +/-/*// CFloat32`)
 - [x] 16‑bit limb engine for exact 128‑bit intermediates
-  - [x] `ai.solace.klang.int.hpc.HPC16x4` (64‑bit, 4×16‑bit limbs): add/sub/compare/shifts
-  - [x] `ai.solace.klang.int.hpc.HPC16x8` (128‑bit, 8×16‑bit limbs): add/sub/compare/shifts, initial 64×64→128 mul
+  - [x] `ai.solace.klangnative.int.hpc.HPC16x4` (64‑bit, 4×16‑bit limbs): add/sub/compare/shifts
+  - [x] `ai.solace.klangnative.int.hpc.HPC16x8` (128‑bit, 8×16‑bit limbs): add/sub/compare/shifts, initial 64×64→128 mul
   - [ ] 128/64 division (Knuth D) and full carry propagation for wide mul
 - [ ] Float64 roadmap (compiler‑rt exactness)
   - [ ] Port add/sub/mul/div/sqrt using HPC16x4/x8 where 128‑bit ints are required

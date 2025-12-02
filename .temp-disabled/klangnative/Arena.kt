@@ -39,7 +39,7 @@ class Arena(
 
     /**
      * Allocate [bytes] from this arena, returning heap pointer.
-     * Throws [OutOfMemoryError] if arena is exhausted.
+     * Throws [IllegalStateException] if arena is exhausted.
      */
     fun alloc(bytes: Int): Int {
         require(bytes >= 0) { "bytes must be non-negative" }
@@ -48,7 +48,7 @@ class Arena(
             val cur = offset.value
             val next = cur + aligned
             if (next > capacityBytes) {
-                throw OutOfMemoryError("Arena exhausted: $cur + $aligned > $capacityBytes")
+                throw IllegalStateException("Arena exhausted: $cur + $aligned > $capacityBytes")
             }
             if (offset.compareAndSet(cur, next)) {
                 return basePtr + cur
@@ -103,7 +103,7 @@ class ArenaContext(val arena: Arena) : CoroutineContext.Element {
 }
 
 /**
- * Manages per-coroutine arena access via coroutine context and thread-local fallback.
+ * Manages per-coroutine arena access via coroutine context.
  *
  * Usage patterns:
  * ```kotlin
@@ -121,30 +121,22 @@ class ArenaContext(val arena: Arena) : CoroutineContext.Element {
  * ```
  */
 object ArenaProvider {
-    private val threadLocalArena = ThreadLocal<Arena?>()
-
     /**
-     * Get the current arena from coroutine context or thread-local.
+     * Get the current arena from coroutine context.
      * Returns null if no arena is bound.
      */
     fun current(context: CoroutineContext = EmptyCoroutineContext): Arena? {
-        context[ArenaContext]?.let { return it.arena }
-        return threadLocalArena.get()
+        return context[ArenaContext]?.arena
     }
 
     /**
-     * Run [block] with [arena] bound to coroutine context and thread-local.
+     * Run [block] with [arena] bound to coroutine context.
      * Arena is automatically unbound after block completes.
      */
     suspend fun <T> withArena(arena: Arena, block: suspend () -> T): T {
-        threadLocalArena.set(arena)
         val ctx = ArenaContext(arena)
         return kotlinx.coroutines.withContext(ctx) {
-            try {
-                block()
-            } finally {
-                threadLocalArena.remove()
-            }
+            block()
         }
     }
 }
@@ -195,7 +187,7 @@ class HeapActor private constructor(
                         try {
                             val ptr = arena.alloc(msg.bytes)
                             msg.reply.send(ptr)
-                        } catch (e: OutOfMemoryError) {
+                        } catch (e: IllegalStateException) {
                             msg.reply.close(e)
                         } finally {
                             msg.reply.close()

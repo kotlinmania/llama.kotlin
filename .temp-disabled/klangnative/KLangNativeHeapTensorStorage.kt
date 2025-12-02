@@ -1,9 +1,9 @@
 package ai.solace.llamakotlin.backend.klangnative
 
-import ai.solace.klang.fp.CFloat32
-import ai.solace.klang.mem.CIntVar
-import ai.solace.klang.mem.GlobalHeap
-import ai.solace.klang.mem.KAligned
+import ai.solace.klangnative.fp.CFloat32
+import ai.solace.klangnative.mem.CIntVar
+import ai.solace.klangnative.mem.GlobalHeap
+import ai.solace.klangnative.mem.KAligned
 import kotlin.math.max
 
 /**
