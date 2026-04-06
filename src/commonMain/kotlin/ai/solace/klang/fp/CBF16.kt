@@ -1,15 +1,13 @@
 package ai.solace.klangnative.fp
 
 import ai.solace.klangnative.bitwise.Float32Math
-import kotlin.jvm.JvmInline
 
 /**
  * CBF16: bfloat16 (1 sign, 8 exp, 7 frac, bias = 127) stored in 16 bits.
  * Arithmetic is defined as: upconvert to float32, compute via Float32Math (bit‑exact),
  * then round back to bf16 (nearest, ties‑to‑even).
  */
-@JvmInline
-value class CBF16 private constructor(private val bits: Short) {
+data class CBF16 private constructor(private val bits: Short) {
     // --- basic access ---
     fun toBits(): Short = bits
     fun toFloat(): Float = Float.fromBits((bits.toInt() and 0xFFFF) shl 16)
