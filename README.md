@@ -6,7 +6,7 @@
 
 **A Kotlin/Native port of [llama.cpp](https://github.com/ggerganov/llama.cpp) - Inference of Meta's [LLaMA](https://arxiv.org/abs/2302.13971) model (and others) in pure Kotlin**
 
-*Maintained by Sydney ([The Solace Project](https://github.com/SolaceHarmony))*
+*Maintained by **Sydney Renee** of [The Solace Project](mailto:sydney@solace.ofharmony.ai) for [KotlinMania](https://github.com/KotlinMania)*
 
 ## Acknowledgments
 
@@ -298,7 +298,7 @@ println("Model validation: ${if (success) "PASSED" else "FAILED"}")
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/SolaceHarmony/llama.kotlin.git
+   git clone https://github.com/KotlinMania/llama.kotlin.git
    cd llama.kotlin
    ```
 
@@ -340,8 +340,8 @@ This project is licensed under the **MIT License** - same as the original llama.
 - **Original llama.cpp**: https://github.com/ggerganov/llama.cpp
 - **Project Documentation**: [AGENTS.md](AGENTS.md), [KOTLIN_PORT_CHECKLIST.md](KOTLIN_PORT_CHECKLIST.md)
 - **Design Documents**: [GGML_COMPUTE_OPS_DESIGN.md](GGML_COMPUTE_OPS_DESIGN.md), [TENSOR_OPERATIONS_DESIGN.md](TENSOR_OPERATIONS_DESIGN.md)
-- **Issues and Discussions**: [GitHub Issues](https://github.com/SolaceHarmony/llama.kotlin/issues)
+- **Issues and Discussions**: [GitHub Issues](https://github.com/KotlinMania/llama.kotlin/issues)
 
 ---
 
-*This project is maintained by Sydney at The Solace Project. We are grateful to the original llama.cpp community for their foundational work that makes this Kotlin port possible.*
+*This project is maintained by **Sydney Renee** of [The Solace Project](mailto:sydney@solace.ofharmony.ai) for [KotlinMania](https://github.com/KotlinMania). We are grateful to the original llama.cpp community for their foundational work that makes this Kotlin port possible.*
