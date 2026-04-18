@@ -1,5 +1,8 @@
-// port-lint: source ggml/include/ggml.h
+// port-lint: source ggml/src/ggml.c
 package ai.solace.llamakotlin.core
+
+import kotlin.concurrent.AtomicLong
+import kotlin.time.TimeSource
 
 /**
  * Kotlin Native port of GGML computation graph functionality.
@@ -2661,4 +2664,352 @@ fun computeGraphWithBackend(graph: GGMLCGraph, context: GGMLContext? = null): GG
         println("Graph computation failed: ${e.message}")
         GGMLStatus.FAILED
     }
+}
+
+// ============================================================================
+// Ported from ggml/src/ggml.c — global state, timing, graph management
+// ============================================================================
+
+/** Atomic counter for unique graph IDs. Ported from ggml_graph_next_uid. */
+private val graphUidCounter = AtomicLong(1L)
+
+/** Returns the next unique graph identifier. Thread-safe via atomic increment. */
+fun ggmlGraphNextUid(): Long = graphUidCounter.getAndIncrement()
+
+// ---------------------------------------------------------------------------
+// Timing (ported from ggml_time_init / ggml_time_ms / ggml_time_us)
+// ---------------------------------------------------------------------------
+
+/** No-op on JVM/Native — monotonic clocks need no initialisation. */
+fun ggmlTimeInit() { /* no-op on Kotlin targets */ }
+
+private val timeOrigin = TimeSource.Monotonic.markNow()
+
+/** Current wall-clock time in milliseconds (monotonic). */
+fun ggmlTimeMs(): Long = timeOrigin.elapsedNow().inWholeMilliseconds
+
+/** Current wall-clock time in microseconds (monotonic). */
+fun ggmlTimeUs(): Long = timeOrigin.elapsedNow().inWholeMicroseconds
+
+// ---------------------------------------------------------------------------
+// Status helpers (ported from ggml_status_to_string)
+// ---------------------------------------------------------------------------
+
+/** Converts a [GGMLStatus] to a human-readable description. */
+fun ggmlStatusToString(status: GGMLStatus): String = when (status) {
+    GGMLStatus.ALLOC_FAILED -> "GGML status: error (failed to allocate memory)"
+    GGMLStatus.FAILED       -> "GGML status: error (operation failed)"
+    GGMLStatus.SUCCESS      -> "GGML status: success"
+    GGMLStatus.ABORTED      -> "GGML status: warning (operation aborted)"
+}
+
+// ---------------------------------------------------------------------------
+// Logging (ported from ggml_log_internal / ggml_log_set / ggml_log_callback_default)
+// ---------------------------------------------------------------------------
+
+// GGMLLogLevel is defined in NumericConversions.kt (NONE, INFO, WARN, ERROR).
+
+/** Callback signature for logging. */
+typealias GGMLLogCallback = (level: GGMLLogLevel, message: String) -> Unit
+
+/** Default callback: prints to stderr. */
+val ggmlLogCallbackDefault: GGMLLogCallback = { _, msg -> print(msg) }
+
+private var gLogCallback: GGMLLogCallback = ggmlLogCallbackDefault
+
+/** Internal log helper used across the Kotlin GGML port. */
+fun ggmlLogInternal(level: GGMLLogLevel, message: String) {
+    gLogCallback(level, message)
+}
+
+/** Replaces the global log callback. Pass `null` to restore the default. */
+fun ggmlLogSet(callback: GGMLLogCallback?) {
+    gLogCallback = callback ?: ggmlLogCallbackDefault
+}
+
+// ---------------------------------------------------------------------------
+// Tensor shape predicates (supplements already in GGMLOps.kt)
+// ---------------------------------------------------------------------------
+
+/** True when stride layout indicates channel-last ordering. */
+fun ggmlIsContiguousChannels(tensor: GGMLTensor): Boolean =
+    tensor.nb[0] > tensor.nb[2] &&
+    tensor.nb[1] > tensor.nb[0] &&
+    tensor.nb[2] == ggmlTypeSize(tensor.type)
+
+/** True when rows are contiguous in memory. */
+fun ggmlIsContiguousRows(tensor: GGMLTensor): Boolean =
+    tensor.ne[0] == ggmlBlckSize(tensor.type) ||
+    tensor.nb[0] == ggmlTypeSize(tensor.type)
+
+/** True when `nb[0]` is type-sized and higher dims pack tightly. */
+fun ggmlIsPadded1d(tensor: GGMLTensor): Boolean =
+    tensor.nb[0] == ggmlTypeSize(tensor.type) &&
+    tensor.nb[2] == tensor.nb[1] * tensor.ne[1].toULong() &&
+    tensor.nb[3] == tensor.nb[2] * tensor.ne[2].toULong()
+
+/** True when t0 can be broadcast row-wise onto t1. */
+fun ggmlCanRepeatRows(t0: GGMLTensor, t1: GGMLTensor): Boolean =
+    t0.ne[0] == t1.ne[0] && ggmlCanRepeat(t0, t1)
+
+// ---------------------------------------------------------------------------
+// Tensor utilities ported from ggml.c
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts a flat element index into per-dimension indices for [tensor].
+ * Ported from `ggml_unravel_index`.
+ */
+fun ggmlUnravelIndex(tensor: GGMLTensor, i: Long): LongArray {
+    val ne0 = tensor.ne[0]; val ne1 = tensor.ne[1]; val ne2 = tensor.ne[2]
+    val i3 = i / (ne2 * ne1 * ne0)
+    val i2 = (i - i3 * ne2 * ne1 * ne0) / (ne1 * ne0)
+    val i1 = (i - i3 * ne2 * ne1 * ne0 - i2 * ne1 * ne0) / ne0
+    val i0 = i - i3 * ne2 * ne1 * ne0 - i2 * ne1 * ne0 - i1 * ne0
+    return longArrayOf(i0, i1, i2, i3)
+}
+
+// Note: ggmlSetZero is already defined in GGMLOps.kt.
+
+// Note: ggmlSetLoss, GGML_TENSOR_FLAG_LOSS, GGML_TENSOR_FLAG_INPUT,
+// and GGML_TENSOR_FLAG_COMPUTE are defined in GGMLOps.kt.
+
+// ---------------------------------------------------------------------------
+// Graph view / copy / dup / reset / print (ported from ggml.c ~7127-7337)
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a lightweight view into [cgraph] spanning nodes `[i0, i1)`.
+ * The returned graph shares the underlying node array — no deep copy.
+ * Ported from `ggml_graph_view`.
+ */
+fun ggmlGraphView(cgraph: GGMLCGraph, i0: Int, i1: Int): GGMLCGraph {
+    require(i0 in 0..cgraph.nNodes && i1 in i0..cgraph.nNodes)
+    return GGMLCGraph(
+        size      = 0,
+        nNodes    = i1 - i0,
+        nLeafs    = 0,
+        nodes     = cgraph.nodes.copyOfRange(i0, i1),
+        grads     = emptyArray(),
+        gradAccs  = emptyArray(),
+        leafs     = emptyArray(),
+        useCounts = cgraph.useCounts,
+        visitedHashSet = cgraph.visitedHashSet,
+        order     = cgraph.order,
+        uid       = 0L
+    )
+}
+
+/**
+ * Deep-copies [src] graph data into [dst]. [dst] must be large enough.
+ * Ported from `ggml_graph_cpy`.
+ */
+fun ggmlGraphCpy(src: GGMLCGraph, dst: GGMLCGraph) {
+    require(dst.size >= src.nLeafs) { "dst too small for leafs" }
+    require(dst.size >= src.nNodes) { "dst too small for nodes" }
+    dst.nLeafs = src.nLeafs
+    dst.nNodes = src.nNodes
+    dst.order  = src.order
+    for (i in 0 until src.nLeafs) dst.leafs[i] = src.leafs[i]
+    for (i in 0 until src.nNodes) dst.nodes[i] = src.nodes[i]
+}
+
+/**
+ * Duplicates [cgraph] into a new graph allocated from [ctx].
+ * Ported from `ggml_graph_dup`.
+ */
+fun ggmlGraphDup(ctx: GGMLContext, cgraph: GGMLCGraph, forceGrads: Boolean = false): GGMLCGraph {
+    val result = ggmlNewGraphCustom(ctx, cgraph.size.toULong(), cgraph.grads.isNotEmpty() || forceGrads)
+    ggmlGraphCpy(cgraph, result)
+    return result
+}
+
+/**
+ * Resets gradient accumulators in [cgraph].
+ * Loss nodes get gradient = 1.0f; all others are zeroed.
+ * Ported from `ggml_graph_reset`.
+ */
+fun ggmlGraphReset(cgraph: GGMLCGraph) {
+    for (i in 0 until cgraph.nNodes) {
+        val node = cgraph.nodes[i] ?: continue
+        // If the node has a gradient accumulator, zero it (or set to 1.0 for loss)
+        val grad = cgraph.grads.getOrNull(i)
+        if (grad != null) {
+            if (node.flags and GGML_TENSOR_FLAG_LOSS != 0) {
+                require(grad.type == GGMLType.F32)
+                require(ggmlIsScalar(grad))
+                val data = grad.data
+                if (data is FloatArray && data.isNotEmpty()) data[0] = 1.0f
+            } else {
+                ggmlSetZero(grad)
+            }
+        }
+    }
+}
+
+/**
+ * Prints a human-readable summary of [cgraph] to the log.
+ * Ported from `ggml_graph_print`.
+ */
+fun ggmlGraphPrint(cgraph: GGMLCGraph) {
+    ggmlLogInternal(GGMLLogLevel.INFO, "=== GRAPH ===\n")
+    ggmlLogInternal(GGMLLogLevel.INFO, "n_nodes = ${cgraph.nNodes}\n")
+    for (i in 0 until cgraph.nNodes) {
+        val node = cgraph.nodes[i] ?: continue
+        val flag = if (node.flags and GGML_TENSOR_FLAG_PARAM != 0) "x"
+                   else if (cgraph.grads.getOrNull(i) != null) "g"
+                   else " "
+        ggmlLogInternal(
+            GGMLLogLevel.INFO,
+            " - ${i.toString().padStart(3)}: [${node.ne[0].toString().padStart(5)}, ${node.ne[1].toString().padStart(5)}, ${node.ne[2].toString().padStart(5)}] ${ggmlOpName(node.op).padStart(16)} $flag\n"
+        )
+    }
+    ggmlLogInternal(GGMLLogLevel.INFO, "n_leafs = ${cgraph.nLeafs}\n")
+    for (i in 0 until cgraph.nLeafs) {
+        val leaf = cgraph.leafs[i] ?: continue
+        ggmlLogInternal(
+            GGMLLogLevel.INFO,
+            " - ${i.toString().padStart(3)}: [${leaf.ne[0].toString().padStart(5)}, ${leaf.ne[1].toString().padStart(5)}] ${ggmlOpName(leaf.op).padStart(8)} ${leaf.name.padStart(16)}\n"
+        )
+    }
+    ggmlLogInternal(GGMLLogLevel.INFO, "========================================\n")
+}
+
+// Note: ggmlGraphGetTensor is already defined in GGMLOps.kt.
+
+/**
+ * Returns the gradient tensor for [node] inside [cgraph], or null.
+ * Ported from `ggml_graph_get_grad` (simplified — uses array index).
+ */
+fun ggmlGraphGetGrad(cgraph: GGMLCGraph, node: GGMLTensor): GGMLTensor? {
+    if (cgraph.grads.isEmpty()) return null
+    for (i in 0 until cgraph.nNodes) {
+        if (cgraph.nodes[i] === node) return cgraph.grads.getOrNull(i)
+    }
+    return null
+}
+
+/**
+ * Returns the gradient accumulator tensor for [node], or null.
+ * Ported from `ggml_graph_get_grad_acc`.
+ */
+fun ggmlGraphGetGradAcc(cgraph: GGMLCGraph, node: GGMLTensor): GGMLTensor? {
+    if (cgraph.gradAccs.isEmpty()) return null
+    for (i in 0 until cgraph.nNodes) {
+        if (cgraph.nodes[i] === node) return cgraph.gradAccs.getOrNull(i)
+    }
+    return null
+}
+
+/**
+ * True when [node] appears in [cgraph] nodes.
+ * Ported from `ggml_graph_find`.
+ */
+fun ggmlGraphFind(cgraph: GGMLCGraph?, node: GGMLTensor): Boolean {
+    if (cgraph == null) return true
+    for (i in 0 until cgraph.nNodes) {
+        if (cgraph.nodes[i] === node) return true
+    }
+    return false
+}
+
+// ---------------------------------------------------------------------------
+// Build backward expand (new-style, ported from ggml.c:6946)
+// ---------------------------------------------------------------------------
+
+/**
+ * Expands [cgraph] with backward-pass nodes for automatic differentiation.
+ * This is the newer `ggml_build_backward_expand` from ggml.c that works
+ * in-place on the forward graph, creating gradient nodes and appending them.
+ *
+ * @param ctx      Context for allocating new gradient tensors.
+ * @param cgraph   Forward computation graph (modified in-place).
+ * @param gradAccs Optional pre-existing gradient accumulators per node index.
+ */
+fun ggmlBuildBackwardExpand(
+    ctx: GGMLContext,
+    cgraph: GGMLCGraph,
+    gradAccs: Array<GGMLTensor?>? = null
+) {
+    TODO("port from ggml/src/ggml.c — ggml_build_backward_expand (lines 6946-7043)")
+}
+
+// ---------------------------------------------------------------------------
+// Graph compute plan (stub — actual scheduling is backend-specific)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters describing how a graph computation should be executed.
+ * Mirrors `struct ggml_cplan` from ggml.c.
+ */
+data class GGMLComputePlan(
+    /** Size of the required work buffer in bytes. */
+    val workSize: ULong = 0u,
+    /** Work buffer (allocated by caller if workSize > 0). */
+    var workData: ByteArray? = null,
+    /** Number of threads to use. */
+    var nThreads: Int = 1,
+    /** Optional threadpool handle. */
+    var threadpool: Any? = null,
+    /** Optional abort callback. */
+    var abortCallback: (() -> Boolean)? = null
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is GGMLComputePlan) return false
+        return workSize == other.workSize && nThreads == other.nThreads
+    }
+    override fun hashCode(): Int = workSize.hashCode() * 31 + nThreads
+}
+
+/**
+ * Creates a compute plan for [cgraph]. Currently returns a minimal plan;
+ * work-buffer sizing will be filled in when the CPU backend is formalised.
+ * Ported from `ggml_graph_plan` (stub).
+ */
+fun ggmlGraphPlan(cgraph: GGMLCGraph, nThreads: Int = 1): GGMLComputePlan {
+    return GGMLComputePlan(nThreads = nThreads)
+}
+
+/**
+ * Executes [cgraph] according to [plan].
+ * Ported from `ggml_graph_compute` (delegates to backend infrastructure).
+ */
+fun ggmlGraphCompute(cgraph: GGMLCGraph, plan: GGMLComputePlan): GGMLStatus {
+    return computeGraphWithBackend(cgraph)
+}
+
+// ---------------------------------------------------------------------------
+// Version / commit stubs
+// ---------------------------------------------------------------------------
+
+/** GGML version string. */
+fun ggmlVersion(): String = "0.0.0-kotlin"
+
+/** Placeholder for the build commit hash. */
+fun ggmlCommit(): String = "unknown"
+
+// ---------------------------------------------------------------------------
+// FType → GGMLType conversion (ported from ggml_ftype_to_ggml_type)
+// ---------------------------------------------------------------------------
+
+// GGMLFType enum is defined in GGMLOps.kt.
+
+/** Converts a file-level type hint to the corresponding tensor data type. */
+fun ggmlFtypeToGgmlType(ftype: GGMLFType): GGMLType = when (ftype) {
+    GGMLFType.ALL_F32     -> GGMLType.F32
+    GGMLFType.MOSTLY_F16  -> GGMLType.F16
+    GGMLFType.MOSTLY_BF16 -> TODO("BF16 GGMLType not yet defined")
+    GGMLFType.MOSTLY_Q4_0 -> GGMLType.Q4_0
+    GGMLFType.MOSTLY_Q4_1 -> GGMLType.Q4_1
+    GGMLFType.MOSTLY_Q1_0 -> TODO("Q1_0 GGMLType not yet defined")
+    GGMLFType.MOSTLY_Q5_0 -> GGMLType.Q5_0
+    GGMLFType.MOSTLY_Q5_1 -> GGMLType.Q5_1
+    GGMLFType.MOSTLY_Q8_0 -> GGMLType.Q8_0
+    GGMLFType.MOSTLY_Q2_K -> GGMLType.Q2_K
+    GGMLFType.MOSTLY_Q3_K -> GGMLType.Q3_K
+    GGMLFType.MOSTLY_Q4_K -> GGMLType.Q4_K
+    GGMLFType.MOSTLY_Q5_K -> GGMLType.Q5_K
+    GGMLFType.MOSTLY_Q6_K -> GGMLType.Q6_K
+    else -> error("Cannot convert ftype ${ftype.name} to ggml_type")
 }
