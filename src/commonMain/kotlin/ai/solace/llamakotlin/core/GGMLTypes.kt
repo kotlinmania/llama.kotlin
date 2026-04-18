@@ -260,6 +260,26 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     GROUP_NORM(true),
     GLU,          // Gated Linear Unit dispatch (reglu, geglu, swiglu, etc.)
     UNARY,        // Unary op dispatch (abs, sgn, step, etc.)
+    CUMSUM,
+    COUNT_EQUAL,
+    GET_ROWS_BACK,
+    SET_ROWS,
+    DIAG,
+    DIAG_MASK_ZERO(true),
+    ROPE_BACK,
+    PAD,
+    PAD_REFLECT_1D,
+    ROLL,
+    ARANGE,
+    TIMESTEP_EMBEDDING,
+    ARGSORT,
+    TOP_K,
+    UPSCALE,
+    OUT_PROD,
+    CROSS_ENTROPY_LOSS,
+    CROSS_ENTROPY_LOSS_BACK,
+    OPT_STEP_ADAMW,
+    OPT_STEP_SGD,
     COUNT
 }
 

@@ -3503,10 +3503,9 @@ private fun calculateStrideFactor(tensor: GGMLTensor, dim: Int): Int {
  *
  * Ported from `ggml_compute_forward_concat_f32` and the generic path.
  */
-fun computeConcat(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeConcat(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("CONCAT requires src0")
     val src1 = dst.src[1] ?: error("CONCAT requires src1")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     val dim = ggml_get_op_params_i32(dst, 0)
     require(dim in 0..3) { "concat dim must be 0..3, got $dim" }
@@ -3554,9 +3553,8 @@ fun computeConcat(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_sum_rows_f32`.
  */
-fun computeSumRows(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeSumRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("SUM_ROWS requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "SUM_ROWS only supports F32, got ${src0.type}" }
 
@@ -3587,9 +3585,8 @@ fun computeSumRows(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_cumsum_f32`.
  */
-fun computeCumsum(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCumsum(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("CUMSUM requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "CUMSUM only supports F32, got ${src0.type}" }
 
@@ -3621,9 +3618,8 @@ fun computeCumsum(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_argmax_f32`.
  */
-fun computeArgmax(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeArgmax(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("ARGMAX requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "ARGMAX only supports F32, got ${src0.type}" }
 
@@ -3651,10 +3647,9 @@ fun computeArgmax(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_count_equal_i32` (single-thread path).
  */
-fun computeCountEqual(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCountEqual(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("COUNT_EQUAL requires src0")
     val src1 = dst.src[1] ?: error("COUNT_EQUAL requires src1")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.I32) { "COUNT_EQUAL only supports I32, got ${src0.type}" }
     require(src1.type == GGMLType.I32) { "COUNT_EQUAL only supports I32, got ${src1.type}" }
@@ -3690,10 +3685,9 @@ fun computeCountEqual(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_get_rows_f32` / `_f16` (scalar paths).
  */
-fun computeGetRows(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeGetRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("GET_ROWS requires src0")
     val src1 = dst.src[1] ?: error("GET_ROWS requires src1 (indices)")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     val nc = src0.ne[0].toInt()    // columns per row
     val nr = src1.numElements().toInt()  // total index entries
@@ -3743,10 +3737,9 @@ fun computeGetRows(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_get_rows_back_f32`.
  */
-fun computeGetRowsBack(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeGetRowsBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("GET_ROWS_BACK requires src0")
     val src1 = dst.src[1] ?: error("GET_ROWS_BACK requires src1 (indices)")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     val nc = src0.ne[0].toInt()
     val nr = src1.numElements().toInt()
@@ -3792,10 +3785,9 @@ fun computeGetRowsBack(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_set_rows_f32` (scalar, I32 indices).
  */
-fun computeSetRows(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeSetRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("SET_ROWS requires src0")
     val src1 = dst.src[1] ?: error("SET_ROWS requires src1 (indices)")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "SET_ROWS: src0 must be F32, got ${src0.type}" }
 
@@ -3837,9 +3829,8 @@ fun computeSetRows(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_diag_f32`.
  */
-fun computeDiag(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeDiag(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("DIAG requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "DIAG only supports F32, got ${src0.type}" }
 
@@ -3872,9 +3863,8 @@ fun computeDiag(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * @param maskValue The value written into masked positions.
  */
-fun computeDiagMask(params: GGMLComputeParams, dst: GGMLTensor, maskValue: Float) {
+fun computeDiagMask(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor, maskValue: Float) {
     val src0 = dst.src[0] ?: error("DIAG_MASK requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "DIAG_MASK only supports F32, got ${src0.type}" }
 
@@ -3904,12 +3894,12 @@ fun computeDiagMask(params: GGMLComputeParams, dst: GGMLTensor, maskValue: Float
 }
 
 /** Convenience: applies causal mask with `-Infinity`. */
-fun computeDiagMaskInf(params: GGMLComputeParams, dst: GGMLTensor) =
-    computeDiagMask(params, dst, Float.NEGATIVE_INFINITY)
+fun computeDiagMaskInf(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) =
+    computeDiagMask(graphAllocator, params, dst, Float.NEGATIVE_INFINITY)
 
 /** Convenience: applies causal mask with `0`. */
-fun computeDiagMaskZero(params: GGMLComputeParams, dst: GGMLTensor) =
-    computeDiagMask(params, dst, 0.0f)
+fun computeDiagMaskZero(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) =
+    computeDiagMask(graphAllocator, params, dst, 0.0f)
 
 // ---------------------------------------------------------------------------
 // ggml_compute_forward_rope / rope_back  (RoPE – Rotary Position Embeddings)
@@ -3986,11 +3976,10 @@ private fun ropeCacheInit(
  *
  * Ported from `ggml_compute_forward_rope_flt<float>` (scalar path).
  */
-fun computeRope(params: GGMLComputeParams, dst: GGMLTensor, forward: Boolean = true) {
+fun computeRope(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor, forward: Boolean = true) {
     val src0 = dst.src[0] ?: error("ROPE requires src0")
     val src1 = dst.src[1] ?: error("ROPE requires src1 (positions)")
     val src2 = dst.src.getOrNull(2)  // optional freq_factors
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32 || src0.type == GGMLType.F16) {
         "ROPE only supports F32/F16, got ${src0.type}"
@@ -4103,8 +4092,8 @@ fun computeRope(params: GGMLComputeParams, dst: GGMLTensor, forward: Boolean = t
 }
 
 /** Backward pass for RoPE — identical computation with inverted sin sign. */
-fun computeRopeBack(params: GGMLComputeParams, dst: GGMLTensor) =
-    computeRope(params, dst, forward = false)
+fun computeRopeBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) =
+    computeRope(graphAllocator, params, dst, forward = false)
 
 // ---------------------------------------------------------------------------
 // ggml_compute_forward_pad
@@ -4118,9 +4107,8 @@ fun computeRopeBack(params: GGMLComputeParams, dst: GGMLTensor) =
  *
  * Ported from `ggml_compute_forward_pad_f32`.
  */
-fun computePad(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computePad(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("PAD requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "PAD only supports F32, got ${src0.type}" }
 
@@ -4180,9 +4168,8 @@ private fun wrapAround(coord: Int, size: Int): Int = ((coord % size) + size) % s
  *
  * Ported from `ggml_compute_forward_pad_reflect_1d`.
  */
-fun computePadReflect1D(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computePadReflect1D(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("PAD_REFLECT requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "PAD_REFLECT only supports F32, got ${src0.type}" }
 
@@ -4235,9 +4222,8 @@ fun computePadReflect1D(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_roll_f32`.
  */
-fun computeRoll(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeRoll(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("ROLL requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "ROLL only supports F32, got ${src0.type}" }
 
@@ -4284,8 +4270,7 @@ private fun wrapIndex(i: Int, ne: Int): Int {
  *
  * Ported from `ggml_compute_forward_arange_f32`.
  */
-fun computeArange(params: GGMLComputeParams, dst: GGMLTensor) {
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+fun computeArange(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
 
     require(dst.type == GGMLType.F32) { "ARANGE only supports F32, got ${dst.type}" }
 
@@ -4311,9 +4296,8 @@ fun computeArange(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_timestep_embedding_f32`.
  */
-fun computeTimestepEmbedding(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeTimestepEmbedding(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("TIMESTEP_EMBEDDING requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "TIMESTEP_EMBEDDING only supports F32" }
 
@@ -4351,9 +4335,8 @@ internal const val GGML_SORT_ORDER_DESC = 1
  *
  * Ported from `ggml_compute_forward_argsort_f32`.
  */
-fun computeArgsort(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeArgsort(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("ARGSORT requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "ARGSORT only supports F32, got ${src0.type}" }
 
@@ -4396,9 +4379,8 @@ fun computeArgsort(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_top_k_f32`.
  */
-fun computeTopK(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeTopK(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("TOP_K requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "TOP_K only supports F32, got ${src0.type}" }
 
@@ -4444,9 +4426,8 @@ internal const val GGML_SCALE_FLAG_ALIGN_CORNERS = 0x100
  *
  * Ported from `ggml_compute_forward_upscale_f32` (nearest + bilinear paths).
  */
-fun computeUpscale(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeUpscale(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("UPSCALE requires src0")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "UPSCALE only supports F32, got ${src0.type}" }
 
@@ -4538,10 +4519,9 @@ fun computeUpscale(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_out_prod_f32`.
  */
-fun computeOutProd(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeOutProd(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("OUT_PROD requires src0")
     val src1 = dst.src[1] ?: error("OUT_PROD requires src1")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(dst.type == GGMLType.F32) { "OUT_PROD dst must be F32" }
 
@@ -4593,10 +4573,9 @@ fun computeOutProd(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_cross_entropy_loss_f32` (single-thread).
  */
-fun computeCrossEntropyLoss(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCrossEntropyLoss(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("CROSS_ENTROPY_LOSS requires src0")
     val src1 = dst.src[1] ?: error("CROSS_ENTROPY_LOSS requires src1")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(src0.type == GGMLType.F32) { "Only F32 supported" }
     require(src1.type == GGMLType.F32) { "Only F32 supported" }
@@ -4649,11 +4628,10 @@ fun computeCrossEntropyLoss(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_cross_entropy_loss_back_f32`.
  */
-fun computeCrossEntropyLossBack(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCrossEntropyLossBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val grad  = dst.src[0] ?: error("CE_LOSS_BACK requires src0 (grad)")
     val src0f = dst.src[1] ?: error("CE_LOSS_BACK requires src1 (logits)")
     val src1f = dst.src[2] ?: error("CE_LOSS_BACK requires src2 (labels)")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     val nc = src0f.ne[0].toInt()
     val nr = (src0f.numElements() / nc).toInt()
@@ -4701,13 +4679,12 @@ fun computeCrossEntropyLossBack(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_opt_step_adamw_f32`.
  */
-fun computeOptStepAdamw(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeOptStepAdamw(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val w     = dst.src[0] ?: error("ADAMW requires src0 (weights)")
     val g     = dst.src[1] ?: error("ADAMW requires src1 (grad)")
     val m     = dst.src[2] ?: error("ADAMW requires src2 (m)")
     val v     = dst.src[3] ?: error("ADAMW requires src3 (v)")
     val ap    = dst.src[4] ?: error("ADAMW requires src4 (params)")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(w.type == GGMLType.F32) { "ADAMW only supports F32 weights" }
 
@@ -4752,11 +4729,10 @@ fun computeOptStepAdamw(params: GGMLComputeParams, dst: GGMLTensor) {
  *
  * Ported from `ggml_compute_forward_opt_step_sgd_f32`.
  */
-fun computeOptStepSgd(params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeOptStepSgd(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
     val w     = dst.src[0] ?: error("SGD requires src0 (weights)")
     val g     = dst.src[1] ?: error("SGD requires src1 (grad)")
     val sp    = dst.src[2] ?: error("SGD requires src2 (params)")
-    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
 
     require(w.type == GGMLType.F32) { "SGD only supports F32 weights" }
 
@@ -4848,7 +4824,32 @@ object GGMLComputeOps {
             GGMLOp.CONT -> computeContNode(graphAllocator, node)
             GGMLOp.CPY -> computeCpyNode(graphAllocator, node)
             GGMLOp.SET -> computeSetNode(graphAllocator, node)
-            // Add more operations as needed
+            GGMLOp.CONCAT -> computeConcatNode(graphAllocator, node)
+            GGMLOp.SUM_ROWS -> computeSumRowsNode(graphAllocator, node)
+            GGMLOp.CUMSUM -> computeCumsumNode(graphAllocator, node)
+            GGMLOp.ARGMAX -> computeArgmaxNode(graphAllocator, node)
+            GGMLOp.COUNT_EQUAL -> computeCountEqualNode(graphAllocator, node)
+            GGMLOp.GET_ROWS -> computeGetRowsNode(graphAllocator, node)
+            GGMLOp.GET_ROWS_BACK -> computeGetRowsBackNode(graphAllocator, node)
+            GGMLOp.SET_ROWS -> computeSetRowsNode(graphAllocator, node)
+            GGMLOp.DIAG -> computeDiagNode(graphAllocator, node)
+            GGMLOp.DIAG_MASK_INF -> computeDiagMaskInfNode(graphAllocator, node)
+            GGMLOp.DIAG_MASK_ZERO -> computeDiagMaskZeroNode(graphAllocator, node)
+            GGMLOp.ROPE -> computeRopeNode(graphAllocator, node)
+            GGMLOp.ROPE_BACK -> computeRopeBackNode(graphAllocator, node)
+            GGMLOp.PAD -> computePadNode(graphAllocator, node)
+            GGMLOp.PAD_REFLECT_1D -> computePadReflect1DNode(graphAllocator, node)
+            GGMLOp.ROLL -> computeRollNode(graphAllocator, node)
+            GGMLOp.ARANGE -> computeArangeNode(graphAllocator, node)
+            GGMLOp.TIMESTEP_EMBEDDING -> computeTimestepEmbeddingNode(graphAllocator, node)
+            GGMLOp.ARGSORT -> computeArgsortNode(graphAllocator, node)
+            GGMLOp.TOP_K -> computeTopKNode(graphAllocator, node)
+            GGMLOp.UPSCALE -> computeUpscaleNode(graphAllocator, node)
+            GGMLOp.OUT_PROD -> computeOutProdNode(graphAllocator, node)
+            GGMLOp.CROSS_ENTROPY_LOSS -> computeCrossEntropyLossNode(graphAllocator, node)
+            GGMLOp.CROSS_ENTROPY_LOSS_BACK -> computeCrossEntropyLossBackNode(graphAllocator, node)
+            GGMLOp.OPT_STEP_ADAMW -> computeOptStepAdamwNode(graphAllocator, node)
+            GGMLOp.OPT_STEP_SGD -> computeOptStepSgdNode(graphAllocator, node)
             else -> throw NotImplementedError("Operation ${node.op} not implemented in compute graph")
         }
     }
@@ -6105,6 +6106,87 @@ object GGMLComputeOps {
     ) {
         TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_opt_step_sgd")
     }
+    // ---- Wrappers for structural / advanced compute operations ----
+
+    private val defaultParams = GGMLComputeParams(ith = 0, nth = 1)
+
+    private fun computeConcatNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeConcat(graphAllocator, defaultParams, node)
+
+    private fun computeSumRowsNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeSumRows(graphAllocator, defaultParams, node)
+
+    private fun computeCumsumNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeCumsum(graphAllocator, defaultParams, node)
+
+    private fun computeArgmaxNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeArgmax(graphAllocator, defaultParams, node)
+
+    private fun computeCountEqualNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeCountEqual(graphAllocator, defaultParams, node)
+
+    private fun computeGetRowsNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeGetRows(graphAllocator, defaultParams, node)
+
+    private fun computeGetRowsBackNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeGetRowsBack(graphAllocator, defaultParams, node)
+
+    private fun computeSetRowsNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeSetRows(graphAllocator, defaultParams, node)
+
+    private fun computeDiagNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeDiag(graphAllocator, defaultParams, node)
+
+    private fun computeDiagMaskInfNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeDiagMaskInf(graphAllocator, defaultParams, node)
+
+    private fun computeDiagMaskZeroNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeDiagMaskZero(graphAllocator, defaultParams, node)
+
+    private fun computeRopeNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeRope(graphAllocator, defaultParams, node)
+
+    private fun computeRopeBackNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeRopeBack(graphAllocator, defaultParams, node)
+
+    private fun computePadNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computePad(graphAllocator, defaultParams, node)
+
+    private fun computePadReflect1DNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computePadReflect1D(graphAllocator, defaultParams, node)
+
+    private fun computeRollNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeRoll(graphAllocator, defaultParams, node)
+
+    private fun computeArangeNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeArange(graphAllocator, defaultParams, node)
+
+    private fun computeTimestepEmbeddingNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeTimestepEmbedding(graphAllocator, defaultParams, node)
+
+    private fun computeArgsortNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeArgsort(graphAllocator, defaultParams, node)
+
+    private fun computeTopKNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeTopK(graphAllocator, defaultParams, node)
+
+    private fun computeUpscaleNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeUpscale(graphAllocator, defaultParams, node)
+
+    private fun computeOutProdNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeOutProd(graphAllocator, defaultParams, node)
+
+    private fun computeCrossEntropyLossNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeCrossEntropyLoss(graphAllocator, defaultParams, node)
+
+    private fun computeCrossEntropyLossBackNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeCrossEntropyLossBack(graphAllocator, defaultParams, node)
+
+    private fun computeOptStepAdamwNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeOptStepAdamw(graphAllocator, defaultParams, node)
+
+    private fun computeOptStepSgdNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) =
+        computeOptStepSgd(graphAllocator, defaultParams, node)
 }
 
 // =====================================================================
@@ -6722,4 +6804,5 @@ private fun computeGluVariant(
             }
         }
     }
+
 }
