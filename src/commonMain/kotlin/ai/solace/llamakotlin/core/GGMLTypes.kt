@@ -239,6 +239,27 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     FLASH_FF,
     MAP_UNARY, // Depends on the specific unary op mapped
     MAP_BINARY, // Depends on the specific binary op mapped
+    ACC(true),    // Accumulate: dst = src0 + src1 at offset
+    SET(true),    // Set: copy src1 into src0 at offset
+    CONT,         // Make contiguous (same as dup)
+    EXP(true),
+    SIGMOID(true),
+    TANH(true),
+    HARDSWISH(true),
+    HARDSIGMOID(true),
+    GELU_ERF(true),
+    SILU_BACK_OP(true), // Renamed to avoid clash with SILU_BACK
+    SOFTPLUS(true),
+    ELU(true),
+    LEAKY_RELU(true),
+    CEIL(true),
+    FLOOR(true),
+    ROUND(true),
+    TRUNC(true),
+    CLAMP(true),
+    GROUP_NORM(true),
+    GLU,          // Gated Linear Unit dispatch (reglu, geglu, swiglu, etc.)
+    UNARY,        // Unary op dispatch (abs, sgn, step, etc.)
     COUNT
 }
 

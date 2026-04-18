@@ -11,10 +11,20 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
 import ai.solace.llamakotlin.core.simd.GGMLSimd
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.ln
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.round
 import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tanh
 import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES
 
 /**
@@ -3475,6 +3485,1294 @@ private fun calculateStrideFactor(tensor: GGMLTensor, dim: Int): Int {
     return factor
 }
 
+// ============================================================================
+// Structural / advanced compute-forward operations
+// Ported from ggml-cpu/ops.cpp (lines ~3000-11214)
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_concat
+// ---------------------------------------------------------------------------
+
+/**
+ * Concatenates two tensors along the dimension stored in `dst.opParams[0]`.
+ *
+ * For elements whose indices fall within the bounds of src0 along **all** four
+ * dimensions, the value is copied from src0.  Otherwise the value comes from
+ * src1 after subtracting the src0 extent along the concat dimension.
+ *
+ * Ported from `ggml_compute_forward_concat_f32` and the generic path.
+ */
+fun computeConcat(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("CONCAT requires src0")
+    val src1 = dst.src[1] ?: error("CONCAT requires src1")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    val dim = ggml_get_op_params_i32(dst, 0)
+    require(dim in 0..3) { "concat dim must be 0..3, got $dim" }
+
+    val o = LongArray(4)
+    o[dim] = src0.ne[dim]
+
+    val ne0 = dst.ne[0].toInt()
+    val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt()
+    val ne3 = dst.ne[3].toInt()
+    val ne00 = src0.ne[0].toInt(); val ne01 = src0.ne[1].toInt()
+    val ne02 = src0.ne[2].toInt(); val ne03 = src0.ne[3].toInt()
+
+    for (i3 in 0 until ne3) {
+        for (i2 in 0 until ne2) {
+            for (i1 in 0 until ne1) {
+                for (i0 in 0 until ne0) {
+                    val fromSrc0 = i0 < ne00 && i1 < ne01 && i2 < ne02 && i3 < ne03
+                    val value: Float = if (fromSrc0) {
+                        src0.getFloat(graphAllocator, i0, i1, i2, i3)
+                    } else {
+                        src1.getFloat(
+                            graphAllocator,
+                            (i0 - o[0].toInt()),
+                            (i1 - o[1].toInt()),
+                            (i2 - o[2].toInt()),
+                            (i3 - o[3].toInt())
+                        )
+                    }
+                    dst.setFloat(graphAllocator, value, i0, i1, i2, i3)
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_sum_rows
+// ---------------------------------------------------------------------------
+
+/**
+ * Sums each row of src0 along dimension 0.  The output has `ne0 == 1` and
+ * the remaining dimensions match src0.
+ *
+ * Ported from `ggml_compute_forward_sum_rows_f32`.
+ */
+fun computeSumRows(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("SUM_ROWS requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "SUM_ROWS only supports F32, got ${src0.type}" }
+
+    val ne00 = src0.ne[0].toInt()
+    val ne01 = src0.ne[1].toInt()
+    val ne02 = src0.ne[2].toInt()
+    val ne03 = src0.ne[3].toInt()
+
+    for (i3 in 0 until ne03) {
+        for (i2 in 0 until ne02) {
+            for (i1 in 0 until ne01) {
+                var rowSum = 0.0f
+                for (i0 in 0 until ne00) {
+                    rowSum += src0.getFloat(graphAllocator, i0, i1, i2, i3)
+                }
+                dst.setFloat(graphAllocator, rowSum, 0, i1, i2, i3)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_cumsum
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes the cumulative sum along dimension 0 for each row.
+ *
+ * Ported from `ggml_compute_forward_cumsum_f32`.
+ */
+fun computeCumsum(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("CUMSUM requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "CUMSUM only supports F32, got ${src0.type}" }
+
+    val ne00 = src0.ne[0].toInt()
+    val ne01 = src0.ne[1].toInt()
+    val ne02 = src0.ne[2].toInt()
+    val ne03 = src0.ne[3].toInt()
+
+    for (i3 in 0 until ne03) {
+        for (i2 in 0 until ne02) {
+            for (i1 in 0 until ne01) {
+                var acc = 0.0f
+                for (i0 in 0 until ne00) {
+                    acc += src0.getFloat(graphAllocator, i0, i1, i2, i3)
+                    dst.setFloat(graphAllocator, acc, i0, i1, i2, i3)
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_argmax
+// ---------------------------------------------------------------------------
+
+/**
+ * For each row (ne01 rows), finds the index of the maximum element along
+ * dimension 0 and writes it as an I32 into dst.
+ *
+ * Ported from `ggml_compute_forward_argmax_f32`.
+ */
+fun computeArgmax(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("ARGMAX requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "ARGMAX only supports F32, got ${src0.type}" }
+
+    val ne00 = src0.ne[0].toInt()
+    val ne01 = src0.ne[1].toInt()
+
+    for (i1 in 0 until ne01) {
+        var maxIdx = 0
+        var maxVal = src0.getFloat(graphAllocator, 0, i1)
+        for (i0 in 1 until ne00) {
+            val v = src0.getFloat(graphAllocator, i0, i1)
+            if (v > maxVal) { maxVal = v; maxIdx = i0 }
+        }
+        dst.setInt(graphAllocator, maxIdx, i1)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_count_equal
+// ---------------------------------------------------------------------------
+
+/**
+ * Counts the number of element-wise equal I32 entries between src0 and src1.
+ * Writes the result as a single I64 scalar into dst.
+ *
+ * Ported from `ggml_compute_forward_count_equal_i32` (single-thread path).
+ */
+fun computeCountEqual(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("COUNT_EQUAL requires src0")
+    val src1 = dst.src[1] ?: error("COUNT_EQUAL requires src1")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.I32) { "COUNT_EQUAL only supports I32, got ${src0.type}" }
+    require(src1.type == GGMLType.I32) { "COUNT_EQUAL only supports I32, got ${src1.type}" }
+
+    val ne0 = src0.ne[0].toInt()
+    val ne1 = src0.ne[1].toInt()
+    val ne2 = src0.ne[2].toInt()
+    val ne3 = src0.ne[3].toInt()
+
+    var count = 0L
+    for (i3 in 0 until ne3) {
+        for (i2 in 0 until ne2) {
+            for (i1 in 0 until ne1) {
+                for (i0 in 0 until ne0) {
+                    val v0 = src0.getInt(graphAllocator, i0, i1, i2, i3)
+                    val v1 = src1.getInt(graphAllocator, i0, i1, i2, i3)
+                    if (v0 == v1) count++
+                }
+            }
+        }
+    }
+    dst.setLong(graphAllocator, count, 0)
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_get_rows
+// ---------------------------------------------------------------------------
+
+/**
+ * Gathers rows from src0 using I32 indices in src1.
+ * Output is always F32.  For quantized src0 types the values are dequantized
+ * on the fly; for F16 they are promoted; for F32 they are copied directly.
+ *
+ * Ported from `ggml_compute_forward_get_rows_f32` / `_f16` (scalar paths).
+ */
+fun computeGetRows(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("GET_ROWS requires src0")
+    val src1 = dst.src[1] ?: error("GET_ROWS requires src1 (indices)")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    val nc = src0.ne[0].toInt()    // columns per row
+    val nr = src1.numElements().toInt()  // total index entries
+
+    val ne10 = src1.ne[0].toInt()
+    val ne11 = src1.ne[1].toInt()
+
+    for (i in 0 until nr) {
+        val i12 = i / (ne11 * ne10)
+        val i11 = (i - i12 * ne11 * ne10) / ne10
+        val i10 = i - i12 * ne11 * ne10 - i11 * ne10
+        val i01 = src1.getInt(graphAllocator, i10, i11, i12)
+
+        require(i01 >= 0 && i01 < src0.ne[1].toInt()) {
+            "GET_ROWS: row index $i01 out of bounds (0..${src0.ne[1] - 1})"
+        }
+
+        when (src0.type) {
+            GGMLType.F32 -> {
+                for (j in 0 until nc) {
+                    val v = src0.getFloat(graphAllocator, j, i01, i11, i12)
+                    dst.setFloat(graphAllocator, v, j, i10, i11, i12)
+                }
+            }
+            GGMLType.F16 -> {
+                for (j in 0 until nc) {
+                    val v = src0.getHalf(graphAllocator, j, i01, i11, i12)
+                    dst.setFloat(graphAllocator, v, j, i10, i11, i12)
+                }
+            }
+            else -> {
+                // TODO: quantized dequantize-row path for Q4_0, Q8_0, etc.
+                throw NotImplementedError("GET_ROWS not yet implemented for quantized type ${src0.type}")
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_get_rows_back
+// ---------------------------------------------------------------------------
+
+/**
+ * Backward pass for get_rows: scatters rows back into a zeroed tensor.
+ * src0 contains the upstream gradients, src1 contains the row indices.
+ * For duplicate indices the gradients are **accumulated** (summed).
+ *
+ * Ported from `ggml_compute_forward_get_rows_back_f32`.
+ */
+fun computeGetRowsBack(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("GET_ROWS_BACK requires src0")
+    val src1 = dst.src[1] ?: error("GET_ROWS_BACK requires src1 (indices)")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    val nc = src0.ne[0].toInt()
+    val nr = src1.numElements().toInt()
+
+    // zero the destination
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+    for (i3 in 0 until ne3) for (i2 in 0 until ne2) for (i1 in 0 until ne1) for (i0 in 0 until ne0)
+        dst.setFloat(graphAllocator, 0.0f, i0, i1, i2, i3)
+
+    when (src0.type) {
+        GGMLType.F32 -> {
+            for (i in 0 until nr) {
+                val r = src1.getInt(graphAllocator, i)
+                for (j in 0 until nc) {
+                    val cur = dst.getFloat(graphAllocator, j, r)
+                    dst.setFloat(graphAllocator, cur + src0.getFloat(graphAllocator, j, i), j, r)
+                }
+            }
+        }
+        GGMLType.F16 -> {
+            for (i in 0 until nr) {
+                val r = src1.getInt(graphAllocator, i)
+                for (j in 0 until nc) {
+                    val cur = dst.getFloat(graphAllocator, j, r)
+                    dst.setFloat(graphAllocator, cur + src0.getHalf(graphAllocator, j, i), j, r)
+                }
+            }
+        }
+        else -> throw NotImplementedError("GET_ROWS_BACK not implemented for ${src0.type}")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_set_rows
+// ---------------------------------------------------------------------------
+
+/**
+ * Inverse of get_rows: copies each row of the F32 src0 into the destination
+ * at the position given by the I32 index tensor src1.  The dst may be a
+ * quantized type (the C++ version calls `from_float`); here only F32→F32 is
+ * fully implemented.
+ *
+ * Ported from `ggml_compute_forward_set_rows_f32` (scalar, I32 indices).
+ */
+fun computeSetRows(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("SET_ROWS requires src0")
+    val src1 = dst.src[1] ?: error("SET_ROWS requires src1 (indices)")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "SET_ROWS: src0 must be F32, got ${src0.type}" }
+
+    val nc = src0.ne[0].toInt()
+    val nr = src0.ne[1].toInt()
+    val ne02 = src0.ne[2].toInt()
+    val ne03 = src0.ne[3].toInt()
+    val ne11 = src1.ne[1].toInt()
+    val ne12 = src1.ne[2].toInt()
+
+    for (i03 in 0 until ne03) {
+        for (i02 in 0 until ne02) {
+            for (i in 0 until nr) {
+                val i12 = i03 % ne12
+                val i11 = i02 % ne11
+                val i1 = src1.getInt(graphAllocator, i, i11, i12)
+
+                require(i1 >= 0 && i1 < dst.ne[1].toInt()) {
+                    "SET_ROWS: index $i1 out of bounds (0..${dst.ne[1] - 1})"
+                }
+
+                for (j in 0 until nc) {
+                    val v = src0.getFloat(graphAllocator, j, i, i02, i03)
+                    dst.setFloat(graphAllocator, v, j, i1, i02, i03)
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_diag
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a diagonal matrix from a 1-D vector.
+ * src0 shape: `[ne00, 1, ne02, ne03]`  →  dst shape: `[ne00, ne00, ne02, ne03]`
+ * Off-diagonal elements are set to zero.
+ *
+ * Ported from `ggml_compute_forward_diag_f32`.
+ */
+fun computeDiag(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("DIAG requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "DIAG only supports F32, got ${src0.type}" }
+
+    val ne00 = src0.ne[0].toInt()
+    val ne2 = dst.ne[2].toInt()
+    val ne3 = dst.ne[3].toInt()
+
+    for (i3 in 0 until ne3) {
+        for (i2 in 0 until ne2) {
+            for (i1 in 0 until ne00) {
+                for (i0 in 0 until ne00) {
+                    val v = if (i0 == i1) src0.getFloat(graphAllocator, i1, 0, i2, i3) else 0.0f
+                    dst.setFloat(graphAllocator, v, i0, i1, i2, i3)
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_diag_mask_inf / diag_mask_zero
+// ---------------------------------------------------------------------------
+
+/**
+ * Applies a causal (upper-triangular) mask to an F32 tensor.
+ * Elements where `i0 > n_past + i1` are replaced with [maskValue]
+ * (`-Infinity` for diag_mask_inf, `0` for diag_mask_zero).
+ *
+ * Ported from `ggml_compute_forward_diag_mask_f32`.
+ *
+ * @param maskValue The value written into masked positions.
+ */
+fun computeDiagMask(params: GGMLComputeParams, dst: GGMLTensor, maskValue: Float) {
+    val src0 = dst.src[0] ?: error("DIAG_MASK requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "DIAG_MASK only supports F32, got ${src0.type}" }
+
+    val nPast = ggml_get_op_params_i32(dst, 0)
+    require(nPast >= 0) { "n_past must be >= 0, got $nPast" }
+
+    val nc = src0.ne[0].toInt()
+    val nr = src0.ne[1].toInt()
+    val nz = (src0.numElements() / (nc * nr).toLong()).toInt().coerceAtLeast(1)
+
+    // Copy src0 → dst if not inplace
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+    for (i3 in 0 until ne3) for (i2 in 0 until ne2) for (i1 in 0 until ne1) for (i0 in 0 until ne0)
+        dst.setFloat(graphAllocator, src0.getFloat(graphAllocator, i0, i1, i2, i3), i0, i1, i2, i3)
+
+    // Apply the upper-triangular mask
+    for (k in 0 until nz) {
+        for (j in 0 until nr) {
+            for (i in nPast until nc) {
+                if (i > nPast + j) {
+                    dst.setFloat(graphAllocator, maskValue, i, j, k)
+                }
+            }
+        }
+    }
+}
+
+/** Convenience: applies causal mask with `-Infinity`. */
+fun computeDiagMaskInf(params: GGMLComputeParams, dst: GGMLTensor) =
+    computeDiagMask(params, dst, Float.NEGATIVE_INFINITY)
+
+/** Convenience: applies causal mask with `0`. */
+fun computeDiagMaskZero(params: GGMLComputeParams, dst: GGMLTensor) =
+    computeDiagMask(params, dst, 0.0f)
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_rope / rope_back  (RoPE – Rotary Position Embeddings)
+// ---------------------------------------------------------------------------
+
+/** YaRN correction dimension for a given rotation count and context. */
+private fun ropeYarnCorrDim(nDims: Int, nCtxOrig: Int, nRot: Float, base: Float): Float {
+    return nDims * ln(nCtxOrig / (nRot * 2.0f * kotlin.math.PI.toFloat())) / (2.0f * ln(base))
+}
+
+/** Returns the (start, end) correction-dimension pair for YaRN. */
+private fun ropeYarnCorrDims(
+    nDims: Int, nCtxOrig: Int, freqBase: Float, betaFast: Float, betaSlow: Float
+): FloatArray {
+    val start = floor(ropeYarnCorrDim(nDims, nCtxOrig, betaFast, freqBase)).coerceAtLeast(0.0f)
+    val end = ceil(ropeYarnCorrDim(nDims, nCtxOrig, betaSlow, freqBase)).coerceAtMost((nDims - 1).toFloat())
+    return floatArrayOf(start, end)
+}
+
+/** Ramp function for YaRN interpolation blending. */
+private fun ropeYarnRamp(low: Float, high: Float, i0: Int): Float {
+    val y = (i0 / 2.0f - low) / max(0.001f, high - low)
+    return 1.0f - min(1.0f, max(0.0f, y))
+}
+
+/**
+ * Core YaRN rotation helper: returns `(cosθ, sinθ)` for the given pair index.
+ * When `ext_factor == 0` the scaling reduces to plain NTK-aware interpolation.
+ */
+private fun ropeYarn(
+    thetaExtrap: Float, freqScale: Float, corrDims: FloatArray,
+    i0: Int, extFactor: Float, mscale: Float
+): Pair<Float, Float> {
+    val thetaInterp = freqScale * thetaExtrap
+    var theta = thetaInterp
+    var ms = mscale
+    if (extFactor != 0.0f) {
+        val rampMix = ropeYarnRamp(corrDims[0], corrDims[1], i0) * extFactor
+        theta = thetaInterp * (1 - rampMix) + thetaExtrap * rampMix
+        ms *= 1.0f + 0.1f * ln(1.0f / freqScale)
+    }
+    return Pair(cos(theta) * ms, sin(theta) * ms)
+}
+
+/**
+ * Builds a per-element cos/sin cache for standard RoPE.
+ * `cache[i] = cosθ`, `cache[i+1] = sinθ * sinSign`, stepping `θ *= thetaScale`.
+ */
+private fun ropeCacheInit(
+    thetaBase: Float, freqScale: Float, freqFactors: FloatArray?,
+    corrDims: FloatArray, ne0: Int, extFactor: Float, mscale: Float,
+    sinSign: Float, thetaScale: Float
+): FloatArray {
+    val cache = FloatArray(ne0)
+    var theta = thetaBase
+    var i0 = 0
+    while (i0 < ne0) {
+        val ff = freqFactors?.get(i0 / 2) ?: 1.0f
+        val (c, s) = ropeYarn(theta / ff, freqScale, corrDims, i0, extFactor, mscale)
+        cache[i0] = c
+        cache[i0 + 1] = s * sinSign
+        theta *= thetaScale
+        i0 += 2
+    }
+    return cache
+}
+
+/**
+ * Rotary Position Embedding (RoPE) for F32 tensors.
+ * Handles NORMAL, NEOX, MROPE, VISION, and IMROPE modes.
+ *
+ * When [forward] is `true`, applies the standard rotation;
+ * when `false`, applies the inverse (for rope_back).
+ *
+ * Ported from `ggml_compute_forward_rope_flt<float>` (scalar path).
+ */
+fun computeRope(params: GGMLComputeParams, dst: GGMLTensor, forward: Boolean = true) {
+    val src0 = dst.src[0] ?: error("ROPE requires src0")
+    val src1 = dst.src[1] ?: error("ROPE requires src1 (positions)")
+    val src2 = dst.src.getOrNull(2)  // optional freq_factors
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32 || src0.type == GGMLType.F16) {
+        "ROPE only supports F32/F16, got ${src0.type}"
+    }
+
+    val nDims   = ggml_get_op_params_i32(dst, 1)
+    val mode    = ggml_get_op_params_i32(dst, 2)
+    val nCtxOrig = ggml_get_op_params_i32(dst, 4)
+    val freqBase    = ggml_get_op_params_f32(dst, 5)
+    val freqScale   = ggml_get_op_params_f32(dst, 6)
+    val extFactor   = ggml_get_op_params_f32(dst, 7)
+    val attnFactor  = ggml_get_op_params_f32(dst, 8)
+    val betaFast    = ggml_get_op_params_f32(dst, 9)
+    val betaSlow    = ggml_get_op_params_f32(dst, 10)
+
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+
+    require(nDims <= ne0) { "n_dims ($nDims) > ne0 ($ne0)" }
+    require(nDims % 2 == 0) { "n_dims must be even, got $nDims" }
+
+    val thetaScale = freqBase.pow(-2.0f / nDims)
+    val corrDims = ropeYarnCorrDims(nDims, nCtxOrig, freqBase, betaFast, betaSlow)
+    val sinSign = if (forward) 1.0f else -1.0f
+
+    val isVision = mode == GGML_ROPE_TYPE_VISION
+    val mropeUsed = (mode and GGML_ROPE_TYPE_MROPE) != 0
+
+    val freqFactors: FloatArray? = if (src2 != null) {
+        // Read freq factors from src2 (type F32)
+        FloatArray(nDims / 2) { src2.getFloat(graphAllocator, it) }
+    } else null
+
+    val isF16 = src0.type == GGMLType.F16
+
+    for (i3 in 0 until ne3) {
+        for (i2 in 0 until ne2) {
+            // Build cache for this sequence position
+            val p = src1.getInt(graphAllocator, i2).toLong()
+            val cache = ropeCacheInit(
+                p.toFloat(), freqScale, freqFactors, corrDims, ne0,
+                extFactor, attnFactor, sinSign, thetaScale
+            )
+
+            for (i1 in 0 until ne1) {
+                // Determine offset and n_offset based on mode
+                val nOffset: Int
+                val pairsN: Int
+                val scale: Int
+                when (mode) {
+                    GGML_ROPE_TYPE_NORMAL -> {
+                        nOffset = 1; pairsN = nDims; scale = 1
+                    }
+                    GGML_ROPE_TYPE_NEOX, GGML_ROPE_TYPE_MROPE, GGML_ROPE_TYPE_IMROPE -> {
+                        nOffset = nDims / 2; pairsN = nDims; scale = 2
+                    }
+                    GGML_ROPE_TYPE_VISION -> {
+                        nOffset = nDims; pairsN = ne0; scale = 2
+                    }
+                    else -> error("Unsupported rope mode $mode")
+                }
+
+                // Rotate pairs
+                var i0 = 0
+                while (i0 < pairsN) {
+                    val ic = i0 / scale
+                    val cosTheta = cache[i0]
+                    val sinTheta = cache[i0 + 1]
+
+                    val x0: Float
+                    val x1: Float
+                    if (isF16) {
+                        x0 = src0.getHalf(graphAllocator, ic, i1, i2, i3)
+                        x1 = src0.getHalf(graphAllocator, ic + nOffset, i1, i2, i3)
+                    } else {
+                        x0 = src0.getFloat(graphAllocator, ic, i1, i2, i3)
+                        x1 = src0.getFloat(graphAllocator, ic + nOffset, i1, i2, i3)
+                    }
+
+                    val r0 = x0 * cosTheta - x1 * sinTheta
+                    val r1 = x0 * sinTheta + x1 * cosTheta
+
+                    if (isF16) {
+                        dst.setHalf(graphAllocator, r0, ic, i1, i2, i3)
+                        dst.setHalf(graphAllocator, r1, ic + nOffset, i1, i2, i3)
+                    } else {
+                        dst.setFloat(graphAllocator, r0, ic, i1, i2, i3)
+                        dst.setFloat(graphAllocator, r1, ic + nOffset, i1, i2, i3)
+                    }
+                    i0 += 2
+                }
+
+                // Copy remaining channels unchanged (for non-vision modes)
+                if (!isVision) {
+                    var i0r = nDims
+                    while (i0r < ne0) {
+                        if (isF16) {
+                            dst.setHalf(graphAllocator, src0.getHalf(graphAllocator, i0r, i1, i2, i3), i0r, i1, i2, i3)
+                            dst.setHalf(graphAllocator, src0.getHalf(graphAllocator, i0r + 1, i1, i2, i3), i0r + 1, i1, i2, i3)
+                        } else {
+                            dst.setFloat(graphAllocator, src0.getFloat(graphAllocator, i0r, i1, i2, i3), i0r, i1, i2, i3)
+                            dst.setFloat(graphAllocator, src0.getFloat(graphAllocator, i0r + 1, i1, i2, i3), i0r + 1, i1, i2, i3)
+                        }
+                        i0r += 2
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Backward pass for RoPE — identical computation with inverted sin sign. */
+fun computeRopeBack(params: GGMLComputeParams, dst: GGMLTensor) =
+    computeRope(params, dst, forward = false)
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_pad
+// ---------------------------------------------------------------------------
+
+/**
+ * Pads an F32 tensor with zeros (or wraps circularly) along all four
+ * dimensions.  Padding amounts are stored in `dst.opParams[0..7]` as
+ * `(lp0, rp0, lp1, rp1, lp2, rp2, lp3, rp3)`.  `opParams[8]` selects
+ * circular mode when non-zero.
+ *
+ * Ported from `ggml_compute_forward_pad_f32`.
+ */
+fun computePad(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("PAD requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "PAD only supports F32, got ${src0.type}" }
+
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+    val ne00 = src0.ne[0].toInt(); val ne01 = src0.ne[1].toInt()
+    val ne02 = src0.ne[2].toInt(); val ne03 = src0.ne[3].toInt()
+
+    val lp0 = ggml_get_op_params_i32(dst, 0)
+    val rp0 = ggml_get_op_params_i32(dst, 1)
+    val lp1 = ggml_get_op_params_i32(dst, 2)
+    val rp1 = ggml_get_op_params_i32(dst, 3)
+    val lp2 = ggml_get_op_params_i32(dst, 4)
+    val rp2 = ggml_get_op_params_i32(dst, 5)
+    val lp3 = ggml_get_op_params_i32(dst, 6)
+    val rp3 = ggml_get_op_params_i32(dst, 7)
+    val circular = ggml_get_op_params_i32(dst, 8) != 0
+
+    for (i3 in 0 until ne3) {
+        for (i2 in 0 until ne2) {
+            for (i1 in 0 until ne1) {
+                for (i0 in 0 until ne0) {
+                    val value: Float = if (circular) {
+                        val si0 = wrapAround(i0 - lp0, ne00)
+                        val si1 = wrapAround(i1 - lp1, ne01)
+                        val si2 = wrapAround(i2 - lp2, ne02)
+                        val si3 = wrapAround(i3 - lp3, ne03)
+                        src0.getFloat(graphAllocator, si0, si1, si2, si3)
+                    } else {
+                        if (i0 in lp0 until (ne0 - rp0) &&
+                            i1 in lp1 until (ne1 - rp1) &&
+                            i2 in lp2 until (ne2 - rp2) &&
+                            i3 in lp3 until (ne3 - rp3)
+                        ) {
+                            src0.getFloat(graphAllocator, i0 - lp0, i1 - lp1, i2 - lp2, i3 - lp3)
+                        } else {
+                            0.0f
+                        }
+                    }
+                    dst.setFloat(graphAllocator, value, i0, i1, i2, i3)
+                }
+            }
+        }
+    }
+}
+
+/** Circular wrap: `(coord + size) % size`. */
+private fun wrapAround(coord: Int, size: Int): Int = ((coord % size) + size) % size
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_pad_reflect_1d
+// ---------------------------------------------------------------------------
+
+/**
+ * 1-D reflect-padding along dimension 0.
+ * `opParams[0]` = left pad, `opParams[1]` = right pad.
+ *
+ * Ported from `ggml_compute_forward_pad_reflect_1d`.
+ */
+fun computePadReflect1D(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("PAD_REFLECT requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "PAD_REFLECT only supports F32, got ${src0.type}" }
+
+    val p0 = ggml_get_op_params_i32(dst, 0)
+    val p1 = ggml_get_op_params_i32(dst, 1)
+    val ne00 = src0.ne[0].toInt()
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+
+    for (i3 in 0 until ne3) {
+        for (i2 in 0 until ne2) {
+            for (i1 in 0 until ne1) {
+                // Copy original data into the padded region
+                for (j in 0 until ne00) {
+                    dst.setFloat(
+                        graphAllocator,
+                        src0.getFloat(graphAllocator, j, i1, i2, i3),
+                        j + p0, i1, i2, i3
+                    )
+                }
+                // Reflect left
+                for (j in 1..p0) {
+                    dst.setFloat(
+                        graphAllocator,
+                        dst.getFloat(graphAllocator, p0 + j, i1, i2, i3),
+                        p0 - j, i1, i2, i3
+                    )
+                }
+                // Reflect right
+                val rightBase = ne0 - p1 - 1
+                for (j in 1..p1) {
+                    dst.setFloat(
+                        graphAllocator,
+                        dst.getFloat(graphAllocator, rightBase - j, i1, i2, i3),
+                        rightBase + j, i1, i2, i3
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_roll
+// ---------------------------------------------------------------------------
+
+/**
+ * Circular shift (roll) along all four dimensions.
+ * Shift amounts are stored in `dst.opParams[0..3]`.
+ *
+ * Ported from `ggml_compute_forward_roll_f32`.
+ */
+fun computeRoll(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("ROLL requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "ROLL only supports F32, got ${src0.type}" }
+
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+
+    val s0 = ggml_get_op_params_i32(dst, 0)
+    val s1 = ggml_get_op_params_i32(dst, 1)
+    val s2 = ggml_get_op_params_i32(dst, 2)
+    val s3 = ggml_get_op_params_i32(dst, 3)
+
+    for (i3 in 0 until ne3) {
+        val i03 = wrapIndex(i3 - s3, ne3)
+        for (i2 in 0 until ne2) {
+            val i02 = wrapIndex(i2 - s2, ne2)
+            for (i1 in 0 until ne1) {
+                val i01 = wrapIndex(i1 - s1, ne1)
+                for (i0 in 0 until ne0) {
+                    val i00 = wrapIndex(i0 - s0, ne0)
+                    dst.setFloat(
+                        graphAllocator,
+                        src0.getFloat(graphAllocator, i00, i01, i02, i03),
+                        i0, i1, i2, i3
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Wraps a signed index into `[0, ne)`. */
+private fun wrapIndex(i: Int, ne: Int): Int {
+    val r = i % ne
+    return if (r < 0) r + ne else r
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_arange
+// ---------------------------------------------------------------------------
+
+/**
+ * Fills a 1-D F32 tensor with `[start, start+step, start+2*step, …)`.
+ * Parameters are in `dst.opParams` as floats at indices 0, 1, 2.
+ *
+ * Ported from `ggml_compute_forward_arange_f32`.
+ */
+fun computeArange(params: GGMLComputeParams, dst: GGMLTensor) {
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(dst.type == GGMLType.F32) { "ARANGE only supports F32, got ${dst.type}" }
+
+    val start = ggml_get_op_params_f32(dst, 0)
+    val stop  = ggml_get_op_params_f32(dst, 1)
+    val step  = ggml_get_op_params_f32(dst, 2)
+
+    val steps = ceil((stop - start) / step).toInt()
+
+    for (i in 0 until steps) {
+        dst.setFloat(graphAllocator, start + step * i, i)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_timestep_embedding
+// ---------------------------------------------------------------------------
+
+/**
+ * Sinusoidal timestep embedding used in diffusion models.
+ * Each input timestep is mapped to a `dim`-length vector of
+ * `[cos(freq*t), …, sin(freq*t), …]`.
+ *
+ * Ported from `ggml_compute_forward_timestep_embedding_f32`.
+ */
+fun computeTimestepEmbedding(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("TIMESTEP_EMBEDDING requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "TIMESTEP_EMBEDDING only supports F32" }
+
+    val dim = ggml_get_op_params_i32(dst, 0)
+    val maxPeriod = ggml_get_op_params_i32(dst, 1)
+    val half = dim / 2
+    val ne00 = src0.ne[0].toInt()
+
+    for (i in 0 until ne00) {
+        val timestep = src0.getFloat(graphAllocator, i)
+        for (j in 0 until half) {
+            val freq = exp(-ln(maxPeriod.toFloat()) * j.toFloat() / half)
+            val arg = timestep * freq
+            // Embed: first half = cos, second half = sin
+            dst.setFloat(graphAllocator, cos(arg), j, i)
+            dst.setFloat(graphAllocator, sin(arg), j + half, i)
+        }
+        if (dim % 2 != 0) {
+            dst.setFloat(graphAllocator, 0.0f, 2 * half, i)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_argsort
+// ---------------------------------------------------------------------------
+
+/** Sort order for argsort / top-k. */
+internal const val GGML_SORT_ORDER_ASC = 0
+internal const val GGML_SORT_ORDER_DESC = 1
+
+/**
+ * Returns the indices that would sort each row of src0 in the order
+ * specified by `dst.opParams[0]` (0 = ascending, 1 = descending).
+ *
+ * Ported from `ggml_compute_forward_argsort_f32`.
+ */
+fun computeArgsort(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("ARGSORT requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "ARGSORT only supports F32, got ${src0.type}" }
+
+    val ne0 = src0.ne[0].toInt()
+    val nr = (src0.numElements() / ne0).toInt()
+    val order = ggml_get_op_params_i32(dst, 0)
+
+    for (row in 0 until nr) {
+        val i1 = row % src0.ne[1].toInt()
+        val i2 = (row / src0.ne[1].toInt()) % src0.ne[2].toInt()
+        val i3 = row / (src0.ne[1].toInt() * src0.ne[2].toInt())
+
+        // Read row values
+        val rowData = FloatArray(ne0) { src0.getFloat(graphAllocator, it, i1, i2, i3) }
+
+        // Build index array and sort
+        val indices = IntArray(ne0) { it }
+        val sorted = indices.sortedWith(Comparator { a, b ->
+            if (order == GGML_SORT_ORDER_ASC)
+                rowData[a].compareTo(rowData[b])
+            else
+                rowData[b].compareTo(rowData[a])
+        })
+
+        for (j in 0 until ne0) {
+            dst.setInt(graphAllocator, sorted[j], j, i1, i2, i3)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_top_k
+// ---------------------------------------------------------------------------
+
+/**
+ * For each row, finds the top-k element indices (by value, descending).
+ * `ne0` of the destination is the k value.  Order among the k results
+ * is intentionally **not** guaranteed (matches C++ behaviour which swaps
+ * the first two results).
+ *
+ * Ported from `ggml_compute_forward_top_k_f32`.
+ */
+fun computeTopK(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("TOP_K requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "TOP_K only supports F32, got ${src0.type}" }
+
+    val ne00 = src0.ne[0].toInt()
+    val topK = dst.ne[0].toInt()
+    val nr = (src0.numElements() / ne00).toInt()
+
+    for (row in 0 until nr) {
+        val i1 = row % src0.ne[1].toInt()
+        val i2 = (row / src0.ne[1].toInt()) % src0.ne[2].toInt()
+        val i3 = row / (src0.ne[1].toInt() * src0.ne[2].toInt())
+
+        val rowData = FloatArray(ne00) { src0.getFloat(graphAllocator, it, i1, i2, i3) }
+        val indices = IntArray(ne00) { it }
+
+        // Partial sort: find top-k largest
+        val sorted = indices.sortedByDescending { rowData[it] }
+        val topIndices = sorted.take(topK).toIntArray()
+
+        // Deliberate swap of first two (matches C++ behaviour)
+        if (topK > 1) {
+            val tmp = topIndices[0]; topIndices[0] = topIndices[1]; topIndices[1] = tmp
+        }
+
+        for (j in 0 until topK) {
+            dst.setInt(graphAllocator, topIndices[j], j, i1, i2, i3)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_upscale
+// ---------------------------------------------------------------------------
+
+/** Scale mode flags mirroring ggml.h constants. */
+internal const val GGML_SCALE_MODE_NEAREST  = 0
+internal const val GGML_SCALE_MODE_BILINEAR = 1
+internal const val GGML_SCALE_FLAG_ALIGN_CORNERS = 0x100
+
+/**
+ * Upscales an F32 tensor using nearest-neighbour or bilinear interpolation.
+ * The scale factors are inferred from `dst.ne / src0.ne`.
+ *
+ * Ported from `ggml_compute_forward_upscale_f32` (nearest + bilinear paths).
+ */
+fun computeUpscale(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("UPSCALE requires src0")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "UPSCALE only supports F32, got ${src0.type}" }
+
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+    val ne00 = src0.ne[0].toInt(); val ne01 = src0.ne[1].toInt()
+    val ne02 = src0.ne[2].toInt(); val ne03 = src0.ne[3].toInt()
+
+    var sf0 = ne0.toFloat() / ne00
+    var sf1 = ne1.toFloat() / ne01
+    val sf2 = ne2.toFloat() / ne02
+    val sf3 = ne3.toFloat() / ne03
+
+    val modeFlags = ggml_get_op_params_i32(dst, 0)
+    val mode = modeFlags and 0xFF
+    var pixelOffset = 0.5f
+
+    if (modeFlags and GGML_SCALE_FLAG_ALIGN_CORNERS != 0) {
+        pixelOffset = 0.0f
+        if (ne0 > 1 && ne00 > 1) sf0 = (ne0 - 1).toFloat() / (ne00 - 1)
+        if (ne1 > 1 && ne01 > 1) sf1 = (ne1 - 1).toFloat() / (ne01 - 1)
+    }
+
+    when (mode) {
+        GGML_SCALE_MODE_NEAREST -> {
+            for (i3 in 0 until ne3) {
+                val i03 = (i3 / sf3).toInt()
+                for (i2 in 0 until ne2) {
+                    val i02 = (i2 / sf2).toInt()
+                    for (i1 in 0 until ne1) {
+                        val i01 = (i1 / sf1).toInt()
+                        for (i0 in 0 until ne0) {
+                            val i00 = (i0 / sf0).toInt()
+                            dst.setFloat(
+                                graphAllocator,
+                                src0.getFloat(graphAllocator, i00, i01, i02, i03),
+                                i0, i1, i2, i3
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        GGML_SCALE_MODE_BILINEAR -> {
+            for (i3 in 0 until ne3) {
+                val i03 = (i3 / sf3).toInt()
+                for (i2 in 0 until ne2) {
+                    val i02 = (i2 / sf2).toInt()
+                    for (i1 in 0 until ne1) {
+                        val y = (i1.toFloat() + pixelOffset) / sf1 - pixelOffset
+                        var y0 = floor(y).toInt(); var y1 = y0 + 1
+                        y0 = y0.coerceIn(0, ne01 - 1)
+                        y1 = y1.coerceIn(0, ne01 - 1)
+                        val dy = (y - floor(y)).coerceIn(0.0f, 1.0f)
+                        for (i0 in 0 until ne0) {
+                            val x = (i0.toFloat() + pixelOffset) / sf0 - pixelOffset
+                            var x0 = floor(x).toInt(); var x1 = x0 + 1
+                            x0 = x0.coerceIn(0, ne00 - 1)
+                            x1 = x1.coerceIn(0, ne00 - 1)
+                            val dx = (x - floor(x)).coerceIn(0.0f, 1.0f)
+
+                            val a = src0.getFloat(graphAllocator, x0, y0, i02, i03)
+                            val b = src0.getFloat(graphAllocator, x1, y0, i02, i03)
+                            val c = src0.getFloat(graphAllocator, x0, y1, i02, i03)
+                            val d = src0.getFloat(graphAllocator, x1, y1, i02, i03)
+                            val v = a * (1 - dx) * (1 - dy) + b * dx * (1 - dy) + c * (1 - dx) * dy + d * dx * dy
+                            dst.setFloat(graphAllocator, v, i0, i1, i2, i3)
+                        }
+                    }
+                }
+            }
+        }
+        else -> {
+            // TODO: bicubic, bilinear+antialias
+            throw NotImplementedError("Upscale mode $mode not yet implemented")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_out_prod
+// ---------------------------------------------------------------------------
+
+/**
+ * Outer product: `dst[i0, i1, i2, i3] += Σ_k src0[i0, k, i2', i3'] * src1[i1, k, i2, i3]`
+ * where `i2' = i2 / (ne2/ne02)` etc.  dst is zeroed first.
+ *
+ * Only the F32 path is fully implemented; quantized types marked TODO.
+ *
+ * Ported from `ggml_compute_forward_out_prod_f32`.
+ */
+fun computeOutProd(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("OUT_PROD requires src0")
+    val src1 = dst.src[1] ?: error("OUT_PROD requires src1")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(dst.type == GGMLType.F32) { "OUT_PROD dst must be F32" }
+
+    val ne0 = dst.ne[0].toInt(); val ne1 = dst.ne[1].toInt()
+    val ne2 = dst.ne[2].toInt(); val ne3 = dst.ne[3].toInt()
+    val ne01 = src0.ne[1].toInt()
+    val ne02 = src0.ne[2].toInt(); val ne03 = src0.ne[3].toInt()
+
+    val dps2 = if (ne02 > 0) ne2 / ne02 else 1
+    val dps3 = if (ne03 > 0) ne3 / ne03 else 1
+
+    // Zero dst
+    for (i3 in 0 until ne3) for (i2 in 0 until ne2) for (i1 in 0 until ne1) for (i0 in 0 until ne0)
+        dst.setFloat(graphAllocator, 0.0f, i0, i1, i2, i3)
+
+    when (src0.type) {
+        GGMLType.F32 -> {
+            for (i3 in 0 until ne3) {
+                for (i2 in 0 until ne2) {
+                    val i02 = i2 / dps2
+                    val i03 = i3 / dps3
+                    for (i1 in 0 until ne1) {
+                        for (i01 in 0 until ne01) {
+                            val s1v = src1.getFloat(graphAllocator, i1, i01, i2, i3)
+                            for (i0 in 0 until ne0) {
+                                val s0v = src0.getFloat(graphAllocator, i0, i01, i02, i03)
+                                val cur = dst.getFloat(graphAllocator, i0, i1, i2, i3)
+                                dst.setFloat(graphAllocator, cur + s0v * s1v, i0, i1, i2, i3)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else -> {
+            // TODO: quantized outer product (dequantize row then multiply-accumulate)
+            throw NotImplementedError("OUT_PROD not implemented for quantized type ${src0.type}")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_cross_entropy_loss
+// ---------------------------------------------------------------------------
+
+/**
+ * Cross-entropy loss: `-mean_over_rows( Σ_j  src1[j] * log_softmax(src0[j]) )`.
+ * Result is a scalar F32 in dst.
+ *
+ * Ported from `ggml_compute_forward_cross_entropy_loss_f32` (single-thread).
+ */
+fun computeCrossEntropyLoss(params: GGMLComputeParams, dst: GGMLTensor) {
+    val src0 = dst.src[0] ?: error("CROSS_ENTROPY_LOSS requires src0")
+    val src1 = dst.src[1] ?: error("CROSS_ENTROPY_LOSS requires src1")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(src0.type == GGMLType.F32) { "Only F32 supported" }
+    require(src1.type == GGMLType.F32) { "Only F32 supported" }
+
+    val nc = src0.ne[0].toInt()
+    val nr = (src0.numElements() / nc).toInt()
+
+    var totalLoss = 0.0f
+
+    for (row in 0 until nr) {
+        val i1 = row % src0.ne[1].toInt()
+        val i2 = (row / src0.ne[1].toInt()) % src0.ne[2].toInt()
+        val i3 = row / (src0.ne[1].toInt() * src0.ne[2].toInt())
+
+        // Find max for numerical stability
+        var maxVal = Float.NEGATIVE_INFINITY
+        for (j in 0 until nc) {
+            val v = src0.getFloat(graphAllocator, j, i1, i2, i3)
+            if (v > maxVal) maxVal = v
+        }
+
+        // Compute log-sum-exp
+        var sumExp = 0.0
+        for (j in 0 until nc) {
+            sumExp += exp((src0.getFloat(graphAllocator, j, i1, i2, i3) - maxVal).toDouble())
+        }
+        val logSumExp = ln(sumExp).toFloat()
+
+        // Accumulate: src1 * (src0 - max - logSumExp)
+        var rowLoss = 0.0f
+        for (j in 0 until nc) {
+            val logSoftmax = src0.getFloat(graphAllocator, j, i1, i2, i3) - maxVal - logSumExp
+            rowLoss += src1.getFloat(graphAllocator, j, i1, i2, i3) * logSoftmax
+        }
+        totalLoss += rowLoss
+    }
+
+    dst.setFloat(graphAllocator, -totalLoss / nr, 0)
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_cross_entropy_loss_back
+// ---------------------------------------------------------------------------
+
+/**
+ * Backward pass for cross-entropy loss.
+ * `dst = (softmax(src0f) - src1f) * grad[0] / nr`
+ *
+ * Sources: `dst.src[0]` = grad (scalar), `dst.src[1]` = src0f, `dst.src[2]` = src1f.
+ *
+ * Ported from `ggml_compute_forward_cross_entropy_loss_back_f32`.
+ */
+fun computeCrossEntropyLossBack(params: GGMLComputeParams, dst: GGMLTensor) {
+    val grad  = dst.src[0] ?: error("CE_LOSS_BACK requires src0 (grad)")
+    val src0f = dst.src[1] ?: error("CE_LOSS_BACK requires src1 (logits)")
+    val src1f = dst.src[2] ?: error("CE_LOSS_BACK requires src2 (labels)")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    val nc = src0f.ne[0].toInt()
+    val nr = (src0f.numElements() / nc).toInt()
+    val dByNr = grad.getFloat(graphAllocator, 0) / nr
+
+    for (row in 0 until nr) {
+        val i1 = row % src0f.ne[1].toInt()
+        val i2 = (row / src0f.ne[1].toInt()) % src0f.ne[2].toInt()
+        val i3 = row / (src0f.ne[1].toInt() * src0f.ne[2].toInt())
+
+        // softmax of the row
+        var maxVal = Float.NEGATIVE_INFINITY
+        for (j in 0 until nc) {
+            val v = src0f.getFloat(graphAllocator, j, i1, i2, i3)
+            if (v > maxVal) maxVal = v
+        }
+        var sumExp = 0.0
+        for (j in 0 until nc) {
+            sumExp += exp((src0f.getFloat(graphAllocator, j, i1, i2, i3) - maxVal).toDouble())
+        }
+
+        // ds0 = (softmax - label) * d_by_nr
+        for (j in 0 until nc) {
+            val sm = exp((src0f.getFloat(graphAllocator, j, i1, i2, i3) - maxVal).toDouble()) / sumExp
+            val label = src1f.getFloat(graphAllocator, j, i1, i2, i3)
+            dst.setFloat(graphAllocator, (sm.toFloat() - label) * dByNr, j, i1, i2, i3)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_opt_step_adamw
+// ---------------------------------------------------------------------------
+
+/**
+ * AdamW optimizer step.  Updates weights **in-place** in src0 and running
+ * moment estimates in src2 (m) and src3 (v).
+ *
+ * Sources:
+ * - `dst.src[0]` = weights (updated in-place)
+ * - `dst.src[1]` = gradients
+ * - `dst.src[2]` = first moment (m, updated in-place)
+ * - `dst.src[3]` = second moment (v, updated in-place)
+ * - `dst.src[4]` = parameter tensor `[alpha, beta1, beta2, eps, wd, beta1h, beta2h]`
+ *
+ * Ported from `ggml_compute_forward_opt_step_adamw_f32`.
+ */
+fun computeOptStepAdamw(params: GGMLComputeParams, dst: GGMLTensor) {
+    val w     = dst.src[0] ?: error("ADAMW requires src0 (weights)")
+    val g     = dst.src[1] ?: error("ADAMW requires src1 (grad)")
+    val m     = dst.src[2] ?: error("ADAMW requires src2 (m)")
+    val v     = dst.src[3] ?: error("ADAMW requires src3 (v)")
+    val ap    = dst.src[4] ?: error("ADAMW requires src4 (params)")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(w.type == GGMLType.F32) { "ADAMW only supports F32 weights" }
+
+    val alpha  = ap.getFloat(graphAllocator, 0)
+    val beta1  = ap.getFloat(graphAllocator, 1)
+    val beta2  = ap.getFloat(graphAllocator, 2)
+    val eps    = ap.getFloat(graphAllocator, 3)
+    val wd     = ap.getFloat(graphAllocator, 4)
+    val beta1h = ap.getFloat(graphAllocator, 5)
+    val beta2h = ap.getFloat(graphAllocator, 6)
+    val keep   = 1.0f - alpha * wd
+
+    val ne0 = w.ne[0].toInt(); val ne1 = w.ne[1].toInt()
+    val ne2 = w.ne[2].toInt(); val ne3 = w.ne[3].toInt()
+
+    for (i3 in 0 until ne3) for (i2 in 0 until ne2) for (i1 in 0 until ne1) for (i0 in 0 until ne0) {
+        val gv = g.getFloat(graphAllocator, i0, i1, i2, i3)
+        val mv = m.getFloat(graphAllocator, i0, i1, i2, i3) * beta1 + gv * (1.0f - beta1)
+        val vv = v.getFloat(graphAllocator, i0, i1, i2, i3) * beta2 + gv * gv * (1.0f - beta2)
+        m.setFloat(graphAllocator, mv, i0, i1, i2, i3)
+        v.setFloat(graphAllocator, vv, i0, i1, i2, i3)
+
+        val mh = mv * beta1h
+        val vh = sqrt(vv * beta2h) + eps
+        val wv = w.getFloat(graphAllocator, i0, i1, i2, i3)
+        w.setFloat(graphAllocator, wv * keep - alpha * mh / vh, i0, i1, i2, i3)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_opt_step_sgd
+// ---------------------------------------------------------------------------
+
+/**
+ * SGD with weight decay optimizer step.
+ * `w = w * (1 - alpha*wd) - alpha * grad`
+ *
+ * Sources:
+ * - `dst.src[0]` = weights (updated in-place)
+ * - `dst.src[1]` = gradients
+ * - `dst.src[2]` = parameter tensor `[alpha, wd]`
+ *
+ * Ported from `ggml_compute_forward_opt_step_sgd_f32`.
+ */
+fun computeOptStepSgd(params: GGMLComputeParams, dst: GGMLTensor) {
+    val w     = dst.src[0] ?: error("SGD requires src0 (weights)")
+    val g     = dst.src[1] ?: error("SGD requires src1 (grad)")
+    val sp    = dst.src[2] ?: error("SGD requires src2 (params)")
+    val graphAllocator = params.graphAllocator ?: error("graphAllocator required")
+
+    require(w.type == GGMLType.F32) { "SGD only supports F32 weights" }
+
+    val alpha = sp.getFloat(graphAllocator, 0)
+    val keep  = 1.0f - alpha * sp.getFloat(graphAllocator, 1)
+
+    val ne0 = w.ne[0].toInt(); val ne1 = w.ne[1].toInt()
+    val ne2 = w.ne[2].toInt(); val ne3 = w.ne[3].toInt()
+
+    for (i3 in 0 until ne3) for (i2 in 0 until ne2) for (i1 in 0 until ne1) for (i0 in 0 until ne0) {
+        val wv = w.getFloat(graphAllocator, i0, i1, i2, i3)
+        val gv = g.getFloat(graphAllocator, i0, i1, i2, i3)
+        w.setFloat(graphAllocator, wv * keep - alpha * gv, i0, i1, i2, i3)
+    }
+}
+
 /**
  * Main compute operations object for executing graphs
  */
@@ -3523,6 +4821,33 @@ object GGMLComputeOps {
             GGMLOp.MEAN -> computeMean(graphAllocator, node)
             GGMLOp.REPEAT -> computeRepeat(graphAllocator, node)
             GGMLOp.REPEAT_BACK -> computeRepeatBack(graphAllocator, node)
+            GGMLOp.ABS -> computeAbsNode(graphAllocator, node)
+            GGMLOp.SGN -> computeSgnNode(graphAllocator, node)
+            GGMLOp.STEP -> computeStepNode(graphAllocator, node)
+            GGMLOp.CEIL -> computeCeilNode(graphAllocator, node)
+            GGMLOp.FLOOR -> computeFloorNode(graphAllocator, node)
+            GGMLOp.ROUND -> computeRoundNode(graphAllocator, node)
+            GGMLOp.TRUNC -> computeTruncNode(graphAllocator, node)
+            GGMLOp.EXP -> computeExpNode(graphAllocator, node)
+            GGMLOp.SIGMOID -> computeSigmoidNode(graphAllocator, node)
+            GGMLOp.TANH -> computeTanhNode(graphAllocator, node)
+            GGMLOp.HARDSWISH -> computeHardswishNode(graphAllocator, node)
+            GGMLOp.HARDSIGMOID -> computeHardsigmoidNode(graphAllocator, node)
+            GGMLOp.GELU_QUICK -> computeGeluQuickNode(graphAllocator, node)
+            GGMLOp.GELU_ERF -> computeGeluErfNode(graphAllocator, node)
+            GGMLOp.SILU_BACK -> computeSiluBackNode(graphAllocator, node)
+            GGMLOp.SOFTPLUS -> computeSoftplusNode(graphAllocator, node)
+            GGMLOp.ELU -> computeEluNode(graphAllocator, node)
+            GGMLOp.LEAKY_RELU -> computeLeakyReluNode(graphAllocator, node)
+            GGMLOp.NORM -> computeNormNode(graphAllocator, node)
+            GGMLOp.RMS_NORM_BACK -> computeRmsNormBackNode(graphAllocator, node)
+            GGMLOp.GROUP_NORM -> computeGroupNormNode(graphAllocator, node)
+            GGMLOp.ACC -> computeAccNode(graphAllocator, node)
+            GGMLOp.SCALE -> computeScaleNode(graphAllocator, node)
+            GGMLOp.CLAMP -> computeClampNode(graphAllocator, node)
+            GGMLOp.CONT -> computeContNode(graphAllocator, node)
+            GGMLOp.CPY -> computeCpyNode(graphAllocator, node)
+            GGMLOp.SET -> computeSetNode(graphAllocator, node)
             // Add more operations as needed
             else -> throw NotImplementedError("Operation ${node.op} not implemented in compute graph")
         }
@@ -3696,6 +5021,1705 @@ object GGMLComputeOps {
         val context = graphAllocator.context
         computeTranspose(graphAllocator, context, src, node)
     }
+
+    // ---------------------------------------------------------------
+    // Batch 2: new compute-node dispatchers (ops.cpp port)
+    // ---------------------------------------------------------------
+
+    // --- Element-wise unary ops ---
+
+    private fun computeAbsNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("ABS operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "ABS") { x -> abs(x) }
+    }
+
+    private fun computeSgnNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("SGN operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "SGN") { x -> sign(x) }
+    }
+
+    private fun computeStepNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("STEP operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "STEP") { x -> if (x > 0f) 1f else 0f }
+    }
+
+    private fun computeCeilNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("CEIL operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "CEIL") { x -> ceil(x) }
+    }
+
+    private fun computeFloorNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("FLOOR operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "FLOOR") { x -> floor(x) }
+    }
+
+    private fun computeRoundNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("ROUND operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "ROUND") { x -> round(x) }
+    }
+
+    private fun computeTruncNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("TRUNC operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "TRUNC") { x ->
+            if (x >= 0f) floor(x) else ceil(x)
+        }
+    }
+
+    private fun computeExpNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("EXP operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "EXP") { x -> exp(x) }
+    }
+
+    private fun computeSigmoidNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("SIGMOID operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "SIGMOID") { x -> 1f / (1f + exp(-x)) }
+    }
+
+    private fun computeTanhNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("TANH operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "TANH") { x -> tanh(x) }
+    }
+
+    private fun computeHardswishNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("HARDSWISH operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "HARDSWISH") { x ->
+            x * min(1f, max(0f, (x + 3f) / 6f))
+        }
+    }
+
+    private fun computeHardsigmoidNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("HARDSIGMOID operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "HARDSIGMOID") { x ->
+            min(1f, max(0f, (x + 3f) / 6f))
+        }
+    }
+
+    private fun computeGeluQuickNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("GELU_QUICK operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "GELU_QUICK") { x ->
+            x * (1f / (1f + exp(GELU_QUICK_COEF * x)))
+        }
+    }
+
+    private fun computeGeluErfNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("GELU_ERF operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "GELU_ERF") { x ->
+            0.5f * x * (1f + erfApprox(x * SQRT_2_INV))
+        }
+    }
+
+    private fun computeSoftplusNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("SOFTPLUS operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "SOFTPLUS") { x ->
+            if (x > 20f) x else ln(1f + exp(x))
+        }
+    }
+
+    private fun computeEluNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("ELU operation requires source tensor")
+        computeUnaryElementwise(graphAllocator, src, node, "ELU") { x ->
+            if (x > 0f) x else (exp(x) - 1f)
+        }
+    }
+
+    // --- Ops with parameters ---
+
+    private fun computeLeakyReluNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("LEAKY_RELU operation requires source tensor")
+        val negativeSlope = Float.fromBits(node.opParams[0])
+        computeUnaryElementwise(graphAllocator, src, node, "LEAKY_RELU") { x ->
+            if (x > 0f) x else negativeSlope * x
+        }
+    }
+
+    private fun computeSiluBackNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val grad = node.src[0] ?: throw IllegalArgumentException("SILU_BACK requires gradient tensor (src[0])")
+        val src1 = node.src[1] ?: throw IllegalArgumentException("SILU_BACK requires input tensor (src[1])")
+        computeSiluBack(graphAllocator, grad, src1, node)
+    }
+
+    // --- Normalization ops ---
+
+    private fun computeNormNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("NORM (layer norm) requires source tensor")
+        val eps = Float.fromBits(node.opParams[0])
+        computeLayerNorm(graphAllocator, src, eps, node)
+    }
+
+    private fun computeRmsNormBackNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val grad = node.src[0] ?: throw IllegalArgumentException("RMS_NORM_BACK requires gradient tensor (src[0])")
+        val src1 = node.src[1] ?: throw IllegalArgumentException("RMS_NORM_BACK requires input tensor (src[1])")
+        val eps = Float.fromBits(node.opParams[0])
+        computeRmsNormBack(graphAllocator, grad, src1, eps, node)
+    }
+
+    private fun computeGroupNormNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("GROUP_NORM requires source tensor")
+        val nGroups = node.opParams[0]
+        val eps = Float.fromBits(node.opParams[1])
+        computeGroupNorm(graphAllocator, src, nGroups, eps, node)
+    }
+
+    // --- Tensor manipulation ops ---
+
+    private fun computeAccNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src0 = node.src[0] ?: throw IllegalArgumentException("ACC requires first source tensor")
+        val src1 = node.src[1] ?: throw IllegalArgumentException("ACC requires second source tensor")
+        computeAcc(graphAllocator, src0, src1, node)
+    }
+
+    private fun computeScaleNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("SCALE requires source tensor")
+        val s = Float.fromBits(node.opParams[0])
+        val b = Float.fromBits(node.opParams[1])
+        computeScale(graphAllocator, src, s, b, node)
+    }
+
+    private fun computeClampNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src = node.src[0] ?: throw IllegalArgumentException("CLAMP requires source tensor")
+        val minVal = Float.fromBits(node.opParams[0])
+        val maxVal = Float.fromBits(node.opParams[1])
+        computeClamp(graphAllocator, src, minVal, maxVal, node)
+    }
+
+    private fun computeContNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        // CONT is identical to DUP — makes a tensor contiguous
+        computeDup(graphAllocator, node)
+    }
+
+    private fun computeCpyNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        // CPY is identical to DUP — copies src[0] into dst
+        computeDup(graphAllocator, node)
+    }
+
+    private fun computeSetNode(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
+        val src0 = node.src[0] ?: throw IllegalArgumentException("SET requires first source tensor")
+        val src1 = node.src[1] ?: throw IllegalArgumentException("SET requires second source tensor")
+        computeSet(graphAllocator, src0, src1, node)
+    }
     
     // Removed copyTensorData: compute functions now write directly into node
+
+    // =========================================================================
+    // Batch 3: Attention, SSM, Convolution, and Misc Advanced Ops
+    // Port source: ggml/src/ggml-cpu/ops.cpp (lines ~2219–11214)
+    // =========================================================================
+
+    /**
+     * Read a Float from [tensor] at a flat F32-element index.
+     * Assumes the tensor is F32-contiguous (nb[0] == 4).
+     */
+    private fun readF32Flat(
+        graphAllocator: GGMLGraphAllocator,
+        tensor: GGMLTensor,
+        flatIndex: Int
+    ): Float {
+        val buf = graphAllocator.buffers[tensor.bufferId]
+            ?: error("Tensor buffer not found for bufferId ${tensor.bufferId}")
+        val byteOff = tensor.dataOffset.toInt() + flatIndex * Float.SIZE_BYTES
+        return buf.getFloatLe(byteOff)
+    }
+
+    /**
+     * Write a Float into [tensor] at a flat F32-element index.
+     * Assumes the tensor is F32-contiguous (nb[0] == 4).
+     */
+    private fun writeF32Flat(
+        graphAllocator: GGMLGraphAllocator,
+        tensor: GGMLTensor,
+        flatIndex: Int,
+        value: Float
+    ) {
+        val buf = graphAllocator.buffers[tensor.bufferId]
+            ?: error("Tensor buffer not found for bufferId ${tensor.bufferId}")
+        val byteOff = tensor.dataOffset.toInt() + flatIndex * Float.SIZE_BYTES
+        buf.setFloatLe(byteOff, value)
+    }
+
+    // -----------------------------------------------------------------
+    // Flash Attention (forward)
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute flash attention with extended KV support.
+     *
+     * Implements the fused *online-softmax* attention algorithm from
+     * [FlashAttention-2](https://arxiv.org/pdf/2205.14135):
+     *
+     * ```
+     * O = softmax(Q·Kᵀ / √d + mask) · V
+     * ```
+     *
+     * The C++ reference supports tiled GEMM paths, split-KV parallelism,
+     * ALiBi bias, and logit softcap.  This stub delegates to `TODO` until
+     * the CPU backend formalises threading and SIMD helpers.
+     *
+     * Sources: `src[0]=Q`, `src[1]=K`, `src[2]=V`, `src[3]=mask` (optional),
+     * `src[4]=sinks` (optional).
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeFlashAttnExt(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_flash_attn_ext")
+    }
+
+    /**
+     * Compute backward pass for flash attention.
+     *
+     * Produces gradients for Q, K, and V packed into [dst] following the
+     * layout: `[grad_q | grad_k | grad_v]`.  The forward pass softmax
+     * weights are recomputed on the fly.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param masked Whether causal masking is applied.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeFlashAttnBack(
+        graphAllocator: GGMLGraphAllocator,
+        masked: Boolean,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_flash_attn_back")
+    }
+
+    // -----------------------------------------------------------------
+    // State Space Model (SSM) Ops
+    // -----------------------------------------------------------------
+
+    /**
+     * SSM 1-D convolution (Mamba conv_x ⊛ conv1d.weight).
+     *
+     * For each sequence and token position, this computes a sliding-window
+     * dot product between the state tensor and the convolution kernel:
+     *
+     * ```
+     * for each (seq, token, row):
+     *     dst[row] = Σ_{i=0}^{d_conv-1} src0[i + row*ncs] * src1[i + row*nc]
+     * ```
+     *
+     * Sources: `src[0]` = conv_x `{d_conv-1+n_t, d_inner, n_seqs}`,
+     *          `src[1]` = conv1d.weight `{d_conv, d_inner}`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor `{d_inner, n_t, n_seqs}` (pre-allocated).
+     */
+    fun computeSsmConv(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_ssm_conv")
+    }
+
+    /**
+     * SSM selective scan (Mamba / Mamba-2 recurrence).
+     *
+     * Implements the discretised state-space recurrence:
+     *
+     * ```
+     * state = prev_state * exp(dt * A) + B * (x * dt)
+     * y     = dot(state, C)
+     * ```
+     *
+     * Supports both Mamba-1 (per-element A) and Mamba-2 (scalar A per head).
+     *
+     * Sources: `src[0]=s`, `src[1]=x`, `src[2]=dt`, `src[3]=A`,
+     *          `src[4]=B`, `src[5]=C`, `src[6]=ids`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeSsmScan(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_ssm_scan")
+    }
+
+    // -----------------------------------------------------------------
+    // RWKV WKV (v6 / v7)
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute RWKV-v6 WKV (Weighted Key-Value) attention.
+     *
+     * Fused recurrence: for each token `t`, head `h`, and state row `i`:
+     *
+     * ```
+     * kv  = v * k
+     * tmp = kv * time_first + state_prev
+     * dst += tmp * r
+     * state = state_prev * time_decay + kv
+     * ```
+     *
+     * Sources: `src[0]=k`, `src[1]=v`, `src[2]=r`,
+     *          `src[3]=time_faaaa`, `src[4]=time_decay`, `src[5]=state`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeRwkvWkv6(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_rwkv_wkv6")
+    }
+
+    /**
+     * Compute RWKV-v7 WKV attention.
+     *
+     * Similar to v6 but adds an extra `a` and `b` source for
+     * state-attention blending:
+     *
+     * ```
+     * sa = dot(a, state_prev)
+     * state = state_prev * w + v * k + sa * b
+     * dst = dot(state, r)
+     * ```
+     *
+     * Sources: `src[0]=r`, `src[1]=w`, `src[2]=k`, `src[3]=v`,
+     *          `src[4]=a`, `src[5]=b`, `src[6]=state`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeRwkvWkv7(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_rwkv_wkv7")
+    }
+
+    // -----------------------------------------------------------------
+    // Gated Linear Attention (GLA)
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute Gated Linear Attention.
+     *
+     * Per-token recurrence with gated state update:
+     *
+     * ```
+     * kv   = v * k
+     * temp = prev_state * g + kv
+     * dst += temp * (q * scale)
+     * state = temp
+     * ```
+     *
+     * Sources: `src[0]=k`, `src[1]=v`, `src[2]=q`, `src[3]=g`,
+     *          `src[4]=state`.  `opParams[0]` = scale (float).
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeGla(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_gla")
+    }
+
+    // -----------------------------------------------------------------
+    // Gated Delta Net
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute Gated Delta Net attention.
+     *
+     * Combines gated decay with a delta-rule state update:
+     *
+     * ```
+     * S *= exp(g)
+     * delta = (v - S·k) * beta
+     * S += outer(k, delta)
+     * out = S·q * scale
+     * ```
+     *
+     * Sources: `src[0]=q`, `src[1]=k`, `src[2]=v`, `src[3]=g`,
+     *          `src[4]=beta`, `src[5]=state`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeGatedDeltaNet(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_gated_delta_net")
+    }
+
+    // -----------------------------------------------------------------
+    // Transposed 1-D Convolution
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute 1-D transposed convolution (deconvolution).
+     *
+     * Kernel `src[0]` shape `(K × Cout × Cin)` is permuted to
+     * `(Cin × K × Cout)` in scratch space, then the dot-product
+     * accumulation writes into the strided output.
+     *
+     * Sources: `src[0]` = kernel, `src[1]` = input.
+     * `opParams[0]` = stride.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeConvTranspose1d(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_conv_transpose_1d")
+    }
+
+    // -----------------------------------------------------------------
+    // im2col
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute im2col (image-to-column) transformation for convolutions.
+     *
+     * Converts an image tensor into a column matrix where each column
+     * contains a flattened receptive-field patch, enabling convolution
+     * via matrix multiplication.
+     *
+     * ```
+     * src0: kernel [OC, IC, KH, KW]   (shape only — data unused)
+     * src1: image  [N, IC, IH, IW]
+     * dst:         [N, OH, OW, IC*KH*KW]
+     * ```
+     *
+     * `opParams`: `[s0, s1, p0, p1, d0, d1, is_2D]`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computeIm2col(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val src0 = dst.src[0] ?: error("im2col requires kernel tensor (src0)")
+        val src1 = dst.src[1] ?: error("im2col requires image tensor (src1)")
+        require(src1.type == GGMLType.F32) { "im2col: src1 must be F32" }
+        require(dst.type == GGMLType.F32) { "im2col: dst must be F32" }
+
+        val s0   = dst.opParams[0]
+        val s1   = dst.opParams[1]
+        val p0   = dst.opParams[2]
+        val p1   = dst.opParams[3]
+        val d0   = dst.opParams[4]
+        val d1   = dst.opParams[5]
+        val is2D = dst.opParams[6] == 1
+
+        val N  = if (is2D) src1.ne[3] else src1.ne[2]
+        val IC = if (is2D) src1.ne[2] else src1.ne[1]
+        val IH = if (is2D) src1.ne[1] else 1L
+        val IW = src1.ne[0]
+
+        val KH = if (is2D) src0.ne[1] else 1L
+        val KW = src0.ne[0]
+
+        val OH = if (is2D) dst.ne[2] else 1L
+        val OW = dst.ne[1]
+
+        val ofs0 = if (is2D) src1.nb[3] else src1.nb[2]
+        val ofs1 = if (is2D) src1.nb[2] else src1.nb[1]
+
+        for (inn in 0 until N) {
+            for (ioh in 0 until OH) {
+                for (iow in 0 until OW) {
+                    for (iic in 0 until IC) {
+                        val dstBase = ((inn * OH * OW + ioh * OW + iow) * (IC * KH * KW)).toInt()
+                        for (ikh in 0 until KH) {
+                            for (ikw in 0 until KW) {
+                                val iiw = iow * s0 + ikw * d0 - p0
+                                val iih = ioh * s1 + ikh * d1 - p1
+                                val dstIdx = (dstBase + (iic * (KH * KW) + ikh * KW + ikw).toInt())
+                                val value = if (iih < 0 || iih >= IH || iiw < 0 || iiw >= IW) {
+                                    0.0f
+                                } else {
+                                    val srcByteOffset = (inn.toULong() * ofs0 + iic.toULong() * ofs1).toInt()
+                                    val srcLinear = srcByteOffset / Float.SIZE_BYTES + (iih * IW + iiw).toInt()
+                                    readF32Flat(graphAllocator, src1, srcLinear)
+                                }
+                                writeF32Flat(graphAllocator, dst, dstIdx, value)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Pooling Operations
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute 1-D pooling (max or average).
+     *
+     * Iterates over every row of the source tensor and applies a
+     * sliding window of size `k` with stride `s` and padding `p`.
+     *
+     * `opParams`: `[op, k0, s0, p0]` where `op` is [GGMLOpPool] ordinal.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computePool1d(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val src = dst.src[0] ?: error("pool_1d requires source tensor")
+        require(src.type == GGMLType.F32) { "pool_1d: source must be F32" }
+
+        val opOrdinal = dst.opParams[0]
+        val poolOp = GGMLOpPool.entries[opOrdinal]
+        val k0 = dst.opParams[1]
+        val s0 = dst.opParams[2]
+        val p0 = dst.opParams[3]
+
+        val IW = src.ne[0].toInt()
+        val OW = dst.ne[0].toInt()
+        val nRows = src.numElements().toInt() / IW
+
+        for (ir in 0 until nRows) {
+            for (ow in 0 until OW) {
+                var res = when (poolOp) {
+                    GGMLOpPool.AVG -> 0.0f
+                    GGMLOpPool.MAX -> -Float.MAX_VALUE
+                    else -> error("Unsupported pool op: $poolOp")
+                }
+                var count = 0
+                val base = ow * s0 - p0
+                for (ki in 0 until k0) {
+                    val j = base + ki
+                    if (j < 0 || j >= IW) continue
+                    val v = readF32Flat(graphAllocator, src, ir * IW + j)
+                    when (poolOp) {
+                        GGMLOpPool.AVG -> res += v
+                        GGMLOpPool.MAX -> if (v > res) res = v
+                        else -> {}
+                    }
+                    count++
+                }
+                if (poolOp == GGMLOpPool.AVG && count > 0) {
+                    res /= count
+                }
+                writeF32Flat(graphAllocator, dst, ir * OW + ow, res)
+            }
+        }
+    }
+
+    /**
+     * Compute 2-D pooling (max or average).
+     *
+     * `opParams`: `[op, k0, k1, s0, s1, p0, p1]`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computePool2d(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_pool_2d")
+    }
+
+    /**
+     * Backward pass for 2-D pooling.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computePool2dBack(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_pool_2d_back")
+    }
+
+    // -----------------------------------------------------------------
+    // Window Partition / Un-partition
+    // -----------------------------------------------------------------
+
+    /**
+     * Partition a tensor into fixed-size windows (ViT / Swin Transformer).
+     *
+     * `opParams`: `[nep0, nep1, w]` — number of patches in each axis
+     * and window size.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computeWinPart(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val src0 = dst.src[0] ?: error("win_part requires source tensor")
+        require(src0.type == GGMLType.F32) { "win_part: source must be F32" }
+
+        val ne00 = src0.ne[0]; val ne01 = src0.ne[1]; val ne02 = src0.ne[2]
+        val ne0  = dst.ne[0]; val ne1 = dst.ne[1]; val ne2 = dst.ne[2]; val ne3 = dst.ne[3]
+
+        val nep0 = dst.opParams[0]
+        val nep1 = dst.opParams[1]
+        val w    = dst.opParams[2]
+
+        for (py in 0 until nep1) {
+            for (px in 0 until nep0) {
+                val i3 = py * nep0 + px
+                for (i2 in 0 until ne2.toInt()) {
+                    for (i1 in 0 until ne1.toInt()) {
+                        for (i0 in 0 until ne0.toInt()) {
+                            val i02 = py * w + i2
+                            val i01 = px * w + i1
+                            val dstIdx = (i3 * ne2 * ne1 * ne0 + i2 * ne1 * ne0 + i1 * ne0 + i0).toInt()
+                            val value = if (i02 >= ne02 || i01 >= ne01) {
+                                0.0f
+                            } else {
+                                val srcIdx = (i02 * ne01 * ne00 + i01 * ne00 + i0).toInt()
+                                readF32Flat(graphAllocator, src0, srcIdx)
+                            }
+                            writeF32Flat(graphAllocator, dst, dstIdx, value)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Reverse window partitioning — reassemble windows into the
+     * original spatial layout.
+     *
+     * `opParams[0]` = window size `w`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computeWinUnpart(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val src0 = dst.src[0] ?: error("win_unpart requires source tensor")
+        require(src0.type == GGMLType.F32) { "win_unpart: source must be F32" }
+
+        val ne00 = src0.ne[0]; val ne01 = src0.ne[1]; val ne02 = src0.ne[2]
+        val ne0  = dst.ne[0]; val ne1 = dst.ne[1]; val ne2 = dst.ne[2]
+
+        val w = dst.opParams[0]
+        val px = (w - ne1.toInt() % w) % w
+        val npx = (px + ne1.toInt()) / w
+
+        for (i2 in 0 until ne2.toInt()) {
+            for (i1 in 0 until ne1.toInt()) {
+                for (i0 in 0 until ne0.toInt()) {
+                    val ip2 = i2 / w
+                    val ip1 = i1 / w
+                    val i02 = i2 % w
+                    val i01 = i1 % w
+                    val srcIdx = ((ip2 * npx + ip1) * ne02.toInt() * ne01.toInt() * ne00.toInt() +
+                                  i02 * ne01.toInt() * ne00.toInt() + i01 * ne00.toInt() + i0)
+                    val dstIdx = (i2 * ne1.toInt() * ne0.toInt() + i1 * ne0.toInt() + i0)
+                    writeF32Flat(graphAllocator, dst, dstIdx, readF32Flat(graphAllocator, src0, srcIdx))
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Relative Position Encoding
+    // -----------------------------------------------------------------
+
+    /**
+     * Extract relative position embeddings (SAM-style).
+     *
+     * Produces a `(ne0 × ne1 × ne2)` tensor by indexing into `src0`
+     * using `pos = (w - i1 - 1) + i2`.
+     *
+     * Reference: segment-anything `image_encoder.py` L292-L322.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeGetRelPos(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_get_rel_pos (F16)")
+    }
+
+    /**
+     * Add height and width relative position biases to an attention
+     * map (SAM-style).
+     *
+     * ```
+     * dst[jdh + j]      += src2_e
+     * dst[jdw + j*ne10]  += src1_e
+     * ```
+     *
+     * Sources: `src[0]=attn`, `src[1]=rel_h`, `src[2]=rel_w`.
+     * `opParams[0]` = inplace flag.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computeAddRelPos(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_add_rel_pos")
+    }
+
+    // -----------------------------------------------------------------
+    // Custom Map Operations
+    // -----------------------------------------------------------------
+
+    /**
+     * Dispatch a user-registered custom-1 operation.
+     *
+     * In the C++ backend, `op_params` holds a function pointer and
+     * user-data.  In Kotlin the callback must be registered separately
+     * (e.g. via a lambda map keyed by tensor name).
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor.
+     */
+    fun computeMapCustom1(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom1")
+    }
+
+    /**
+     * Dispatch a user-registered custom-2 (binary) operation.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor.
+     */
+    fun computeMapCustom2(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom2")
+    }
+
+    /**
+     * Dispatch a user-registered custom-3 (ternary) operation.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor.
+     */
+    fun computeMapCustom3(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom3")
+    }
+
+    // -----------------------------------------------------------------
+    // Unary Dispatch
+    // -----------------------------------------------------------------
+
+    /**
+     * Dispatch table for element-wise unary operations.
+     *
+     * Routes to the appropriate kernel based on the [GGMLUnaryOp]
+     * stored in `dst.opParams`.  Currently dispatches to existing
+     * `computeRelu`, `computeGelu`, `computeSilu`, etc.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeUnary(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val src = dst.src[0] ?: error("unary op requires source tensor")
+        val context = graphAllocator.context
+        val unaryOp = GGMLUnaryOp.entries[dst.opParams[0]]
+        when (unaryOp) {
+            GGMLUnaryOp.ABS    -> computeAbs(graphAllocator, dst)
+            GGMLUnaryOp.NEG    -> computeNeg(graphAllocator, context, src, dst)
+            GGMLUnaryOp.RELU   -> computeRelu(graphAllocator, context, src, dst)
+            GGMLUnaryOp.GELU   -> computeGelu(graphAllocator, context, src, dst)
+            GGMLUnaryOp.SILU   -> computeSilu(graphAllocator, context, src, dst)
+            GGMLUnaryOp.EXP    -> computeExp(graphAllocator, dst)
+            GGMLUnaryOp.TANH   -> computeTanh(graphAllocator, dst)
+            GGMLUnaryOp.SIGMOID -> computeSigmoid(graphAllocator, dst)
+            else -> TODO("unary op $unaryOp not yet implemented")
+        }
+    }
+
+    /** Element-wise absolute value. */
+    private fun computeAbs(graphAllocator: GGMLGraphAllocator, dst: GGMLTensor) {
+        val src = dst.src[0] ?: error("abs requires source tensor")
+        require(src.type == GGMLType.F32) { "abs: source must be F32" }
+        val n = src.numElements().toInt()
+        for (i in 0 until n) {
+            writeF32Flat(graphAllocator, dst, i, abs(readF32Flat(graphAllocator, src, i)))
+        }
+    }
+
+    /** Element-wise exponential. */
+    private fun computeExp(graphAllocator: GGMLGraphAllocator, dst: GGMLTensor) {
+        val src = dst.src[0] ?: error("exp requires source tensor")
+        require(src.type == GGMLType.F32) { "exp: source must be F32" }
+        val n = src.numElements().toInt()
+        for (i in 0 until n) {
+            writeF32Flat(graphAllocator, dst, i, exp(readF32Flat(graphAllocator, src, i)))
+        }
+    }
+
+    /** Element-wise tanh. */
+    private fun computeTanh(graphAllocator: GGMLGraphAllocator, dst: GGMLTensor) {
+        val src = dst.src[0] ?: error("tanh requires source tensor")
+        require(src.type == GGMLType.F32) { "tanh: source must be F32" }
+        val n = src.numElements().toInt()
+        for (i in 0 until n) {
+            writeF32Flat(graphAllocator, dst, i, kotlin.math.tanh(readF32Flat(graphAllocator, src, i)))
+        }
+    }
+
+    /** Element-wise sigmoid: 1 / (1 + exp(-x)). */
+    private fun computeSigmoid(graphAllocator: GGMLGraphAllocator, dst: GGMLTensor) {
+        val src = dst.src[0] ?: error("sigmoid requires source tensor")
+        require(src.type == GGMLType.F32) { "sigmoid: source must be F32" }
+        val n = src.numElements().toInt()
+        for (i in 0 until n) {
+            val x = readF32Flat(graphAllocator, src, i)
+            writeF32Flat(graphAllocator, dst, i, 1.0f / (1.0f + exp(-x)))
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // GLU Dispatch
+    // -----------------------------------------------------------------
+
+    /**
+     * Dispatch table for Gated Linear Unit variants.
+     *
+     * Routes to the appropriate kernel based on the [GGMLGluOp]
+     * stored in `dst.opParams`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeGlu(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val gluOp = GGMLGluOp.entries[dst.opParams[0]]
+        TODO("GLU dispatch for $gluOp — port from ggml/src/ggml-cpu/ops.cpp")
+    }
+
+    // -----------------------------------------------------------------
+    // Fill
+    // -----------------------------------------------------------------
+
+    /**
+     * Fill every element of [dst] with a constant value.
+     *
+     * The fill value is read from `dst.opParams[0]` interpreted as
+     * a float (bit-pattern reinterpretation of the stored int32).
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computeFill(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val c = Float.fromBits(dst.opParams[0])
+        val n = dst.numElements().toInt()
+        for (i in 0 until n) {
+            writeF32Flat(graphAllocator, dst, i, c)
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Triangular Solve
+    // -----------------------------------------------------------------
+
+    /**
+     * Solve a lower-triangular linear system `A·X = B` by forward
+     * substitution (column by column).
+     *
+     * `src[0]` = A (n×n, lower triangular),
+     * `src[1]` = B (n×k right-hand sides).
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor X (pre-allocated, F32, n×k).
+     */
+    fun computeSolveTri(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val src0 = dst.src[0] ?: error("solve_tri requires A tensor (src0)")
+        val src1 = dst.src[1] ?: error("solve_tri requires B tensor (src1)")
+        require(src0.type == GGMLType.F32 && src1.type == GGMLType.F32) { "solve_tri: F32 only" }
+
+        val n = src1.ne[1].toInt()   // rows of A (A is n×n)
+        val k = src1.ne[0].toInt()   // columns of B
+
+        // Read A, B into flat arrays for simple indexing
+        val aSize = n * n
+        val bSize = n * k
+        val A = FloatArray(aSize) { readF32Flat(graphAllocator, src0, it) }
+        val B = FloatArray(bSize) { readF32Flat(graphAllocator, src1, it) }
+        val X = FloatArray(bSize)
+
+        // Forward substitution: for each column j of X
+        for (j in 0 until k) {
+            for (i in 0 until n) {
+                var sum = 0.0f
+                for (t in 0 until i) {
+                    sum += A[i * n + t] * X[t * k + j]
+                }
+                val diag = A[i * n + i]
+                require(diag != 0.0f) { "Zero diagonal in triangular matrix at row $i" }
+                X[i * k + j] = (B[i * k + j] - sum) / diag
+            }
+        }
+
+        for (i in X.indices) {
+            writeF32Flat(graphAllocator, dst, i, X[i])
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Triangular Matrix
+    // -----------------------------------------------------------------
+
+    /**
+     * Extract triangular part of a matrix, zeroing elements outside
+     * the triangle.
+     *
+     * `opParams[0]` encodes the [GGMLTriType]:
+     * - LOWER: keep where `col < row`
+     * - LOWER_DIAG: keep where `col <= row`
+     * - UPPER: keep where `col > row`
+     * - UPPER_DIAG: keep where `col >= row`
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated, F32).
+     */
+    fun computeTri(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        val src0 = dst.src[0] ?: error("tri requires source tensor")
+        require(src0.type == GGMLType.F32) { "tri: source must be F32" }
+
+        val triType = GGMLTriType.entries.first { it.value == dst.opParams[0] }
+        val ne0 = dst.ne[0].toInt()
+        val ne1 = dst.ne[1].toInt()
+        val ne2 = dst.ne[2].toInt()
+        val ne3 = dst.ne[3].toInt()
+
+        val predicate: (col: Int, row: Int) -> Boolean = when (triType) {
+            GGMLTriType.LOWER      -> { col, row -> col < row }
+            GGMLTriType.LOWER_DIAG -> { col, row -> col <= row }
+            GGMLTriType.UPPER      -> { col, row -> col > row }
+            GGMLTriType.UPPER_DIAG -> { col, row -> col >= row }
+        }
+
+        var idx = 0
+        for (i3 in 0 until ne3) {
+            for (i2 in 0 until ne2) {
+                for (i1 in 0 until ne1) {
+                    for (i0 in 0 until ne0) {
+                        val srcVal = readF32Flat(graphAllocator, src0, idx)
+                        writeF32Flat(graphAllocator, dst, idx, if (predicate(i0, i1)) srcVal else 0.0f)
+                        idx++
+                    }
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Cross-Entropy Loss
+    // -----------------------------------------------------------------
+
+    /**
+     * Compute cross-entropy loss: `-mean(sum(labels * log_softmax(logits)))`.
+     *
+     * Sources: `src[0]` = logits, `src[1]` = labels.
+     * Result is a scalar written to `dst`.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination scalar tensor (pre-allocated, F32).
+     */
+    fun computeCrossEntropyLoss(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_cross_entropy_loss")
+    }
+
+    /**
+     * Backward pass for cross-entropy loss.
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (pre-allocated).
+     */
+    fun computeCrossEntropyLossBack(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_cross_entropy_loss_back")
+    }
+
+    // -----------------------------------------------------------------
+    // Optimiser Step Operations
+    // -----------------------------------------------------------------
+
+    /**
+     * AdamW optimiser step (in-place weight update).
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (weights, updated in-place).
+     */
+    fun computeOptStepAdamw(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_opt_step_adamw")
+    }
+
+    /**
+     * SGD optimiser step (in-place weight update).
+     *
+     * @param graphAllocator Memory allocator for tensor data access.
+     * @param dst Destination tensor (weights, updated in-place).
+     */
+    fun computeOptStepSgd(
+        graphAllocator: GGMLGraphAllocator,
+        dst: GGMLTensor
+    ) {
+        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_opt_step_sgd")
+    }
+}
+
+// =====================================================================
+// Constants for activation functions (ported from ggml-cpu/vec.h)
+// =====================================================================
+
+/** Coefficient used in the GELU-Quick approximation: x·σ(−1.702·x) */
+private const val GELU_QUICK_COEF = -1.702f
+
+/** 1/√2, used in the erf-based GELU: 0.5·x·(1 + erf(x/√2)) */
+private const val SQRT_2_INV = 0.7071067811865475f // 1.0 / sqrt(2.0)
+
+// =====================================================================
+// Approximate erf(x) — Abramowitz & Stegun §7.1.26 (max error ≈ 1.5e-7)
+// Used by GELU-ERF and GEGLU-ERF where the exact C erff() is unavailable.
+// =====================================================================
+
+private fun erfApprox(x: Float): Float {
+    val a1 =  0.254829592f
+    val a2 = -0.284496736f
+    val a3 =  1.421413741f
+    val a4 = -1.453152027f
+    val a5 =  1.061405429f
+    val p  =  0.3275911f
+    val s = if (x < 0f) -1f else 1f
+    val ax = abs(x)
+    val t = 1f / (1f + p * ax)
+    val y = 1f - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * exp(-ax * ax)
+    return s * y
+}
+
+// =====================================================================
+// Generic unary element-wise helper
+// =====================================================================
+
+/**
+ * Applies a scalar function [op] element-wise from [src] into [dst].
+ * Supports F32 and F16 types. Mirrors the scalar (non-SIMD) path of
+ * every `ggml_compute_forward_<unary>` function in ops.cpp.
+ */
+private fun computeUnaryElementwise(
+    graphAllocator: GGMLGraphAllocator,
+    src: GGMLTensor,
+    dst: GGMLTensor,
+    opName: String,
+    op: (Float) -> Float
+) {
+    require(src.type == dst.type) { "$opName: src and dst types must match" }
+    val total = dst.numElements().toInt()
+    when (src.type) {
+        GGMLType.F32 -> applyNDIter(dst, total) { _, ind ->
+            dst.setFloat(graphAllocator, op(src.getFloat(graphAllocator, *ind)), *ind)
+        }
+        GGMLType.F16 -> applyNDIter(dst, total) { _, ind ->
+            dst.setHalf(graphAllocator, op(src.getHalf(graphAllocator, *ind)), *ind)
+        }
+        else -> throw NotImplementedError("$opName not implemented for type ${src.type}")
+    }
+}
+
+// =====================================================================
+// SILU backward  — ported from ggml_compute_forward_silu_back (ops.cpp:2736)
+// dx[i] = dy[i] · σ(x[i]) · (1 + x[i]·(1 − σ(x[i])))
+// =====================================================================
+
+/**
+ * Computes the backward pass of the SiLU (Sigmoid Linear Unit) activation.
+ *
+ * Given upstream gradient [grad] (`dy`) and forward-pass input [src1] (`x`),
+ * writes `dx` into [dst] where `dx[i] = dy[i] · σ(x[i]) · (1 + x[i]·(1 − σ(x[i])))`.
+ */
+fun computeSiluBack(
+    graphAllocator: GGMLGraphAllocator,
+    grad: GGMLTensor,
+    src1: GGMLTensor,
+    dst: GGMLTensor
+) {
+    require(src1.type == dst.type) { "SILU_BACK: src1 and dst types must match" }
+    require(grad.type == dst.type) { "SILU_BACK: grad and dst types must match" }
+    val total = dst.numElements().toInt()
+    when (dst.type) {
+        GGMLType.F32 -> applyNDIter(dst, total) { _, ind ->
+            val x = src1.getFloat(graphAllocator, *ind)
+            val dy = grad.getFloat(graphAllocator, *ind)
+            val s = 1f / (1f + exp(-x))
+            dst.setFloat(graphAllocator, dy * s * (1f + x * (1f - s)), *ind)
+        }
+        GGMLType.F16 -> applyNDIter(dst, total) { _, ind ->
+            val x = src1.getHalf(graphAllocator, *ind)
+            val dy = grad.getHalf(graphAllocator, *ind)
+            val s = 1f / (1f + exp(-x))
+            dst.setHalf(graphAllocator, dy * s * (1f + x * (1f - s)), *ind)
+        }
+        else -> throw NotImplementedError("SILU_BACK not implemented for type ${dst.type}")
+    }
+}
+
+// =====================================================================
+// Layer Norm  — ported from ggml_compute_forward_norm_f32 (ops.cpp:3649)
+// y = (x − mean) / √(variance + eps)
+// =====================================================================
+
+/**
+ * Computes Layer Normalization over the innermost dimension (ne[0]).
+ *
+ * For each row: `y = (x − mean) / √(variance + eps)` where mean and variance
+ * are computed along the first axis.
+ */
+fun computeLayerNorm(
+    graphAllocator: GGMLGraphAllocator,
+    src: GGMLTensor,
+    eps: Float,
+    dst: GGMLTensor
+) {
+    require(src.type == GGMLType.F32) { "NORM (layer norm) only supports F32, got ${src.type}" }
+    require(eps >= 0f) { "NORM eps must be >= 0" }
+
+    val ne00 = src.ne[0].toInt()
+    val ne01 = src.ne[1].toInt().coerceAtLeast(1)
+    val ne02 = src.ne[2].toInt().coerceAtLeast(1)
+    val ne03 = src.ne[3].toInt().coerceAtLeast(1)
+    val idx = IntArray(4)
+
+    for (i03 in 0 until ne03) {
+        idx[3] = i03
+        for (i02 in 0 until ne02) {
+            idx[2] = i02
+            for (i01 in 0 until ne01) {
+                idx[1] = i01
+                // compute mean
+                var sum = 0.0
+                for (i00 in 0 until ne00) {
+                    idx[0] = i00
+                    sum += src.getFloat(graphAllocator, *idx).toDouble()
+                }
+                val mean = (sum / ne00).toFloat()
+
+                // compute variance and write (x − mean) into dst
+                var variance = 0.0
+                for (i00 in 0 until ne00) {
+                    idx[0] = i00
+                    val v = src.getFloat(graphAllocator, *idx) - mean
+                    dst.setFloat(graphAllocator, v, *idx)
+                    variance += (v * v).toDouble()
+                }
+                variance /= ne00
+
+                val scale = 1f / sqrt((variance + eps).toFloat())
+                for (i00 in 0 until ne00) {
+                    idx[0] = i00
+                    val cur = dst.getFloat(graphAllocator, *idx)
+                    dst.setFloat(graphAllocator, cur * scale, *idx)
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// RMS Norm Back — ported from ggml_compute_forward_rms_norm_back_f32 (ops.cpp:3785)
+// dx = (dz + x·(−sum_xdz / sum_eps)) · rrms
+// =====================================================================
+
+/**
+ * Computes the backward pass of RMS Normalization.
+ */
+fun computeRmsNormBack(
+    graphAllocator: GGMLGraphAllocator,
+    grad: GGMLTensor,
+    src1: GGMLTensor,
+    eps: Float,
+    dst: GGMLTensor
+) {
+    require(grad.type == GGMLType.F32) { "RMS_NORM_BACK only supports F32" }
+
+    val ne00 = src1.ne[0].toInt()
+    val ne01 = src1.ne[1].toInt().coerceAtLeast(1)
+    val ne02 = src1.ne[2].toInt().coerceAtLeast(1)
+    val ne03 = src1.ne[3].toInt().coerceAtLeast(1)
+    val idx = IntArray(4)
+
+    for (i03 in 0 until ne03) {
+        idx[3] = i03
+        for (i02 in 0 until ne02) {
+            idx[2] = i02
+            for (i01 in 0 until ne01) {
+                idx[1] = i01
+
+                var sumXX = 0.0
+                var sumXDZ = 0.0
+                for (i00 in 0 until ne00) {
+                    idx[0] = i00
+                    val x = src1.getFloat(graphAllocator, *idx).toDouble()
+                    val dz = grad.getFloat(graphAllocator, *idx).toDouble()
+                    sumXX += x * x
+                    sumXDZ += x * dz
+                }
+                val meanEps = (sumXX / ne00 + eps).toFloat()
+                val sumEps = (sumXX + eps.toDouble() * ne00).toFloat()
+                val rrms = 1f / sqrt(meanEps)
+
+                for (i00 in 0 until ne00) {
+                    idx[0] = i00
+                    val x = src1.getFloat(graphAllocator, *idx)
+                    val dz = grad.getFloat(graphAllocator, *idx)
+                    val dx = (x * (-sumXDZ.toFloat() / sumEps) + dz) * rrms
+                    dst.setFloat(graphAllocator, dx, *idx)
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// Group Norm — ported from ggml_compute_forward_group_norm_f32 (ops.cpp:3962)
+// =====================================================================
+
+/**
+ * Computes Group Normalization.
+ *
+ * Splits channels (ne[2]) into [nGroups] groups and normalises each group
+ * over all spatial positions and channels within the group.
+ */
+fun computeGroupNorm(
+    graphAllocator: GGMLGraphAllocator,
+    src: GGMLTensor,
+    nGroups: Int,
+    eps: Float,
+    dst: GGMLTensor
+) {
+    require(src.type == GGMLType.F32) { "GROUP_NORM only supports F32" }
+
+    val ne00 = src.ne[0].toInt()
+    val ne01 = src.ne[1].toInt().coerceAtLeast(1)
+    val nChannels = src.ne[2].toInt().coerceAtLeast(1)
+    val ne03 = src.ne[3].toInt().coerceAtLeast(1)
+    val nChannelsPerGroup = (nChannels + nGroups - 1) / nGroups
+    val idx = IntArray(4)
+
+    for (g in 0 until nGroups) {
+        val start = g * nChannelsPerGroup
+        val end = min(start + nChannelsPerGroup, nChannels)
+        val step = end - start
+
+        for (i03 in 0 until ne03) {
+            idx[3] = i03
+            // compute mean
+            var sum = 0.0
+            for (i02 in start until end) {
+                idx[2] = i02
+                for (i01 in 0 until ne01) {
+                    idx[1] = i01
+                    for (i00 in 0 until ne00) {
+                        idx[0] = i00
+                        sum += src.getFloat(graphAllocator, *idx).toDouble()
+                    }
+                }
+            }
+            val mean = (sum / (ne00.toLong() * ne01 * step)).toFloat()
+
+            // compute variance and write (x − mean) into dst
+            var sum2 = 0.0
+            for (i02 in start until end) {
+                idx[2] = i02
+                for (i01 in 0 until ne01) {
+                    idx[1] = i01
+                    for (i00 in 0 until ne00) {
+                        idx[0] = i00
+                        val v = src.getFloat(graphAllocator, *idx) - mean
+                        dst.setFloat(graphAllocator, v, *idx)
+                        sum2 += (v * v).toDouble()
+                    }
+                }
+            }
+            val variance = (sum2 / (ne00.toLong() * ne01 * step)).toFloat()
+            val scale = 1f / sqrt(variance + eps)
+
+            for (i02 in start until end) {
+                idx[2] = i02
+                for (i01 in 0 until ne01) {
+                    idx[1] = i01
+                    for (i00 in 0 until ne00) {
+                        idx[0] = i00
+                        val cur = dst.getFloat(graphAllocator, *idx)
+                        dst.setFloat(graphAllocator, cur * scale, *idx)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// ACC (accumulate) — ported from ggml_compute_forward_acc_f32 (ops.cpp:1154)
+// dst = src0;  then dst[offset..] += src1
+// =====================================================================
+
+/**
+ * Accumulates [src1] into [src0], writing the result into [dst].
+ * The C++ version supports a byte offset via opParams; this scalar path
+ * accumulates src1 element-wise at matching indices.
+ */
+fun computeAcc(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor,
+    dst: GGMLTensor
+) {
+    require(src0.type == GGMLType.F32) { "ACC only supports F32, got ${src0.type}" }
+
+    val inplace = dst.opParams[4] != 0
+    val total0 = src0.numElements().toInt()
+
+    if (!inplace) {
+        applyNDIter(src0, total0) { _, ind ->
+            dst.setFloat(graphAllocator, src0.getFloat(graphAllocator, *ind), *ind)
+        }
+    }
+
+    val total1 = src1.numElements().toInt()
+    applyNDIter(src1, total1) { _, ind ->
+        val existing = dst.getFloat(graphAllocator, *ind)
+        dst.setFloat(graphAllocator, existing + src1.getFloat(graphAllocator, *ind), *ind)
+    }
+}
+
+// =====================================================================
+// SCALE — ported from ggml_compute_forward_scale_f32 (ops.cpp:4382)
+// dst = src * s + b
+// =====================================================================
+
+/**
+ * Scales every element of [src] by factor [s] and optionally adds bias [b].
+ */
+fun computeScale(
+    graphAllocator: GGMLGraphAllocator,
+    src: GGMLTensor,
+    s: Float,
+    b: Float,
+    dst: GGMLTensor
+) {
+    require(src.type == GGMLType.F32) { "SCALE only supports F32, got ${src.type}" }
+    val total = dst.numElements().toInt()
+    if (b == 0f) {
+        applyNDIter(dst, total) { _, ind ->
+            dst.setFloat(graphAllocator, src.getFloat(graphAllocator, *ind) * s, *ind)
+        }
+    } else {
+        applyNDIter(dst, total) { _, ind ->
+            dst.setFloat(graphAllocator, src.getFloat(graphAllocator, *ind) * s + b, *ind)
+        }
+    }
+}
+
+// =====================================================================
+// CLAMP — ported from ggml_compute_forward_clamp (ops.cpp:5472)
+// dst[i] = clamp(src[i], min, max)
+// =====================================================================
+
+/**
+ * Clamps every element of [src] to the range [[minVal], [maxVal]].
+ */
+fun computeClamp(
+    graphAllocator: GGMLGraphAllocator,
+    src: GGMLTensor,
+    minVal: Float,
+    maxVal: Float,
+    dst: GGMLTensor
+) {
+    val total = dst.numElements().toInt()
+    when (src.type) {
+        GGMLType.F32 -> applyNDIter(dst, total) { _, ind ->
+            dst.setFloat(graphAllocator, max(minVal, min(src.getFloat(graphAllocator, *ind), maxVal)), *ind)
+        }
+        GGMLType.F16 -> applyNDIter(dst, total) { _, ind ->
+            dst.setHalf(graphAllocator, max(minVal, min(src.getHalf(graphAllocator, *ind), maxVal)), *ind)
+        }
+        else -> throw NotImplementedError("CLAMP not implemented for type ${src.type}")
+    }
+}
+
+// =====================================================================
+// SET — ported from ggml_compute_forward_set_f32 (ops.cpp:4454)
+// dst = src0 then overlay src1 at element positions of src1
+// =====================================================================
+
+/**
+ * Copies [src0] into [dst], then overwrites a region with data from [src1].
+ */
+fun computeSet(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor,
+    dst: GGMLTensor
+) {
+    require(src0.type == GGMLType.F32 || src0.type == GGMLType.I32) {
+        "SET only supports F32 and I32, got ${src0.type}"
+    }
+    val inplace = dst.opParams[4] != 0
+
+    if (!inplace) {
+        val total0 = src0.numElements().toInt()
+        when (src0.type) {
+            GGMLType.F32 -> applyNDIter(src0, total0) { _, ind ->
+                dst.setFloat(graphAllocator, src0.getFloat(graphAllocator, *ind), *ind)
+            }
+            GGMLType.I32 -> applyNDIter(src0, total0) { _, ind ->
+                dst.setInt(graphAllocator, src0.getInt(graphAllocator, *ind), *ind)
+            }
+            else -> {}
+        }
+    }
+
+    val total1 = src1.numElements().toInt()
+    when (src0.type) {
+        GGMLType.F32 -> applyNDIter(src1, total1) { _, ind ->
+            dst.setFloat(graphAllocator, src1.getFloat(graphAllocator, *ind), *ind)
+        }
+        GGMLType.I32 -> applyNDIter(src1, total1) { _, ind ->
+            dst.setInt(graphAllocator, src1.getInt(graphAllocator, *ind), *ind)
+        }
+        else -> {}
+    }
+}
+
+// =====================================================================
+// GLU variant helpers — each applies gate(x) · g element-wise
+// =====================================================================
+
+/**
+ * ReGLU: `dst[i] = max(0, x[i]) · g[i]`
+ * Ported from ggml_vec_reglu_f32 (vec.h)
+ */
+fun computeReglu(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor?,
+    dst: GGMLTensor
+) {
+    computeGluVariant(graphAllocator, src0, src1, dst, "REGLU") { x, g ->
+        if (x > 0f) x * g else 0f
+    }
+}
+
+/**
+ * GEGLU: `dst[i] = gelu(x[i]) · g[i]`
+ * Ported from ggml_vec_geglu_f32 (vec.h)
+ */
+fun computeGeglu(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor?,
+    dst: GGMLTensor
+) {
+    val gelu = { x: Float -> x * 0.5f * (1f + tanh(0.797885f * (x + 0.044715f * x * x * x))) }
+    computeGluVariant(graphAllocator, src0, src1, dst, "GEGLU") { x, g ->
+        gelu(x) * g
+    }
+}
+
+/**
+ * SwiGLU: `dst[i] = silu(x[i]) · g[i]`  where silu(x) = x·σ(x)
+ * Ported from ggml_vec_swiglu_f32 (vec.h)
+ */
+fun computeSwiglu(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor?,
+    dst: GGMLTensor
+) {
+    computeGluVariant(graphAllocator, src0, src1, dst, "SWIGLU") { x, g ->
+        (x / (1f + exp(-x))) * g
+    }
+}
+
+/**
+ * SwiGLU-OAI (OpenAI variant): `dst[i] = silu_clamped(x[i]) · (g[i] + 1)`
+ * Ported from ggml_compute_forward_swiglu_oai_f32 (ops.cpp:3276)
+ */
+fun computeSwigluOai(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor?,
+    dst: GGMLTensor,
+    alpha: Float,
+    limit: Float
+) {
+    require(src0.type == GGMLType.F32) { "SWIGLU_OAI only supports F32" }
+    val swapped = dst.opParams[1] != 0
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nRows = (src0.numElements() / src0.ne[0]).toInt().coerceAtLeast(1)
+    val idx = IntArray(4)
+
+    for (row in 0 until nRows) {
+        var tmp = row
+        for (d in 1 until src0.ne.size) {
+            val dimSize = src0.ne[d].toInt().coerceAtLeast(1)
+            idx[d] = tmp % dimSize
+            tmp /= dimSize
+        }
+        for (k in 0 until nc) {
+            val gateIdx = idx.copyOf()
+            val valIdx = idx.copyOf()
+            if (src1 != null) {
+                gateIdx[0] = k
+                valIdx[0] = k
+            } else {
+                gateIdx[0] = if (swapped) k + nc else k
+                valIdx[0] = if (swapped) k else k + nc
+            }
+            val x = min(
+                if (src1 != null) src0.getFloat(graphAllocator, *gateIdx)
+                else src0.getFloat(graphAllocator, *gateIdx),
+                limit
+            )
+            val rawY = if (src1 != null) src1.getFloat(graphAllocator, *valIdx)
+                       else src0.getFloat(graphAllocator, *valIdx)
+            val y = rawY.coerceIn(-limit, limit)
+            val outGlu = x / (1f + exp(alpha * (-x)))
+            idx[0] = k
+            dst.setFloat(graphAllocator, outGlu * (y + 1f), *idx)
+        }
+    }
+}
+
+/**
+ * GEGLU-ERF: `dst[i] = (0.5·x·(1 + erf(x/√2))) · g`
+ * Ported from ggml_vec_geglu_erf_f32 (vec.h)
+ */
+fun computeGegluErf(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor?,
+    dst: GGMLTensor
+) {
+    computeGluVariant(graphAllocator, src0, src1, dst, "GEGLU_ERF") { x, g ->
+        0.5f * x * (1f + erfApprox(x * SQRT_2_INV)) * g
+    }
+}
+
+/**
+ * GEGLU-Quick: `dst[i] = gelu_quick(x[i]) · g[i]`
+ * Ported from ggml_vec_geglu_quick_f32 (vec.h)
+ */
+fun computeGegluQuick(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor?,
+    dst: GGMLTensor
+) {
+    computeGluVariant(graphAllocator, src0, src1, dst, "GEGLU_QUICK") { x, g ->
+        (x * (1f / (1f + exp(GELU_QUICK_COEF * x)))) * g
+    }
+}
+
+// =====================================================================
+// Internal GLU helper — shared structure for all gated variants
+// =====================================================================
+
+/**
+ * Generic GLU kernel.  If [src1] is non-null the gate comes from src0 and
+ * the value from src1 (two-tensor mode, ne[0] == nc).  If src1 is null
+ * the first half of src0's rows are gate and the second half are value
+ * (single-tensor mode, nc = ne[0]/2).
+ *
+ * The `swapped` flag comes from `opParams[1]` and swaps gate/value halves.
+ */
+private fun computeGluVariant(
+    graphAllocator: GGMLGraphAllocator,
+    src0: GGMLTensor,
+    src1: GGMLTensor?,
+    dst: GGMLTensor,
+    opName: String,
+    fn: (gate: Float, value: Float) -> Float
+) {
+    val swapped = dst.opParams[1] != 0
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nRows = (src0.numElements() / src0.ne[0]).toInt().coerceAtLeast(1)
+    val idx = IntArray(4)
+
+    for (row in 0 until nRows) {
+        var tmp = row
+        for (d in 1 until src0.ne.size) {
+            val dimSize = src0.ne[d].toInt().coerceAtLeast(1)
+            idx[d] = tmp % dimSize
+            tmp /= dimSize
+        }
+        for (k in 0 until nc) {
+            val gateIdx = idx.copyOf()
+            val valIdx = idx.copyOf()
+            if (src1 != null) {
+                gateIdx[0] = k
+                valIdx[0] = k
+            } else {
+                gateIdx[0] = if (swapped) k + nc else k
+                valIdx[0] = if (swapped) k else k + nc
+            }
+
+            when (src0.type) {
+                GGMLType.F32 -> {
+                    val x = src0.getFloat(graphAllocator, *gateIdx)
+                    val g = if (src1 != null) src1.getFloat(graphAllocator, *valIdx)
+                            else src0.getFloat(graphAllocator, *valIdx)
+                    idx[0] = k
+                    dst.setFloat(graphAllocator, fn(x, g), *idx)
+                }
+                GGMLType.F16 -> {
+                    val x = src0.getHalf(graphAllocator, *gateIdx)
+                    val g = if (src1 != null) src1.getHalf(graphAllocator, *valIdx)
+                            else src0.getHalf(graphAllocator, *valIdx)
+                    idx[0] = k
+                    dst.setHalf(graphAllocator, fn(x, g), *idx)
+                }
+                else -> throw NotImplementedError("$opName not implemented for type ${src0.type}")
+            }
+        }
+    }
 }
