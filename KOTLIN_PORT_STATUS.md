@@ -1,10 +1,10 @@
 # LLama.cpp Kotlin Native Port - Current Status
 
 ## Overview
-This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The project is a **direct line-by-line transliteration** of llama.cpp from C++ to Kotlin/Native. Porting progress is tracked by `ast_distance --deep`. Kotlin/Native cinterop provides access to the ggml C API for validation during development.
+This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The project is a **direct line-by-line transliteration** of llama.cpp from C++ to Kotlin/Native. Porting progress is tracked by `ast_distance --deep`. Kotlin/Native `kotlinx.cinterop` provides the low-level memory primitives (pointers, native buffers, heap allocation) needed to faithfully mirror C++ memory patterns.
 
 ## Current Status (April 2026)
-**Strategy shift**: The project has moved from a custom klang soft-float approach to direct C++ → Kotlin transliteration using cinterop for validation. Kotlin 2.3.20 is the current compiler version.
+**Strategy shift**: The project has moved from a custom klang soft-float approach to direct C++ → Kotlin transliteration using `kotlinx.cinterop` for low-level memory operations. Kotlin 2.3.20 is the current compiler version.
 
 1. **✅ Phase 1 - Project Setup**: Complete
    - Kotlin Multiplatform project structure established

@@ -11,7 +11,7 @@ It summarizes the current project state and the porting methodology.
 
 ## Project Overview
 - **Goal**: Direct line-by-line transliteration of llama.cpp from C++ to Kotlin/Native
-- **Method**: Use `ast_distance --deep` to track porting progress, cinterop for C API access
+- **Method**: Use `ast_distance --deep` to track porting progress
 - **Source**: `tmp/llama.cpp/` (cloned reference repo)
 - **Target**: `src/nativeMain/kotlin/ai/solace/llamakotlin/` (Kotlin port)
 - **Build**: Kotlin 2.3.20, Gradle Multiplatform, targets macOS (arm64/x64), Linux x64, Windows x64
@@ -23,26 +23,38 @@ This is a **line-by-line transliteration** — mirror the C++ structure as close
 Each C++ source file should map to a corresponding Kotlin file. Preserve function names, variable names,
 and control flow. The goal is that someone reading the C++ and Kotlin side-by-side can verify correctness.
 
-### cinterop for Validation
-Kotlin/Native cinterop is configured to expose the ggml C API (`ggml.cinterop` package).
-This allows ported Kotlin code to call into the reference C implementation for validation and
-comparison during development. The cinterop def file is at `src/nativeInterop/cinterop/ggml.def`.
+### Kotlin/Native cinterop for Low-Level Operations
+The C++ original relies heavily on raw pointers, heap-allocated buffers, pointer arithmetic, and
+C-style memory management — none of which Kotlin supports directly. Kotlin/Native's `kotlinx.cinterop`
+package bridges this gap, providing:
+
+- **`CPointer<T>`** / **`CArrayPointer<T>`** — typed pointers for buffer access and pointer arithmetic
+- **`nativeHeap.alloc<T>()`** / **`nativeHeap.allocArray<T>(size)`** — native memory allocation
+- **`ByteVar`**, **`FloatVar`**, **`IntVar`** etc. — C-compatible scalar types
+- **`memScoped { }`** — scoped allocation with automatic cleanup
+- **`pointed`**, **`ptr`**, **`reinterpret<T>()`** — pointer dereferencing and casting
+- **`CValuesRef<T>`** — passing Kotlin arrays to native memory
+
+When transliterating C++ code that does `malloc`, `memcpy`, pointer offsets, or struct-level memory
+layout, use the corresponding `kotlinx.cinterop` primitives. This is not about calling llama.cpp —
+it's about having the same low-level capabilities that the C++ code uses.
 
 ### ast_distance Tracking
 The `tools/ast_distance` binary tracks porting progress. Key commands:
 
 ```bash
 # Full analysis: AST + deps + TODOs + lint + line ratios
+./tools/ast_distance --deep tmp/llama.cpp/ggml cpp src/commonMain/kotlin/ai/solace/llamakotlin kotlin
 ./tools/ast_distance --deep tmp/llama.cpp/ggml cpp src/nativeMain/kotlin/ai/solace/llamakotlin kotlin
 
 # Show files missing from target, ranked by importance
-./tools/ast_distance --missing tmp/llama.cpp/ggml cpp src/nativeMain/kotlin/ai/solace/llamakotlin kotlin
+./tools/ast_distance --missing tmp/llama.cpp/ggml cpp src/commonMain/kotlin/ai/solace/llamakotlin kotlin
 
 # Compare functions between specific files
 ./tools/ast_distance --compare-functions <cpp_file> cpp <kotlin_file> kotlin
 
 # Initialize task queue for systematic porting
-./tools/ast_distance --init-tasks tmp/llama.cpp/ggml cpp src/nativeMain/kotlin/ai/solace/llamakotlin kotlin tasks.json
+./tools/ast_distance --init-tasks tmp/llama.cpp/ggml cpp src/commonMain/kotlin/ai/solace/llamakotlin kotlin tasks.json
 ```
 
 ### port-lint Headers
@@ -74,19 +86,19 @@ until the CPU path is complete.
 ## Coding Guidelines
 - **Transliteration First**: Mirror C++ structure. Don't redesign — translate.
 - **Kotlin/Native Types**: Use Kotlin equivalents: `Int` for `int32_t`, `Long` for `int64_t`,
-  `Float` for `float`, `Double` for `double`, `ByteArray` for raw buffers.
-- **cinterop Types**: Use `ggml.cinterop.*` types when calling into the C reference for validation.
+  `Float` for `float`, `Double` for `double`.
+- **Low-Level Memory**: Use `kotlinx.cinterop` for pointers, native buffers, and memory layout.
+  `CPointer<FloatVar>` replaces `float*`, `nativeHeap.allocArray<FloatVar>(n)` replaces `malloc`.
 - **Naming**: Preserve C++ function and variable names as closely as Kotlin allows.
   Convert `snake_case` to `camelCase` only where Kotlin convention strongly demands it.
 - **port-lint Headers**: Always include `// port-lint: source <relative-path>` in ported files.
 - **Documentation**: Document any deviations from the C++ original with `// NOTE:` comments.
-- **Tests**: Write tests that validate Kotlin output against the C reference via cinterop.
+- **Tests**: Write tests that validate Kotlin output matches expected C++ behavior.
 
 ## Build and Test
 - **Build**: `./gradlew build`
 - **Test**: `./gradlew allTests`
 - **Targets**: macOS arm64/x64, Linux x64, Windows x64, JS (IR), JVM
-- **cinterop**: Configured for all native targets, exposes `ggml.cinterop` package
 - **SSL Issues**: If Gradle fails with SSL errors, install Java/Gradle via SDKMAN:
   ```bash
   curl -s "https://get.sdkman.io" | bash
@@ -96,19 +108,18 @@ until the CPU path is complete.
   ```
 
 ## Key Files and Modules
-- **Core Types**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLTypes.kt`
-- **Memory Management**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLAlloc.kt`
-- **Tensor Operations**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLOps.kt`
-- **Computation Logic**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLComputeOps.kt`
-- **Graph Execution**: `src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLGraph.kt`
-- **cinterop Def**: `src/nativeInterop/cinterop/ggml.def`
+- **Core Types**: `src/commonMain/kotlin/ai/solace/llamakotlin/core/GGMLTypes.kt`
+- **Memory Management**: `src/commonMain/kotlin/ai/solace/llamakotlin/core/GGMLAlloc.kt`
+- **Tensor Operations**: `src/commonMain/kotlin/ai/solace/llamakotlin/core/GGMLOps.kt`
+- **Computation Logic**: `src/commonMain/kotlin/ai/solace/llamakotlin/core/GGMLComputeOps.kt`
+- **Graph Execution**: `src/commonMain/kotlin/ai/solace/llamakotlin/core/GGMLGraph.kt`
 - **Test Suite**: `src/commonTest/kotlin/ai/solace/llamakotlin/core/`
 - **C++ Reference**: `tmp/llama.cpp/` (shallow clone)
 - **ast_distance Reports**: `port_status_report.md`, `high_priority_ports.md`, `NEXT_ACTIONS.md`
 
 ## Project Scope
 - **Primary Focus**: CPU backend via direct transliteration
-- **cinterop**: For validation against C reference, not as the runtime path
+- **Low-Level Memory**: `kotlinx.cinterop` for pointers, buffers, and native memory ops
 - **Deferred**: GPU backends (CUDA, Metal, Vulkan, etc.) — CPU first
 - **Platform Targets**: macOS (arm64, x64), Linux x64, Windows x64
 

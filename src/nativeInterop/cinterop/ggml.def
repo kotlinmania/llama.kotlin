@@ -1,12 +1,8 @@
-// port-lint: source ggml/include/ggml.h
-// port-lint: source ggml/include/gguf.h
-// port-lint: source ggml/include/ggml-backend.h
-// port-lint: source ggml/include/ggml-cpu.h
-// port-lint: source ggml/include/ggml-alloc.h
-
-// cinterop definition for llama.cpp's ggml C API.
-// This exposes the core ggml types and functions to Kotlin/Native
-// so ported code can validate against the reference implementation.
+// cinterop definition for platform-level C primitives.
+// This provides access to kotlinx.cinterop types (CPointer, ByteVar,
+// nativeHeap, etc.) needed for faithful C++ transliteration.
+// The ggml headers give us the C struct layouts and type definitions
+// that the ported Kotlin code mirrors.
 
 headers = ggml.h gguf.h ggml-backend.h ggml-cpu.h ggml-alloc.h
 headerFilter = ggml.h gguf.h ggml-backend.h ggml-cpu.h ggml-alloc.h
