@@ -939,6 +939,69 @@ fun clampFloatArray(array: FloatArray, minValue: Float, maxValue: Float): FloatA
  * Consolidated numeric precision comparison
  * Replaces inconsistent floating-point comparison patterns
  */
+/**
+ * Port of `ggml_can_fuse_subgraph_ext` — declared in ggml-impl.h, implemented in ggml.c.
+ * Returns true if the subgraph formed by [nodeIdxs] can be fused.
+ */
+fun ggml_can_fuse_subgraph_ext(
+    cgraph: GGMLCGraph,
+    nodeIdxs: IntArray,
+    count: Int,
+    ops: Array<GGMLOp>,
+    outputs: IntArray,
+    numOutputs: Int
+): Boolean {
+    TODO("port from ggml/src/ggml.c — ggml_can_fuse_subgraph_ext")
+}
+
+/**
+ * Port of `ggml_can_fuse_subgraph` — convenience wrapper for sequential node indices.
+ */
+fun ggml_can_fuse_subgraph(
+    cgraph: GGMLCGraph,
+    nodeIdx: Int,
+    count: Int,
+    ops: Array<GGMLOp>,
+    outputs: IntArray = intArrayOf(),
+    numOutputs: Int = outputs.size
+): Boolean {
+    require(count < 32) { "count must be < 32" }
+    if (nodeIdx + count > cgraph.nNodes) return false
+    val idxs = IntArray(count) { nodeIdx + it }
+    return ggml_can_fuse_subgraph_ext(cgraph, idxs, count, ops, outputs, numOutputs)
+}
+
+/**
+ * Vararg convenience overloads (C++ initializer_list equivalents).
+ */
+fun ggml_can_fuse(cgraph: GGMLCGraph, nodeIdx: Int, vararg ops: GGMLOp): Boolean =
+    ggml_can_fuse(cgraph, nodeIdx, arrayOf(*ops), ops.size)
+
+fun ggml_can_fuse_subgraph(
+    cgraph: GGMLCGraph,
+    startIdx: Int,
+    ops: List<GGMLOp>,
+    outputs: List<Int> = emptyList()
+): Boolean =
+    ggml_can_fuse_subgraph(cgraph, startIdx, ops.size, ops.toTypedArray(), outputs.toIntArray(), outputs.size)
+
+/**
+ * Port of `ggml_check_edges` — validates graph edge connectivity.
+ * Each edge is [dstNode, srcIdx, srcNode] relative to [startIdx].
+ */
+fun ggml_check_edges(cgraph: GGMLCGraph, startIdx: Int, edges: List<Triple<Int, Int, Int>>): Boolean {
+    for ((dstNode, srcIdx, srcNode) in edges) {
+        val dstTensor = cgraph.nodes[startIdx + dstNode] ?: return false
+        val srcTensor = cgraph.nodes[startIdx + srcNode] ?: return false
+        if (srcIdx >= dstTensor.src.size || dstTensor.src[srcIdx] !== srcTensor) {
+            return false
+        }
+    }
+    return true
+}
+
+// ---- Utility extensions (not from ggml-impl.h, part of original Kotlin port) ----
+
 fun arraysEqualWithinTolerance(a: FloatArray, b: FloatArray, tolerance: Float = 1e-6f): Boolean {
     if (a.size != b.size) return false
     
