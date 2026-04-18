@@ -161,6 +161,7 @@ interface GGMLBackendBuffer {
 enum class GGMLStatus {
     SUCCESS,
     FAILED,
+    ALLOC_FAILED,
     ABORTED
 }
 
