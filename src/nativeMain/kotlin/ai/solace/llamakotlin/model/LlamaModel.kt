@@ -1,3 +1,4 @@
+// port-lint: source src/llama-model.cpp
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*

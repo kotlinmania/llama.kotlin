@@ -2,17 +2,17 @@
 
 **Generated:** 2026-04-18
 **Source:** tmp/llama.cpp/ggml
-**Target:** src/nativeMain/kotlin/ai/solace/llamakotlin
+**Target:** src/commonMain/kotlin/ai/solace/llamakotlin
 
 ## Executive Summary
 
 | Metric | Count | Percentage |
 |--------|-------|------------|
 | Total source files | 277 | 100% |
-| Target units (paired) | 19 | - |
-| Target files (total) | 19 | - |
-| Porting progress | 6 | 2.2% (matched) |
-| Missing files | 271 | 97.8% |
+| Target units (paired) | 21 | - |
+| Target files (total) | 21 | - |
+| Porting progress | 15 | 5.4% (matched) |
+| Missing files | 262 | 94.6% |
 
 ## Port Quality Analysis
 
@@ -21,7 +21,7 @@
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
 - Good (0.60-0.84): 0 files (0.0% of matched)
-- Critical (<0.60): 6 files (100.0% of matched)
+- Critical (<0.60): 15 files (100.0% of matched)
 
 ### Excellent Ports (Similarity ≥ 0.85)
 
@@ -32,12 +32,21 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
-- `gguf` → `gguf.GGUFParser` (0.00)
-- `include.gguf` → `gguf.GGUFTypes` (0.00, 3 deps)
-- `openvino.input_model` → `model.Grammar` (0.00, 3 deps)
-- `include.ggml` → `model.GGMLIntegration` (0.00, 68 deps)
-- `op.cont` → `gguf.GGUFContext` (0.00)
-- `ggml-cann.aclnn_ops` → `lnn.LNNActors` (0.00, 1 deps)
+- `include.ggml` → `core.GGMLOps` (0.00, 68 deps)
+- `dpct.helper` → `core.QuantizationHelper` (0.00, 9 deps)
+- `ggml-backend` → `core.GGMLBackend` (0.00)
+- `ggml-impl` → `core.NumericConversions` (0.00, 58 deps)
+- `include.ggml-cpu` → `core.GGMLCpuExecutor` (0.00, 13 deps)
+- `ggml-cpu.ggml-cpu` → `core.GGMLCpuBackend` (0.00)
+- `include.ggml-alloc` → `core.GGMLAlloc` (0.00, 8 deps)
+- `openvino.utils` → `core.GGMLTensorUtils` (0.00)
+- `ggml-virtgpu.ggml-backend` → `core.GGMLBackendUtils` (0.00)
+- `ggml-sycl.type` → `core.GGMLTypes` (0.00, 2 deps)
+- `ggml-cpu.simd-gemm` → `simd.GGMLSimd` (0.00, 1 deps)
+- `ggml-threading` → `core.GGMLScheduler` (0.00, 1 deps)
+- `ggml-cpu.quants` → `core.GGMLQuants` (0.00, 4 deps)
+- `ggml` → `core.GGMLGraph` (0.00)
+- `ggml-cpu.ops` → `core.GGMLComputeOps` (0.00)
 
 ## Incorrect Ports (Missing Types)
 
@@ -46,44 +55,48 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
-| `gguf` | `gguf.GGUFParser` | 14/14 | `type_to_gguf_type`, `gguf_type`, `gguf_kv` … |
-| `include.gguf` | `gguf.GGUFTypes` | 5/6 | `gguf_context`, `gguf_init_params`, `ggml_context` … |
-| `openvino.input_model` | `model.Grammar` | 3/3 | `FrontEnd`, `GgmlDecoder`, `InputModel` |
+| `include.ggml` | `core.GGMLOps` | 25/25 | `ggml_status`, `ggml_object`, `ggml_context` … |
+| `dpct.helper` | `core.QuantizationHelper` | 29/29 | `matrix_info_t`, `error_code`, `memcpy_direction` … |
+| `ggml-backend` | `core.GGMLBackend` | 13/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_cgraph` … |
+| `ggml-impl` | `core.NumericConversions` | 12/12 | `ggml_tensor`, `ggml_op`, `ggml_log_level` … |
+| `include.ggml-cpu` | `core.GGMLCpuExecutor` | 9/9 | `ggml_cplan`, `ggml_threadpool`, `ggml_numa_strategy` … |
+| `ggml-cpu.ggml-cpu` | `core.GGMLCpuBackend` | 13/13 | `ggml_backend_cpu_context`, `ggml_backend_plan_cpu`, `ggml_cplan` … |
+| `include.ggml-alloc` | `core.GGMLAlloc` | 8/8 | `ggml_backend_buffer_type`, `ggml_backend_buffer`, `ggml_backend` … |
+| `ggml-sycl.type` | `core.GGMLTypes` | 1/1 | `__nv_fp8_e4m3` |
 
 ## High Priority Missing Files
 
 | Rank | Source file | Deps | Path |
 |------|------------|------|------|
-| 1 | `ggml-impl` | 58 | `src/ggml-impl.h` |
-| 2 | `ggml-backend-impl` | 47 | `src/ggml-backend-impl.h` |
-| 3 | `ggml-cpu.common` | 47 | `src/ggml-cpu/common.h` |
-| 4 | `include.ggml-backend` | 38 | `include/ggml-backend.h` |
-| 5 | `ggml-sycl.fattn-vec` | 37 | `src/ggml-sycl/fattn-vec.hpp` |
-| 6 | `ggml-zdnn.utils` | 23 | `src/ggml-zdnn/utils.hpp` |
-| 7 | `openvino.node_context` | 19 | `src/ggml-openvino/openvino/node_context.h` |
-| 8 | `openvino.op_table` | 18 | `src/ggml-openvino/openvino/op_table.h` |
-| 9 | `ggml-sycl.convert` | 17 | `src/ggml-sycl/convert.hpp` |
-| 10 | `ggml-common` | 16 | `src/ggml-common.h` |
-| 11 | `include.ggml-cpu` | 13 | `include/ggml-cpu.h` |
-| 12 | `ggml-cpu.ggml-cpu-impl` | 11 | `src/ggml-cpu/ggml-cpu-impl.h` |
-| 13 | `htp.hvx-base` | 11 | `src/ggml-hexagon/htp/hvx-base.h` |
-| 14 | `ggml-sycl.fattn-tile` | 11 | `src/ggml-sycl/fattn-tile.hpp` |
-| 15 | `ggml-cpu.simd-mappings` | 10 | `src/ggml-cpu/simd-mappings.h` |
-| 16 | `op.reshape` | 9 | `src/ggml-openvino/openvino/op/reshape.cpp` |
-| 17 | `ggml-sycl.concat` | 9 | `src/ggml-sycl/concat.hpp` |
-| 18 | `ggml-cpu.traits` | 9 | `src/ggml-cpu/traits.h` |
-| 19 | `dpct.helper` | 9 | `src/ggml-sycl/dpct/helper.hpp` |
-| 20 | `ggml-virtgpu.ggml-remoting` | 8 | `src/ggml-virtgpu/ggml-remoting.h` |
+| 1 | `ggml-backend-impl` | 47 | `src/ggml-backend-impl.h` |
+| 2 | `ggml-cpu.common` | 47 | `src/ggml-cpu/common.h` |
+| 3 | `include.ggml-backend` | 38 | `include/ggml-backend.h` |
+| 4 | `ggml-sycl.fattn-vec` | 37 | `src/ggml-sycl/fattn-vec.hpp` |
+| 5 | `ggml-zdnn.utils` | 23 | `src/ggml-zdnn/utils.hpp` |
+| 6 | `openvino.node_context` | 19 | `src/ggml-openvino/openvino/node_context.h` |
+| 7 | `openvino.op_table` | 18 | `src/ggml-openvino/openvino/op_table.h` |
+| 8 | `ggml-sycl.convert` | 17 | `src/ggml-sycl/convert.hpp` |
+| 9 | `ggml-common` | 16 | `src/ggml-common.h` |
+| 10 | `htp.hvx-base` | 11 | `src/ggml-hexagon/htp/hvx-base.h` |
+| 11 | `ggml-cpu.ggml-cpu-impl` | 11 | `src/ggml-cpu/ggml-cpu-impl.h` |
+| 12 | `ggml-sycl.fattn-tile` | 11 | `src/ggml-sycl/fattn-tile.hpp` |
+| 13 | `ggml-cpu.simd-mappings` | 10 | `src/ggml-cpu/simd-mappings.h` |
+| 14 | `op.reshape` | 9 | `src/ggml-openvino/openvino/op/reshape.cpp` |
+| 15 | `ggml-sycl.concat` | 9 | `src/ggml-sycl/concat.hpp` |
+| 16 | `ggml-cpu.traits` | 9 | `src/ggml-cpu/traits.h` |
+| 17 | `htp.hex-utils` | 8 | `src/ggml-hexagon/htp/hex-utils.h` |
+| 18 | `ggml-sycl.presets` | 8 | `src/ggml-sycl/presets.hpp` |
+| 19 | `ggml-virtgpu.ggml-remoting` | 8 | `src/ggml-virtgpu/ggml-remoting.h` |
+| 20 | `op.transpose` | 7 | `src/ggml-openvino/openvino/op/transpose.cpp` |
 
-... and 251 more missing files.
+... and 242 more missing files.
 
 ## Documentation Gaps
 
-There is missing documentation that is hurting overall scoring.
-
-**Documentation coverage:** 332 / 1418 lines (23%)
+**Documentation coverage:** 1179 / 306 lines (385%)
 
 Top documentation gaps (>20%):
 
-- `ggml-cann.aclnn_ops` - 89% gap (1413 → 157 lines)
+- `dpct.helper` - 100% gap (250 → 0 lines)
+- `ggml-impl` - 31% gap (48 → 33 lines)
 

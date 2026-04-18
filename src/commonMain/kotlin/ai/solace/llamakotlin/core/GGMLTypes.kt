@@ -1,3 +1,4 @@
+// port-lint: source ggml/include/ggml.h
 package ai.solace.llamakotlin.core
 
 import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe

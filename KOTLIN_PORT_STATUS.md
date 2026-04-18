@@ -1,10 +1,10 @@
 # LLama.cpp Kotlin Native Port - Current Status
 
 ## Overview
-This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The goal is a Kotlin Multiplatform implementation anchored by an optimized CPU backend, with deterministic numeric behavior across targets via a new pure‑Kotlin soft‑float and limb engine (KLang). Accelerator work (Metal, SIMD, etc.) is deferred until the CPU path is fully hardened.
+This document provides an overview of the current status of the Kotlin Native port of llama.cpp. The project is a **direct line-by-line transliteration** of llama.cpp from C++ to Kotlin/Native. Porting progress is tracked by `ast_distance --deep`. Kotlin/Native cinterop provides access to the ggml C API for validation during development.
 
-## Current Status (October 7, 2025)
-The Kotlin/Native port continues to evolve, with the repository now containing only actively maintained Kotlin sources. The project has made substantial progress across multiple development phases. Here's what has been accomplished:
+## Current Status (April 2026)
+**Strategy shift**: The project has moved from a custom klang soft-float approach to direct C++ → Kotlin transliteration using cinterop for validation. Kotlin 2.3.20 is the current compiler version.
 
 1. **✅ Phase 1 - Project Setup**: Complete
    - Kotlin Multiplatform project structure established
@@ -66,19 +66,11 @@ The Kotlin/Native port continues to evolve, with the repository now containing o
    - Memory management optimizations with inplace allocation
    - Performance validation and benchmarking infrastructure established
 
-## KLang Numeric Core (New)
+## KLang (Retired)
 
-To ensure portable, bit‑exact IEEE‑754 across platforms (and to de‑risk quant math), we added a soft‑float and 16‑bit limb backbone:
-
-- `ai.solace.klang.fp`
-  - `CFloat32` inline type with operators +, −, ×, ÷
-  - Division is a faithful transliteration of compiler‑rt `fp_div_impl.inc` (normalize, quotient bounds, remainder→sticky, nearest‑even). Directed tests green.
-  - Next: `mulBits` tighten to `fp_mul_impl.inc`; `sqrtBits` from `fp_sqrt_impl.inc`; conversions.
-- `ai.solace.klang.int.hpc`
-  - `HPC16x4` (64‑bit, 4×16‑bit limbs) and `HPC16x8` (128‑bit, 8×16‑bit limbs) with add/sub/compare/shifts and initial 64×64→128 mul.
-  - Next: 128/64 division (Knuth D) and full carry propagation for wide mul.
-
-Docs: `docs/kdocs/klang-soft-float-and-hpc16.md`.
+The klang soft-float numeric core has been retired. The project now uses standard Kotlin numeric types
+and Kotlin/Native cinterop for C API access. klang source files remain under `external/klangnative/`
+and `src/commonMain/kotlin/ai/solace/klang/` for reference but are no longer part of the porting strategy.
 
 ## Key Achievements
 

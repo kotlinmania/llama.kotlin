@@ -1,3 +1,4 @@
+// port-lint: source src/llama-grammar.cpp
 package ai.solace.llamakotlin.model
 
 /**

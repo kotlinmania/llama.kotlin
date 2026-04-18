@@ -1,3 +1,4 @@
+// port-lint: source ggml/src/ggml-impl.h
 package ai.solace.llamakotlin.core
 
 // Half/Float conversion routines.

@@ -1,3 +1,4 @@
+// port-lint: source ggml/src/ggml-alloc.c
 package ai.solace.llamakotlin.core
 
 /**

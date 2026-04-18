@@ -1,3 +1,4 @@
+// port-lint: source ggml/src/gguf.c
 package ai.solace.llamakotlin.gguf
 
 import ai.solace.llamakotlin.core.GGMLType

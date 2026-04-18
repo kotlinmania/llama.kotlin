@@ -2,18 +2,18 @@
 
 This checklist is based on the current state of the Kotlin Native port of llama.cpp and the requirements specified in the issue description. It provides a detailed roadmap for continuing the development of the port.
 
-## ⚠️ CRITICAL BUILD STATUS (Updated: December 2025)
+## ⚠️ BUILD STATUS (Updated: April 2026)
 
-**Current Status: BUILD FAILING**
+**Strategy Shift: Direct C++ → Kotlin Transliteration**
 
-The project currently does not compile due to klang integration issues:
+The project has moved away from the klang soft-float approach to direct line-by-line transliteration
+of llama.cpp C++ to Kotlin, using Kotlin/Native cinterop for C API validation.
 
-- **KLang Integration**: klang is now a separate repository at https://github.com/Kotlinmania/klang
-- **Package Naming Conflicts**: Vendored klang sources in `external/klangnative/` have internal package naming inconsistencies
-- **Affected Modules**: Core quantization, GGML compute operations, backend implementations
-- **Action Required**: Fix klang integration (publish as library, fix vendored sources, or use submodule)
-
-See `CHECKLIST_UPDATE_NOTES.md` for detailed analysis.
+- **Kotlin Version**: 2.3.20
+- **cinterop**: Configured for ggml C headers (ggml.h, gguf.h, ggml-backend.h, ggml-cpu.h)
+- **Tracking**: `ast_distance --deep` for porting progress measurement
+- **port-lint Headers**: Added to all ported files for explicit source tracking
+- **klang**: Retired — source files remain for reference but are not compiled
 
 ## Phase 1: Project Setup and Initial Analysis (Partially Complete)
 
