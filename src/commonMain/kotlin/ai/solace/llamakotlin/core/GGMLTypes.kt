@@ -9,8 +9,6 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
-import ai.solace.klangnative.bitwise.BitPrimitives
-import ai.solace.klangnative.bitwise.PackOps
 import kotlin.Short.Companion.SIZE_BYTES
 
 /**
@@ -43,11 +41,24 @@ const val GGML_MAX_DIMS = 4
 const val GGML_MAX_SRC = 10
 
 private fun Byte.toUnsignedInt(): Int = toInt() and 0xFF
-private fun Byte.readBits(offset: Int, width: Int): Int = BitPrimitives.bitFieldExtract32(toUnsignedInt(), offset, width)
-private fun Byte.withBits(value: Int, offset: Int, width: Int): Byte =
-    BitPrimitives.bitFieldInsert32(toUnsignedInt(), value, offset, width).toByte()
-private fun Int.insertBits(value: Int, offset: Int, width: Int): Int =
-    BitPrimitives.bitFieldInsert32(this, value, offset, width)
+private fun Byte.readBits(offset: Int, width: Int): Int {
+    val mask = if (width >= 32) -1 else (1 shl width) - 1
+    return (toUnsignedInt() ushr offset) and mask
+}
+private fun Byte.withBits(value: Int, offset: Int, width: Int): Byte {
+    val fieldMask = if (width >= 32) -1 else (1 shl width) - 1
+    val mask = fieldMask shl offset
+    val cleared = toUnsignedInt() and mask.inv()
+    val writeVal = (value and fieldMask) shl offset
+    return (cleared or (writeVal and mask)).toByte()
+}
+private fun Int.insertBits(value: Int, offset: Int, width: Int): Int {
+    val fieldMask = if (width >= 32) -1 else (1 shl width) - 1
+    val mask = fieldMask shl offset
+    val cleared = this and mask.inv()
+    val writeVal = (value and fieldMask) shl offset
+    return cleared or (writeVal and mask)
+}
 
 /**
  * Maximum number of operation parameters.
@@ -1009,7 +1020,7 @@ class GGMLTensor(
         val minByteIndex = (dataOffset + minByteOffset).toInt()
         // Bounds check similar to getQ4_KQuantizedMin
         if (minByteIndex >= 0 && minByteIndex < buffer.size) {
-            val minHighBits = BitPrimitives.bitFieldExtract32(quantizedMin, 2, 4)
+            val minHighBits = (quantizedMin ushr 2) and ((1 shl 4) - 1)
             val bitOffset = if (subBlockIndex % 2 == 0) 0 else 4
             buffer[minByteIndex] = buffer[minByteIndex].withBits(minHighBits, bitOffset, 4)
         }

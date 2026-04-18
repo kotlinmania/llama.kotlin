@@ -15,15 +15,14 @@ plugins {
 group = "ai.solace.llamakotlin"
 version = "0.1.0"
 
-repositories {
-    mavenCentral()
-}
-
 val hostOs = System.getProperty("os.name")
 val hostArch = System.getProperty("os.arch")
 
 
 kotlin {
+    applyDefaultHierarchyTemplate()
+    jvmToolchain(21)
+
     jvm()
     linuxX64 {
         binaries {
@@ -89,51 +88,27 @@ kotlin {
         }
     }
 
-
     sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(kotlin("stdlib"))
-                implementation("org.jetbrains.kotlinx:atomicfu:0.23.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-                // ZLib.kotlin vendored sources deps
-                implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.0")
-                implementation("co.touchlab:kermit:2.0.8")
-                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
-            }
-            kotlin.srcDir("src/commonMain/kotlin")
-            resources.srcDir("src/commonMain/resources")
+        commonMain.dependencies {
+            implementation(kotlin("stdlib"))
+            implementation("org.jetbrains.kotlinx:atomicfu:0.23.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.0")
+            implementation("co.touchlab:kermit:2.0.8")
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
         }
-        val commonTest by getting {
-            dependencies {
-                implementation(kotlin("test"))
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
-                implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.0")
-            }
-            kotlin.srcDir("src/commonTest/kotlin")
-            resources.srcDir("src/commonTest/resources")
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+            implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.0")
         }
 
-        val nativeMain by creating {
-            dependsOn(commonMain)
-            kotlin.srcDir("src/nativeMain/kotlin")
+        jsMain.dependencies {
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-js:1.10.2")
         }
-
-        val linuxX64Main by getting { dependsOn(nativeMain) }
-        val macosX64Main by getting { dependsOn(nativeMain) }
-        val macosArm64Main by getting { dependsOn(nativeMain) }
-        val mingwX64Main by getting { dependsOn(nativeMain) }
-
-        val jsMain by getting {
-            dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-js:1.10.2")
-            }
-        }
-        val jsTest by getting {
-            dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test-js:1.10.2")
-            }
+        jsTest.dependencies {
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test-js:1.10.2")
         }
     }
 }

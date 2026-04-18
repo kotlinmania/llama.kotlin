@@ -10,12 +10,6 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
 import ai.solace.llamakotlin.core.simd.GGMLSimd
-import ai.solace.klangnative.bitwise.ArithmeticBitwiseOps
-import ai.solace.klangnative.bitwise.BitShiftEngine
-import ai.solace.klangnative.bitwise.BitShiftMode
-import ai.solace.klangnative.bitwise.BitwiseOps
-import ai.solace.klangnative.bitwise.PackOps
-import ai.solace.klangnative.bitwise.DoubleDouble
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.round
@@ -2222,7 +2216,6 @@ fun computeDiv(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
  * Q2_K structure: scales[QK_K/16], qs[QK_K/4], d (F16), dmin (F16)
  * Effectively 2.625 bits per weight
  */
-private val BIT_SHIFT_ENGINE_8 = BitShiftEngine(BitShiftMode.ARITHMETIC, 8)
 private const val GROUP_MAX_EPS_F = 1e-15f
 
 private class Q2KScratch(
@@ -2246,20 +2239,14 @@ private class Q4KScratch(
     val scales: FloatArray = FloatArray(QK_K / 32)
 )
 
-private val BIT_SHIFT_ENGINE_32 = BitShiftEngine(BitShiftMode.ARITHMETIC, 32)
-private val ARITH_32 = ArithmeticBitwiseOps.BITS_32
+private fun logicalLeft32(value: Int, bits: Int): Int = value shl bits
 
-private fun logicalLeft32(value: Int, bits: Int): Int =
-    BIT_SHIFT_ENGINE_32.leftShift(value.toLong(), bits).value.toInt()
-
-private fun logicalRight32(value: Int, bits: Int): Int =
-    BIT_SHIFT_ENGINE_32.unsignedRightShift(value.toLong(), bits).value.toInt()
+private fun logicalRight32(value: Int, bits: Int): Int = value ushr bits
 
 private fun maskLowBits32(value: Int, bits: Int): Int =
-    ARITH_32.extractBits(value.toLong(), bits).toInt()
+    if (bits >= 32) value else value and ((1 shl bits) - 1)
 
-private fun mergeBits32(base: Int, addition: Int): Int =
-    BitwiseOps.orArithmeticGeneral(base, addition)
+private fun mergeBits32(base: Int, addition: Int): Int = base or addition
 
 private fun lowNibble(value: Int): Int = maskLowBits32(value, 4)
 
@@ -2300,6 +2287,17 @@ private fun mergeIntoByte(base: Byte, value: Int, shift: Int, width: Int): Byte 
     val clearedAddition = logicalLeft32(maskLowBits32(value, width), shift)
     val merged = mergeBits32(unsignedByte(base), clearedAddition)
     return maskLowBits32(merged, 8).toByte()
+}
+
+/** Pack two 4-bit nibbles into a single byte (low in bits 0-3, high in bits 4-7). */
+private fun packNibblesInt(low: Int, high: Int): Int = ((high and 0xF) shl 4) or (low and 0xF)
+
+/** Write [width] bits of [value] at [bitIndex] into [base], returning updated byte value. */
+private fun bitplaneWriteInt(base: Int, value: Int, bitIndex: Int, width: Int): Int {
+    val fieldMask = (1 shl width) - 1
+    val cleared = base and (fieldMask shl bitIndex).inv()
+    val toWrite = (value and fieldMask) shl bitIndex
+    return (cleared or toWrite) and 0xFF
 }
 
 private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: Int, scratch: Q2KScratch) {
@@ -2401,10 +2399,10 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
 
         for (group in 0 until QK_K / 64) {
             val idx0 = base + group * 4
-            val v0 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0]), 2)
-            val v1 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0 + 1]), 2)
-            val v2 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0 + 2]), 2)
-            val v3 = maskLowBits32(BitwiseOps.byteToUnsignedInt(l[idx0 + 3]), 2)
+            val v0 = maskLowBits32(l[idx0].toInt() and 0xFF, 2)
+            val v1 = maskLowBits32(l[idx0 + 1].toInt() and 0xFF, 2)
+            val v2 = maskLowBits32(l[idx0 + 2].toInt() and 0xFF, 2)
+            val v3 = maskLowBits32(l[idx0 + 3].toInt() and 0xFF, 2)
 
             val combined = mergeBits32(
                 mergeBits32(v0, logicalLeft32(v1, 2)),
@@ -2521,7 +2519,7 @@ private fun quantizeQ3_KBlock(
             val q1 = maskLowBits32(quants[chunk + l + 32].toInt(), 2)
             val q2 = maskLowBits32(quants[chunk + l + 64].toInt(), 2)
             val q3 = maskLowBits32(quants[chunk + l + 96].toInt(), 2)
-            dest[qsIndex + l] = PackOps.packQuads(q0, q1, q2, q3).toByte()
+            dest[qsIndex + l] = (((q3 and 3) shl 6) or ((q2 and 3) shl 4) or ((q1 and 3) shl 2) or (q0 and 3)).toByte()
         }
         qsIndex += 32
     }
@@ -2617,10 +2615,10 @@ private fun quantizeQ4_KBlock(
             dest[scalesOffset + subBlock + 4] = lm.toByte()
         } else {
             val packedIndex = scalesOffset + subBlock + 4
-            dest[packedIndex] = PackOps.packNibbles(ls and 0xF, lm and 0xF).toByte()
+            dest[packedIndex] = packNibblesInt(ls and 0xF, lm and 0xF).toByte()
 
             val scaleHighIdx = scalesOffset + subBlock - 4
-            dest[scaleHighIdx] = PackOps.bitplaneWrite(
+            dest[scaleHighIdx] = bitplaneWriteInt(
                 dest[scaleHighIdx].toInt() and 0xFF,
                 ls ushr 4,
                 6,
@@ -2628,7 +2626,7 @@ private fun quantizeQ4_KBlock(
             ).toByte()
 
             val minHighIdx = scalesOffset + subBlock
-            dest[minHighIdx] = PackOps.bitplaneWrite(
+            dest[minHighIdx] = bitplaneWriteInt(
                 dest[minHighIdx].toInt() and 0xFF,
                 lm ushr 4,
                 6,
@@ -2661,7 +2659,7 @@ private fun quantizeQ4_KBlock(
         for (l in 0 until 32) {
             val low = quants[chunkStart + l].toInt() and 0xF
             val high = quants[chunkStart + l + 32].toInt() and 0xF
-            dest[writeOffset + l] = PackOps.packNibbles(low, high).toByte()
+            dest[writeOffset + l] = packNibblesInt(low, high).toByte()
         }
         writeOffset += 32
     }
@@ -2788,16 +2786,16 @@ private fun quantizeQ5_KBlock(
             dest[scalesOffset + sub] = lsInt.toByte()
             dest[scalesOffset + sub + 4] = lmInt.toByte()
         } else {
-            dest[scalesOffset + sub + 4] = PackOps.packNibbles(lsInt and 0xF, lmInt and 0xF).toByte()
+            dest[scalesOffset + sub + 4] = packNibblesInt(lsInt and 0xF, lmInt and 0xF).toByte()
             val scaleHighIdx = scalesOffset + sub - 4
-            dest[scaleHighIdx] = PackOps.bitplaneWrite(
+            dest[scaleHighIdx] = bitplaneWriteInt(
                 dest[scaleHighIdx].toInt() and 0xFF,
                 lsInt ushr 4,
                 6,
                 2
             ).toByte()
             val minHighIdx = scalesOffset + sub
-            dest[minHighIdx] = PackOps.bitplaneWrite(
+            dest[minHighIdx] = bitplaneWriteInt(
                 dest[minHighIdx].toInt() and 0xFF,
                 lmInt ushr 4,
                 6,
@@ -2839,7 +2837,7 @@ private fun quantizeQ5_KBlock(
                 q2 -= 16
                 dest[qhOffset + j] = (dest[qhOffset + j].toInt() or mask2).toByte()
             }
-            dest[qsIndex + j] = PackOps.packNibbles(q1, q2).toByte()
+            dest[qsIndex + j] = packNibblesInt(q1, q2).toByte()
         }
         mask1 = (mask1 shl 2) and 0xFF
         mask2 = (mask2 shl 2) and 0xFF
@@ -2936,8 +2934,8 @@ private fun quantizeQ6_KBlock(
             val q3 = quants[chunk + l + 64].toInt() and 0x3F
             val q4 = quants[chunk + l + 96].toInt() and 0x3F
 
-            dest[qlIndex + l] = PackOps.packNibbles(q1 and 0xF, q3 and 0xF).toByte()
-            dest[qlIndex + l + 32] = PackOps.packNibbles(q2 and 0xF, q4 and 0xF).toByte()
+            dest[qlIndex + l] = packNibblesInt(q1 and 0xF, q3 and 0xF).toByte()
+            dest[qlIndex + l + 32] = packNibblesInt(q2 and 0xF, q4 and 0xF).toByte()
 
             val highPacked = ((q4 shr 4) shl 6) or ((q3 shr 4) shl 4) or ((q2 shr 4) shl 2) or (q1 shr 4)
             dest[qhIndex + l] = highPacked.toByte()

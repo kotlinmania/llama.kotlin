@@ -1,7 +1,5 @@
 package ai.solace.llamakotlin.core
 
-import ai.solace.klangnative.bitwise.CFloatTrace
-
 internal object Q2KDiagnosticsRecorder {
     data class SubBlockEntry(
         val index: Int,
@@ -10,12 +8,24 @@ internal object Q2KDiagnosticsRecorder {
         val quants: ByteArray
     )
 
+    /** Diagnostic trace entry for float operations (op name, LHS/RHS/result bit patterns). */
+    data class TraceEntry(
+        val op: String,
+        val lhsBits: Int,
+        val rhsBits: Int?,
+        val resultBits: Int
+    ) {
+        val lhs: Float get() = Float.fromBits(lhsBits)
+        val rhs: Float? get() = rhsBits?.let { Float.fromBits(it) }
+        val result: Float get() = Float.fromBits(resultBits)
+    }
+
     var enabled: Boolean = false
     private val _entries = mutableListOf<SubBlockEntry>()
     val entries: List<SubBlockEntry> get() = _entries
     var headerD: Short = 0
     var headerDMin: Short = 0
-    var traceEntries: List<CFloatTrace.Entry> = emptyList()
+    var traceEntries: List<TraceEntry> = emptyList()
 
     fun reset() {
         _entries.clear()
@@ -35,7 +45,7 @@ internal object Q2KDiagnosticsRecorder {
         _entries += SubBlockEntry(index, scale, min, quants.copyOf())
     }
 
-    fun recordTrace(entries: List<CFloatTrace.Entry>) {
+    fun recordTrace(entries: List<TraceEntry>) {
         if (!enabled) return
         traceEntries = entries
     }
