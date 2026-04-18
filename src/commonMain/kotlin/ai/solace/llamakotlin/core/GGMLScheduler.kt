@@ -1,10 +1,37 @@
 // port-lint: source ggml/src/ggml-threading.cpp
 package ai.solace.llamakotlin.core
 
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+
 /**
  * Kotlin Native port of GGML scheduler functionality.
  * This file contains the multi-threaded and multi-backend scheduler implementation.
  */
+
+// ---------------------------------------------------------------------------
+// ggml-threading.h / ggml-threading.cpp — critical section (global mutex)
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple spin-lock based critical section matching the C++ std::mutex usage.
+ * In Kotlin/Native single-threaded mode this is effectively a no-op guard;
+ * with the new memory model it provides basic mutual exclusion.
+ */
+@OptIn(ExperimentalAtomicApi::class)
+private val criticalSectionLock = AtomicInt(0)
+
+@OptIn(ExperimentalAtomicApi::class)
+fun ggml_critical_section_start() {
+    while (!criticalSectionLock.compareAndSet(0, 1)) {
+        // spin
+    }
+}
+
+@OptIn(ExperimentalAtomicApi::class)
+fun ggml_critical_section_end() {
+    criticalSectionLock.store(0)
+}
 
 /**
  * High-level backend status used by scheduler/examples
