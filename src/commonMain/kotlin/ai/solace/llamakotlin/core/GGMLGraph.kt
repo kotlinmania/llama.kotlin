@@ -1,7 +1,9 @@
 // port-lint: source ggml/src/ggml.c
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package ai.solace.llamakotlin.core
 
-import kotlin.concurrent.AtomicLong
+import kotlin.concurrent.atomics.AtomicLong
 import kotlin.time.TimeSource
 
 /**
@@ -2674,7 +2676,7 @@ fun computeGraphWithBackend(graph: GGMLCGraph, context: GGMLContext? = null): GG
 private val graphUidCounter = AtomicLong(1L)
 
 /** Returns the next unique graph identifier. Thread-safe via atomic increment. */
-fun ggmlGraphNextUid(): Long = graphUidCounter.getAndIncrement()
+fun ggmlGraphNextUid(): Long = graphUidCounter.fetchAndAdd(1L)
 
 // ---------------------------------------------------------------------------
 // Timing (ported from ggml_time_init / ggml_time_ms / ggml_time_us)
