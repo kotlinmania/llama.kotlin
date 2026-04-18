@@ -70,9 +70,10 @@ class GGMLCpuBuffer(
         // ByteArray will be garbage collected, nothing to do explicitly
     }
     
-    override fun initTensor(tensor: GGMLTensor) {
+    override fun initTensor(tensor: GGMLTensor): GGMLStatus {
         // CPU tensors don't need special initialization
         tensor.buffer = this
+        return GGMLStatus.SUCCESS
     }
     
     override fun setTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
