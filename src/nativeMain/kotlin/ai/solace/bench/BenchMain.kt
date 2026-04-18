@@ -126,8 +126,8 @@ private suspend fun benchMain(args: Array<String>) {
         "--hex" -> runHexStringShiftBenchSuite()
         "--engine-left" -> runShiftSuite()
         "--engine-right" -> runRightShiftSuite()
-        "--engine-left-native" -> runShiftSuiteWithMode(ai.solace.klang.bitwise.BitShiftMode.NATIVE)
-        "--engine-right-native" -> runRightShiftSuiteWithMode(ai.solace.klang.bitwise.BitShiftMode.NATIVE)
+        "--engine-left-native" -> runShiftSuiteWithMode(ai.solace.klangnative.bitwise.BitShiftMode.NATIVE)
+        "--engine-right-native" -> runRightShiftSuiteWithMode(ai.solace.klangnative.bitwise.BitShiftMode.NATIVE)
         "--engine-left-par" -> runShiftSuiteParallel()
         "--engine-right-par" -> runRightShiftSuiteParallel()
         "--masks" -> runMaskBenchSuite()
@@ -144,12 +144,12 @@ private suspend fun benchMain(args: Array<String>) {
     }
 }
 
-private fun runShiftSuiteWithMode(mode: ai.solace.klang.bitwise.BitShiftMode) {
-    ai.solace.klang.bitwise.BitShiftConfig.withMode(mode) { runShiftSuite() }
+private fun runShiftSuiteWithMode(mode: ai.solace.klangnative.bitwise.BitShiftMode) {
+    ai.solace.klangnative.bitwise.BitShiftConfig.withMode(mode) { runShiftSuite() }
 }
 
-private fun runRightShiftSuiteWithMode(mode: ai.solace.klang.bitwise.BitShiftMode) {
-    ai.solace.klang.bitwise.BitShiftConfig.withMode(mode) { runRightShiftSuite() }
+private fun runRightShiftSuiteWithMode(mode: ai.solace.klangnative.bitwise.BitShiftMode) {
+    ai.solace.klangnative.bitwise.BitShiftConfig.withMode(mode) { runRightShiftSuite() }
 }
 
 // ===== Parallel variants =====

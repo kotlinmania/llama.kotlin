@@ -1,6 +1,6 @@
 @file:Suppress("ktlint:standard:property-naming")
 
-package ai.solace.klang.common
+package ai.solace.klangnative.common
 
 import kotlin.js.Date
 

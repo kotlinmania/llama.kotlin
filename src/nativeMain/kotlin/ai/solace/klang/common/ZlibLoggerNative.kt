@@ -2,7 +2,7 @@
 
 @file:Suppress("ktlint:standard:property-naming")
 
-package ai.solace.klang.common
+package ai.solace.klangnative.common
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.alloc
