@@ -1,7 +1,130 @@
 // port-lint: source ggml/src/ggml-impl.h
 package ai.solace.llamakotlin.core
 
-// Half/Float conversion routines.
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.ln
+import kotlin.math.max
+
+// ============================================================================
+// Constants (from ggml-impl.h)
+// ============================================================================
+
+/** Required for mmap as gguf only guarantees 32-byte alignment. */
+const val TENSOR_ALIGNMENT: Int = 32
+
+// ============================================================================
+// Alignment helpers — transliteration of C macros GGML_UP / GGML_PAD
+// ============================================================================
+
+/** Round [n] up to the next multiple of 32. */
+inline fun ggml_up32(n: Int): Int = (n + 31) and 31.inv()
+
+/**
+ * Round [n] up to the next multiple of [m].
+ * [m] **must** be a power of two.
+ */
+inline fun ggml_up(n: Int, m: Int): Int {
+    require((m and (m - 1)) == 0) { "m must be a power of 2, got $m" }
+    return (n + m - 1) and (m - 1).inv()
+}
+
+/**
+ * Pad [n] up to the next multiple of [m] (general, not limited to power-of-two).
+ * Equivalent to the C macro `GGML_PAD(n, m)`.
+ */
+inline fun ggml_pad(n: Int, m: Int): Int {
+    return ((n + m - 1) / m) * m
+}
+
+/** ULong overload for sizes. */
+inline fun ggml_pad(n: ULong, m: ULong): ULong {
+    return ((n + m - 1u) / m) * m
+}
+
+// ============================================================================
+// FP16 ↔ FP32 conversion routines
+// ref: https://github.com/Maratyszcza/FP16
+// ============================================================================
+
+/**
+ * Reinterpret a raw 32-bit pattern as a Float (equivalent to C `fp32_from_bits`).
+ */
+inline fun fp32_from_bits(w: Int): Float = Float.fromBits(w)
+
+/**
+ * Reinterpret a Float as its raw 32-bit pattern (equivalent to C `fp32_to_bits`).
+ */
+inline fun fp32_to_bits(f: Float): Int = f.toRawBits()
+
+/**
+ * Converts a 16-bit half-precision float (ggml_fp16_t) to a 32-bit single-precision float.
+ *
+ * Port of `ggml_compute_fp16_to_fp32` from ggml-impl.h.
+ * Uses the FP16 library approach (Maratyszcza) with magic-number denormal handling.
+ */
+fun ggml_compute_fp16_to_fp32(h: Short): Float {
+    val w = (h.toInt() and 0xFFFF) shl 16
+    val sign = w and 0x80000000.toInt()
+    val two_w = w + w
+
+    val exp_offset = 0xE0 shl 23
+    // 0x1.0p-112f == 2^(-112) == Float.fromBits(0x07800000)
+    val exp_scale = fp32_from_bits(0x07800000)
+    val normalized_value = fp32_from_bits(((two_w ushr 4) + exp_offset)) * exp_scale
+
+    val magic_mask = 126 shl 23
+    val magic_bias = 0.5f
+    val denormalized_value = fp32_from_bits((two_w ushr 17) or magic_mask) - magic_bias
+
+    val denormalized_cutoff = 1 shl 27
+    val result = sign or
+        if ((two_w ushr 0).toLong() and 0xFFFFFFFFL < (denormalized_cutoff.toLong() and 0xFFFFFFFFL))
+            fp32_to_bits(denormalized_value)
+        else
+            fp32_to_bits(normalized_value)
+    return fp32_from_bits(result)
+}
+
+/**
+ * Converts a 32-bit single-precision float to a 16-bit half-precision float (ggml_fp16_t).
+ *
+ * Port of `ggml_compute_fp32_to_fp16` from ggml-impl.h.
+ */
+fun ggml_compute_fp32_to_fp16(f: Float): Short {
+    // scale_to_inf  = 0x1.0p+112f = Float.fromBits(0x77800000)
+    val scale_to_inf = fp32_from_bits(0x77800000)
+    // scale_to_zero = 0x1.0p-110f = Float.fromBits(0x08800000)
+    val scale_to_zero = fp32_from_bits(0x08800000)
+    var base = (abs(f) * scale_to_inf) * scale_to_zero
+
+    val w = fp32_to_bits(f)
+    val shl1_w = w + w
+    val sign = w and 0x80000000.toInt()
+    var bias = shl1_w and 0xFF000000.toInt()
+    if ((bias.toLong() and 0xFFFFFFFFL) < (0x71000000L)) {
+        bias = 0x71000000.toInt()
+    }
+
+    base = fp32_from_bits((bias ushr 1) + 0x07800000) + base
+    val bits = fp32_to_bits(base)
+    val exp_bits = (bits ushr 13) and 0x00007C00
+    val mantissa_bits = bits and 0x00000FFF
+    val nonsign = exp_bits + mantissa_bits
+    val result = (sign ushr 16) or
+        if ((shl1_w.toLong() and 0xFFFFFFFFL) > 0xFF000000L) 0x7E00 else nonsign
+    return result.toShort()
+}
+
+// Convenience aliases matching C macros
+/** Alias for [ggml_compute_fp16_to_fp32]. */
+inline fun GGML_FP16_TO_FP32(x: Short): Float = ggml_compute_fp16_to_fp32(x)
+/** Alias for [ggml_compute_fp32_to_fp16]. */
+inline fun GGML_FP32_TO_FP16(x: Float): Short = ggml_compute_fp32_to_fp16(x)
+
+// ============================================================================
+// Legacy half ↔ float helpers (kept for backward compatibility)
+// ============================================================================
 
 /**
  * Converts a 16-bit half-precision float to a 32-bit single-precision float.
@@ -124,6 +247,651 @@ internal fun floatToHalf(f_val: Float): Short {
     return (fSign or hExp or hMant).toShort()
 }
 
+// ============================================================================
+// E8M0 conversion helpers (MX / MXFP scaling exponents)
+// ============================================================================
+
+/**
+ * Converts an E8M0 exponent-only byte to float32.
+ *
+ * E8M0 encodes pure powers of two: value = 2^(x − 127).
+ * Special case: x == 0 maps to 2^(−127) (the smallest representable value).
+ */
+fun ggml_e8m0_to_fp32(x: UByte): Float {
+    val bits: Int = if (x.toInt() == 0) {
+        // 2^(-127) expressed as a denormal float: sign=0, exp=0, mantissa=0x400000
+        0x00400000
+    } else {
+        x.toInt() shl 23
+    }
+    return Float.fromBits(bits)
+}
+
+/**
+ * Equal to [ggml_e8m0_to_fp32] / 2.
+ * Useful with MXFP4 quantization since the E0M2 values are doubled.
+ */
+fun ggml_e8m0_to_fp32_half(x: UByte): Float {
+    val bits: Int = if (x.toInt() < 2) {
+        // 0x00200000 = 2^(-128), 0x00400000 = 2^(-127)
+        0x00200000 shl x.toInt()
+    } else {
+        // 0.5 * 2^(x-127) = 2^(x-128) → normalized with exponent (x-1)
+        (x.toInt() - 1) shl 23
+    }
+    return Float.fromBits(bits)
+}
+
+/** Alias for [ggml_e8m0_to_fp32]. */
+inline fun GGML_E8M0_TO_FP32(x: UByte): Float = ggml_e8m0_to_fp32(x)
+/** Alias for [ggml_e8m0_to_fp32_half]. */
+inline fun GGML_E8M0_TO_FP32_HALF(x: UByte): Float = ggml_e8m0_to_fp32_half(x)
+
+// ============================================================================
+// UE4M3 conversion helpers (unsigned, 4 exp bits bias=7, 3 mantissa bits)
+// ============================================================================
+
+/**
+ * Converts an unsigned E4M3 byte to float32.
+ *
+ * Returns value × 0.5 to match `kvalues_mxfp4` convention (kvalues = 2 × E2M1_float).
+ */
+fun ggml_ue4m3_to_fp32(x: UByte): Float {
+    val xi = x.toInt()
+    if (xi == 0 || xi == 0x7F) return 0.0f
+    val exp = (xi ushr 3) and 0xF
+    val man = xi and 0x7
+    val raw: Float = if (exp == 0) {
+        // subnormal: man * 2^(-9)
+        man.toFloat() * (1.0f / 512.0f)
+    } else {
+        // normalized: (1 + man/8) * 2^(exp-7)
+        (1.0f + man.toFloat() / 8.0f) * twoToThe(exp - 7)
+    }
+    return raw * 0.5f
+}
+
+/**
+ * Converts a float32 to an unsigned E4M3 byte.
+ */
+fun ggml_fp32_to_ue4m3(x: Float): UByte {
+    @Suppress("NAME_SHADOWING")
+    var x = x
+    if (!(x > 0.0f)) return 0u
+    if (x > 448.0f) x = 448.0f
+
+    val bits = fp32_to_bits(x)
+    val fp32_exp = ((bits ushr 23) and 0xFF) - 127
+    val fp32_man = (bits ushr 20) and 0x7
+    var ue4m3_exp = fp32_exp + 7
+    if (ue4m3_exp <= 0) {
+        // subnormal: value = man * 2^-9, man = round(x * 2^9)
+        var man = (x * 512.0f + 0.5f).toInt()
+        if (man > 7) man = 7
+        if (man < 1) return 0u
+        return man.toUByte()
+    }
+    if (ue4m3_exp >= 15) return 0x7Eu
+    val round_bit = (bits ushr 19) and 1
+    var ue4m3_man = fp32_man + round_bit
+    if (ue4m3_man > 7) {
+        ue4m3_man = 0
+        ue4m3_exp++
+        if (ue4m3_exp >= 15) return 0x7Eu
+    }
+    return ((ue4m3_exp shl 3) or ue4m3_man).toUByte()
+}
+
+/** Fast 2^n for small integer n (positive or negative). */
+private fun twoToThe(n: Int): Float {
+    // Construct the float directly from the exponent field
+    return if (n >= -126 && n <= 127) {
+        Float.fromBits((n + 127) shl 23)
+    } else {
+        // Fallback for out-of-range (shouldn't happen for E4M3)
+        var result = 1.0f
+        if (n > 0) { repeat(n) { result *= 2.0f } }
+        else { repeat(-n) { result *= 0.5f } }
+        result
+    }
+}
+
+// ============================================================================
+// BF16 (Brain Float 16) ↔ FP32 conversion
+// ============================================================================
+
+/**
+ * Converts brain16 to float32.
+ *
+ * The bfloat16 floating point format has the following structure:
+ *
+ *       ┌sign
+ *       │
+ *       │   ┌exponent
+ *       │   │
+ *       │   │      ┌mantissa
+ *       │   │      │
+ *       │┌──┴───┐┌─┴───┐
+ *     0b0000000000000000 brain16
+ *
+ * Since bf16 has the same number of exponent bits as a 32-bit float,
+ * encoding and decoding numbers becomes relatively straightforward.
+ *
+ *       ┌sign
+ *       │
+ *       │   ┌exponent
+ *       │   │
+ *       │   │      ┌mantissa
+ *       │   │      │
+ *       │┌──┴───┐┌─┴───────────────────┐
+ *     0b00000000000000000000000000000000 IEEE binary32
+ *
+ * @see [GGMLBF16] defined in GGMLTypes.kt
+ */
+fun ggml_compute_bf16_to_fp32(h: GGMLBF16): Float {
+    return Float.fromBits(h.bits.toInt() shl 16)
+}
+
+/**
+ * Converts float32 to brain16.
+ *
+ * This is binary identical with Google Brain float conversion.
+ * Floats shall round to nearest even, and NANs shall be quiet.
+ * Subnormals aren't flushed to zero, except perhaps when used.
+ */
+fun ggml_compute_fp32_to_bf16(s: Float): GGMLBF16 {
+    val i = fp32_to_bits(s)
+    if (((i and 0x7fffffff).toLong() and 0xFFFFFFFFL) > 0x7f800000L) {
+        // NaN → force to quiet
+        return GGMLBF16(((i ushr 16) or 64).toUShort())
+    }
+    val rounded = i + (0x7fff + ((i ushr 16) and 1))
+    return GGMLBF16((rounded ushr 16).toUShort())
+}
+
+/** Alias for [ggml_compute_fp32_to_bf16]. */
+inline fun GGML_FP32_TO_BF16(x: Float): GGMLBF16 = ggml_compute_fp32_to_bf16(x)
+/** Alias for [ggml_compute_bf16_to_fp32]. */
+inline fun GGML_BF16_TO_FP32(x: GGMLBF16): Float = ggml_compute_bf16_to_fp32(x)
+
+// ============================================================================
+// Softplus helper
+// ============================================================================
+
+/**
+ * Computes softplus: log(1 + exp(input)).
+ * For large [input] (> 20), returns [input] directly to avoid overflow.
+ */
+inline fun ggml_compute_softplus_f32(input: Float): Float {
+    return if (input > 20.0f) input else ln(1.0f + exp(input))
+}
+
+// ============================================================================
+// Tensor layout / operation helpers
+// ============================================================================
+
+/**
+ * Returns `true` if tensors [a] and [b] have identical type, element counts,
+ * and byte strides across every dimension.
+ *
+ * Port of `ggml_are_same_layout` from ggml-impl.h.
+ */
+fun ggml_are_same_layout(a: GGMLTensor, b: GGMLTensor): Boolean {
+    if (a.type != b.type) return false
+    for (i in 0 until GGML_MAX_DIMS) {
+        if (a.ne[i] != b.ne[i]) return false
+        if (a.nb[i] != b.nb[i]) return false
+    }
+    return true
+}
+
+/**
+ * Returns `true` if the given [op] is an "empty" operation that doesn't
+ * perform actual computation (metadata-only reshaping / viewing).
+ */
+fun ggml_op_is_empty(op: GGMLOp): Boolean {
+    return when (op) {
+        GGMLOp.NONE,
+        GGMLOp.RESHAPE,
+        GGMLOp.TRANSPOSE,
+        GGMLOp.VIEW,
+        GGMLOp.PERMUTE -> true
+        else -> false
+    }
+}
+
+/**
+ * Returns `true` if tensor [t] is a view of another tensor.
+ */
+inline fun ggml_impl_is_view(t: GGMLTensor): Boolean = t.viewSrc != null
+
+// ============================================================================
+// Op-params accessors
+// ============================================================================
+
+/**
+ * Copies [paramsSize] bytes from [params] into [tensor]'s opParams.
+ * [params] is interpreted as an IntArray where each Int occupies 4 bytes.
+ */
+fun ggml_set_op_params(tensor: GGMLTensor, params: IntArray, paramsSize: Int) {
+    require(paramsSize <= GGML_MAX_OP_PARAMS) {
+        "paramsSize ($paramsSize) exceeds GGML_MAX_OP_PARAMS ($GGML_MAX_OP_PARAMS)"
+    }
+    val intCount = paramsSize / Int.SIZE_BYTES
+    for (j in 0 until intCount) {
+        tensor.opParams[j] = params[j]
+    }
+}
+
+/** Reads the [i]-th Int32 from [tensor]'s op_params. */
+fun ggml_get_op_params_i32(tensor: GGMLTensor, i: Int): Int {
+    require(i < GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+    return tensor.opParams[i]
+}
+
+/** Reads the [i]-th Float from [tensor]'s op_params (reinterpreted from Int bits). */
+fun ggml_get_op_params_f32(tensor: GGMLTensor, i: Int): Float {
+    require(i < GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+    return Float.fromBits(tensor.opParams[i])
+}
+
+/** Writes an Int32 [value] at position [i] in [tensor]'s op_params. */
+fun ggml_set_op_params_i32(tensor: GGMLTensor, i: Int, value: Int) {
+    require(i < GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+    tensor.opParams[i] = value
+}
+
+/** Writes a Float [value] at position [i] in [tensor]'s op_params (stored as raw bits). */
+fun ggml_set_op_params_f32(tensor: GGMLTensor, i: Int, value: Float) {
+    require(i < GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+    tensor.opParams[i] = value.toRawBits()
+}
+
+// ============================================================================
+// Custom op-param structures
+// ============================================================================
+
+/**
+ * Parameters for a custom unary operation.
+ *
+ * Port of `struct ggml_map_custom1_op_params`.
+ */
+class GGMLMapCustom1OpParams(
+    val fun_: ((GGMLTensor, GGMLTensor, Int, Any?) -> Unit)? = null,
+    val nTasks: Int = 1,
+    val userdata: Any? = null
+)
+
+/**
+ * Parameters for a custom binary operation.
+ *
+ * Port of `struct ggml_map_custom2_op_params`.
+ */
+class GGMLMapCustom2OpParams(
+    val fun_: ((GGMLTensor, GGMLTensor, GGMLTensor, Int, Any?) -> Unit)? = null,
+    val nTasks: Int = 1,
+    val userdata: Any? = null
+)
+
+/**
+ * Parameters for a custom ternary operation.
+ *
+ * Port of `struct ggml_map_custom3_op_params`.
+ */
+class GGMLMapCustom3OpParams(
+    val fun_: ((GGMLTensor, GGMLTensor, GGMLTensor, GGMLTensor, Int, Any?) -> Unit)? = null,
+    val nTasks: Int = 1,
+    val userdata: Any? = null
+)
+
+/**
+ * Parameters for a general custom operation.
+ *
+ * Port of `struct ggml_custom_op_params`.
+ */
+class GGMLCustomOpParams(
+    val fun_: ((GGMLTensor, Int, Any?) -> Unit)? = null,
+    val nTasks: Int = 1,
+    val userdata: Any? = null
+)
+
+// ============================================================================
+// Bitset — port of ggml_bitset_t helpers
+// ============================================================================
+
+/** Number of bits to right-shift an index to find its word: log2(32). */
+private const val BITSET_SHR = 5
+/** Mask for the bit position within a single word (31 = 32-1). */
+private const val BITSET_MASK = 31
+
+/**
+ * A simple fixed-size bitset backed by an [IntArray].
+ *
+ * Each `Int` holds 32 bits.  Port of the C `ggml_bitset_t *` pattern in ggml-impl.h.
+ */
+class GGMLBitset(private val data: IntArray) {
+
+    /** Number of *words* in the backing array. */
+    val wordCount: Int get() = data.size
+
+    /** Returns `true` if bit [i] is set. */
+    fun get(i: Int): Boolean {
+        return (data[i ushr BITSET_SHR] and (1 shl (i and BITSET_MASK))) != 0
+    }
+
+    /** Sets bit [i] to 1. */
+    fun set(i: Int) {
+        data[i ushr BITSET_SHR] = data[i ushr BITSET_SHR] or (1 shl (i and BITSET_MASK))
+    }
+
+    /** Clears bit [i] to 0. */
+    fun clear(i: Int) {
+        data[i ushr BITSET_SHR] = data[i ushr BITSET_SHR] and (1 shl (i and BITSET_MASK)).inv()
+    }
+
+    /** Resets every bit to 0. */
+    fun reset() {
+        data.fill(0)
+    }
+
+    companion object {
+        /**
+         * Returns the number of 32-bit words needed to hold [n] bits.
+         * Equivalent to the C function `ggml_bitset_size`.
+         */
+        fun wordsForBits(n: Int): Int = (n + BITSET_MASK) ushr BITSET_SHR
+
+        /** Creates a new bitset large enough to hold [n] bits, all initialized to 0. */
+        fun create(n: Int): GGMLBitset = GGMLBitset(IntArray(wordsForBits(n)))
+    }
+}
+
+// ============================================================================
+// Hash set — port of struct ggml_hash_set
+// ============================================================================
+
+/** Sentinel: the hash table is completely full. */
+const val GGML_HASHSET_FULL: Int = -1
+/** Sentinel: the key already exists in the hash table. */
+const val GGML_HASHSET_ALREADY_EXISTS: Int = -2
+
+/**
+ * Open-addressed hash set keyed by [GGMLTensor] identity (reference equality).
+ *
+ * Port of `struct ggml_hash_set` from ggml-impl.h.
+ * Uses linear probing. The slot capacity is stored in [size]; actual occupancy
+ * is tracked by the [used] bitset.
+ *
+ * @property size the number of *slots* in the table (not the number of elements)
+ * @property used bitset indicating which slots contain a valid key
+ * @property keys the tensor references, valid only where `used.get(i)` is true
+ */
+class GGMLHashSet(
+    val size: Int,
+    val used: GGMLBitset = GGMLBitset.create(size),
+    val keys: Array<GGMLTensor?> = arrayOfNulls(size)
+) {
+    /** Removes all elements from the hash set. */
+    fun reset() {
+        used.reset()
+        keys.fill(null)
+    }
+
+    companion object {
+        /**
+         * Returns the minimum table size for a hash set that can hold [minSz] elements.
+         *
+         * Rounds up to a prime-like size for better distribution.
+         * Port of the C function `ggml_hash_size`.
+         */
+        fun ggml_hash_size(minSz: Int): Int {
+            // Simple strategy: next power-of-two × 2 for ~50% load factor
+            var sz = maxOf(minSz * 2, 16)
+            // Round up to next power of two
+            var v = sz - 1
+            v = v or (v ushr 1)
+            v = v or (v ushr 2)
+            v = v or (v ushr 4)
+            v = v or (v ushr 8)
+            v = v or (v ushr 16)
+            return v + 1
+        }
+
+        /** Creates a new hash set with capacity for at least [minSz] elements. */
+        fun new(minSz: Int): GGMLHashSet {
+            val sz = ggml_hash_size(minSz)
+            return GGMLHashSet(sz)
+        }
+    }
+}
+
+// ============================================================================
+// Hash functions operating on GGMLHashSet
+// ============================================================================
+
+/**
+ * Hash function for a tensor.
+ *
+ * In C this is `(uintptr_t)p >> 4`. Since Kotlin doesn't expose raw addresses,
+ * we use [System.identityHashCode] (or its equivalent) as a proxy.
+ */
+fun ggml_hash(p: GGMLTensor): Int {
+    // identityHashCode is the closest Kotlin analogue to address-based hashing
+    return p.hashCode() ushr 4
+}
+
+/**
+ * Finds the slot for [key] in [hashSet] using linear probing.
+ *
+ * @return the slot index, or [GGML_HASHSET_FULL] if the table is full.
+ */
+fun ggml_hash_find(hashSet: GGMLHashSet, key: GGMLTensor): Int {
+    val h = (ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
+    var i = h
+    while (hashSet.used.get(i) && hashSet.keys[i] !== key) {
+        i = (i + 1) % hashSet.size
+        if (i == h) return GGML_HASHSET_FULL
+    }
+    return i
+}
+
+/**
+ * Returns `true` if [key] is present in [hashSet].
+ */
+fun ggml_hash_contains(hashSet: GGMLHashSet, key: GGMLTensor): Boolean {
+    val i = ggml_hash_find(hashSet, key)
+    return i != GGML_HASHSET_FULL && hashSet.used.get(i)
+}
+
+/**
+ * Inserts [key] into [hashSet].
+ *
+ * @return the slot index, or [GGML_HASHSET_ALREADY_EXISTS] if the key was already present.
+ * @throws IllegalStateException if the table is completely full.
+ */
+fun ggml_hash_insert(hashSet: GGMLHashSet, key: GGMLTensor): Int {
+    val h = (ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
+    var i = h
+    do {
+        if (!hashSet.used.get(i)) {
+            hashSet.used.set(i)
+            hashSet.keys[i] = key
+            return i
+        }
+        if (hashSet.keys[i] === key) {
+            return GGML_HASHSET_ALREADY_EXISTS
+        }
+        i = (i + 1) % hashSet.size
+    } while (i != h)
+
+    error("ggml_hash_insert: hash table is full")
+}
+
+/**
+ * Finds the slot for [key], inserting it if absent.
+ *
+ * @return the slot index (whether newly inserted or already present).
+ * @throws IllegalStateException if the table is completely full.
+ */
+fun ggml_hash_find_or_insert(hashSet: GGMLHashSet, key: GGMLTensor): Int {
+    val h = (ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
+    var i = h
+    do {
+        if (!hashSet.used.get(i)) {
+            hashSet.used.set(i)
+            hashSet.keys[i] = key
+            return i
+        }
+        if (hashSet.keys[i] === key) {
+            return i
+        }
+        i = (i + 1) % hashSet.size
+    } while (i != h)
+
+    error("ggml_hash_find_or_insert: hash table is full")
+}
+
+// ============================================================================
+// Computation graph (cgraph) utility helpers
+// ============================================================================
+
+/**
+ * Returns the use count of the node at [nodeIdx] in [cgraph].
+ *
+ * Port of `ggml_node_get_use_count` from ggml-impl.h.
+ */
+fun ggml_node_get_use_count(cgraph: GGMLCGraph, nodeIdx: Int): Int {
+    val node = cgraph.nodes[nodeIdx] ?: return 0
+    val hashSet = cgraph.visitedHashSet as? GGMLHashSet ?: return 0
+    val useCounts = cgraph.useCounts ?: return 0
+
+    val hashPos = ggml_hash_find(hashSet, node)
+    if (hashPos == GGML_HASHSET_FULL || !hashSet.used.get(hashPos)) {
+        return 0
+    }
+    return useCounts[hashPos]
+}
+
+/**
+ * Returns `true` if [nodeIdx]'s results are used by exactly [nUses] other nodes
+ * and can be fused into their calculations.
+ *
+ * Port of `ggml_node_has_n_uses` from ggml-impl.h.
+ */
+fun ggml_node_has_n_uses(cgraph: GGMLCGraph, nodeIdx: Int, nUses: Int): Boolean {
+    val node = cgraph.nodes[nodeIdx] ?: return false
+
+    if (ggml_node_get_use_count(cgraph, nodeIdx) != nUses) return false
+
+    // If node is a view, some other node might be using the intermediate result
+    // via the view source.
+    if (node.viewSrc != null) return false
+
+    // If the user requested output for the node, can't fuse
+    if (node.flags and GGML_TENSOR_FLAG_OUTPUT != 0) return false
+
+    return true
+}
+
+/**
+ * Returns `true` if nodes at [nodeIdxs] form a sequence of the given [ops]
+ * and are fusable.
+ *
+ * Port of `ggml_can_fuse_ext` from ggml-impl.h.
+ */
+fun ggml_can_fuse_ext(cgraph: GGMLCGraph, nodeIdxs: IntArray, ops: Array<GGMLOp>, numOps: Int): Boolean {
+    for (i in 0 until numOps) {
+        if (nodeIdxs[i] >= cgraph.nNodes) return false
+
+        val node = cgraph.nodes[nodeIdxs[i]] ?: return false
+        if (node.op != ops[i]) return false
+        if (i < numOps - 1 && !ggml_node_has_n_uses(cgraph, nodeIdxs[i], 1)) return false
+        if (i > 0) {
+            val prev = cgraph.nodes[nodeIdxs[i - 1]] ?: return false
+            if (node.src[0] !== prev && node.src[1] !== prev) return false
+            // Same shape check
+            if (!ggml_are_same_shape(node, prev)) return false
+        }
+    }
+    return true
+}
+
+/**
+ * Returns `true` if sequential nodes starting at [nodeIdx] match [ops] and are fusable.
+ *
+ * Port of `ggml_can_fuse` from ggml-impl.h.
+ */
+fun ggml_can_fuse(cgraph: GGMLCGraph, nodeIdx: Int, ops: Array<GGMLOp>, numOps: Int): Boolean {
+    require(numOps < 32)
+    if (nodeIdx + numOps > cgraph.nNodes) return false
+
+    val idxs = IntArray(numOps) { nodeIdx + it }
+    return ggml_can_fuse_ext(cgraph, idxs, ops, numOps)
+}
+
+/**
+ * Returns `true` if two tensors have the same shape (element counts in every dimension).
+ */
+fun ggml_are_same_shape(a: GGMLTensor, b: GGMLTensor): Boolean {
+    for (i in 0 until GGML_MAX_DIMS) {
+        if (a.ne[i] != b.ne[i]) return false
+    }
+    return true
+}
+
+/**
+ * Returns a "view" of [cgraph] containing only nodes [i0, i1).
+ * The slice has no leafs or gradients.
+ *
+ * Port of `ggml_graph_view` from ggml-impl.h.
+ */
+fun ggml_graph_view(cgraph: GGMLCGraph, i0: Int, i1: Int): GGMLCGraph {
+    require(i0 in 0..i1 && i1 <= cgraph.nNodes)
+    val sliceNodes = cgraph.nodes.sliceArray(i0 until i1)
+    return GGMLCGraph(
+        size = i1 - i0,
+        nNodes = i1 - i0,
+        nLeafs = 0,
+        nodes = sliceNodes,
+        grads = emptyArray(),
+        leafs = emptyArray(),
+        visitedHashSet = cgraph.visitedHashSet,
+        order = cgraph.order
+    )
+}
+
+// ============================================================================
+// Global UID counter for computation graphs
+// ============================================================================
+
+private var _ggml_graph_uid_counter: Long = 0L
+
+/**
+ * Returns the next unique ID for a computation graph.
+ * Port of `ggml_graph_next_uid`.
+ */
+fun ggml_graph_next_uid(): Long = ++_ggml_graph_uid_counter
+
+// ============================================================================
+// Logging level enum
+// ============================================================================
+
+/**
+ * Logging levels matching GGML's log level constants.
+ */
+enum class GGMLLogLevel {
+    NONE,
+    INFO,
+    WARN,
+    ERROR,
+    DEBUG,
+    CONT
+}
+
+// ============================================================================
+// Consolidated numeric utility functions (pre-existing)
+// ============================================================================
+
 /**
  * CONSOLIDATION: Numeric utility functions to reduce code duplication
  * These functions consolidate common numeric operations found throughout the codebase
@@ -175,8 +943,8 @@ fun arraysEqualWithinTolerance(a: FloatArray, b: FloatArray, tolerance: Float = 
     if (a.size != b.size) return false
     
     for (i in a.indices) {
-        val diff = kotlin.math.abs(a[i] - b[i])
-        val threshold = tolerance * kotlin.math.max(kotlin.math.abs(a[i]), kotlin.math.abs(b[i])).coerceAtLeast(tolerance)
+        val diff = abs(a[i] - b[i])
+        val threshold = tolerance * max(abs(a[i]), abs(b[i])).coerceAtLeast(tolerance)
         if (diff > threshold) return false
     }
     return true

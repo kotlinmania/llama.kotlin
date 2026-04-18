@@ -1326,9 +1326,14 @@ class GGMLCGraph(
     var nLeafs: Int = 0,
     var nodes: Array<GGMLTensor?> = emptyArray(),
     var grads: Array<GGMLTensor?> = emptyArray(),
+    var gradAccs: Array<GGMLTensor?> = emptyArray(),
     var leafs: Array<GGMLTensor?> = emptyArray(),
+    /** Number of uses of each tensor, indexed by hash table slot. */
+    var useCounts: IntArray? = null,
     var visitedHashSet: Any? = null,
     var order: GGMLCGraphEvalOrder = GGMLCGraphEvalOrder.NONE,
+    /** An optional identifier to recognize same graphs; 0 means unset. */
+    var uid: Long = 0L,
     var allocator: GGMLGraphAllocator? = null
 )
 
