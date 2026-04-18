@@ -1,5 +1,233 @@
-// port-lint: source ggml/src/ggml-alloc.c
+// port-lint: source ggml/include/ggml-alloc.h
 package ai.solace.llamakotlin.core
+
+// ============================================================================
+// ggml-alloc.h  –  Tensor & graph allocator public API
+// ============================================================================
+// The declarations below mirror the C header in source-file order.
+// Existing allocator implementations are preserved below the new API surface.
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// Tensor allocator  (ggml_tallocr)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lightweight per-tensor allocator that bumps a linear offset inside a
+ * pre-existing [GGMLBackendBuffer].
+ *
+ * Mirrors `struct ggml_tallocr` from ggml-alloc.h.
+ */
+class GGMLTallocr(
+    /** Backend buffer this allocator draws from. */
+    var buffer: GGMLBackendBuffer,
+    /** Base pointer / handle into the buffer. */
+    var base: Any? = null,
+    /** Required byte alignment. */
+    var alignment: ULong = 0uL,
+    /** Current byte offset (bump pointer). */
+    var offset: ULong = 0uL
+) {
+    companion object {
+        /**
+         * Create a new tensor allocator for [buffer].
+         * Mirrors `ggml_tallocr_new`.
+         */
+        fun new(buffer: GGMLBackendBuffer): GGMLTallocr {
+            return GGMLTallocr(
+                buffer = buffer,
+                base = buffer.getBase(),
+                alignment = buffer.getAlignment(),
+                offset = 0uL
+            )
+        }
+    }
+
+    /**
+     * Allocate space for [tensor] inside this allocator's buffer.
+     * Returns [GGMLStatus.SUCCESS] on success.
+     *
+     * Mirrors `ggml_tallocr_alloc`.
+     */
+    fun alloc(tensor: GGMLTensor): GGMLStatus {
+        TODO("port from ggml-alloc.h – ggml_tallocr_alloc")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Graph allocator  (ggml_gallocr / ggml_gallocr_t)
+// ---------------------------------------------------------------------------
+
+/*
+  Example usage (from the C header):
+
+    val galloc = GGMLGallocr.new(ggmlBackendCpuBufferType())
+
+    // optional: reserve with worst-case graph to avoid reallocations
+    galloc.reserve(buildGraph(maxBatch))
+
+    // allocate the graph
+    val graph = buildGraph(batch)
+    galloc.allocGraph(graph)
+
+    println("compute buffer size: ${galloc.getBufferSize(0)} bytes")
+
+    // evaluate the graph
+    backend.graphCompute(graph)
+
+  Special tensor flags used by the allocator:
+    ggml_set_input()  – all input tensors are at the start; addresses don't overlap
+    ggml_set_output() – output tensors are never freed or overwritten
+*/
+
+/**
+ * Graph-level memory allocator that plans buffer usage across an entire
+ * computation graph to minimise peak memory. Supports single- and multi-buffer
+ * configurations.
+ *
+ * Mirrors `ggml_gallocr` (opaque) from ggml-alloc.h.
+ */
+class GGMLGallocr private constructor(
+    /** Buffer types for each buffer slot. */
+    private val bufferTypes: List<GGMLBackendBufferType>,
+    private val nBufs: Int
+) {
+    companion object {
+        /**
+         * Create a graph allocator backed by a single buffer type.
+         * Mirrors `ggml_gallocr_new`.
+         */
+        fun new(buft: GGMLBackendBufferType): GGMLGallocr {
+            return GGMLGallocr(listOf(buft), 1)
+        }
+
+        /**
+         * Create a graph allocator backed by multiple buffer types.
+         * Mirrors `ggml_gallocr_new_n`.
+         */
+        fun newN(bufts: List<GGMLBackendBufferType>, nBufs: Int): GGMLGallocr {
+            return GGMLGallocr(bufts.toList(), nBufs)
+        }
+    }
+
+    /** Release all resources held by this allocator. Mirrors `ggml_gallocr_free`. */
+    fun free() {
+        TODO("port from ggml-alloc.h – ggml_gallocr_free")
+    }
+
+    // -- Reserve -----------------------------------------------------------
+
+    /**
+     * Pre-allocate buffers from a measure graph without modifying it.
+     * Call with a worst-case graph to avoid reallocations later.
+     * Returns `false` if allocation failed.
+     *
+     * Mirrors `ggml_gallocr_reserve`.
+     */
+    fun reserve(graph: GGMLCGraph): Boolean {
+        TODO("port from ggml-alloc.h – ggml_gallocr_reserve")
+    }
+
+    /**
+     * Write the per-buffer sizes that [reserveN] would allocate into [sizes].
+     *
+     * Mirrors `ggml_gallocr_reserve_n_size`.
+     */
+    fun reserveNSize(
+        graph: GGMLCGraph,
+        nodeBufferIds: IntArray,
+        leafBufferIds: IntArray,
+        sizes: ULongArray
+    ) {
+        TODO("port from ggml-alloc.h – ggml_gallocr_reserve_n_size")
+    }
+
+    /**
+     * Pre-allocate buffers using per-node and per-leaf buffer-ID mappings.
+     * Returns `false` if allocation failed.
+     *
+     * Mirrors `ggml_gallocr_reserve_n`.
+     */
+    fun reserveN(
+        graph: GGMLCGraph,
+        nodeBufferIds: IntArray,
+        leafBufferIds: IntArray
+    ): Boolean {
+        TODO("port from ggml-alloc.h – ggml_gallocr_reserve_n")
+    }
+
+    // -- Alloc -------------------------------------------------------------
+
+    /**
+     * Allocate (or reallocate) memory for [graph]. When using a single buffer
+     * the allocator reallocates automatically if the topology changed. Returns
+     * `false` when using multiple buffers and a reallocation is needed (call
+     * [reserveN] first).
+     *
+     * Mirrors `ggml_gallocr_alloc_graph`.
+     */
+    fun allocGraph(graph: GGMLCGraph): Boolean {
+        TODO("port from ggml-alloc.h – ggml_gallocr_alloc_graph")
+    }
+
+    // -- Query -------------------------------------------------------------
+
+    /**
+     * Return the size in bytes of the buffer at [bufferId].
+     *
+     * Mirrors `ggml_gallocr_get_buffer_size`.
+     */
+    fun getBufferSize(bufferId: Int): ULong {
+        TODO("port from ggml-alloc.h – ggml_gallocr_get_buffer_size")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Utility: context-level tensor allocation
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the total buffer size needed to allocate every tensor in [ctx]
+ * using [buft], without actually allocating.
+ *
+ * Mirrors `ggml_backend_alloc_ctx_tensors_from_buft_size`.
+ */
+fun ggmlBackendAllocCtxTensorsFromBuftSize(
+    ctx: GGMLContext,
+    buft: GGMLBackendBufferType
+): ULong {
+    TODO("port from ggml-alloc.h – ggml_backend_alloc_ctx_tensors_from_buft_size")
+}
+
+/**
+ * Create a buffer from [buft] and allocate all tensors that live in [ctx]
+ * into it.
+ *
+ * Mirrors `ggml_backend_alloc_ctx_tensors_from_buft`.
+ */
+fun ggmlBackendAllocCtxTensorsFromBuft(
+    ctx: GGMLContext,
+    buft: GGMLBackendBufferType
+): GGMLBackendBuffer? {
+    TODO("port from ggml-alloc.h – ggml_backend_alloc_ctx_tensors_from_buft")
+}
+
+/**
+ * Create a buffer from [backend]'s default buffer type and allocate all
+ * tensors in [ctx] into it.
+ *
+ * Mirrors `ggml_backend_alloc_ctx_tensors`.
+ */
+fun ggmlBackendAllocCtxTensors(
+    ctx: GGMLContext,
+    backend: GGMLBackend
+): GGMLBackendBuffer? {
+    return ggmlBackendAllocCtxTensorsFromBuft(ctx, backend.getDefaultBufferType())
+}
+
+// ============================================================================
+// Existing allocator implementations (preserved)
+// ============================================================================
 
 /**
  * Data class to store usage information for each tensor in the graph.
