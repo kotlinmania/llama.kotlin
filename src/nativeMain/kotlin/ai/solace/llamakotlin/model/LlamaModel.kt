@@ -1,7 +1,1136 @@
-// port-lint: source src/llama-model.cpp
+// port-lint: source llama.cpp/src/llama-model.cpp
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*
+
+// =============================================================================
+// Model Architecture Enum
+// Ported from: llama-arch.h  enum llm_arch
+// =============================================================================
+
+/**
+ * Supported model architectures.
+ *
+ * Each variant maps 1-to-1 to a `LLM_ARCH_*` constant in the C++ codebase.
+ * The [ggufName] string is the canonical key stored in GGUF metadata under
+ * `general.architecture`.
+ *
+ * @param ggufName The architecture identifier as it appears in GGUF files.
+ */
+enum class LlamaModelArch(val ggufName: String) {
+    CLIP("clip"),
+    LLAMA("llama"),
+    LLAMA4("llama4"),
+    DECI("deci"),
+    FALCON("falcon"),
+    BAICHUAN("baichuan"),
+    GROK("grok"),
+    GPT2("gpt2"),
+    GPTJ("gptj"),
+    GPTNEOX("gptneox"),
+    MPT("mpt"),
+    STARCODER("starcoder"),
+    REFACT("refact"),
+    BERT("bert"),
+    MODERN_BERT("modern_bert"),
+    NOMIC_BERT("nomic_bert"),
+    NOMIC_BERT_MOE("nomic_bert_moe"),
+    NEO_BERT("neo_bert"),
+    JINA_BERT_V2("jina_bert_v2"),
+    JINA_BERT_V3("jina_bert_v3"),
+    EUROBERT("eurobert"),
+    BLOOM("bloom"),
+    STABLELM("stablelm"),
+    QWEN("qwen"),
+    QWEN2("qwen2"),
+    QWEN2MOE("qwen2moe"),
+    QWEN2VL("qwen2vl"),
+    QWEN3("qwen3"),
+    QWEN3MOE("qwen3moe"),
+    QWEN3NEXT("qwen3next"),
+    QWEN3VL("qwen3vl"),
+    QWEN3VLMOE("qwen3vlmoe"),
+    QWEN35("qwen35"),
+    QWEN35MOE("qwen35moe"),
+    PHI2("phi2"),
+    PHI3("phi3"),
+    PHIMOE("phimoe"),
+    PLAMO("plamo"),
+    PLAMO2("plamo2"),
+    PLAMO3("plamo3"),
+    CODESHELL("codeshell"),
+    ORION("orion"),
+    INTERNLM2("internlm2"),
+    MINICPM("minicpm"),
+    MINICPM3("minicpm3"),
+    GEMMA("gemma"),
+    GEMMA2("gemma2"),
+    GEMMA3("gemma3"),
+    GEMMA3N("gemma3n"),
+    GEMMA4("gemma4"),
+    GEMMA_EMBEDDING("gemma_embedding"),
+    STARCODER2("starcoder2"),
+    MAMBA("mamba"),
+    MAMBA2("mamba2"),
+    JAMBA("jamba"),
+    FALCON_H1("falcon_h1"),
+    XVERSE("xverse"),
+    COMMAND_R("command_r"),
+    COHERE2("cohere2"),
+    DBRX("dbrx"),
+    OLMO("olmo"),
+    OLMO2("olmo2"),
+    OLMOE("olmoe"),
+    OPENELM("openelm"),
+    ARCTIC("arctic"),
+    DEEPSEEK("deepseek"),
+    DEEPSEEK2("deepseek2"),
+    DEEPSEEK2OCR("deepseek2ocr"),
+    CHATGLM("chatglm"),
+    GLM4("glm4"),
+    GLM4_MOE("glm4_moe"),
+    GLM_DSA("glm_dsa"),
+    BITNET("bitnet"),
+    T5("t5"),
+    T5ENCODER("t5encoder"),
+    JAIS("jais"),
+    JAIS2("jais2"),
+    NEMOTRON("nemotron"),
+    NEMOTRON_H("nemotron_h"),
+    NEMOTRON_H_MOE("nemotron_h_moe"),
+    EXAONE("exaone"),
+    EXAONE4("exaone4"),
+    EXAONE_MOE("exaone_moe"),
+    RWKV6("rwkv6"),
+    RWKV6QWEN2("rwkv6qwen2"),
+    RWKV7("rwkv7"),
+    ARWKV7("arwkv7"),
+    GRANITE("granite"),
+    GRANITE_MOE("granite_moe"),
+    GRANITE_HYBRID("granite_hybrid"),
+    CHAMELEON("chameleon"),
+    WAVTOKENIZER_DEC("wavtokenizer_dec"),
+    PLM("plm"),
+    BAILINGMOE("bailingmoe"),
+    BAILINGMOE2("bailingmoe2"),
+    DOTS1("dots1"),
+    ARCEE("arcee"),
+    AFMOE("afmoe"),
+    ERNIE4_5("ernie4_5"),
+    ERNIE4_5_MOE("ernie4_5_moe"),
+    HUNYUAN_MOE("hunyuan_moe"),
+    HUNYUAN_DENSE("hunyuan_dense"),
+    SMOLLM3("smollm3"),
+    OPENAI_MOE("openai_moe"),
+    LFM2("lfm2"),
+    LFM2MOE("lfm2moe"),
+    DREAM("dream"),
+    SMALLTHINKER("smallthinker"),
+    LLADA("llada"),
+    LLADA_MOE("llada_moe"),
+    SEED_OSS("seed_oss"),
+    GROVEMOE("grovemoe"),
+    APERTUS("apertus"),
+    MINIMAX_M2("minimax_m2"),
+    COGVLM("cogvlm"),
+    RND1("rnd1"),
+    PANGU_EMBED("pangu_embed"),
+    MISTRAL3("mistral3"),
+    MISTRAL4("mistral4"),
+    PADDLEOCR("paddleocr"),
+    MIMO2("mimo2"),
+    STEP35("step35"),
+    LLAMA_EMBED("llama_embed"),
+    MAINCODER("maincoder"),
+    KIMI_LINEAR("kimi_linear"),
+    UNKNOWN("unknown");
+
+    companion object {
+        private val byGgufName: Map<String, LlamaModelArch> =
+            entries.associateBy { it.ggufName }
+
+        /** Look up an architecture from its GGUF metadata string. */
+        fun fromGgufName(name: String): LlamaModelArch =
+            byGgufName[name] ?: UNKNOWN
+    }
+}
+
+// =============================================================================
+// Model Type / Size Enum
+// Ported from: llama-model.h  enum llm_type
+// =============================================================================
+
+/**
+ * Known model size variants.
+ *
+ * These correspond to the `LLM_TYPE_*` constants in C++ and are used in
+ * [LlamaModelHParams] to record which size variant was detected during model
+ * loading.  The [displayName] is the human-readable label returned by
+ * `llm_type_name()`.
+ *
+ * @param displayName Short human-readable label (e.g. "7B", "8x7B").
+ */
+enum class LlamaModelType(val displayName: String) {
+    UNKNOWN("?B"),
+    TYPE_14M("14M"),
+    TYPE_17M("17M"),
+    TYPE_22M("22M"),
+    TYPE_33M("33M"),
+    TYPE_47M("47M"),
+    TYPE_60M("60M"),
+    TYPE_70M("70M"),
+    TYPE_80M("80M"),
+    TYPE_109M("109M"),
+    TYPE_137M("137M"),
+    TYPE_140M("140M"),
+    TYPE_149M("149M"),
+    TYPE_160M("160M"),
+    TYPE_190M("190M"),
+    TYPE_220M("220M"),
+    TYPE_250M("250M"),
+    TYPE_256M("256M"),
+    TYPE_270M("270M"),
+    TYPE_335M("335M"),
+    TYPE_350M("350M"),
+    TYPE_360M("360M"),
+    TYPE_395M("395M"),
+    TYPE_410M("410M"),
+    TYPE_450M("450M"),
+    TYPE_475M("475M"),
+    TYPE_558M("558M"),
+    TYPE_700M("700M"),
+    TYPE_770M("770M"),
+    TYPE_780M("780M"),
+    TYPE_950M("950M"),
+    TYPE_0_3B("0.3B"),
+    TYPE_0_5B("0.5B"),
+    TYPE_0_6B("0.6B"),
+    TYPE_0_8B("0.8B"),
+    TYPE_1B("1B"),
+    TYPE_1_2B("1.2B"),
+    TYPE_1_3B("1.3B"),
+    TYPE_1_4B("1.4B"),
+    TYPE_1_5B("1.5B"),
+    TYPE_1_6B("1.6B"),
+    TYPE_1_7B("1.7B"),
+    TYPE_1_8B("1.8B"),
+    TYPE_2B("2B"),
+    TYPE_2_6B("2.6B"),
+    TYPE_2_8B("2.8B"),
+    TYPE_2_9B("2.9B"),
+    TYPE_3B("3B"),
+    TYPE_4B("4B"),
+    TYPE_6B("6B"),
+    TYPE_6_9B("6.9B"),
+    TYPE_7B("7B"),
+    TYPE_8B("8B"),
+    TYPE_9B("9B"),
+    TYPE_11B("11B"),
+    TYPE_12B("12B"),
+    TYPE_13B("13B"),
+    TYPE_14B("14B"),
+    TYPE_15B("15B"),
+    TYPE_16B("16B"),
+    TYPE_20B("20B"),
+    TYPE_26B("26B"),
+    TYPE_27B("27B"),
+    TYPE_30B("30B"),
+    TYPE_31B("31B"),
+    TYPE_32B("32B"),
+    TYPE_34B("34B"),
+    TYPE_35B("35B"),
+    TYPE_36B("36B"),
+    TYPE_40B("40B"),
+    TYPE_65B("65B"),
+    TYPE_70B("70B"),
+    TYPE_120B("120B"),
+    TYPE_142B("142B"),
+    TYPE_236B("236B"),
+    TYPE_290B("290B"),
+    TYPE_314B("314B"),
+    TYPE_405B("405B"),
+    TYPE_671B("671B"),
+    SMALL("0.1B"),
+    MEDIUM("0.4B"),
+    LARGE("0.8B"),
+    XL("1.5B"),
+    TYPE_A1_7B("A1.7B"),
+    TYPE_A2_7B("A2.7B"),
+    TYPE_8x7B("8x7B"),
+    TYPE_8x22B("8x22B"),
+    TYPE_16x12B("16x12B"),
+    TYPE_16x3_8B("16x3.8B"),
+    TYPE_10B_128x3_66B("10B+128x3.66B"),
+    TYPE_57B_A14B("57B.A14B"),
+    TYPE_17B_16E("17Bx16E (Scout)"),
+    TYPE_17B_128E("17Bx128E (Maverick)"),
+    TYPE_A13B("A13B"),
+    TYPE_7B_A1B("7B.A1B"),
+    TYPE_8B_A1B("8B.A1B"),
+    TYPE_16B_A1B("16B.A1B"),
+    TYPE_21B_A3B("21B.A3B"),
+    TYPE_24B_A2B("24B.A2B"),
+    TYPE_26B_A4B("26B.A4B"),
+    TYPE_30B_A3B("30B.A3B"),
+    TYPE_31B_A3_5B("31B.A3.5B"),
+    TYPE_35B_A3B("35B.A3B"),
+    TYPE_48B_A3B("48B.A3B"),
+    TYPE_80B_A3B("80B.A3B"),
+    TYPE_100B_A6B("100B.A6B"),
+    TYPE_102B_A12B("102B.A12B"),
+    TYPE_106B_A12B("106B.A12B"),
+    TYPE_120B_A12B("120B.A12B"),
+    TYPE_122B_A10B("122B.A10B"),
+    TYPE_196B_A11B("196B.A11B"),
+    TYPE_230B_A10B("230B.A10B"),
+    TYPE_235B_A22B("235B.A22B"),
+    TYPE_300B_A47B("300B.A47B"),
+    TYPE_310B_A15B("310B.A15B"),
+    TYPE_355B_A32B("355B.A32B"),
+    TYPE_397B_A17B("397B.A17B"),
+    TYPE_744B_A40B("744B.A40B"),
+    TYPE_E2B("E2B"),
+    TYPE_E4B("E4B"),
+}
+
+// =============================================================================
+// RoPE Scaling Types
+// Ported from: llama-model.cpp  LLAMA_ROPE_SCALING_TYPES
+// =============================================================================
+
+/** RoPE position-scaling strategy used during training and inference. */
+enum class LlamaRopeScalingType(val displayName: String) {
+    UNSPECIFIED("unspecified"),
+    NONE("none"),
+    LINEAR("linear"),
+    YARN("yarn"),
+    LONGROPE("longrope");
+
+    companion object {
+        /** Parse a rope-scaling type from the string stored in GGUF metadata. */
+        fun fromName(name: String): LlamaRopeScalingType =
+            entries.firstOrNull { it.displayName == name } ?: UNSPECIFIED
+    }
+}
+
+/** Expert gating function type. */
+enum class LlamaExpertGatingFuncType(val id: Int) {
+    NONE(0),
+    SOFTMAX(1),
+    SIGMOID(2),
+    SOFTMAX_WEIGHT(3);
+
+    companion object {
+        fun fromId(value: Int): LlamaExpertGatingFuncType =
+            entries.firstOrNull { it.id == value } ?: NONE
+    }
+}
+
+// NOTE: LlamaSwaType is defined in KVCache.kt (NONE, STANDARD, CHUNKED).
+// The SYMMETRIC variant from C++ is not yet present there; add it when needed.
+
+// =============================================================================
+// Hyperparameters
+// Ported from: llama-hparams.h  struct llama_hparams
+// =============================================================================
+
+/** Maximum number of layers supported. Matches `LLAMA_MAX_LAYERS` in C++. */
+const val LLAMA_MAX_LAYERS = 512
+
+/** Maximum number of experts. Matches `LLAMA_MAX_EXPERTS` in C++. */
+const val LLAMA_MAX_EXPERTS = 512
+
+/**
+ * Model hyperparameters read from GGUF metadata.
+ *
+ * This is a direct port of `struct llama_hparams` in `llama-hparams.h`.
+ * All fields use the same names and defaults as the C++ struct so that call
+ * sites porting higher-level logic can map 1-to-1.  Per-layer arrays use
+ * [IntArray] (or [FloatArray] / [BooleanArray]) of fixed size
+ * [LLAMA_MAX_LAYERS].
+ */
+data class LlamaModelHParams(
+    // -- basic shape --
+    var vocabOnly: Boolean = false,
+    var noAlloc: Boolean = false,
+    var ropeFinetuned: Boolean = false,
+    var useParRes: Boolean = false,
+    var swinNorm: Boolean = false,
+
+    var nCtxTrain: Int = 0,
+    var nEmbd: Int = 0,
+    var nLayer: Int = 0,
+    var nLayerKvFromStart: Int = -1,
+    var nExpert: Int = 0,
+    var nExpertUsed: Int = 0,
+    var nRelAttnBkts: Int = 0,
+
+    // -- head dimensions (full-attention vs SWA) --
+    var nEmbdHeadKFull: Int = 0,
+    var nEmbdHeadVFull: Int = 0,
+    var nEmbdHeadKSwa: Int = 0,
+    var nEmbdHeadVSwa: Int = 0,
+
+    // -- RoPE dimensions --
+    var nRotFull: Int = 0,
+    var nRotSwa: Int = 0,
+
+    // -- MLA (deepseek2) --
+    var nEmbdHeadKMlaImpl: Int = 0,
+    var nEmbdHeadVMlaImpl: Int = 0,
+
+    var nShortconvLCache: Int = 0,
+
+    // -- per-layer arrays --
+    val nHeadArr: IntArray = IntArray(LLAMA_MAX_LAYERS),
+    val nHeadKvArr: IntArray = IntArray(LLAMA_MAX_LAYERS),
+    val nFfArr: IntArray = IntArray(LLAMA_MAX_LAYERS),
+
+    // -- MoE --
+    var nLayerDenseLead: Int = 0,
+    var nLoraQ: Int = 0,
+    var nLoraKv: Int = 0,
+    var nFfExp: Int = 0,
+    var nFfShexp: Int = 0,
+    var nFfChexp: Int = 0,
+    var nExpertShared: Int = 0,
+    var nNormGroups: Int = 0,
+    var nExpertGroups: Int = 0,
+    var nGroupUsed: Int = 0,
+    var nGroupExperts: Int = 0,
+
+    var expertGroupScale: Float = 0.05f,
+    var expertWeightsScale: Float = 0.0f,
+    var expertWeightsNorm: Boolean = false,
+    var expertGatingFunc: Int = LlamaExpertGatingFuncType.NONE.id,
+    var moeEveryNLayers: Int = 0,
+    var moeLatentSize: Int = 0,
+    var nextnPredictLayers: Int = 0,
+
+    // -- normalization --
+    var fNormEps: Float = 1e-5f,
+    var fNormRmsEps: Float = 1e-5f,
+    var fNormGroupEps: Float = 1e-5f,
+
+    var fAttnLogitSoftcapping: Float = 50.0f,
+    var fRouterLogitSoftcapping: Float = 30.0f,
+    var fFinalLogitSoftcapping: Float = 30.0f,
+
+    // -- RWKV --
+    var rescaleEveryNLayers: Int = 0,
+    var timeMixExtraDim: Int = 0,
+    var timeDecayExtraDim: Int = 0,
+    var wkvHeadSize: Int = 0,
+    var tokenShiftCount: Int = 2,
+    var nLoraDecay: Int = 0,
+    var nLoraIclr: Int = 0,
+    var nLoraValueResMix: Int = 0,
+    var nLoraGate: Int = 0,
+
+    // -- RoPE --
+    var ropeAttnFactor: Float = 1.0f,
+    var ropeFreqBaseTrain: Float = 10000.0f,
+    var ropeFreqBaseTrainSwa: Float = 10000.0f,
+    var ropeFreqScaleTrain: Float = 1.0f,
+    var ropeFreqScaleTrainSwa: Float = 1.0f,
+
+    var nCtxOrigYarn: Int = 0,
+    var ropeYarnLogMul: Float = 0.0f,
+    var yarnExtFactor: Float = -1.0f,
+    var yarnAttnFactor: Float = 1.0f,
+    var yarnBetaFast: Float = 32.0f,
+    var yarnBetaSlow: Float = 1.0f,
+
+    val ropeSections: IntArray = IntArray(4),
+
+    // -- Sliding Window Attention --
+    var swaType: LlamaSwaType = LlamaSwaType.NONE,
+    var nSwa: Int = 0,
+    val swaLayers: IntArray = IntArray(LLAMA_MAX_LAYERS),
+
+    // -- SSM (Mamba / Kimi Linear) --
+    var ssmDConv: Int = 0,
+    var ssmDInner: Int = 0,
+    var ssmDState: Int = 0,
+    var ssmDtRank: Int = 0,
+    var ssmNGroup: Int = 0,
+    var nEmbdHeadKda: Int = 0,
+
+    // -- hybrid recurrent layers --
+    val recurrentLayerArr: BooleanArray = BooleanArray(LLAMA_MAX_LAYERS),
+    var ssmDtBcRms: Boolean = false,
+
+    // -- clamping / alibi --
+    var fClampKqv: Float = 0.0f,
+    var fMaxAlibiBias: Float = 0.0f,
+    var fLogitScale: Float = 0.0f,
+
+    // -- Granite --
+    var fResidualScale: Float = 0.0f,
+    var fEmbeddingScale: Float = 0.0f,
+    var fAttentionScale: Float = 0.0f,
+
+    // -- grok-2 --
+    var fAttnOutScale: Float = 0.0f,
+    var attnTempLength: Int = 0,
+
+    var causalAttn: Boolean = true,
+    var useAlibi: Boolean = false,
+    var attnSoftCap: Boolean = false,
+    var useKqNorm: Boolean = false,
+
+    // -- classifier --
+    var nClsOut: Int = 1,
+    var nEmbdOutImpl: Int = 0,
+
+    // -- llama4 / smallthinker --
+    var nMoeLayerStep: Int = 0,
+    var nNoRopeLayerStep: Int = 4,
+    var nAttnTempFloorScale: Int = 0,
+    var fAttnTempScale: Float = 0.0f,
+    var fAttnTempOffset: Float = 0.0f,
+
+    // -- gemma3n altup --
+    var nAltup: Int = 4,
+    var iAltupAct: Int = 0,
+    var laurelRank: Int = 64,
+    var nEmbdAltup: Int = 256,
+
+    // -- sentence-transformers dense layers --
+    var dense2FeatIn: Int = 0,
+    var dense2FeatOut: Int = 0,
+    var dense3FeatIn: Int = 0,
+    var dense3FeatOut: Int = 0,
+
+    // -- DSA --
+    var indexerNHead: Int = 0,
+    var indexerHeadSize: Int = 0,
+    var indexerTopK: Int = 0,
+
+    // -- qwen3vl deepstack --
+    var nDeepstackLayers: Int = 0,
+
+    // -- gemma4 per-layer embedding --
+    var nEmbdPerLayer: Int = 0,
+
+    // -- encoder-decoder --
+    var decStartTokenId: Int = -1,
+    var decNLayer: Int = 0,
+
+    // -- rope types (stored as ordinal, resolved at use site) --
+    var ropeScalingTypeTrain: LlamaRopeScalingType = LlamaRopeScalingType.NONE,
+) {
+    // -- convenience accessors matching C++ member functions --
+
+    /** Number of attention heads for layer [il]. */
+    fun nHead(il: Int = 0): Int = nHeadArr[il]
+
+    /** Number of key-value heads for layer [il]. */
+    fun nHeadKv(il: Int = 0): Int = nHeadKvArr[il]
+
+    /** Feed-forward size for layer [il]. */
+    fun nFf(il: Int = 0): Int = nFfArr[il]
+
+    /** Number of query groups per key-value head. */
+    fun nGqa(il: Int = 0): Int {
+        val hkv = nHeadKv(il)
+        if (hkv == 0) return 0
+        return nHead(il) / hkv
+    }
+
+    /** RoPE rotation dimension for layer [il]. */
+    fun nRot(il: Int = 0): Int =
+        if (isSwa(il)) nRotSwa else nRotFull
+
+    /** Dimension of key embeddings per head for layer [il]. */
+    fun nEmbdHeadK(il: Int = 0): Int =
+        if (isSwa(il)) nEmbdHeadKSwa else nEmbdHeadKFull
+
+    /** Dimension of value embeddings per head for layer [il]. */
+    fun nEmbdHeadV(il: Int = 0): Int =
+        if (isSwa(il)) nEmbdHeadVSwa else nEmbdHeadVFull
+
+    /** Total key embedding size across all KV heads for layer [il]. */
+    fun nEmbdKGqa(il: Int = 0): Int = nEmbdHeadK(il) * nHeadKv(il)
+
+    /** Total value embedding size across all KV heads for layer [il]. */
+    fun nEmbdVGqa(il: Int = 0): Int = nEmbdHeadV(il) * nHeadKv(il)
+
+    /** Output embedding dimension (falls back to [nEmbd] when zero). */
+    fun nEmbdOut(): Int = if (nEmbdOutImpl != 0) nEmbdOutImpl else nEmbd
+
+    /** Whether layer [il] is a sliding-window attention layer. */
+    fun isSwa(il: Int): Boolean = swaLayers.getOrElse(il) { 0 } != 0
+
+    /** Whether any layer uses SWA. */
+    fun isSwaAny(): Boolean = swaLayers.take(nLayer).any { it != 0 }
+
+    /** Whether layer [il] is a recurrent (SSM) layer (for hybrid models). */
+    fun isRecurrent(il: Int): Boolean =
+        recurrentLayerArr.getOrElse(il) { false }
+
+    /**
+     * Populate [swaLayers] with a repeating pattern.
+     *
+     * @param nPattern  Repeat period – every *n*-th layer is dense. 0 means all SWA, 1 means all dense.
+     * @param denseFirst Whether the pattern starts with a dense layer.
+     */
+    fun setSwaPattern(nPattern: Int, denseFirst: Boolean = false) {
+        for (il in 0 until LLAMA_MAX_LAYERS) {
+            swaLayers[il] = when {
+                nPattern == 0 -> 1            // all SWA
+                nPattern == 1 -> 0            // all dense
+                denseFirst -> if (il % nPattern == 0) 0 else 1
+                else -> if (il % nPattern == nPattern - 1) 0 else 1
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Layer Tensor Bundles
+// Ported from: llama-model.h  struct llama_layer  (+ posnet / convnext / etc.)
+// =============================================================================
+
+/**
+ * PosNet sub-layer tensors (used by WavTokenizer).
+ *
+ * Each field is nullable – `null` means the model does not use this tensor.
+ */
+data class LlamaLayerPosnet(
+    // resnet
+    var norm1: GGMLTensor? = null,
+    var norm1B: GGMLTensor? = null,
+    var conv1: GGMLTensor? = null,
+    var conv1B: GGMLTensor? = null,
+    var norm2: GGMLTensor? = null,
+    var norm2B: GGMLTensor? = null,
+    var conv2: GGMLTensor? = null,
+    var conv2B: GGMLTensor? = null,
+    // attention
+    var attnNorm: GGMLTensor? = null,
+    var attnNormB: GGMLTensor? = null,
+    var attnQ: GGMLTensor? = null,
+    var attnQB: GGMLTensor? = null,
+    var attnK: GGMLTensor? = null,
+    var attnKB: GGMLTensor? = null,
+    var attnV: GGMLTensor? = null,
+    var attnVB: GGMLTensor? = null,
+    var attnO: GGMLTensor? = null,
+    var attnOB: GGMLTensor? = null,
+    // normalize
+    var norm: GGMLTensor? = null,
+    var normB: GGMLTensor? = null,
+)
+
+/** ConvNeXt sub-layer tensors. */
+data class LlamaLayerConvnext(
+    var dw: GGMLTensor? = null,
+    var dwB: GGMLTensor? = null,
+    var norm: GGMLTensor? = null,
+    var normB: GGMLTensor? = null,
+    var pw1: GGMLTensor? = null,
+    var pw1B: GGMLTensor? = null,
+    var pw2: GGMLTensor? = null,
+    var pw2B: GGMLTensor? = null,
+    var gamma: GGMLTensor? = null,
+)
+
+/** ShortConv sub-layer tensors. */
+data class LlamaLayerShortconv(
+    var inProj: GGMLTensor? = null,
+    var conv: GGMLTensor? = null,
+    var outProj: GGMLTensor? = null,
+)
+
+/** NextN sub-layer tensors. */
+data class LlamaLayerNextn(
+    var ehProj: GGMLTensor? = null,
+    var embedTokens: GGMLTensor? = null,
+    var enorm: GGMLTensor? = null,
+    var hnorm: GGMLTensor? = null,
+    var sharedHeadHead: GGMLTensor? = null,
+    var sharedHeadNorm: GGMLTensor? = null,
+)
+
+/**
+ * All weight tensors that belong to a single transformer layer.
+ *
+ * This is a faithful port of `struct llama_layer` from `llama-model.h`.
+ * Nullable tensors default to `null` – a specific model architecture will only
+ * populate the subset it needs.
+ */
+data class LlamaModelLayer(
+    // ---- normalization ----
+    var attnNorm: GGMLTensor? = null,
+    var attnNormB: GGMLTensor? = null,
+    var attnNorm2: GGMLTensor? = null,
+    var attnNorm2B: GGMLTensor? = null,
+    var attnQNorm: GGMLTensor? = null,
+    var attnQNormB: GGMLTensor? = null,
+    var attnKNorm: GGMLTensor? = null,
+    var attnKNormB: GGMLTensor? = null,
+    var attnOutNorm: GGMLTensor? = null,
+    var attnOutNormB: GGMLTensor? = null,
+    var attnQANorm: GGMLTensor? = null,
+    var attnKvANorm: GGMLTensor? = null,
+    var attnSubNorm: GGMLTensor? = null,
+    var attnPostNorm: GGMLTensor? = null,
+    var ffnSubNorm: GGMLTensor? = null,
+    var attnNormCross: GGMLTensor? = null,
+    var attnNormEnc: GGMLTensor? = null,
+    var ssmNorm: GGMLTensor? = null,
+    var ssmDtNorm: GGMLTensor? = null,
+    var ssmBNorm: GGMLTensor? = null,
+    var ssmCNorm: GGMLTensor? = null,
+
+    // ---- attention ----
+    var wq: GGMLTensor? = null,
+    var wk: GGMLTensor? = null,
+    var wv: GGMLTensor? = null,
+    var wo: GGMLTensor? = null,
+    var wqkv: GGMLTensor? = null,
+    var wqA: GGMLTensor? = null,
+    var wqB: GGMLTensor? = null,
+    var wkvAMqa: GGMLTensor? = null,
+    var wkvB: GGMLTensor? = null,
+    var wkB: GGMLTensor? = null,
+    var wvB: GGMLTensor? = null,
+    var wqCross: GGMLTensor? = null,
+    var wkCross: GGMLTensor? = null,
+    var wvCross: GGMLTensor? = null,
+    var woCross: GGMLTensor? = null,
+    var wqEnc: GGMLTensor? = null,
+    var wkEnc: GGMLTensor? = null,
+    var wvEnc: GGMLTensor? = null,
+    var woEnc: GGMLTensor? = null,
+    var wqkvGate: GGMLTensor? = null,
+
+    // ---- attention bias ----
+    var bq: GGMLTensor? = null,
+    var bk: GGMLTensor? = null,
+    var bv: GGMLTensor? = null,
+    var bo: GGMLTensor? = null,
+    var bqkv: GGMLTensor? = null,
+
+    // ---- relative position bias ----
+    var attnRelB: GGMLTensor? = null,
+    var attnRelBEnc: GGMLTensor? = null,
+    var attnRelBCross: GGMLTensor? = null,
+
+    // ---- FFN normalization ----
+    var ffnNorm: GGMLTensor? = null,
+    var ffnNormB: GGMLTensor? = null,
+    var ffnPostNorm: GGMLTensor? = null,
+    var ffnPostNorm1: GGMLTensor? = null,
+    var ffnPostNorm2: GGMLTensor? = null,
+    var ffnPreNorm2: GGMLTensor? = null,
+    var layerOutNorm: GGMLTensor? = null,
+    var layerOutNormB: GGMLTensor? = null,
+    var ffnNormExps: GGMLTensor? = null,
+    var ffnNormEnc: GGMLTensor? = null,
+
+    // ---- feed-forward ----
+    var ffnGate: GGMLTensor? = null,     // w1
+    var ffnDown: GGMLTensor? = null,     // w2
+    var ffnUp: GGMLTensor? = null,       // w3
+    var ffnGateEnc: GGMLTensor? = null,
+    var ffnDownEnc: GGMLTensor? = null,
+    var ffnUpEnc: GGMLTensor? = null,
+
+    // ---- MoE ----
+    var ffnGateInp: GGMLTensor? = null,
+    var ffnGateInpS: GGMLTensor? = null,
+    var ffnGateExps: GGMLTensor? = null,
+    var ffnDownExps: GGMLTensor? = null,
+    var ffnUpExps: GGMLTensor? = null,
+    var ffnGateUpExps: GGMLTensor? = null,
+    var ffnGateInpB: GGMLTensor? = null,
+    var ffnGateExpsB: GGMLTensor? = null,
+    var ffnDownExpsB: GGMLTensor? = null,
+    var ffnUpExpsB: GGMLTensor? = null,
+    var ffnGateUpExpsB: GGMLTensor? = null,
+
+    // ---- MoE per-expert scales ----
+    var ffnGateExpsS: GGMLTensor? = null,
+    var ffnDownExpsS: GGMLTensor? = null,
+    var ffnUpExpsS: GGMLTensor? = null,
+
+    // ---- MoE latent proj ----
+    var ffnLatentDown: GGMLTensor? = null,
+    var ffnLatentUp: GGMLTensor? = null,
+
+    // ---- shared expert ----
+    var ffnGateInpShexp: GGMLTensor? = null,
+    var ffnGateShexp: GGMLTensor? = null,
+    var ffnDownShexp: GGMLTensor? = null,
+    var ffnUpShexp: GGMLTensor? = null,
+
+    // ---- adjugate experts (chexps) ----
+    var ffnGateChexps: GGMLTensor? = null,
+    var ffnDownChexps: GGMLTensor? = null,
+    var ffnUpChexps: GGMLTensor? = null,
+
+    // ---- FFN bias ----
+    var ffnGateB: GGMLTensor? = null,
+    var ffnDownB: GGMLTensor? = null,
+    var ffnUpB: GGMLTensor? = null,
+    var ffnAct: GGMLTensor? = null,
+    var ffnExpProbsB: GGMLTensor? = null,
+
+    // ---- mamba proj ----
+    var ssmIn: GGMLTensor? = null,
+    var ssmX: GGMLTensor? = null,
+    var ssmDt: GGMLTensor? = null,
+    var ssmOut: GGMLTensor? = null,
+
+    // ---- mamba ----
+    var ssmConv1d: GGMLTensor? = null,
+    var ssmA: GGMLTensor? = null,
+    var ssmD: GGMLTensor? = null,
+
+    // ---- mamba bias ----
+    var ssmConv1dB: GGMLTensor? = null,
+    var ssmDtB: GGMLTensor? = null,
+
+    // ---- qwen3next ----
+    var ssmBetaAlpha: GGMLTensor? = null,
+
+    // ---- qwen3.5 ----
+    var ssmAlpha: GGMLTensor? = null,
+
+    // ---- RWKV ----
+    var timeMixW1: GGMLTensor? = null,
+    var timeMixW2: GGMLTensor? = null,
+    var timeMixLerpX: GGMLTensor? = null,
+    var timeMixLerpW: GGMLTensor? = null,
+    var timeMixLerpK: GGMLTensor? = null,
+    var timeMixLerpV: GGMLTensor? = null,
+    var timeMixLerpR: GGMLTensor? = null,
+    var timeMixLerpG: GGMLTensor? = null,
+    var timeMixLerpFused: GGMLTensor? = null,
+    var timeMixFirst: GGMLTensor? = null,
+    var timeMixDecay: GGMLTensor? = null,
+    var timeMixDecayW1: GGMLTensor? = null,
+    var timeMixDecayW2: GGMLTensor? = null,
+    var timeMixKey: GGMLTensor? = null,
+    var timeMixKeyB: GGMLTensor? = null,
+    var timeMixValue: GGMLTensor? = null,
+    var timeMixValueB: GGMLTensor? = null,
+    var timeMixReceptance: GGMLTensor? = null,
+    var timeMixReceptanceB: GGMLTensor? = null,
+    var timeMixGate: GGMLTensor? = null,
+
+    // ---- RWKV7 ----
+    var timeMixW0: GGMLTensor? = null,
+    var timeMixA0: GGMLTensor? = null,
+    var timeMixA1: GGMLTensor? = null,
+    var timeMixA2: GGMLTensor? = null,
+    var timeMixV0: GGMLTensor? = null,
+    var timeMixV1: GGMLTensor? = null,
+    var timeMixV2: GGMLTensor? = null,
+    var timeMixG1: GGMLTensor? = null,
+    var timeMixG2: GGMLTensor? = null,
+    var timeMixKK: GGMLTensor? = null,
+    var timeMixKA: GGMLTensor? = null,
+    var timeMixRK: GGMLTensor? = null,
+    var timeMixLn: GGMLTensor? = null,
+    var timeMixLnB: GGMLTensor? = null,
+    var timeMixOutput: GGMLTensor? = null,
+
+    var channelMixLerpK: GGMLTensor? = null,
+    var channelMixLerpR: GGMLTensor? = null,
+    var channelMixKey: GGMLTensor? = null,
+    var channelMixReceptance: GGMLTensor? = null,
+    var channelMixValue: GGMLTensor? = null,
+
+    // ---- long rope factors ----
+    var ropeLong: GGMLTensor? = null,
+    var ropeShort: GGMLTensor? = null,
+    var ropeFreqs: GGMLTensor? = null,
+
+    // ---- bitnet scale ----
+    var wqS: GGMLTensor? = null,
+    var wkS: GGMLTensor? = null,
+    var wvS: GGMLTensor? = null,
+    var woS: GGMLTensor? = null,
+    var wqkvS: GGMLTensor? = null,
+    var wqkvGateS: GGMLTensor? = null,
+    var ffnGateS: GGMLTensor? = null,
+    var ffnUpS: GGMLTensor? = null,
+    var ffnDownS: GGMLTensor? = null,
+    var ffnGateShexpS: GGMLTensor? = null,
+    var ffnUpShexpS: GGMLTensor? = null,
+    var ffnDownShexpS: GGMLTensor? = null,
+    var ssmInS: GGMLTensor? = null,
+    var ssmOutS: GGMLTensor? = null,
+    var ssmAlphaS: GGMLTensor? = null,
+    var ssmBetaS: GGMLTensor? = null,
+
+    // ---- input scales ----
+    var wqInS: GGMLTensor? = null,
+    var wkInS: GGMLTensor? = null,
+    var wvInS: GGMLTensor? = null,
+    var woInS: GGMLTensor? = null,
+    var wqkvInS: GGMLTensor? = null,
+    var wqkvGateInS: GGMLTensor? = null,
+    var ffnGateInS: GGMLTensor? = null,
+    var ffnUpInS: GGMLTensor? = null,
+    var ffnDownInS: GGMLTensor? = null,
+    var ffnGateExpsInS: GGMLTensor? = null,
+    var ffnDownExpsInS: GGMLTensor? = null,
+    var ffnUpExpsInS: GGMLTensor? = null,
+    var ffnGateShexpInS: GGMLTensor? = null,
+    var ffnUpShexpInS: GGMLTensor? = null,
+    var ffnDownShexpInS: GGMLTensor? = null,
+    var ssmInInS: GGMLTensor? = null,
+    var ssmOutInS: GGMLTensor? = null,
+    var ssmAlphaInS: GGMLTensor? = null,
+    var ssmBetaInS: GGMLTensor? = null,
+
+    // ---- altup & laurel ----
+    var perLayerInpGate: GGMLTensor? = null,
+    var perLayerProj: GGMLTensor? = null,
+    var perLayerPostNorm: GGMLTensor? = null,
+    var altupCorrectCoef: GGMLTensor? = null,
+    var altupCorrectScale: GGMLTensor? = null,
+    var altupPredictCoef: GGMLTensor? = null,
+    var altupRouter: GGMLTensor? = null,
+    var altupRouterNorm: GGMLTensor? = null,
+    var laurelL: GGMLTensor? = null,
+    var laurelR: GGMLTensor? = null,
+    var laurelPostNorm: GGMLTensor? = null,
+
+    // ---- openai-moe ----
+    var attnSinks: GGMLTensor? = null,
+
+    // ---- cogvlm ----
+    var visexpAttnWqkv: GGMLTensor? = null,
+    var visexpAttnWo: GGMLTensor? = null,
+    var visexpFfnGate: GGMLTensor? = null,
+    var visexpFfnDown: GGMLTensor? = null,
+    var visexpFfnUp: GGMLTensor? = null,
+
+    // ---- xIELU activation parameters ----
+    var ffnActAlphaN: GGMLTensor? = null,
+    var ffnActAlphaP: GGMLTensor? = null,
+    var ffnActBeta: GGMLTensor? = null,
+    var ffnActEps: GGMLTensor? = null,
+
+    // ---- Kimi Linear KDA ----
+    var ssmQConv: GGMLTensor? = null,
+    var ssmKConv: GGMLTensor? = null,
+    var ssmVConv: GGMLTensor? = null,
+    var ssmFA: GGMLTensor? = null,
+    var ssmFB: GGMLTensor? = null,
+    var ssmBeta: GGMLTensor? = null,
+    var ssmGA: GGMLTensor? = null,
+    var ssmGB: GGMLTensor? = null,
+    var ssmONorm: GGMLTensor? = null,
+
+    // ---- DSA ----
+    var indexerKNorm: GGMLTensor? = null,
+    var indexerKNormB: GGMLTensor? = null,
+    var indexerProj: GGMLTensor? = null,
+    var indexerAttnK: GGMLTensor? = null,
+    var indexerAttnQB: GGMLTensor? = null,
+
+    // ---- gemma4 layer output scale ----
+    var outScale: GGMLTensor? = null,
+
+    // ---- composite sub-layers ----
+    val posnet: LlamaLayerPosnet = LlamaLayerPosnet(),
+    val convnext: LlamaLayerConvnext = LlamaLayerConvnext(),
+    val shortconv: LlamaLayerShortconv = LlamaLayerShortconv(),
+    val nextn: LlamaLayerNextn = LlamaLayerNextn(),
+)
+
+// =============================================================================
+// Top-Level Model Structure
+// Ported from: llama-model.h  struct llama_model
+// =============================================================================
+
+/**
+ * Top-level model state that owns every weight tensor and the hyperparameters.
+ *
+ * This is a direct port of `struct llama_model`.  The existing [LlamaModel]
+ * class below continues to serve as the high-level "ready-to-run" model with
+ * a forward-pass implementation.  This struct is the lower-level container
+ * that the model loader populates.
+ */
+class LlamaModelData(
+    var type: LlamaModelType = LlamaModelType.UNKNOWN,
+    var arch: LlamaModelArch = LlamaModelArch.UNKNOWN,
+    var name: String = "n/a",
+) {
+    val hparams: LlamaModelHParams = LlamaModelHParams()
+
+    // ---- classifier labels (for classifier models) ----
+    val classifierLabels: MutableList<String> = mutableListOf()
+
+    // ---- global tensors ----
+    var tokEmbd: GGMLTensor? = null
+    var typeEmbd: GGMLTensor? = null
+    var posEmbd: GGMLTensor? = null
+    var tokNorm: GGMLTensor? = null
+    var tokNormB: GGMLTensor? = null
+
+    var outputNorm: GGMLTensor? = null
+    var outputNormB: GGMLTensor? = null
+    var output: GGMLTensor? = null
+    var outputB: GGMLTensor? = null
+    var outputNormEnc: GGMLTensor? = null
+
+    // classifier
+    var cls: GGMLTensor? = null
+    var clsB: GGMLTensor? = null
+    var clsOut: GGMLTensor? = null
+    var clsOutB: GGMLTensor? = null
+    var clsNorm: GGMLTensor? = null
+
+    var conv1d: GGMLTensor? = null
+    var conv1dB: GGMLTensor? = null
+
+    // gemma3n altup
+    var altupProj: GGMLTensor? = null
+    var altupUnembdProj: GGMLTensor? = null
+    var perLayerTokEmbd: GGMLTensor? = null
+    var perLayerModelProj: GGMLTensor? = null
+    var perLayerProjNorm: GGMLTensor? = null
+
+    // sentence-transformers
+    var dense2OutLayers: GGMLTensor? = null
+    var dense2OutLayersB: GGMLTensor? = null
+    var dense3OutLayers: GGMLTensor? = null
+
+    // ---- layers ----
+    val layers: MutableList<LlamaModelLayer> = mutableListOf()
+
+    // ---- GGUF key-value metadata ----
+    val ggufKv: MutableMap<String, String> = mutableMapOf()
+
+    // ---- tensor index (for lookup by name) ----
+    val tensorsByName: MutableList<Pair<String, GGMLTensor>> = mutableListOf()
+
+    // ---- timing ----
+    var tLoadUs: Long = 0L
+    var tStartUs: Long = 0L
+
+    // -- query helpers --
+
+    /** Return the architecture's GGUF name. */
+    fun archName(): String = arch.ggufName
+
+    /** Return the human-readable model type name (e.g. "7B"). */
+    fun typeName(): String = type.displayName
+
+    /** Short model description: "arch type". */
+    fun desc(): String = "${archName()} ${typeName()}"
+
+    /** Look up a weight tensor by its GGUF name, or `null` if not loaded. */
+    fun getTensor(name: String): GGMLTensor? =
+        tensorsByName.firstOrNull { it.first == name }?.second
+
+    /** Total number of elements across all loaded tensors. */
+    fun nElements(): Long =
+        tensorsByName.sumOf { (_, t) ->
+            var count = 1L
+            for (i in 0 until GGML_MAX_DIMS) count *= t.ne[i]
+            count
+        }
+
+    // -- stubs for loading (to be implemented when model-loader is ported) --
+
+    /** TODO: Populate [hparams] from GGUF metadata. */
+    fun loadHParams() {
+        // Will delegate to LlamaModelLoader once ported
+    }
+
+    /**
+     * TODO: Load weight tensors from a GGUF file into [layers] and
+     * global tensor fields.
+     */
+    fun loadTensors(): Boolean {
+        // Will delegate to LlamaModelLoader once ported
+        return true
+    }
+
+    /** Print a summary of the model to stdout. */
+    fun printInfo() {
+        println("llama_model_info: arch   = ${archName()}")
+        println("llama_model_info: type   = ${typeName()}")
+        println("llama_model_info: name   = $name")
+        println("llama_model_info: nEmbd  = ${hparams.nEmbd}")
+        println("llama_model_info: nLayer = ${hparams.nLayer}")
+        println("llama_model_info: nHead  = ${hparams.nHead()}")
+        if (hparams.nExpert > 0) {
+            println("llama_model_info: nExpert     = ${hparams.nExpert}")
+            println("llama_model_info: nExpertUsed = ${hparams.nExpertUsed}")
+        }
+    }
+}
+
+// =============================================================================
+// Tensor Name Mapping Helpers
+// Ported from: llama-arch.h / llama-arch.cpp  tensor naming conventions
+// =============================================================================
+
+/**
+ * Standard GGUF tensor name prefixes used across architectures.
+ *
+ * These constants mirror the `LLM_TENSOR_*` name strings used by
+ * `llm_arch_from_string()` and tensor-loading code.  They are used when
+ * building the expected tensor name for a given layer index.
+ */
+object LlamaTensorNames {
+    const val TOKEN_EMBD        = "token_embd"
+    const val TOKEN_EMBD_NORM   = "token_embd_norm"
+    const val TOKEN_TYPES       = "token_types"
+    const val POS_EMBD          = "position_embd"
+    const val OUTPUT            = "output"
+    const val OUTPUT_NORM       = "output_norm"
+    const val ATTN_NORM         = "blk.%d.attn_norm"
+    const val ATTN_NORM_2       = "blk.%d.attn_norm_2"
+    const val ATTN_Q            = "blk.%d.attn_q"
+    const val ATTN_K            = "blk.%d.attn_k"
+    const val ATTN_V            = "blk.%d.attn_v"
+    const val ATTN_QKV          = "blk.%d.attn_qkv"
+    const val ATTN_OUT          = "blk.%d.attn_output"
+    const val FFN_NORM          = "blk.%d.ffn_norm"
+    const val FFN_GATE          = "blk.%d.ffn_gate"
+    const val FFN_DOWN          = "blk.%d.ffn_down"
+    const val FFN_UP            = "blk.%d.ffn_up"
+    const val FFN_GATE_INP      = "blk.%d.ffn_gate_inp"
+    const val FFN_GATE_EXPS     = "blk.%d.ffn_gate_exps"
+    const val FFN_DOWN_EXPS     = "blk.%d.ffn_down_exps"
+    const val FFN_UP_EXPS       = "blk.%d.ffn_up_exps"
+    const val SSM_IN            = "blk.%d.ssm_in"
+    const val SSM_CONV1D        = "blk.%d.ssm_conv1d"
+    const val SSM_X             = "blk.%d.ssm_x"
+    const val SSM_DT            = "blk.%d.ssm_dt"
+    const val SSM_A             = "blk.%d.ssm_a"
+    const val SSM_D             = "blk.%d.ssm_d"
+    const val SSM_OUT           = "blk.%d.ssm_out"
+
+    /** Build a per-layer tensor name by substituting the layer index. */
+    fun forLayer(template: String, layerIndex: Int): String =
+        template.replace("%d", layerIndex.toString())
+
+    /**
+     * Build the full tensor name with an optional weight/bias suffix.
+     * Example: `forLayer(ATTN_Q, 3)` → `"blk.3.attn_q"`,
+     * then appending `".weight"` → `"blk.3.attn_q.weight"`.
+     */
+    fun weight(template: String, layerIndex: Int): String =
+        "${forLayer(template, layerIndex)}.weight"
+
+    fun bias(template: String, layerIndex: Int): String =
+        "${forLayer(template, layerIndex)}.bias"
+}
+
+// =============================================================================
+// Existing Model Implementation (preserved)
+// =============================================================================
 
 /**
  * Utility function for linear transformation (matrix multiplication) with proper computation.
