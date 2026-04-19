@@ -1,8 +1,748 @@
-// port-lint: source src/llama-context.cpp
+// port-lint: source llama.cpp/src/llama-context.cpp
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*
 import kotlin.math.*
+import kotlin.time.TimeSource
+
+// ---------------------------------------------------------------------------
+// Enums ported from llama.h / llama-cparams.h
+// ---------------------------------------------------------------------------
+
+/** Pooling strategy for output embeddings. Maps to `llama_pooling_type`. */
+enum class LlamaPoolingType {
+    UNSPECIFIED,
+    NONE,
+    MEAN,
+    CLS,
+    LAST,
+    RANK;
+}
+
+/** Attention mode selector. Maps to `llama_attention_type`. */
+enum class LlamaAttentionType {
+    UNSPECIFIED,
+    CAUSAL,
+    NON_CAUSAL;
+}
+
+/** RoPE scaling strategy. Uses [LlamaRopeScalingType] from LlamaModel.kt. */
+
+/** Flash-attention mode selector. Maps to `llama_flash_attn_type`. */
+enum class LlamaFlashAttnType {
+    DISABLED,
+    ENABLED,
+    AUTO;
+}
+
+/** Type of graph to build for a micro-batch. Maps to `llm_graph_type`. */
+enum class LlmGraphType {
+    DECODER,
+    ENCODER,
+    DEFAULT;
+}
+
+typealias LlamaToken = Int
+// LlamaSeqId defined in KVCache.kt; LLAMA_MAX_SEQ defined in KVCache.kt
+
+// ---------------------------------------------------------------------------
+// Context parameters  (maps to llama_context_params)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters supplied when creating a [LlamaContext].
+ *
+ * Every field mirrors a member of `llama_context_params` from the C++ codebase.
+ * The Kotlin default values match the C++ defaults (0/false means "use model default").
+ */
+data class LlamaContextParams(
+    val nCtx: Int = 0,
+    val nBatch: Int = 2048,
+    val nUbatch: Int = 512,
+    val nSeqMax: Int = 1,
+    val nThreads: Int = 4,
+    val nThreadsBatch: Int = 4,
+    val ropeScalingType: LlamaRopeScalingType = LlamaRopeScalingType.UNSPECIFIED,
+    val ropeFreqBase: Float = 0.0f,
+    val ropeFreqScale: Float = 0.0f,
+    val yarnExtFactor: Float = -1.0f,
+    val yarnAttnFactor: Float = 1.0f,
+    val yarnBetaFast: Float = 32.0f,
+    val yarnBetaSlow: Float = 1.0f,
+    val yarnOrigCtx: Int = 0,
+    val embeddings: Boolean = false,
+    val offloadKqv: Boolean = true,
+    val flashAttnType: LlamaFlashAttnType = LlamaFlashAttnType.DISABLED,
+    val noPerf: Boolean = false,
+    val attentionType: LlamaAttentionType = LlamaAttentionType.UNSPECIFIED,
+    val poolingType: LlamaPoolingType = LlamaPoolingType.UNSPECIFIED,
+    val typeK: GGMLType = GGMLType.F16,
+    val typeV: GGMLType = GGMLType.F16,
+    val swaFull: Boolean = false,
+    val opOffload: Boolean = true,
+    val kvUnified: Boolean = true,
+)
+
+// ---------------------------------------------------------------------------
+// Computed context parameters  (maps to llama_cparams)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derived / computed context parameters that are resolved from [LlamaContextParams]
+ * and the model's hyper-parameters during [LlamaContext] construction.
+ *
+ * Maps to `struct llama_cparams` in `llama-cparams.h`.
+ */
+data class LlamaCParams(
+    var nCtx: Int = 0,
+    var nCtxSeq: Int = 0,
+    var nBatch: Int = 0,
+    var nUbatch: Int = 0,
+    var nSeqMax: Int = 1,
+    var nThreads: Int = 4,
+    var nThreadsBatch: Int = 4,
+    var ropeFreqBase: Float = 10000.0f,
+    var ropeFreqScale: Float = 1.0f,
+    var nCtxOrigYarn: Int = 0,
+    var yarnExtFactor: Float = 0.0f,
+    var yarnAttnFactor: Float = 1.0f,
+    var yarnBetaFast: Float = 32.0f,
+    var yarnBetaSlow: Float = 1.0f,
+    var embeddings: Boolean = false,
+    var causalAttn: Boolean = true,
+    var offloadKqv: Boolean = true,
+    var flashAttn: Boolean = false,
+    var autoFa: Boolean = false,
+    var fusedGdnAr: Boolean = true,
+    var fusedGdnCh: Boolean = true,
+    var autoFgdn: Boolean = true,
+    var noPerf: Boolean = false,
+    var warmup: Boolean = false,
+    var opOffload: Boolean = true,
+    var kvUnified: Boolean = true,
+    var pipelineParallel: Boolean = false,
+    var poolingType: LlamaPoolingType = LlamaPoolingType.NONE,
+)
+
+// ---------------------------------------------------------------------------
+// Performance counters  (maps to llama_perf_context_data)
+// ---------------------------------------------------------------------------
+
+/** Performance counters returned by [LlamaContext.perfGetData]. */
+data class LlamaPerfContextData(
+    val tStartMs: Double = 0.0,
+    val tLoadMs: Double = 0.0,
+    val tPEvalMs: Double = 0.0,
+    val tEvalMs: Double = 0.0,
+    val nPEval: Int = 1,
+    val nEval: Int = 1,
+    val nReused: Int = 0,
+)
+
+// ---------------------------------------------------------------------------
+// Memory breakdown  (maps to llama_memory_breakdown_data)
+// ---------------------------------------------------------------------------
+
+/** Per-buffer-type memory usage breakdown. */
+data class LlamaMemoryBreakdownData(
+    var model: Long = 0,
+    var context: Long = 0,
+    var compute: Long = 0,
+) {
+    fun total(): Long = model + context + compute
+}
+
+// ---------------------------------------------------------------------------
+// Batch  (maps to llama_batch)
+// ---------------------------------------------------------------------------
+
+/**
+ * A batch of tokens (or embeddings) to process.
+ *
+ * Exactly one of [tokens] or [embeddings] must be non-null.
+ * Mirrors `struct llama_batch` from `llama.h`.
+ */
+data class LlamaBatch(
+    val nTokens: Int = 0,
+    val tokens: IntArray? = null,
+    val embeddings: FloatArray? = null,
+    val nEmbeddings: Int = 0,
+    val pos: IntArray? = null,
+    val nSeqId: IntArray? = null,
+    val seqId: Array<IntArray>? = null,
+    val logits: BooleanArray? = null,
+) {
+    init {
+        require((tokens != null) xor (embeddings != null)) {
+            "Exactly one of tokens or embeddings must be provided"
+        }
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is LlamaBatch) return false
+        return nTokens == other.nTokens &&
+            tokens.contentEquals(other.tokens) &&
+            embeddings.contentEquals(other.embeddings)
+    }
+
+    override fun hashCode(): Int {
+        var result = nTokens
+        result = 31 * result + (tokens?.contentHashCode() ?: 0)
+        result = 31 * result + (embeddings?.contentHashCode() ?: 0)
+        return result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Micro-batch  (maps to llama_ubatch — internal scheduling unit)
+// ---------------------------------------------------------------------------
+
+/**
+ * A contiguous sub-range of a [LlamaBatch] that fits within the micro-batch
+ * budget (`nUbatch`). This is the unit actually submitted to graph execution.
+ */
+data class LlamaUBatch(
+    val nTokens: Int = 0,
+    val tokens: IntArray? = null,
+    val embeddings: FloatArray? = null,
+    val pos: IntArray? = null,
+    val seqId: Array<IntArray>? = null,
+    val output: BooleanArray? = null,
+    val equalSeqs: Boolean = false,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is LlamaUBatch) return false
+        return nTokens == other.nTokens && equalSeqs == other.equalSeqs
+    }
+
+    override fun hashCode(): Int = nTokens * 31 + equalSeqs.hashCode()
+}
+
+// ---------------------------------------------------------------------------
+// Swap info for output reordering
+// ---------------------------------------------------------------------------
+
+/** Pair of indices swapped during output reordering. */
+data class SwapInfo(val i0: Int, val i1: Int)
+
+// ---------------------------------------------------------------------------
+// LlamaContext  (maps to struct llama_context)
+// ---------------------------------------------------------------------------
+
+/**
+ * The primary inference context — owns the KV cache, backend scheduler,
+ * compute buffers, and output (logits / embeddings) storage.
+ *
+ * This class is the Kotlin port of `struct llama_context` from
+ * `llama-context.h` / `llama-context.cpp`. It is the entry-point for
+ * [encode] and [decode] operations.
+ *
+ * Construction mirrors `llama_context::llama_context(model, params)`:
+ * it resolves the computed context parameters ([cparams]) from the raw
+ * [LlamaContextParams], initialises backends, creates the output buffer,
+ * and reserves worst-case graphs.
+ */
+class LlamaContext(
+    /** Reference to the loaded model (weights + hyper-parameters). */
+    val model: LlamaModel,
+    params: LlamaContextParams = LlamaContextParams(),
+) {
+    // -- resolved / computed context parameters --
+    val cparams: LlamaCParams = resolveCParams(model.config, params)
+
+    // -- memory (KV cache or equivalent abstract memory) --
+    /** Per-layer KV caches; initialised lazily via [initMemory]. */
+    var kvCaches: Array<KVCache>? = null
+        private set
+
+    // -- decode output (2-d array: [nOutputs][nVocab]) --
+    var logits: FloatArray? = null
+        private set
+    var logitsSize: Int = 0
+        private set
+
+    // -- embeddings output (2-d array: [nOutputs][nEmbd]) --
+    var embd: FloatArray? = null
+        private set
+    var embdSize: Int = 0
+        private set
+
+    // -- sequence-level embeddings (populated when pooling != NONE) --
+    val embdSeq: MutableMap<LlamaSeqId, FloatArray> = mutableMapOf()
+
+    // -- output bookkeeping --
+    var nOutputs: Int = 0
+        private set
+
+    /** Maps batch token positions → ids inside the logits / embd buffers. */
+    var outputIds: IntArray = IntArray(0)
+        private set
+
+    val outputSwaps: MutableList<SwapInfo> = mutableListOf()
+
+    // -- scheduler state --
+    var schedNeedReserve: Boolean = true
+        private set
+
+    // -- perf counters (microseconds) --
+    var tStartUs: Long = 0L
+        private set
+    var tLoadUs: Long = 0L
+        private set
+    var tPEvalUs: Long = 0L
+        private set
+    var tEvalUs: Long = 0L
+        private set
+    var tComputeStartUs: Long = 0L
+        private set
+    var nQueuedTokens: Long = 0L
+        private set
+    var nPEval: Int = 0
+        private set
+    var nEval: Int = 0
+        private set
+    var nReused: Int = 0
+        private set
+
+    var hasEvaluatedOnce: Boolean = false
+        private set
+
+    // -- graph --
+    /** Graph allocator for compute operations. */
+    val graphAllocator: GGMLGraphAllocator = GGMLGraphAllocator()
+
+    /** Shared GGML context for tensor metadata. */
+    val ggmlContext: GGMLContext = GGMLContext()
+
+    init {
+        tStartUs = currentTimeMicros()
+        initMemory()
+    }
+
+    // -----------------------------------------------------------------------
+    // Accessors  (mirrors C++ getter methods)
+    // -----------------------------------------------------------------------
+
+    fun nCtx(): Int = cparams.nCtx
+    fun nCtxSeq(): Int = cparams.nCtxSeq
+    fun nBatch(): Int = cparams.nBatch
+    fun nUbatch(): Int = cparams.nUbatch
+    fun nSeqMax(): Int = cparams.nSeqMax
+    fun nThreads(): Int = cparams.nThreads
+    fun nThreadsBatch(): Int = cparams.nThreadsBatch
+    fun poolingType(): LlamaPoolingType = cparams.poolingType
+
+    // -----------------------------------------------------------------------
+    // Logits / embeddings access
+    // -----------------------------------------------------------------------
+
+    /**
+     * Return the full logits buffer. Triggers output reordering first.
+     * Mirrors `llama_context::get_logits()`.
+     */
+    fun getLogits(): FloatArray? {
+        outputReorder()
+        return logits
+    }
+
+    /**
+     * Return a view of the logits for the i-th output token.
+     * Supports negative indices (last output row).
+     * Mirrors `llama_context::get_logits_ith(i)`.
+     */
+    fun getLogitsIth(i: Int): FloatArray? {
+        outputReorder()
+        val buf = logits ?: return null
+        val j = outputResolveRow(i)
+        val nVocab = model.config.vocabSize
+        val start = (j * nVocab).toInt()
+        return buf.copyOfRange(start, start + nVocab)
+    }
+
+    /**
+     * Return the full embeddings buffer.
+     * Mirrors `llama_context::get_embeddings()`.
+     */
+    fun getEmbeddings(): FloatArray? {
+        outputReorder()
+        return embd
+    }
+
+    /**
+     * Return a view of the embeddings for the i-th output token.
+     * Mirrors `llama_context::get_embeddings_ith(i)`.
+     */
+    fun getEmbeddingsIth(i: Int): FloatArray? {
+        outputReorder()
+        val buf = embd ?: return null
+        val j = outputResolveRow(i)
+        val nEmbd = model.config.hiddenSize
+        val start = (j * nEmbd).toInt()
+        return buf.copyOfRange(start, start + nEmbd)
+    }
+
+    /**
+     * Return sequence-level embeddings for the given sequence id.
+     * Mirrors `llama_context::get_embeddings_seq(seq_id)`.
+     */
+    fun getEmbeddingsSeq(seqId: LlamaSeqId): FloatArray? = embdSeq[seqId]
+
+    // -----------------------------------------------------------------------
+    // Thread configuration
+    // -----------------------------------------------------------------------
+
+    fun setNThreads(nThreads: Int, nThreadsBatch: Int) {
+        cparams.nThreads = nThreads
+        cparams.nThreadsBatch = nThreadsBatch
+    }
+
+    // -----------------------------------------------------------------------
+    // Attention / embedding mode setters
+    // -----------------------------------------------------------------------
+
+    fun setEmbeddings(value: Boolean) {
+        cparams.embeddings = value
+    }
+
+    fun setCausalAttn(value: Boolean) {
+        cparams.causalAttn = value
+    }
+
+    fun setWarmup(value: Boolean) {
+        cparams.warmup = value
+    }
+
+    // -----------------------------------------------------------------------
+    // Memory (KV cache) management
+    // -----------------------------------------------------------------------
+
+    /**
+     * Initialise the KV cache layers based on the resolved context parameters.
+     * Called during construction; can be called again after a context reset.
+     */
+    private fun initMemory() {
+        val nLayers = model.config.numHiddenLayers
+        val nHeads = model.config.numKeyValueHeads
+        val headDim = model.config.headDim
+        val maxSeqLen = cparams.nCtx
+
+        kvCaches = Array(nLayers) {
+            KVCache(
+                maxSequenceLength = maxSeqLen,
+                numHeads = nHeads,
+                headDim = headDim,
+            ).also { it.initialize(graphAllocator) }
+        }
+    }
+
+    /**
+     * Attempt to update (compact / defragment) the memory module.
+     * Returns `true` if anything was actually changed.
+     * Mirrors `llama_context::memory_update(optimize)`.
+     */
+    fun memoryUpdate(@Suppress("UNUSED_PARAMETER") optimize: Boolean): Boolean {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    // -----------------------------------------------------------------------
+    // Scheduler
+    // -----------------------------------------------------------------------
+
+    /**
+     * Reserve a new backend scheduler if needed (e.g. after changing LoRA
+     * adapters, samplers, or attention type).
+     * Mirrors `llama_context::sched_reserve()`.
+     */
+    fun schedReserve() {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    /**
+     * Wait for all pending backend computations to finish.
+     * Mirrors `llama_context::synchronize()`.
+     */
+    fun synchronize() {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    // -----------------------------------------------------------------------
+    // Core inference  (encode / decode)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Process a single micro-batch through the graph.
+     *
+     * If a [memoryContext] is provided it is applied first (e.g. to set up the
+     * KV cache view for the current ubatch).
+     *
+     * Returns a pair of (graphResult, status). The graph result is `null` when
+     * the computation fails.
+     *
+     * Mirrors `llama_context::process_ubatch(ubatch, gtype, mctx, ret)`.
+     */
+    fun processUBatch(
+        ubatch: LlamaUBatch,
+        gtype: LlmGraphType,
+        @Suppress("UNUSED_PARAMETER") memoryContext: Any? = null,
+    ): Pair<GGMLCGraph?, Int> {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    /**
+     * Encode a batch of tokens (non-causal / encoder path).
+     *
+     * Returns 0 on success, negative on failure (matches C++ convention).
+     * Mirrors `llama_context::encode(batch_inp)`.
+     */
+    fun encode(batchInp: LlamaBatch): Int {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    /**
+     * Decode a batch of tokens (causal / decoder path).
+     *
+     * Returns 0 on success, negative on failure (matches C++ convention).
+     * Mirrors `llama_context::decode(batch_inp)`.
+     */
+    fun decode(batchInp: LlamaBatch): Int {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    // -----------------------------------------------------------------------
+    // Output management
+    // -----------------------------------------------------------------------
+
+    /**
+     * Reserve space for at least [nOutputsRequested] output rows.
+     * Returns the actual number of rows reserved.
+     * Mirrors `llama_context::output_reserve(n_outputs)`.
+     */
+    fun outputReserve(nOutputsRequested: Int): Int {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    /**
+     * Reorder the output buffers according to [outputSwaps] so that
+     * logits / embeddings are in the expected order.
+     * Mirrors `llama_context::output_reorder()`.
+     */
+    private fun outputReorder() {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    /**
+     * Map a batch-token index [i] to the actual row inside the output buffer.
+     * Supports negative indices (last output row).
+     * Mirrors `llama_context::output_resolve_row(i)`.
+     */
+    private fun outputResolveRow(i: Int): Long {
+        val j: Long = if (i < 0) {
+            val resolved = nOutputs + i
+            require(resolved >= 0) { "Negative index out of range [0, $nOutputs)" }
+            resolved.toLong()
+        } else {
+            require(i < outputIds.size) { "Index out of range [0, ${outputIds.size})" }
+            val mapped = outputIds[i]
+            require(mapped >= 0) { "batch.logits[$i] != true" }
+            mapped.toLong()
+        }
+        require(j < nOutputs) { "Corrupt output buffer (j=$j, nOutputs=$nOutputs)" }
+        return j
+    }
+
+    // -----------------------------------------------------------------------
+    // Graph helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * Maximum number of nodes a graph may contain for the given token count.
+     * Mirrors `llama_context::graph_max_nodes(n_tokens)`.
+     */
+    fun graphMaxNodes(@Suppress("UNUSED_PARAMETER") nTokens: Int): Int {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    /**
+     * Submit a compute graph for asynchronous execution.
+     * Returns the GGML status code.
+     * Mirrors `llama_context::graph_compute(gf, batched)`.
+     */
+    fun graphCompute(
+        @Suppress("UNUSED_PARAMETER") graph: GGMLCGraph,
+        @Suppress("UNUSED_PARAMETER") batched: Boolean,
+    ): Int {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    /**
+     * Reserve a graph with a dummy ubatch of the specified size.
+     * Used during initialisation to pre-allocate backend buffers.
+     * Mirrors `llama_context::graph_reserve(...)`.
+     */
+    fun graphReserve(
+        @Suppress("UNUSED_PARAMETER") nTokens: Int,
+        @Suppress("UNUSED_PARAMETER") nSeqs: Int,
+        @Suppress("UNUSED_PARAMETER") nOutputs: Int,
+    ): GGMLCGraph? {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    // -----------------------------------------------------------------------
+    // State save / load
+    // -----------------------------------------------------------------------
+
+    fun stateGetSize(): Long {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    fun stateGetData(dst: ByteArray, size: Long): Long {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    fun stateSetData(src: ByteArray, size: Long): Long {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    fun stateSeqGetSize(seqId: LlamaSeqId): Long {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    fun stateSeqGetData(seqId: LlamaSeqId, dst: ByteArray, size: Long): Long {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    fun stateSeqSetData(seqId: LlamaSeqId, src: ByteArray, size: Long): Long {
+        TODO("port from llama.cpp/src/llama-context.cpp")
+    }
+
+    // -----------------------------------------------------------------------
+    // Performance
+    // -----------------------------------------------------------------------
+
+    /** Collect timing / throughput statistics. Mirrors `llama_context::perf_get_data()`. */
+    fun perfGetData(): LlamaPerfContextData = LlamaPerfContextData(
+        tStartMs = tStartUs * 1e-3,
+        tLoadMs = tLoadUs * 1e-3,
+        tPEvalMs = tPEvalUs * 1e-3,
+        tEvalMs = tEvalUs * 1e-3,
+        nPEval = maxOf(1, nPEval),
+        nEval = maxOf(1, nEval),
+        nReused = maxOf(0, nReused),
+    )
+
+    /** Reset the performance counters. Mirrors `llama_context::perf_reset()`. */
+    fun perfReset() {
+        tStartUs = currentTimeMicros()
+        tEvalUs = 0L; nEval = 0
+        tPEvalUs = 0L; nPEval = 0
+        nReused = 0
+    }
+
+    // -----------------------------------------------------------------------
+    // Private helpers
+    // -----------------------------------------------------------------------
+
+    companion object {
+        /**
+         * Resolve raw [LlamaContextParams] + model [LlamaConfig] into the
+         * computed [LlamaCParams] used throughout the context.
+         *
+         * This mirrors the first ~200 lines of the `llama_context` constructor
+         * in `llama-context.cpp`.
+         */
+        internal fun resolveCParams(
+            config: LlamaConfig,
+            params: LlamaContextParams,
+        ): LlamaCParams {
+            val cp = LlamaCParams()
+
+            cp.nSeqMax = maxOf(1, params.nSeqMax)
+            require(cp.nSeqMax <= LLAMA_MAX_SEQ) { "nSeqMax must be <= $LLAMA_MAX_SEQ" }
+
+            cp.nThreads = params.nThreads
+            cp.nThreadsBatch = params.nThreadsBatch
+
+            cp.yarnExtFactor = if (params.yarnExtFactor >= 0.0f) params.yarnExtFactor else 0.0f
+            cp.yarnAttnFactor = if (params.yarnAttnFactor >= 0.0f) params.yarnAttnFactor else 1.0f
+            cp.yarnBetaFast = if (params.yarnBetaFast >= 0.0f) params.yarnBetaFast else 32.0f
+            cp.yarnBetaSlow = if (params.yarnBetaSlow >= 0.0f) params.yarnBetaSlow else 1.0f
+
+            cp.embeddings = params.embeddings
+            cp.offloadKqv = params.offloadKqv
+            cp.noPerf = params.noPerf
+            cp.warmup = false
+
+            cp.nCtx = if (params.nCtx == 0) config.maxPositionEmbeddings else params.nCtx
+            cp.ropeFreqBase = if (params.ropeFreqBase == 0.0f) config.ropeTheta else params.ropeFreqBase
+            cp.ropeFreqScale = if (params.ropeFreqScale == 0.0f) 1.0f else params.ropeFreqScale
+
+            cp.nCtxOrigYarn = when {
+                params.yarnOrigCtx != 0 -> params.yarnOrigCtx
+                else -> config.maxPositionEmbeddings
+            }
+
+            // Resolve attention type
+            when (params.attentionType) {
+                LlamaAttentionType.UNSPECIFIED -> cp.causalAttn = true
+                LlamaAttentionType.CAUSAL -> cp.causalAttn = true
+                LlamaAttentionType.NON_CAUSAL -> cp.causalAttn = false
+            }
+
+            cp.flashAttn = params.flashAttnType != LlamaFlashAttnType.DISABLED
+            cp.autoFa = params.flashAttnType == LlamaFlashAttnType.AUTO
+
+            // With causal attention the batch size is capped by context size
+            cp.nBatch = if (cp.causalAttn) minOf(cp.nCtx, params.nBatch) else params.nBatch
+            cp.nUbatch = minOf(cp.nBatch, if (params.nUbatch == 0) params.nBatch else params.nUbatch)
+
+            cp.opOffload = params.opOffload
+            cp.kvUnified = params.kvUnified
+
+            // Pad n_ctx to a multiple of 256 (matches C++ GGML_PAD)
+            cp.nCtx = ((cp.nCtx + 255) / 256) * 256
+
+            if (cp.kvUnified) {
+                cp.nCtxSeq = cp.nCtx
+            } else {
+                cp.nCtxSeq = cp.nCtx / cp.nSeqMax
+                cp.nCtxSeq = ((cp.nCtxSeq + 255) / 256) * 256
+                require(cp.nCtxSeq != 0) { "nCtxSeq == 0" }
+                if (cp.nCtx != cp.nCtxSeq * cp.nSeqMax) {
+                    cp.nCtx = cp.nCtxSeq * cp.nSeqMax
+                }
+            }
+
+            // Resolve pooling type
+            cp.poolingType = when (params.poolingType) {
+                LlamaPoolingType.UNSPECIFIED -> LlamaPoolingType.NONE
+                else -> params.poolingType
+            }
+
+            // Resolve rope scaling
+            val ropeScaling = params.ropeScalingType
+            if (ropeScaling == LlamaRopeScalingType.NONE) {
+                cp.ropeFreqScale = 1.0f
+            }
+            if (cp.yarnExtFactor < 0.0f) {
+                cp.yarnExtFactor =
+                    if (ropeScaling == LlamaRopeScalingType.YARN) 1.0f else 0.0f
+            }
+
+            return cp
+        }
+
+        /** Microsecond clock — uses monotonic time source. */
+        private val timeOrigin = TimeSource.Monotonic.markNow()
+        private fun currentTimeMicros(): Long =
+            timeOrigin.elapsedNow().inWholeMicroseconds
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LlamaAttention  (multi-head attention mechanism)
+// ---------------------------------------------------------------------------
 
 /**
  * Multi-head attention mechanism for the LLaMA model.

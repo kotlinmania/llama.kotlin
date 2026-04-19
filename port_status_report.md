@@ -1,27 +1,27 @@
 # Code Port - Progress Report
 
 **Generated:** 2026-04-18
-**Source:** tmp/llama.cpp/ggml
-**Target:** src/commonMain/kotlin/ai/solace/llamakotlin
+**Source:** tmp/llama.cpp/src
+**Target:** src/nativeMain/kotlin/ai/solace/llamakotlin
 
 ## Executive Summary
 
 | Metric | Count | Percentage |
 |--------|-------|------------|
-| Total source files | 277 | 100% |
-| Target units (paired) | 25 | - |
-| Target files (total) | 25 | - |
-| Porting progress | 18 | 6.5% (matched) |
-| Missing files | 259 | 93.5% |
+| Total source files | 143 | 100% |
+| Target units (paired) | 19 | - |
+| Target files (total) | 19 | - |
+| Porting progress | 8 | 5.6% (matched) |
+| Missing files | 135 | 94.4% |
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.03
+**Average Similarity:** 0.02
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
 - Good (0.60-0.84): 0 files (0.0% of matched)
-- Critical (<0.60): 18 files (100.0% of matched)
+- Critical (<0.60): 8 files (100.0% of matched)
 
 ### Excellent Ports (Similarity ≥ 0.85)
 
@@ -32,24 +32,14 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
-- `dpct.helper` → `core.QuantizationHelper` (0.00, 9 deps)
-- `openvino.utils` → `core.GGMLTensorUtils` (0.00)
-- `ggml-cpu.simd-gemm` → `simd.GGMLSimd` (0.00, 1 deps)
-- `ggml-common` → `core.GGMLCommon` (0.00, 16 deps)
-- `ggml-cpu.common` → `core.GGMLCpuCommon` (0.56, 47 deps)
-- `ggml-threading` → `core.GGMLScheduler` (0.00, 1 deps)
-- `include.ggml` → `core.GGMLOps` (0.00, 68 deps)
-- `ggml-impl` → `core.NumericConversions` (0.00, 58 deps)
-- `ggml-backend-impl` → `core.GGMLBackendImpl` (0.00, 47 deps)
-- `include.ggml-backend` → `core.GGMLBackend` (0.00, 38 deps)
-- `include.ggml-cpu` → `core.GGMLCpuExecutor` (0.00, 13 deps)
-- `ggml-cpu.ggml-cpu-impl` → `core.GGMLCpuImpl` (0.00, 11 deps)
-- `include.ggml-alloc` → `core.GGMLAlloc` (0.00, 8 deps)
-- `ggml` → `core.GGMLTypes` (0.00)
-- `ggml-cpu.quants` → `core.GGMLQuants` (0.00, 4 deps)
-- `ggml-cpu.ggml-cpu` → `core.GGMLCpuBackend` (0.00)
-- `ggml-backend` → `core.GGMLBackendUtils` (0.00)
-- `ggml-cpu.ops` → `core.GGMLComputeOps` (0.00)
+- `models.models` → `model.InferencePipeline` (0.00, 114 deps)
+- `llama-context` → `model.LlamaAttention` (0.00, 4 deps)
+- `llama-model` → `model.LlamaModel` (0.00, 12 deps)
+- `llama-kv-cache` → `model.KVCache` (0.00, 4 deps)
+- `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
+- `llama-grammar` → `model.Grammar` (0.00, 1 deps)
+- `llama-model-saver` → `model.GGMLIntegration` (0.00, 1 deps)
+- `models.maincoder` → `main` (0.16)
 
 ## Incorrect Ports (Missing Types)
 
@@ -58,41 +48,45 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
-| `dpct.helper` | `core.QuantizationHelper` | 29/29 | `matrix_info_t`, `error_code`, `memcpy_direction` … |
-| `ggml-cpu.common` | `core.GGMLCpuCommon` | 2/4 | `ggml_compute_params`, `ggml_tensor` |
+| `models.models` | `model.InferencePipeline` | 113/113 | `llm_build_mamba_base`, `llm_build_delta_net_base`, `llm_build_rwkv6_base` … |
+| `llama-context` | `model.LlamaAttention` | 12/12 | `llama_model`, `llama_batch_allocr`, `llama_io_read_i` … |
+| `llama-model` | `model.LlamaModel` | 15/16 | `llama_cparams`, `llama_ubatch`, `llama_model_loader` … |
+| `llama-kv-cache` | `model.KVCache` | 10/10 | `llama_cparams`, `llama_hparams`, `llama_model` … |
+| `llama-model-loader` | `gguf.ModelLoader` | 16/16 | `llama_ftype`, `GKV_Base_Type`, `GKV_Base` … |
+| `llama-grammar` | `model.Grammar` | 3/3 | `llama_gretype`, `llama_grammar`, `llama_vocab` |
 
 ## High Priority Missing Files
 
 | Rank | Source file | Deps | Path |
 |------|------------|------|------|
-| 1 | `ggml-sycl.fattn-vec` | 37 | `src/ggml-sycl/fattn-vec.hpp` |
-| 2 | `ggml-zdnn.utils` | 23 | `src/ggml-zdnn/utils.hpp` |
-| 3 | `openvino.node_context` | 19 | `src/ggml-openvino/openvino/node_context.h` |
-| 4 | `openvino.op_table` | 18 | `src/ggml-openvino/openvino/op_table.h` |
-| 5 | `ggml-sycl.convert` | 17 | `src/ggml-sycl/convert.hpp` |
-| 6 | `htp.hvx-base` | 11 | `src/ggml-hexagon/htp/hvx-base.h` |
-| 7 | `ggml-sycl.fattn-tile` | 11 | `src/ggml-sycl/fattn-tile.hpp` |
-| 8 | `ggml-cpu.simd-mappings` | 10 | `src/ggml-cpu/simd-mappings.h` |
-| 9 | `op.reshape` | 9 | `src/ggml-openvino/openvino/op/reshape.cpp` |
-| 10 | `ggml-sycl.concat` | 9 | `src/ggml-sycl/concat.hpp` |
-| 11 | `ggml-cpu.traits` | 9 | `src/ggml-cpu/traits.h` |
-| 12 | `ggml-sycl.presets` | 8 | `src/ggml-sycl/presets.hpp` |
-| 13 | `ggml-virtgpu.ggml-remoting` | 8 | `src/ggml-virtgpu/ggml-remoting.h` |
-| 14 | `htp.hex-utils` | 8 | `src/ggml-hexagon/htp/hex-utils.h` |
-| 15 | `op.transpose` | 7 | `src/ggml-openvino/openvino/op/transpose.cpp` |
-| 16 | `ggml-sycl.set` | 6 | `src/ggml-sycl/set.hpp` |
-| 17 | `backend.backend-virgl-apir` | 6 | `src/ggml-virtgpu/backend/backend-virgl-apir.h` |
-| 18 | `shared.apir_backend` | 6 | `src/ggml-virtgpu/backend/shared/apir_backend.h` |
-| 19 | `ggml-quants` | 6 | `src/ggml-quants.h` |
-| 20 | `backend.backend-dispatched` | 5 | `src/ggml-virtgpu/backend/backend-dispatched.h` |
+| 1 | `llama-impl` | 19 | `llama-impl.h` |
+| 2 | `llama` | 16 | `llama.cpp` |
+| 3 | `llama-memory-recurrent` | 12 | `llama-memory-recurrent.h` |
+| 4 | `llama-batch` | 7 | `llama-batch.h` |
+| 5 | `llama-graph` | 7 | `llama-graph.h` |
+| 6 | `llama-memory` | 7 | `llama-memory.h` |
+| 7 | `llama-vocab` | 6 | `llama-vocab.h` |
+| 8 | `llama-mmap` | 5 | `llama-mmap.h` |
+| 9 | `llama-arch` | 5 | `llama-arch.h` |
+| 10 | `llama-cparams` | 5 | `llama-cparams.h` |
+| 11 | `llama-hparams` | 4 | `llama-hparams.h` |
+| 12 | `llama-io` | 3 | `llama-io.h` |
+| 13 | `llama-kv-cache-iswa` | 3 | `llama-kv-cache-iswa.h` |
+| 14 | `llama-memory-hybrid` | 3 | `llama-memory-hybrid.h` |
+| 15 | `llama-memory-hybrid-iswa` | 3 | `llama-memory-hybrid-iswa.h` |
+| 16 | `llama-adapter` | 2 | `llama-adapter.h` |
+| 17 | `llama-ext` | 2 | `llama-ext.h` |
+| 18 | `unicode-data` | 1 | `unicode-data.h` |
+| 19 | `unicode` | 1 | `unicode.h` |
+| 20 | `llama-sampler` | 1 | `llama-sampler.h` |
 
-... and 239 more missing files.
+... and 115 more missing files.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 3190 / 310 lines (1029%)
+**Documentation coverage:** 270 / 2 lines (13500%)
 
 Top documentation gaps (>20%):
 
-- `dpct.helper` - 100% gap (250 → 0 lines)
+No significant documentation gaps found.
 
