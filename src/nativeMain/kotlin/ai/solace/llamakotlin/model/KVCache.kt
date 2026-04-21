@@ -44,8 +44,9 @@ enum class LlamaSwaType {
  */
 enum class LlamaMemoryStatus {
     SUCCESS,
+    NO_UPDATE,
     FAILED_PREPARE,
-    FAILED_COMPUTE
+    FAILED_COMPUTE,
 }
 
 // ---------------------------------------------------------------------------

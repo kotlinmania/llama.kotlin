@@ -8,16 +8,7 @@ import ai.solace.llamakotlin.core.*
 // Ported from: llama-memory-recurrent.h / llama-memory-recurrent.cpp
 // =============================================================================
 
-/**
- * Callback used during memory construction to decide which layers should
- * allocate recurrent-state buffers.
- *
- * Port of `layer_filter_cb` in `llama-memory-recurrent.h`.
- *
- * @param layerIndex Zero-based layer index.
- * @return `true` if the layer should have recurrent memory allocated.
- */
-typealias LayerFilterCallback = (layerIndex: Int) -> Boolean
+// LayerFilterCallback is defined in LlamaMemory.kt
 
 // ---------------------------------------------------------------------------
 // MemCell – per-slot metadata
