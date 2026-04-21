@@ -9,14 +9,14 @@
 | Metric | Count | Percentage |
 |--------|-------|------------|
 | Total source files | 143 | 100% |
-| Target units (paired) | 165 | - |
-| Target files (total) | 165 | - |
+| Target units (paired) | 166 | - |
+| Target files (total) | 166 | - |
 | Porting progress | 32 | 22.4% (matched) |
 | Missing files | 111 | 77.6% |
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.12
+**Average Similarity:** 0.11
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -32,34 +32,34 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
+- `llama-context` → `model.LlamaAttention` (0.07, 4 deps)
 - `llama-hparams` → `model.LlamaHparams` (0.00, 4 deps)
-- `llama-grammar` → `model.Grammar` (0.21, 1 deps)
+- `llama` → `model.Grammar` (0.00, 16 deps)
 - `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
 - `llama-impl` → `model.LlamaImpl` (0.13, 19 deps)
-- `llama-batch` → `model.LlamaBatch` (0.43, 7 deps)
+- `llama-batch` → `model.LlamaBatch` (0.47, 7 deps)
 - `llama-arch` → `model.LlamaArch` (0.09, 5 deps)
 - `llama-model-saver` → `model.LlamaModelSaver` (0.28, 1 deps)
 - `llama-io` → `model.LlamaIO` (0.19, 3 deps)
 - `models.models` → `model.InferencePipeline` (0.00, 114 deps)
 - `llama-cparams` → `model.LlamaCparams` (0.00, 5 deps)
-- `llama` → `model.KVCache` (0.00, 16 deps)
 - `llama-chat` → `model.LlamaChat` (0.35, 1 deps)
-- `llama-model` → `model.LlamaModel` (0.00, 12 deps)
 - `llama-memory-recurrent` → `model.LlamaMemoryRecurrent` (0.00, 12 deps)
+- `llama-model` → `model.LlamaModel` (0.00, 12 deps)
 - `llama-graph` → `model.LlamaGraph` (0.00, 7 deps)
 - `llama-vocab` → `model.LlamaVocab` (0.00, 6 deps)
 - `llama-mmap` → `model.LlamaMmap` (0.00, 5 deps)
-- `llama-context` → `model.LlamaAttention` (0.00, 4 deps)
+- `llama-kv-cache` → `model.KVCache` (0.00, 4 deps)
 - `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
 - `llama-memory-hybrid` → `model.LlamaMemoryHybrid` (0.00, 3 deps)
 - `llama-memory-hybrid-iswa` → `model.LlamaMemoryHybridIswa` (0.00, 3 deps)
-- `llama-ext` → `model.LlamaExt` (0.00, 2 deps)
 - `llama-adapter` → `model.LlamaAdapter` (0.00, 2 deps)
+- `llama-ext` → `model.LlamaExt` (0.00, 2 deps)
 - `llama-sampler` → `model.LlamaSampler` (0.00, 1 deps)
 - `unicode` → `model.LlamaUnicode` (0.00, 1 deps)
 - `unicode-data` → `model.LlamaUnicodeData` (0.32, 1 deps)
-- `models.llama` → `model.LlamaApi` (0.00)
 - `llama-quant` → `model.LlamaQuant` (0.00)
+- `models.llama` → `model.LlamaApi` (0.00)
 - `models.maincoder` → `llamakotlin.main` (0.16)
 - `models.bitnet` → `core.GGMLBitNet158Test` (0.16)
 
@@ -70,7 +70,8 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
-| `llama-grammar` | `model.Grammar` | 1/3 | `llama_vocab` |
+| `llama-context` | `model.LlamaAttention` | 8/12 | `llama_model`, `llama_batch_allocr`, `llama_io_read_i` … |
+| `llama` | `model.Grammar` | 18/18 | `llama_flash_attn_type`, `llama_device_memory_data`, `user_data_t` … |
 | `llama-memory` | `model.LlamaMemory` | 7/8 | `llama_ubatch`, `llama_batch_allocr`, `llama_io_write_i` … |
 | `llama-impl` | `model.LlamaImpl` | 3/5 | `no_init`, `ggml_tensor`, `gguf_context` |
 | `llama-batch` | `model.LlamaBatch` | 1/1 | `llama_batch` |
@@ -81,7 +82,7 @@ present in the Rust source file.
 
 | Rank | Source file | Deps | Path |
 |------|------------|------|------|
-| 1 | `llama-kv-cache` | 4 | `llama-kv-cache.h` |
+| 1 | `llama-grammar` | 1 | `llama-grammar.h` |
 | 2 | `models.llada-moe` | 0 | `models/llada-moe.cpp` |
 | 3 | `models.xverse` | 0 | `models/xverse.cpp` |
 | 4 | `models.arcee` | 0 | `models/arcee.cpp` |
@@ -106,7 +107,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 3940 / 3 lines (131333%)
+**Documentation coverage:** 4140 / 2 lines (207000%)
 
 Top documentation gaps (>20%):
 

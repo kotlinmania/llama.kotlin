@@ -691,12 +691,22 @@ fun LlamaContext.stateSetDataImpl(src: ByteArray, size: Long): Long {
  * Port of `llama_context::state_write_data(io)`.
  */
 fun LlamaContext.stateWriteDataImpl(io: LlamaIoWriter): Long {
-    // Write model info (architecture name)
-    val archStr = "llama" // TODO: use model.arch when available
+    // Write model arch string for validation on load
+    val archStr = "llama"
     io.writeString(archStr)
 
-    // TODO: write memory module state
-    //   if (memory != null) memory.stateWrite(io)
+    // Delegate to memory module via adapter
+    val mem = memory
+    if (mem != null) {
+        val adapter = object : LlamaIoWrite {
+            override fun write(src: ByteArray, size: Int) { io.write(src.copyOf(size)) }
+            override fun writeTensor(tensor: GGMLTensor, offset: Int, size: Int) {
+                io.writeTensor(tensor, offset.toLong(), size.toLong())
+            }
+            override fun nBytes(): Long = io.nBytes()
+        }
+        mem.stateWrite(adapter)
+    }
 
     return io.nBytes()
 }
@@ -708,13 +718,21 @@ fun LlamaContext.stateWriteDataImpl(io: LlamaIoWriter): Long {
 fun LlamaContext.stateReadDataImpl(io: LlamaIoReader): Long {
     // Read and validate model info
     val archStr = io.readString()
-    val expectedArch = "llama" // TODO: use model.arch when available
+    val expectedArch = "llama"
     require(archStr == expectedArch) {
         "wrong model arch: '$archStr' instead of '$expectedArch'"
     }
 
-    // TODO: read memory module state
-    //   if (memory != null) memory.stateRead(io)
+    // Delegate to memory module via adapter
+    val mem = memory
+    if (mem != null) {
+        val adapter = object : LlamaIoRead {
+            override fun read(size: Int): ByteArray = io.read(size)
+            override fun readTo(dst: ByteArray, size: Int) { io.readTo(dst, size) }
+            override fun nBytes(): Long = io.nBytes()
+        }
+        mem.stateRead(adapter)
+    }
 
     return io.nBytes()
 }
@@ -763,7 +781,17 @@ fun LlamaContext.stateSeqSetDataImpl(seqId: LlamaSeqId, src: ByteArray, size: Lo
  * Port of `llama_context::state_seq_write_data(io, seq_id, flags)`.
  */
 fun LlamaContext.stateSeqWriteDataImpl(io: LlamaIoWriter, seqId: LlamaSeqId, flags: Int): Long {
-    // TODO: delegate to memory module: memory.stateWrite(io, seqId, flags)
+    val mem = memory
+    if (mem != null) {
+        val adapter = object : LlamaIoWrite {
+            override fun write(src: ByteArray, size: Int) { io.write(src.copyOf(size)) }
+            override fun writeTensor(tensor: GGMLTensor, offset: Int, size: Int) {
+                io.writeTensor(tensor, offset.toLong(), size.toLong())
+            }
+            override fun nBytes(): Long = io.nBytes()
+        }
+        mem.stateWrite(adapter, seqId, flags)
+    }
     return io.nBytes()
 }
 
@@ -772,7 +800,15 @@ fun LlamaContext.stateSeqWriteDataImpl(io: LlamaIoWriter, seqId: LlamaSeqId, fla
  * Port of `llama_context::state_seq_read_data(io, seq_id, flags)`.
  */
 fun LlamaContext.stateSeqReadDataImpl(io: LlamaIoReader, seqId: LlamaSeqId, flags: Int): Long {
-    // TODO: delegate to memory module: memory.stateRead(io, seqId, flags)
+    val mem = memory
+    if (mem != null) {
+        val adapter = object : LlamaIoRead {
+            override fun read(size: Int): ByteArray = io.read(size)
+            override fun readTo(dst: ByteArray, size: Int) { io.readTo(dst, size) }
+            override fun nBytes(): Long = io.nBytes()
+        }
+        mem.stateRead(adapter, seqId, flags)
+    }
     return io.nBytes()
 }
 

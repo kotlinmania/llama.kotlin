@@ -256,6 +256,37 @@ class LlamaContext(
     var kvCaches: Array<KVCache>? = null
         private set
 
+    /** Abstract memory interface (may be KV cache, recurrent, or hybrid). */
+    var memory: LlamaMemory? = null
+        internal set
+
+    // -- threadpools (opaque handles, mirrors C++ ggml_threadpool_t) --
+    var threadpool: Any? = null
+        internal set
+    var threadpoolBatch: Any? = null
+        internal set
+
+    // -- abort callback --
+    var abortCallback: (() -> Boolean)? = null
+        internal set
+
+    // -- LoRA adapters: adapter → scale --
+    val loras: MutableMap<Any, Float> = mutableMapOf()
+
+    // -- batch allocator --
+    var balloc: LlamaBatchAllocr? = null
+        internal set
+
+    // -- optimization context (for fine-tuning) --
+    var optCtx: Any? = null
+        internal set
+
+    // -- graph results (previous and reserved) --
+    var gfResPrev: Any? = null
+        internal set
+    var gfResReserve: Any? = null
+        internal set
+
     // -- decode output (2-d array: [nOutputs][nVocab]) --
     var logits: FloatArray? = null
         internal set
@@ -399,6 +430,19 @@ class LlamaContext(
      */
     fun getEmbeddingsSeq(seqId: LlamaSeqId): FloatArray? = embdSeq[seqId]
 
+    /** Return the sampled tokens array. Mirrors `llama_context::get_sampled_tokens()`. */
+    fun getSampledTokens(): IntArray? = sampling.sampled
+
+    // -----------------------------------------------------------------------
+    // Model / cparams accessors
+    // -----------------------------------------------------------------------
+
+    fun getModel(): LlamaModel = model
+    fun getCparams(): LlamaCParams = cparams
+
+    /** Return the abstract memory interface (KV cache). */
+    fun getMemory(): LlamaMemory? = memory
+
     // -----------------------------------------------------------------------
     // Thread configuration
     // -----------------------------------------------------------------------
@@ -406,6 +450,16 @@ class LlamaContext(
     fun setNThreads(nThreads: Int, nThreadsBatch: Int) {
         cparams.nThreads = nThreads
         cparams.nThreadsBatch = nThreadsBatch
+    }
+
+    fun attachThreadpool(threadpool: Any?, threadpoolBatch: Any?) {
+        this.threadpool = threadpool
+        this.threadpoolBatch = threadpoolBatch ?: threadpool
+    }
+
+    fun detachThreadpool() {
+        this.threadpool = null
+        this.threadpoolBatch = null
     }
 
     // -----------------------------------------------------------------------
@@ -417,11 +471,18 @@ class LlamaContext(
     }
 
     fun setCausalAttn(value: Boolean) {
+        if (cparams.causalAttn == value) return
         cparams.causalAttn = value
+        schedNeedReserve = true
     }
 
     fun setWarmup(value: Boolean) {
+        if (cparams.warmup == value) return
         cparams.warmup = value
+    }
+
+    fun setAbortCallback(callback: (() -> Boolean)?) {
+        this.abortCallback = callback
     }
 
     // -----------------------------------------------------------------------
@@ -594,6 +655,102 @@ class LlamaContext(
 
     fun stateSeqSetData(seqId: LlamaSeqId, src: ByteArray, size: Long): Long =
         stateSeqSetDataImpl(seqId, src, size)
+
+    /**
+     * Save full context state to a file. Mirrors `llama_context::state_save_file()`.
+     * Writes magic, version, token prompt, then state data via [stateWriteDataImpl].
+     */
+    fun stateSaveFile(filepath: String, tokens: IntArray, nTokenCount: Int): Boolean {
+        // TODO: implement file I/O when LlamaFile is available
+        return false
+    }
+
+    /**
+     * Load full context state from a file. Mirrors `llama_context::state_load_file()`.
+     * Reads magic/version, prompt tokens, then restores state via [stateReadDataImpl].
+     */
+    fun stateLoadFile(
+        filepath: String,
+        tokensOut: IntArray,
+        nTokenCapacity: Int,
+    ): Pair<Boolean, Int> {
+        // TODO: implement file I/O when LlamaFile is available
+        return Pair(false, 0)
+    }
+
+    /**
+     * Save a single sequence state to a file. Mirrors `llama_context::state_seq_save_file()`.
+     */
+    fun stateSeqSaveFile(
+        seqId: LlamaSeqId,
+        filepath: String,
+        tokens: IntArray,
+        nTokenCount: Int,
+    ): Long {
+        // TODO: implement file I/O when LlamaFile is available
+        return 0L
+    }
+
+    /**
+     * Load a single sequence state from a file. Mirrors `llama_context::state_seq_load_file()`.
+     */
+    fun stateSeqLoadFile(
+        seqId: LlamaSeqId,
+        filepath: String,
+        tokensOut: IntArray,
+        nTokenCapacity: Int,
+    ): Pair<Long, Int> {
+        // TODO: implement file I/O when LlamaFile is available
+        return Pair(0L, 0)
+    }
+
+    // -----------------------------------------------------------------------
+    // LoRA adapter management
+    // -----------------------------------------------------------------------
+
+    /**
+     * Set LoRA adapters with their scales. Mirrors `llama_context::set_adapters_lora()`.
+     */
+    fun setAdaptersLora(adapters: List<Any>, scales: FloatArray) {
+        loras.clear()
+        for (i in adapters.indices) {
+            if (scales[i] != 0.0f) {
+                loras[adapters[i]] = scales[i]
+            }
+        }
+        schedNeedReserve = true
+    }
+
+    /**
+     * Check if the provided adapters+scales match what's currently loaded.
+     * Mirrors `llama_context::adapters_lora_are_same()`.
+     */
+    fun adaptersLoraAreSame(adapters: List<Any>, scales: FloatArray): Boolean {
+        var nNonZero = 0
+        for (i in adapters.indices) {
+            if (scales[i] == 0.0f) continue
+            nNonZero++
+            val existing = loras[adapters[i]]
+            if (existing == null || existing != scales[i]) return false
+        }
+        return nNonZero == loras.size
+    }
+
+    // -----------------------------------------------------------------------
+    // Graph callback
+    // -----------------------------------------------------------------------
+
+    /**
+     * Return a naming/backend-assignment callback for graph building.
+     * Mirrors `llama_context::graph_get_cb()`.
+     */
+    fun graphGetCb(): (GGMLTensor, String, Int) -> Unit = { cur, name, il ->
+        if (il >= 0) {
+            cur.name = "$name-$il"
+        } else {
+            cur.name = name
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Performance
