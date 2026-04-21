@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the design for implementing tensor operations in the Kotlin Native port of llama.cpp. It focuses on the actual computation functionality for tensor operations, which is one of the next steps identified in the KOTLIN_PORT_STATUS.md file.
+This document outlines the design for implementing tensor operations in the Kotlin Native port of llama.cpp. It focuses on the actual computation functionality for tensor operations, which is one of the next steps identified in the port_status_report.md file.
 
 ## Tensor Data Structure
 
@@ -381,6 +381,6 @@ fun add(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
 
 ## Conclusion
 
-This design document outlines the approach for implementing tensor operations in the Kotlin Native port of llama.cpp. It provides a roadmap for future implementation, focusing on the actual computation functionality for tensor operations, which is one of the next steps identified in the KOTLIN_PORT_STATUS.md file.
+This design document outlines the approach for implementing tensor operations in the Kotlin Native port of llama.cpp. It provides a roadmap for future implementation, focusing on the actual computation functionality for tensor operations, which is one of the next steps identified in the port_status_report.md file.
 
 The implementation strategy involves creating a new file called `GGMLComputeOps.kt` that will contain the actual computation functionality for tensor operations, separate from the tensor creation and management functions in `GGMLOps.kt`. This separation allows for cleaner code organization and easier maintenance.
