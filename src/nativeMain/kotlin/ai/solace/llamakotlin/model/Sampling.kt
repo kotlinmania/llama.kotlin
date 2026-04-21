@@ -1,4 +1,4 @@
-// port-lint: source src/llama-sampling.cpp
+// port-lint: source llama.cpp/src/llama-sampling.cpp
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*
@@ -7,6 +7,17 @@ import kotlin.random.Random
 
 /**
  * Token data structure for sampling.
+ *
+ * Holds the token id, its raw logit from the model, and (after softmax) the
+ * normalised probability. The [logit] and [prob] fields are mutable because
+ * the various sampling stages (penalties, temperature, filtering) modify them
+ * in-place for efficiency.
+ *
+ * Note: llama.cpp does not have a separate `llama-sampling.cpp` source file;
+ * sampling logic is spread across `llama-sampler.cpp` and the higher-level
+ * `common/sampling.cpp`. This Kotlin module consolidates the core sampling
+ * strategies (temperature, top-k, top-p, min-p, TFS, locally-typical,
+ * mirostat, repetition/frequency/presence penalties) in one place.
  */
 data class TokenData(
     val id: Int,
@@ -16,22 +27,49 @@ data class TokenData(
 
 /**
  * Sampling configuration parameters.
+ *
+ * All fields have sensible defaults that correspond to "greedy with full
+ * distribution" (temperature 1, no filtering). Callers typically customise a
+ * few fields — e.g. `temperature = 0.8f, topP = 0.95f` — and leave the rest
+ * at their defaults.
+ *
+ * @property temperature Softmax temperature. Values < 1 sharpen, > 1 flatten.
+ *   A value of 0 selects greedy (argmax) sampling.
+ * @property topK Keep only the top-k most probable tokens (-1 = disabled).
+ * @property topP Nucleus sampling: keep tokens whose cumulative probability
+ *   reaches this threshold (1.0 = disabled).
+ * @property minP Minimum probability threshold, expressed as a fraction of the
+ *   highest-probability token (0.0 = disabled).
+ * @property tfsZ Tail Free Sampling z parameter (1.0 = disabled).
+ * @property locallyTypical Locally-typical sampling p parameter (1.0 = disabled).
+ * @property penaltyRepeat Repetition penalty multiplier (1.0 = disabled).
+ * @property penaltyFreq Frequency penalty: subtracted proportional to how many
+ *   times a token has appeared (0.0 = disabled).
+ * @property penaltyPresent Presence penalty: subtracted once for any token that
+ *   has appeared before (0.0 = disabled).
+ * @property mirostat Mirostat mode: 0 = disabled, 1 = v1, 2 = v2.
+ * @property mirostatTau Target surprise (entropy) for Mirostat.
+ * @property mirostatEta Mirostat learning rate.
+ * @property penalizeNl Whether to apply repetition penalties to newline tokens.
+ * @property seed Random seed for reproducibility.
+ * @property grammar Optional grammar constraint applied before sampling.
  */
 data class SamplingConfig(
     val temperature: Float = 1.0f,
-    val topK: Int = -1, // -1 means no top-k filtering
-    val topP: Float = 1.0f, // 1.0 means no top-p filtering
-    val minP: Float = 0.0f, // Minimum probability threshold
-    val tfsZ: Float = 1.0f, // Tail free sampling parameter
-    val locallyTypical: Float = 1.0f, // Locally typical sampling parameter
-    val penaltyRepeat: Float = 1.0f, // Repetition penalty
-    val penaltyFreq: Float = 0.0f, // Frequency penalty
-    val penaltyPresent: Float = 0.0f, // Presence penalty
-    val mirostat: Int = 0, // Mirostat sampling mode (0=disabled, 1=v1, 2=v2)
-    val mirostatTau: Float = 5.0f, // Mirostat target entropy
-    val mirostatEta: Float = 0.1f, // Mirostat learning rate
-    val penalizeNl: Boolean = false, // Whether to penalize newlines
-    val seed: Int = Random.nextInt() // Random seed
+    val topK: Int = -1,
+    val topP: Float = 1.0f,
+    val minP: Float = 0.0f,
+    val tfsZ: Float = 1.0f,
+    val locallyTypical: Float = 1.0f,
+    val penaltyRepeat: Float = 1.0f,
+    val penaltyFreq: Float = 0.0f,
+    val penaltyPresent: Float = 0.0f,
+    val mirostat: Int = 0,
+    val mirostatTau: Float = 5.0f,
+    val mirostatEta: Float = 0.1f,
+    val penalizeNl: Boolean = false,
+    val seed: Int = Random.nextInt(),
+    val grammar: LlamaGrammar? = null
 )
 
 /**
@@ -50,15 +88,32 @@ class SamplingContext(
     
     /**
      * Sample a token from the given logits tensor.
+     *
+     * The full pipeline is:
+     * 1. Convert logits to [TokenData] candidates.
+     * 2. Apply grammar constraints (if configured).
+     * 3. Apply repetition / frequency / presence penalties.
+     * 4. Apply temperature scaling.
+     * 5. Softmax → probabilities.
+     * 6. Apply distribution filters (top-k, top-p, min-p, TFS, locally-typical).
+     * 7. Sample from the filtered distribution (or use Mirostat).
+     * 8. Feed the accepted token back to the grammar (if configured).
+     *
+     * @param tokenPieceFn Optional function mapping token id to its string piece.
+     *   Required when grammar constraints are active.
+     * @param isEogFn Optional function returning true for end-of-generation tokens.
+     *   Required when grammar constraints are active.
      */
     fun sample(
         graphAllocator: GGMLGraphAllocator,
         logits: GGMLTensor,
-        penaltyTokens: List<Int> = emptyList()
+        penaltyTokens: List<Int> = emptyList(),
+        tokenPieceFn: ((Int) -> String)? = null,
+        isEogFn: ((Int) -> Boolean)? = null
     ): Int {
         require(logits.type == GGMLType.F32) { "Logits must be F32 tensor" }
         require(logits.ne[0].toInt() == vocabSize) { "Logits dimension mismatch" }
-        
+
         // Convert logits to token data array
         val candidates = Array(vocabSize) { i ->
             TokenData(
@@ -66,49 +121,46 @@ class SamplingContext(
                 logit = logits.getFloat(graphAllocator, i)
             )
         }
-        
+
+        // Apply grammar constraints (before penalties, as in llama.cpp)
+        config.grammar?.let { grammar ->
+            val pieceFn = tokenPieceFn
+                ?: throw IllegalStateException("tokenPieceFn required when grammar is set")
+            val eogFn = isEogFn ?: { false }
+            grammar.apply(candidates, pieceFn, eogFn)
+        }
+
         // Apply penalties
         applyPenalties(candidates, penaltyTokens)
-        
+
         // Apply temperature
         if (config.temperature != 1.0f && config.temperature > 0.0f) {
             for (candidate in candidates) {
                 candidate.logit /= config.temperature
             }
         }
-        
+
         // Convert logits to probabilities
         softmax(candidates)
-        
+
         // Apply sampling strategies
         val sampledId = when {
             config.mirostat == 1 -> sampleMirostatV1(candidates)
             config.mirostat == 2 -> sampleMirostatV2(candidates)
             else -> {
-                // Apply various filters
-                if (config.topK > 0) {
-                    topKFilter(candidates, config.topK)
-                }
-                
-                if (config.topP < 1.0f) {
-                    topPFilter(candidates, config.topP)
-                }
-                
-                if (config.minP > 0.0f) {
-                    minPFilter(candidates, config.minP)
-                }
-                
-                if (config.tfsZ < 1.0f) {
-                    tailFreeSampling(candidates, config.tfsZ)
-                }
-                
-                if (config.locallyTypical < 1.0f) {
-                    locallyTypicalSampling(candidates, config.locallyTypical)
-                }
-                
-                // Sample from remaining candidates
+                if (config.topK > 0) topKFilter(candidates, config.topK)
+                if (config.topP < 1.0f) topPFilter(candidates, config.topP)
+                if (config.minP > 0.0f) minPFilter(candidates, config.minP)
+                if (config.tfsZ < 1.0f) tailFreeSampling(candidates, config.tfsZ)
+                if (config.locallyTypical < 1.0f) locallyTypicalSampling(candidates, config.locallyTypical)
                 sampleToken(candidates)
             }
+        }
+
+        // Feed accepted token to grammar
+        config.grammar?.let { grammar ->
+            val piece = tokenPieceFn?.invoke(sampledId) ?: ""
+            if (piece.isNotEmpty()) grammar.acceptToken(sampledId, piece)
         }
         
         // Update token history
