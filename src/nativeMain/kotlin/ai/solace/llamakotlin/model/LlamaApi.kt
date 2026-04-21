@@ -1412,7 +1412,7 @@ fun llamaStateSeqGetSizeExt(
     ctx: LlamaContext,
     seqId: LlamaSeqId,
     flags: UInt,
-): ULong = ctx.stateSeqGetSizeImpl(seqId, flags.toInt()).toULong()
+): ULong = ctx.stateSeqGetSize(seqId, flags.toInt()).toULong()
 
 /** Get state data with flags. Maps to `llama_state_seq_get_data_ext()`. */
 fun llamaStateSeqGetDataExt(
@@ -1420,10 +1420,10 @@ fun llamaStateSeqGetDataExt(
     seqId: LlamaSeqId,
     flags: UInt,
 ): ByteArray? {
-    val size = ctx.stateSeqGetSizeImpl(seqId, flags.toInt())
+    val size = ctx.stateSeqGetSize(seqId, flags.toInt())
     if (size <= 0) return null
     val dst = ByteArray(size.toInt())
-    ctx.stateSeqGetDataImpl(seqId, dst, size, flags.toInt())
+    ctx.stateSeqGetData(seqId, dst, size, flags.toInt())
     return dst
 }
 
@@ -1433,7 +1433,7 @@ fun llamaStateSeqSetDataExt(
     data: ByteArray,
     destSeqId: LlamaSeqId,
     flags: UInt,
-): ULong = ctx.stateSeqSetDataImpl(destSeqId, data, data.size.toLong(), flags.toInt()).toULong()
+): ULong = ctx.stateSeqSetData(destSeqId, data, data.size.toLong(), flags.toInt()).toULong()
 
 // ---------------------------------------------------------------------------
 // Sequence state file I/O

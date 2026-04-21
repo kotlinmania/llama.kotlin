@@ -5,6 +5,100 @@ import ai.solace.llamakotlin.core.*
 import kotlinx.cinterop.toKString
 
 // =============================================================================
+// LlamaBatch – the user-facing batch  (maps to llama_batch from llama.h)
+// =============================================================================
+
+/**
+ * A batch of tokens (or embeddings) to process.
+ *
+ * Exactly one of [tokens] or [embeddings] must be non-null.
+ * Mirrors `struct llama_batch` from `llama.h`.
+ */
+data class LlamaBatch(
+    val nTokens: Int = 0,
+    val tokens: IntArray? = null,
+    val embeddings: FloatArray? = null,
+    val nEmbeddings: Int = 0,
+    val pos: IntArray? = null,
+    val nSeqId: IntArray? = null,
+    val seqId: Array<IntArray>? = null,
+    val logits: BooleanArray? = null,
+) {
+    init {
+        require((tokens != null) xor (embeddings != null)) {
+            "Exactly one of tokens or embeddings must be provided"
+        }
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is LlamaBatch) return false
+        return nTokens == other.nTokens &&
+            tokens.contentEquals(other.tokens) &&
+            embeddings.contentEquals(other.embeddings)
+    }
+
+    override fun hashCode(): Int {
+        var result = nTokens
+        result = 31 * result + (tokens?.contentHashCode() ?: 0)
+        result = 31 * result + (embeddings?.contentHashCode() ?: 0)
+        return result
+    }
+}
+
+// =============================================================================
+// LlamaUBatch – the micro-batch scheduling unit  (maps to llama_ubatch)
+// =============================================================================
+
+/**
+ * A contiguous sub-range of a [LlamaBatch] that fits within the micro-batch
+ * budget (`nUbatch`). This is the unit actually submitted to graph execution.
+ */
+data class LlamaUBatch(
+    val nTokens: Int = 0,
+    val nSeqTokens: Int = 0,
+    val nSeqs: Int = 0,
+    /** Number of unique sequence IDs in this ubatch. */
+    val nSeqsUnq: Int = 0,
+    /** Number of position dimensions per token/embedding (1 for normal, 4 for M-RoPE). */
+    val nPos: Int = 1,
+    val tokens: IntArray? = null,
+    val embeddings: FloatArray? = null,
+    /** Positions array of size [nTokens * nPos]. */
+    val pos: IntArray? = null,
+    val nSeqId: IntArray? = null,
+    val seqId: Array<IntArray>? = null,
+    /** Unique sequence IDs present in this ubatch. Size = [nSeqsUnq]. */
+    val seqIdUnq: IntArray? = null,
+    /**
+     * Mapping from sequence ID → index in [0, nSeqsUnq).
+     * Size = LLAMA_MAX_SEQ (or large enough for all seq IDs).
+     * Used for pooled embedding extraction.
+     */
+    val seqIdx: IntArray? = null,
+    val output: BooleanArray? = null,
+    val equalSeqs: Boolean = false,
+) {
+    /** True when positions are multi-dimensional (M-RoPE with ≥3 dimensions). */
+    fun isPos2d(): Boolean = nPos >= 3
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is LlamaUBatch) return false
+        return nTokens == other.nTokens && equalSeqs == other.equalSeqs
+    }
+
+    override fun hashCode(): Int = nTokens * 31 + equalSeqs.hashCode()
+}
+
+// =============================================================================
+// SwapInfo – pair of indices swapped during output reordering
+// =============================================================================
+
+/** Pair of indices swapped during output reordering. */
+data class SwapInfo(val i0: Int, val i1: Int)
+
+// =============================================================================
 // LlamaUBatchInternal – the micro-batch unit used by the batch allocator
 // Ported from: llama-batch.h  struct llama_ubatch
 // =============================================================================
@@ -12,8 +106,8 @@ import kotlinx.cinterop.toKString
 /**
  * Internal micro-batch used by the batch allocator during ubatch splitting.
  *
- * This is the **internal** counterpart of the public [LlamaUBatch] declared in
- * `LlamaAttention.kt`. It carries the additional bookkeeping arrays (`nSeqId`,
+ * This is the **internal** counterpart of the public [LlamaUBatch] declared
+ * above. It carries the additional bookkeeping arrays (`nSeqId`,
  * `seqIdUnq`, `seqIdx`, mutable data ownership) that the splitting logic needs
  * but the external API does not expose.
  *
@@ -51,6 +145,31 @@ data class LlamaUBatchInternal(
 ) {
     /** `true` when multi-position (M-RoPE) mode is active. */
     fun isPos2d(): Boolean = nPos >= 3
+
+    /**
+     * Convert an internal micro-batch (from the batch allocator) to the public
+     * [LlamaUBatch] type used by graph building and memory contexts.
+     */
+    fun toLlamaUBatch(): LlamaUBatch {
+        return LlamaUBatch(
+            nTokens = nTokens,
+            nSeqTokens = nSeqTokens,
+            nSeqs = nSeqs,
+            nSeqsUnq = nSeqsUnq,
+            nPos = nPos,
+            tokens = token,
+            embeddings = embd,
+            pos = pos,
+            nSeqId = nSeqId,
+            seqId = seqId,
+            seqIdUnq = seqIdUnq,
+            seqIdx = seqIdx,
+            output = output?.let { bytes ->
+                BooleanArray(bytes.size) { i -> bytes[i] != 0.toByte() }
+            },
+            equalSeqs = equalSeqs,
+        )
+    }
 }
 
 /**
