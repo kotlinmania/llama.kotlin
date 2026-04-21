@@ -2,6 +2,8 @@
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*
+import ai.solace.llamakotlin.gguf.LlamaModelLoader
+import ai.solace.llamakotlin.gguf.TensorLoadFlags
 
 // =============================================================================
 // Model Architecture Enum
@@ -1039,34 +1041,452 @@ class LlamaModelData(
             count
         }
 
+    /** Total number of parameters (elements) across all loaded tensors. */
+    fun nParams(): Long = nElements()
+
+    /** Total byte size across all loaded tensors (accounts for quantization). */
+    fun nBytes(): Long =
+        tensorsByName.sumOf { (_, t) ->
+            var count = 1L
+            for (i in 0 until GGML_MAX_DIMS) count *= t.ne[i]
+            val bs = t.type.byteSize.toLong()
+            if (bs > 0) count * bs else count
+        }
+
     // -- stubs for loading (to be implemented when model-loader is ported) --
 
-    /** TODO: Populate [hparams] from GGUF metadata. */
-    fun loadHParams() {
-        // Will delegate to LlamaModelLoader once ported
+    /**
+     * Populate [hparams] from GGUF metadata.
+     *
+     * Ported from C++ `llama_model::load_hparams()`.
+     *
+     * @param ml  The model loader that provides metadata access.
+     */
+    fun loadHParams(ml: LlamaModelLoader) {
+        val kv = LlmKvHelper(arch)
+
+        // ---- store GGUF key-value metadata ----
+        ml.ggufContext.metadata.forEach { (k, v) ->
+            ggufKv[k] = v.toString()
+        }
+
+        // ---- general.name ----
+        ml.getKey<String>(kv(LlmKv.GENERAL_NAME), required = false)?.let { name = it }
+
+        if (hparams.vocabOnly || arch == LlamaModelArch.CLIP) return
+
+        // ---- basic shape ----
+        hparams.nCtxTrain = ml.getKey<Int>(kv(LlmKv.CONTEXT_LENGTH)) ?: 0
+        hparams.nEmbd     = ml.getKey<Int>(kv(LlmKv.EMBEDDING_LENGTH)) ?: 0
+        hparams.nLayer    = ml.getKey<Int>(kv(LlmKv.BLOCK_COUNT)) ?: 0
+        hparams.nExpert      = ml.getKey<Int>(kv(LlmKv.EXPERT_COUNT), required = false) ?: 0
+        hparams.nExpertUsed  = ml.getKey<Int>(kv(LlmKv.EXPERT_USED_COUNT), required = false) ?: 0
+
+        // ---- per-layer head counts and feed-forward sizes ----
+        val nLayer = hparams.nLayer
+        ml.getKeyOrArr(kv(LlmKv.FEED_FORWARD_LENGTH), hparams.nFfArr, nLayer, required = true)
+        ml.getKeyOrArr(kv(LlmKv.ATTENTION_HEAD_COUNT), hparams.nHeadArr, nLayer, required = true)
+
+        // n_head_kv defaults to n_head if absent
+        val hasHeadKv = ml.getKeyOrArr(
+            kv(LlmKv.ATTENTION_HEAD_COUNT_KV), hparams.nHeadKvArr, nLayer, required = false
+        )
+        if (!hasHeadKv) {
+            for (i in 0 until nLayer) hparams.nHeadKvArr[i] = hparams.nHeadArr[i]
+        }
+
+        // ---- RoPE ----
+        hparams.ropeFreqBaseTrain = ml.getKey<Float>(kv(LlmKv.ROPE_FREQ_BASE), required = false) ?: 10000.0f
+        ml.getKey<String>(kv(LlmKv.ROPE_SCALING_TYPE), required = false)?.let {
+            hparams.ropeScalingTypeTrain = LlamaRopeScalingType.fromName(it)
+        }
+        ml.getKey<Float>(kv(LlmKv.ROPE_SCALING_FACTOR), required = false)?.let { factor ->
+            if (factor != 0.0f) hparams.ropeFreqScaleTrain = 1.0f / factor
+        }
+        ml.getKey<Boolean>(kv(LlmKv.ROPE_SCALING_FINETUNED), required = false)?.let {
+            hparams.ropeFinetuned = it
+        }
+        ml.getKey<Float>(kv(LlmKv.ROPE_SCALING_ATTN_FACTOR), required = false)?.let {
+            hparams.ropeAttnFactor = it
+        }
+        ml.getKey<Int>(kv(LlmKv.ROPE_SCALING_ORIG_CTX_LEN), required = false)?.let {
+            hparams.nCtxOrigYarn = it
+        }
+
+        // ---- head dimensions ----
+        val defaultHeadK = hparams.nEmbd / hparams.nHead()
+        hparams.nEmbdHeadKFull = ml.getKey<Int>(kv(LlmKv.ATTENTION_KEY_LENGTH), required = false) ?: defaultHeadK
+        hparams.nEmbdHeadVFull = ml.getKey<Int>(kv(LlmKv.ATTENTION_VALUE_LENGTH), required = false) ?: hparams.nEmbdHeadKFull
+
+        // default SWA head dims to full dims
+        hparams.nEmbdHeadKSwa = hparams.nEmbdHeadKFull
+        hparams.nEmbdHeadVSwa = hparams.nEmbdHeadVFull
+
+        // ---- RoPE dimension count ----
+        hparams.nRotFull = ml.getKey<Int>(kv(LlmKv.ROPE_DIMENSION_COUNT), required = false)
+            ?: hparams.nEmbdHeadKFull
+        hparams.nRotSwa = hparams.nRotFull
+
+        // ---- MoE params (optional) ----
+        if (hparams.nExpert > 0) {
+            hparams.nFfExp = ml.getKey<Int>(kv(LlmKv.EXPERT_FEED_FORWARD_LENGTH), required = false)
+                ?: hparams.nFf()
+            ml.getKey<Int>(kv(LlmKv.EXPERT_SHARED_COUNT), required = false)?.let {
+                hparams.nExpertShared = it
+            }
+            ml.getKey<Int>(kv(LlmKv.EXPERT_GATING_FUNC), required = false)?.let {
+                hparams.expertGatingFunc = it
+            }
+        }
+
+        // ---- sliding window ----
+        ml.getKey<Int>(kv(LlmKv.ATTENTION_SLIDING_WINDOW), required = false)?.let {
+            hparams.nSwa = it
+        }
+
+        // ===================================================================
+        // Architecture-specific hparams + model type determination
+        // ===================================================================
+        when (arch) {
+            LlamaModelArch.LLAMA -> {
+                hparams.fNormRmsEps = ml.getKey<Float>(kv(LlmKv.ATTENTION_LAYERNORM_RMS_EPS)) ?: 1e-5f
+                hparams.nSwa = ml.getKey<Int>(kv(LlmKv.ATTENTION_SLIDING_WINDOW), required = false) ?: 0
+                if (hparams.nSwa != 0) {
+                    hparams.swaType = LlamaSwaType.STANDARD
+                }
+
+                type = when (hparams.nLayer) {
+                    16  -> LlamaModelType.TYPE_1B
+                    22  -> LlamaModelType.TYPE_1B
+                    26  -> LlamaModelType.TYPE_3B
+                    28  -> LlamaModelType.TYPE_3B
+                    32  -> when {
+                        hparams.nExpert == 8 -> LlamaModelType.TYPE_8x7B
+                        hparams.nHead() >= 64 -> LlamaModelType.TYPE_8B
+                        else -> LlamaModelType.TYPE_7B
+                    }
+                    40  -> LlamaModelType.TYPE_13B
+                    48  -> LlamaModelType.TYPE_34B
+                    56  -> if (hparams.nExpert == 8) LlamaModelType.TYPE_8x22B else LlamaModelType.TYPE_30B
+                    60  -> LlamaModelType.TYPE_30B
+                    80  -> when {
+                        hparams.nExpert == 8 -> LlamaModelType.TYPE_8x22B
+                        hparams.nHead() == hparams.nHeadKv() -> LlamaModelType.TYPE_65B
+                        else -> LlamaModelType.TYPE_70B
+                    }
+                    else -> LlamaModelType.UNKNOWN
+                }
+            }
+
+            LlamaModelArch.LLAMA4 -> {
+                hparams.fNormRmsEps = ml.getKey<Float>(kv(LlmKv.ATTENTION_LAYERNORM_RMS_EPS)) ?: 1e-5f
+                hparams.nSwa = ml.getKey<Int>(kv(LlmKv.ATTENTION_SLIDING_WINDOW), required = false) ?: 0
+                hparams.swaType = if (hparams.nSwa != 0) LlamaSwaType.CHUNKED else LlamaSwaType.NONE
+                hparams.nMoeLayerStep = ml.getKey<Int>(kv(LlmKv.INTERLEAVE_MOE_LAYER_STEP), required = false) ?: 0
+                ml.getKey<Int>(kv(LlmKv.EXPERT_FEED_FORWARD_LENGTH), required = false)?.let {
+                    hparams.nFfExp = it
+                }
+                ml.getKey<Int>(kv(LlmKv.EXPERT_SHARED_FEED_FORWARD_LENGTH), required = false)?.let {
+                    hparams.nFfShexp = it
+                }
+                ml.getKey<Int>(kv(LlmKv.EXPERT_GATING_FUNC), required = false)?.let {
+                    hparams.expertGatingFunc = it
+                }
+
+                type = when {
+                    hparams.nExpert == 16 -> LlamaModelType.TYPE_17B_16E
+                    hparams.nExpert == 128 -> LlamaModelType.TYPE_17B_128E
+                    else -> LlamaModelType.UNKNOWN
+                }
+            }
+
+            else -> {
+                // TODO: implement hparams loading for arch ${arch.ggufName}
+                println("WARNING: loadHParams not yet implemented for arch: ${arch.ggufName}")
+            }
+        }
     }
 
     /**
-     * TODO: Load weight tensors from a GGUF file into [layers] and
-     * global tensor fields.
+     * Load weight tensors from a GGUF file into [layers] and global tensor fields.
+     *
+     * Ported from C++ `llama_model::load_tensors()`.
+     *
+     * @param ml  The model loader that provides tensor creation.
+     * @return `true` on success.
      */
-    fun loadTensors(): Boolean {
-        // Will delegate to LlamaModelLoader once ported
+    fun loadTensors(ml: LlamaModelLoader): Boolean {
+        val hp = hparams
+        val tn = LlmTensorNameHelper(arch)
+
+        val nEmbd      = hp.nEmbd.toLong()
+        val nLayer     = hp.nLayer
+        val nVocab     = ml.nTensors.toLong() // approximation; actual vocab may be in metadata
+        // Attempt to read actual vocab size from metadata
+        val kv = LlmKvHelper(arch)
+        val nVocabActual: Long = ml.getKey<Int>(kv(LlmKv.VOCAB_SIZE), required = false)?.toLong()
+            ?: run {
+                // Infer from token_embd tensor shape
+                val tokEmbdMeta = ml.getTensorMeta(tn(LlmTensor.TOKEN_EMBD, "weight"))
+                tokEmbdMeta?.ne?.get(1) ?: 32000L
+            }
+
+        when (arch) {
+            LlamaModelArch.LLAMA, LlamaModelArch.LLAMA4 -> {
+                // ---- global tensors ----
+                tokEmbd = ml.createTensor(
+                    tn(LlmTensor.TOKEN_EMBD, "weight"),
+                    longArrayOf(nEmbd, nVocabActual),
+                    0
+                )
+                outputNorm = ml.createTensor(
+                    tn(LlmTensor.OUTPUT_NORM, "weight"),
+                    longArrayOf(nEmbd),
+                    0
+                )
+                output = ml.createTensor(
+                    tn(LlmTensor.OUTPUT, "weight"),
+                    longArrayOf(nEmbd, nVocabActual),
+                    TensorLoadFlags.NOT_REQUIRED
+                )
+                // If output is missing, it may be tied to token_embd
+                if (output == null) {
+                    output = ml.createTensor(
+                        tn(LlmTensor.TOKEN_EMBD, "weight"),
+                        longArrayOf(nEmbd, nVocabActual),
+                        TensorLoadFlags.DUPLICATED
+                    )
+                }
+
+                // ---- per-layer tensors ----
+                for (i in 0 until nLayer) {
+                    val layer = LlamaModelLayer()
+
+                    val nHead     = hp.nHead(i).toLong()
+                    val nHeadKv   = hp.nHeadKv(i).toLong()
+                    val nFf       = hp.nFf(i).toLong()
+                    val nEmbdHeadK = hp.nEmbdHeadK(i).toLong()
+                    val nEmbdHeadV = hp.nEmbdHeadV(i).toLong()
+                    val nEmbdKGqa = hp.nEmbdKGqa(i).toLong()
+                    val nEmbdVGqa = hp.nEmbdVGqa(i).toLong()
+
+                    layer.attnNorm = ml.createTensor(
+                        tn(LlmTensor.ATTN_NORM, "weight", bid = i),
+                        longArrayOf(nEmbd),
+                        0
+                    )
+
+                    layer.wq = ml.createTensor(
+                        tn(LlmTensor.ATTN_Q, "weight", bid = i),
+                        longArrayOf(nEmbd, nHead * nEmbdHeadK),
+                        0
+                    )
+                    layer.wk = ml.createTensor(
+                        tn(LlmTensor.ATTN_K, "weight", bid = i),
+                        longArrayOf(nEmbd, nEmbdKGqa),
+                        0
+                    )
+                    layer.wv = ml.createTensor(
+                        tn(LlmTensor.ATTN_V, "weight", bid = i),
+                        longArrayOf(nEmbd, nEmbdVGqa),
+                        0
+                    )
+                    layer.wo = ml.createTensor(
+                        tn(LlmTensor.ATTN_OUT, "weight", bid = i),
+                        longArrayOf(nHead * nEmbdHeadV, nEmbd),
+                        0
+                    )
+
+                    // optional per-layer attention norms (qk norm)
+                    layer.attnQNorm = ml.createTensor(
+                        tn(LlmTensor.ATTN_Q_NORM, "weight", bid = i),
+                        longArrayOf(nEmbdHeadK),
+                        TensorLoadFlags.NOT_REQUIRED
+                    )
+                    layer.attnKNorm = ml.createTensor(
+                        tn(LlmTensor.ATTN_K_NORM, "weight", bid = i),
+                        longArrayOf(nEmbdHeadK),
+                        TensorLoadFlags.NOT_REQUIRED
+                    )
+
+                    // optional rope factors
+                    layer.ropeLong = ml.createTensor(
+                        tn(LlmTensor.ROPE_FACTORS_LONG, "weight", bid = i),
+                        longArrayOf(hp.nRot(i).toLong() / 2),
+                        TensorLoadFlags.NOT_REQUIRED or TensorLoadFlags.DUPLICATED
+                    )
+                    layer.ropeShort = ml.createTensor(
+                        tn(LlmTensor.ROPE_FACTORS_SHORT, "weight", bid = i),
+                        longArrayOf(hp.nRot(i).toLong() / 2),
+                        TensorLoadFlags.NOT_REQUIRED or TensorLoadFlags.DUPLICATED
+                    )
+
+                    layer.ffnNorm = ml.createTensor(
+                        tn(LlmTensor.FFN_NORM, "weight", bid = i),
+                        longArrayOf(nEmbd),
+                        0
+                    )
+
+                    // Determine if this layer is MoE
+                    val isMoe = when {
+                        arch == LlamaModelArch.LLAMA4 && hp.nMoeLayerStep > 0 ->
+                            (i + 1) % hp.nMoeLayerStep == 0
+                        hp.nExpert > 0 -> true
+                        else -> false
+                    }
+
+                    if (isMoe) {
+                        val nExpert = hp.nExpert.toLong()
+                        val nFfExpL = if (hp.nFfExp > 0) hp.nFfExp.toLong() else nFf
+
+                        layer.ffnGateInp = ml.createTensor(
+                            tn(LlmTensor.FFN_GATE_INP, "weight", bid = i),
+                            longArrayOf(nEmbd, nExpert),
+                            0
+                        )
+
+                        layer.ffnGateExps = ml.createTensor(
+                            tn(LlmTensor.FFN_GATE_EXPS, "weight", bid = i),
+                            longArrayOf(nEmbd, nFfExpL, nExpert),
+                            TensorLoadFlags.NOT_REQUIRED
+                        )
+                        layer.ffnDownExps = ml.createTensor(
+                            tn(LlmTensor.FFN_DOWN_EXPS, "weight", bid = i),
+                            longArrayOf(nFfExpL, nEmbd, nExpert),
+                            TensorLoadFlags.NOT_REQUIRED
+                        )
+                        layer.ffnUpExps = ml.createTensor(
+                            tn(LlmTensor.FFN_UP_EXPS, "weight", bid = i),
+                            longArrayOf(nEmbd, nFfExpL, nExpert),
+                            TensorLoadFlags.NOT_REQUIRED
+                        )
+
+                        // shared expert (LLAMA4)
+                        if (arch == LlamaModelArch.LLAMA4 && hp.nFfShexp > 0) {
+                            val nFfShexpL = hp.nFfShexp.toLong()
+                            layer.ffnGateShexp = ml.createTensor(
+                                tn(LlmTensor.FFN_GATE_SHEXP, "weight", bid = i),
+                                longArrayOf(nEmbd, nFfShexpL),
+                                TensorLoadFlags.NOT_REQUIRED
+                            )
+                            layer.ffnDownShexp = ml.createTensor(
+                                tn(LlmTensor.FFN_DOWN_SHEXP, "weight", bid = i),
+                                longArrayOf(nFfShexpL, nEmbd),
+                                TensorLoadFlags.NOT_REQUIRED
+                            )
+                            layer.ffnUpShexp = ml.createTensor(
+                                tn(LlmTensor.FFN_UP_SHEXP, "weight", bid = i),
+                                longArrayOf(nEmbd, nFfShexpL),
+                                TensorLoadFlags.NOT_REQUIRED
+                            )
+                        }
+                    } else {
+                        // Dense FFN
+                        layer.ffnGate = ml.createTensor(
+                            tn(LlmTensor.FFN_GATE, "weight", bid = i),
+                            longArrayOf(nEmbd, nFf),
+                            0
+                        )
+                        layer.ffnDown = ml.createTensor(
+                            tn(LlmTensor.FFN_DOWN, "weight", bid = i),
+                            longArrayOf(nFf, nEmbd),
+                            0
+                        )
+                        layer.ffnUp = ml.createTensor(
+                            tn(LlmTensor.FFN_UP, "weight", bid = i),
+                            longArrayOf(nEmbd, nFf),
+                            0
+                        )
+                    }
+
+                    layers.add(layer)
+                }
+            }
+
+            else -> {
+                println("WARNING: loadTensors not yet implemented for arch: ${arch.ggufName}")
+                return true
+            }
+        }
+
+        // Register all created tensors in tensorsByName
+        fun register(name: String, tensor: GGMLTensor?) {
+            if (tensor != null) tensorsByName.add(name to tensor)
+        }
+
+        register(tn(LlmTensor.TOKEN_EMBD, "weight"), tokEmbd)
+        register(tn(LlmTensor.OUTPUT_NORM, "weight"), outputNorm)
+        register(tn(LlmTensor.OUTPUT, "weight"), output)
+
+        for ((i, layer) in layers.withIndex()) {
+            register(tn(LlmTensor.ATTN_NORM, "weight", bid = i), layer.attnNorm)
+            register(tn(LlmTensor.ATTN_Q, "weight", bid = i), layer.wq)
+            register(tn(LlmTensor.ATTN_K, "weight", bid = i), layer.wk)
+            register(tn(LlmTensor.ATTN_V, "weight", bid = i), layer.wv)
+            register(tn(LlmTensor.ATTN_OUT, "weight", bid = i), layer.wo)
+            register(tn(LlmTensor.ATTN_Q_NORM, "weight", bid = i), layer.attnQNorm)
+            register(tn(LlmTensor.ATTN_K_NORM, "weight", bid = i), layer.attnKNorm)
+            register(tn(LlmTensor.FFN_NORM, "weight", bid = i), layer.ffnNorm)
+            register(tn(LlmTensor.FFN_GATE, "weight", bid = i), layer.ffnGate)
+            register(tn(LlmTensor.FFN_DOWN, "weight", bid = i), layer.ffnDown)
+            register(tn(LlmTensor.FFN_UP, "weight", bid = i), layer.ffnUp)
+            register(tn(LlmTensor.FFN_GATE_INP, "weight", bid = i), layer.ffnGateInp)
+            register(tn(LlmTensor.FFN_GATE_EXPS, "weight", bid = i), layer.ffnGateExps)
+            register(tn(LlmTensor.FFN_DOWN_EXPS, "weight", bid = i), layer.ffnDownExps)
+            register(tn(LlmTensor.FFN_UP_EXPS, "weight", bid = i), layer.ffnUpExps)
+            register(tn(LlmTensor.FFN_GATE_SHEXP, "weight", bid = i), layer.ffnGateShexp)
+            register(tn(LlmTensor.FFN_DOWN_SHEXP, "weight", bid = i), layer.ffnDownShexp)
+            register(tn(LlmTensor.FFN_UP_SHEXP, "weight", bid = i), layer.ffnUpShexp)
+            register(tn(LlmTensor.ROPE_FACTORS_LONG, "weight", bid = i), layer.ropeLong)
+            register(tn(LlmTensor.ROPE_FACTORS_SHORT, "weight", bid = i), layer.ropeShort)
+        }
+
         return true
     }
 
-    /** Print a summary of the model to stdout. */
+    /**
+     * Print a comprehensive summary of the model to stdout.
+     *
+     * Ported from C++ `llama_model::print_info()`.
+     */
     fun printInfo() {
-        println("llama_model_info: arch   = ${archName()}")
-        println("llama_model_info: type   = ${typeName()}")
-        println("llama_model_info: name   = $name")
-        println("llama_model_info: nEmbd  = ${hparams.nEmbd}")
-        println("llama_model_info: nLayer = ${hparams.nLayer}")
-        println("llama_model_info: nHead  = ${hparams.nHead()}")
-        if (hparams.nExpert > 0) {
-            println("llama_model_info: nExpert     = ${hparams.nExpert}")
-            println("llama_model_info: nExpertUsed = ${hparams.nExpertUsed}")
+        val hp = hparams
+        println("llama_model_info: arch         = ${archName()}")
+        println("llama_model_info: type         = ${typeName()}")
+        println("llama_model_info: name         = $name")
+        println("llama_model_info: nEmbd        = ${hp.nEmbd}")
+        println("llama_model_info: nEmbdHeadK   = ${hp.nEmbdHeadKFull}")
+        println("llama_model_info: nEmbdHeadV   = ${hp.nEmbdHeadVFull}")
+        println("llama_model_info: nHead        = ${hp.nHead()}")
+        println("llama_model_info: nHeadKv      = ${hp.nHeadKv()}")
+        println("llama_model_info: nLayer       = ${hp.nLayer}")
+        println("llama_model_info: nCtxTrain    = ${hp.nCtxTrain}")
+        println("llama_model_info: nRot         = ${hp.nRotFull}")
+        println("llama_model_info: nFf          = ${hp.nFf()}")
+        if (hp.nExpert > 0) {
+            println("llama_model_info: nExpert      = ${hp.nExpert}")
+            println("llama_model_info: nExpertUsed  = ${hp.nExpertUsed}")
+            if (hp.nFfExp > 0) {
+                println("llama_model_info: nFfExp       = ${hp.nFfExp}")
+            }
+            if (hp.nFfShexp > 0) {
+                println("llama_model_info: nFfShexp     = ${hp.nFfShexp}")
+            }
         }
+        println("llama_model_info: fNormEps     = ${hp.fNormEps}")
+        println("llama_model_info: fNormRmsEps  = ${hp.fNormRmsEps}")
+        println("llama_model_info: ropeFreqBase = ${hp.ropeFreqBaseTrain}")
+        println("llama_model_info: ropeScaling  = ${hp.ropeScalingTypeTrain.displayName}")
+        if (hp.nSwa > 0) {
+            println("llama_model_info: nSwa         = ${hp.nSwa}")
+            println("llama_model_info: swaType      = ${hp.swaType}")
+        }
+        val nParams = nParams()
+        val nBytes = nBytes()
+        val bpw = if (nParams > 0) nBytes * 8.0 / nParams else 0.0
+        println("llama_model_info: nParams      = $nParams")
+        println("llama_model_info: nTensors     = ${tensorsByName.size}")
+        println("llama_model_info: BPW          = ${GGMLUtilities.formatDouble(bpw)}")
     }
 }
 

@@ -505,6 +505,50 @@ class LlamaModelLoader private constructor(
         return value as? List<Any>
     }
 
+    /**
+     * Read a per-layer array or a single scalar (broadcast to all layers).
+     *
+     * Mirrors the C++ helper `get_key_or_arr()`.  When the metadata value is an
+     * array, each element fills the corresponding layer slot.  When it is a
+     * scalar it is broadcast to every layer in [arr].
+     *
+     * @param key      GGUF metadata key.
+     * @param arr      Destination array (typically sized [nLayer]).
+     * @param nLayer   Number of layers to fill.
+     * @param required Throw if the key is missing.
+     * @return `true` if the key was found and [arr] was populated, `false` otherwise.
+     */
+    fun getKeyOrArr(key: String, arr: IntArray, nLayer: Int, required: Boolean = true): Boolean {
+        val raw = ggufContext.getMetadataValue(key)
+        if (raw == null) {
+            if (required) throw IllegalStateException("Key '$key' not found in model")
+            return false
+        }
+        when (raw) {
+            is Number -> {
+                val v = raw.toInt()
+                for (i in 0 until nLayer) arr[i] = v
+            }
+            is List<*> -> {
+                if (raw.size < nLayer) {
+                    throw IllegalStateException(
+                        "Array key '$key' has ${raw.size} elements but $nLayer layers expected"
+                    )
+                }
+                for (i in 0 until nLayer) {
+                    arr[i] = (raw[i] as Number).toInt()
+                }
+            }
+            else -> {
+                // try treating as single int
+                val v = raw.toString().toIntOrNull()
+                    ?: throw IllegalStateException("Key '$key' has unexpected type: ${raw::class}")
+                for (i in 0 until nLayer) arr[i] = v
+            }
+        }
+        return true
+    }
+
     /** Architecture name from metadata. */
     fun getArchName(): String = archName
 
