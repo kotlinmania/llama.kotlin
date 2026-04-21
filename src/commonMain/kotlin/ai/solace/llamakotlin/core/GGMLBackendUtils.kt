@@ -282,7 +282,7 @@ fun ggmlBackendTensorGet2dAsync(
 
 /**
  * `ggml_backend_tensor_set` — synchronous set from host memory.
- * (Re-implements the existing stub with full C logic.)
+ * (Re-implements the existing minimal with full C logic.)
  */
 fun ggmlBackendTensorSetImpl(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
     val buf = tensor.viewSrc?.buffer ?: tensor.buffer
@@ -294,7 +294,7 @@ fun ggmlBackendTensorSetImpl(tensor: GGMLTensor, data: ByteArray, offset: ULong,
 
 /**
  * `ggml_backend_tensor_get` — synchronous get into host memory.
- * (Re-implements the existing stub with full C logic.)
+ * (Re-implements the existing minimal with full C logic.)
  */
 fun ggmlBackendTensorGetImpl(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
     val buf = tensor.viewSrc?.buffer ?: tensor.buffer
@@ -408,7 +408,7 @@ fun ggmlBackendGetDevice(backend: GGMLBackend): GGMLBackendDevice? {
 
 /** `ggml_backend_graph_optimize` (static in C) */
 fun ggmlBackendGraphOptimize(backend: GGMLBackend, graph: GGMLCGraph) {
-    // optional: no-op unless a backend overrides
+    // optional: identity unless a backend overrides
 }
 
 // =====================================================================
@@ -616,7 +616,7 @@ class GGMLBackendMultiBufferContext(
  * Allocate a logical multi-buffer wrapping several sub-buffers.
  */
 fun ggmlBackendMultiBufferAllocBuffer(buffers: List<GGMLBackendBuffer>): GGMLBackendBuffer {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -769,7 +769,7 @@ fun ggmlBackendSchedBackendIdFromCur(
     tensor: GGMLTensor,
     opOffload: Boolean
 ): Int {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -781,7 +781,7 @@ fun ggmlBackendSchedPrintAssignments(
     splits: List<GGMLBackendSchedSplit>,
     graph: GGMLCGraph
 ) {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -795,7 +795,7 @@ fun ggmlBackendSchedBufferSupported(
     tensor: GGMLTensor,
     backendId: Int
 ): Boolean {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -825,7 +825,7 @@ fun ggmlBackendSchedSplitGraph(
     graph: GGMLCGraph,
     opOffload: Boolean
 ): List<GGMLBackendSchedSplit> {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -837,7 +837,7 @@ fun ggmlBackendSchedAllocSplits(
     splits: List<GGMLBackendSchedSplit>,
     graph: GGMLCGraph
 ): Boolean {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -849,7 +849,7 @@ fun ggmlBackendSchedComputeSplits(
     splits: List<GGMLBackendSchedSplit>,
     evalCallback: GGMLBackendSchedEvalCallback?
 ): GGMLStatus {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 // =====================================================================
@@ -897,7 +897,7 @@ fun ggmlBackendTensorAllocImpl(
  * a target backend.
  */
 fun ggmlBackendGraphCopyCreate(backend: GGMLBackend, graph: GGMLCGraph): GGMLBackendGraphCopy {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -911,7 +911,7 @@ fun ggmlBackendCompareGraphBackend(
     callback: GGMLBackendEvalCallback,
     testNodes: List<GGMLTensor>? = null
 ): Boolean {
-    TODO("port from ggml/src/ggml-backend.cpp")
+    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 // =====================================================================

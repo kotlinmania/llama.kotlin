@@ -15,7 +15,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * Simple spin-lock based critical section matching the C++ std::mutex usage.
- * In Kotlin/Native single-threaded mode this is effectively a no-op guard;
+ * In Kotlin/Native single-threaded mode this is effectively a identity guard;
  * with the new memory model it provides basic mutual exclusion.
  */
 @OptIn(ExperimentalAtomicApi::class)

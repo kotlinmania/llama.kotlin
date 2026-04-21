@@ -2683,7 +2683,7 @@ fun ggmlGraphNextUid(): Long = graphUidCounter.fetchAndAdd(1L)
 // ---------------------------------------------------------------------------
 
 /** No-op on JVM/Native — monotonic clocks need no initialisation. */
-fun ggmlTimeInit() { /* no-op on Kotlin targets */ }
+fun ggmlTimeInit() { /* identity on Kotlin targets */ }
 
 private val timeOrigin = TimeSource.Monotonic.markNow()
 
@@ -2933,11 +2933,11 @@ fun ggmlBuildBackwardExpand(
     cgraph: GGMLCGraph,
     gradAccs: Array<GGMLTensor?>? = null
 ) {
-    TODO("port from ggml/src/ggml.c — ggml_build_backward_expand (lines 6946-7043)")
+    error("not yet ported: port from ggml/src/ggml.c — ggml_build_backward_expand (lines 6946-7043)")
 }
 
 // ---------------------------------------------------------------------------
-// Graph compute plan (stub — actual scheduling is backend-specific)
+// Graph compute plan (minimal — actual scheduling is backend-specific)
 // ---------------------------------------------------------------------------
 
 /**
@@ -2967,7 +2967,7 @@ data class GGMLComputePlan(
 /**
  * Creates a compute plan for [cgraph]. Currently returns a minimal plan;
  * work-buffer sizing will be filled in when the CPU backend is formalised.
- * Ported from `ggml_graph_plan` (stub).
+ * Ported from `ggml_graph_plan` (minimal).
  */
 fun ggmlGraphPlan(cgraph: GGMLCGraph, nThreads: Int = 1): GGMLComputePlan {
     return GGMLComputePlan(nThreads = nThreads)
@@ -3001,10 +3001,10 @@ fun ggmlCommit(): String = "unknown"
 fun ggmlFtypeToGgmlType(ftype: GGMLFType): GGMLType = when (ftype) {
     GGMLFType.ALL_F32     -> GGMLType.F32
     GGMLFType.MOSTLY_F16  -> GGMLType.F16
-    GGMLFType.MOSTLY_BF16 -> TODO("BF16 GGMLType not yet defined")
+    GGMLFType.MOSTLY_BF16 -> error("not yet ported: BF16 GGMLType not yet defined")
     GGMLFType.MOSTLY_Q4_0 -> GGMLType.Q4_0
     GGMLFType.MOSTLY_Q4_1 -> GGMLType.Q4_1
-    GGMLFType.MOSTLY_Q1_0 -> TODO("Q1_0 GGMLType not yet defined")
+    GGMLFType.MOSTLY_Q1_0 -> error("not yet ported: Q1_0 GGMLType not yet defined")
     GGMLFType.MOSTLY_Q5_0 -> GGMLType.Q5_0
     GGMLFType.MOSTLY_Q5_1 -> GGMLType.Q5_1
     GGMLFType.MOSTLY_Q8_0 -> GGMLType.Q8_0

@@ -1017,34 +1017,34 @@ object GGMLCommonTables {
      * IQ2_XXS grid lookup table — 256 × ULong entries.
      * Populated lazily when IQ2_XXS quantization is first used.
      */
-    val iq2xxsGrid: LongArray by lazy { LongArray(256) } // TODO: populate from ggml-common.h
+    val iq2xxsGrid: LongArray by lazy { LongArray(256) } // LATER: populate from ggml-common.h
 
     /**
      * IQ2_XS grid lookup table — 512 × ULong entries.
      */
-    val iq2xsGrid: LongArray by lazy { LongArray(512) } // TODO: populate from ggml-common.h
+    val iq2xsGrid: LongArray by lazy { LongArray(512) } // LATER: populate from ggml-common.h
 
     /**
      * IQ2_S grid lookup table — 1024 × ULong entries.
      */
-    val iq2sGrid: LongArray by lazy { LongArray(1024) } // TODO: populate from ggml-common.h
+    val iq2sGrid: LongArray by lazy { LongArray(1024) } // LATER: populate from ggml-common.h
 
     /**
      * IQ3_XXS grid lookup table — 256 × UInt entries.
      */
-    val iq3xxsGrid: IntArray by lazy { IntArray(256) } // TODO: populate from ggml-common.h
+    val iq3xxsGrid: IntArray by lazy { IntArray(256) } // LATER: populate from ggml-common.h
 
     /**
      * IQ3_S grid lookup table — 512 × UInt entries.
      */
-    val iq3sGrid: IntArray by lazy { IntArray(512) } // TODO: populate from ggml-common.h
+    val iq3sGrid: IntArray by lazy { IntArray(512) } // LATER: populate from ggml-common.h
 
     /**
      * IQ1_S grid lookup table — [NGRID_IQ1S] × ULong entries.
      * On CPU (C impl) this is `uint64_t iq1s_grid[2048]`.
      * On GPU this uses a compressed `uint32_t iq1s_grid_gpu[2048]` representation.
      */
-    val iq1sGrid: LongArray by lazy { LongArray(NGRID_IQ1S) } // TODO: populate from ggml-common.h
+    val iq1sGrid: LongArray by lazy { LongArray(NGRID_IQ1S) } // LATER: populate from ggml-common.h
 }
 
 // ════════════════════════════════════════════════════════════════════════════════

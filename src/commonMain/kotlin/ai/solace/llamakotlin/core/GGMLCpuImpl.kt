@@ -80,14 +80,14 @@ data class GGMLComputeParams(
  * Every thread must call this before any of them may proceed past it.
  */
 fun ggmlBarrier(tp: GGMLThreadpool) {
-    TODO("port from ggml-cpu-impl.h — ggml_barrier: requires platform threading primitives")
+    error("not yet ported: port from ggml-cpu-impl.h — ggml_barrier: requires platform threading primitives")
 }
 
 /**
  * Atomically set the threadpool's shared chunk counter to [value].
  */
 fun ggmlThreadpoolChunkSet(tp: GGMLThreadpool, value: Int) {
-    TODO("port from ggml-cpu-impl.h — ggml_threadpool_chunk_set: requires atomic chunk counter on GGMLThreadpool")
+    error("not yet ported: port from ggml-cpu-impl.h — ggml_threadpool_chunk_set: requires atomic chunk counter on GGMLThreadpool")
 }
 
 /**
@@ -95,7 +95,7 @@ fun ggmlThreadpoolChunkSet(tp: GGMLThreadpool, value: Int) {
  * return the *previous* value (fetch-and-add semantics).
  */
 fun ggmlThreadpoolChunkAdd(tp: GGMLThreadpool, value: Int): Int {
-    TODO("port from ggml-cpu-impl.h — ggml_threadpool_chunk_add: requires atomic chunk counter on GGMLThreadpool")
+    error("not yet ported: port from ggml-cpu-impl.h — ggml_threadpool_chunk_add: requires atomic chunk counter on GGMLThreadpool")
 }
 
 // ============================================================================

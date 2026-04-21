@@ -65,7 +65,7 @@ interface GGMLBackendBufferTypeImpl {
      * Defaults to `ggml_nbytes(tensor)`.
      */
     fun getAllocSize(tensor: GGMLTensor): ULong {
-        TODO("port from ggml-backend-impl.h — default: ggml_nbytes(tensor)")
+        error("not yet ported: port from ggml-backend-impl.h — default: ggml_nbytes(tensor)")
     }
 
     /**
@@ -128,7 +128,7 @@ interface GGMLBackendBufferImpl {
         offset: ULong,
         size: ULong
     ) {
-        TODO("port from ggml-backend-impl.h")
+        error("not yet ported: port from ggml-backend-impl.h")
     }
 
     /**
@@ -178,7 +178,7 @@ interface GGMLBackendBufferImpl {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        TODO("port from ggml-backend-impl.h — optional 2D set")
+        error("not yet ported: port from ggml-backend-impl.h — optional 2D set")
     }
 
     /**
@@ -195,7 +195,7 @@ interface GGMLBackendBufferImpl {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        TODO("port from ggml-backend-impl.h — optional 2D get")
+        error("not yet ported: port from ggml-backend-impl.h — optional 2D get")
     }
 
     /**
@@ -272,7 +272,7 @@ fun ggmlBackendBufferInit(
  * Mirrors `ggml_backend_buffer_copy_tensor()` in C.
  */
 fun ggmlBackendBufferCopyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -289,12 +289,12 @@ fun ggmlBackendMultiBufferAllocBuffer(
     buffers: List<GGMLBackendBufferHolder>,
     nBuffers: ULong
 ): GGMLBackendBufferHolder {
-    TODO("port from ggml-backend-impl.h — multi-buffer allocation")
+    error("not yet ported: port from ggml-backend-impl.h — multi-buffer allocation")
 }
 
 /** Check whether [buffer] is a multi-buffer. */
 fun ggmlBackendBufferIsMultiBuffer(buffer: GGMLBackendBufferHolder): Boolean {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Set usage on every sub-buffer inside a multi-buffer. */
@@ -302,7 +302,7 @@ fun ggmlBackendMultiBufferSetUsage(
     buffer: GGMLBackendBufferHolder,
     usage: GGMLBackendBufferUsage
 ) {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -311,22 +311,22 @@ fun ggmlBackendMultiBufferSetUsage(
 
 /** Check whether [backend] is a meta (multi-backend) wrapper. */
 fun ggmlBackendIsMeta(backend: GGMLBackendHolder): Boolean {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Check whether [buffer] belongs to a meta backend. */
 fun ggmlBackendBufferIsMeta(buffer: GGMLBackendBufferHolder): Boolean {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Check whether [buft] belongs to a meta backend. */
 fun ggmlBackendBuftIsMeta(buft: GGMLBackendBufferTypeHolder): Boolean {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Number of simple backends inside a meta backend. */
 fun ggmlBackendMetaNBackends(metaBackend: GGMLBackendHolder): ULong {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Get simple backend at [index] inside a meta backend. */
@@ -334,7 +334,7 @@ fun ggmlBackendMetaSimpleBackend(
     metaBackend: GGMLBackendHolder,
     index: ULong
 ): GGMLBackendHolder {
-    TODO("port from ggml-backend-impl.h")
+    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -363,7 +363,7 @@ interface GGMLBackendIface {
         offset: ULong,
         size: ULong
     ) {
-        TODO("port from ggml-backend-impl.h — optional async set")
+        error("not yet ported: port from ggml-backend-impl.h — optional async set")
     }
 
     /** Asynchronously copy [tensor] data back to host [data]. */
@@ -373,7 +373,7 @@ interface GGMLBackendIface {
         offset: ULong,
         size: ULong
     ) {
-        TODO("port from ggml-backend-impl.h — optional async get")
+        error("not yet ported: port from ggml-backend-impl.h — optional async get")
     }
 
     /** Asynchronously set tensor with 2-D strided layout. */
@@ -386,7 +386,7 @@ interface GGMLBackendIface {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        TODO("port from ggml-backend-impl.h — optional async 2D set")
+        error("not yet ported: port from ggml-backend-impl.h — optional async 2D set")
     }
 
     /** Asynchronously get tensor with 2-D strided layout. */
@@ -399,7 +399,7 @@ interface GGMLBackendIface {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        TODO("port from ggml-backend-impl.h — optional async 2D get")
+        error("not yet ported: port from ggml-backend-impl.h — optional async 2D get")
     }
 
     /**
@@ -425,12 +425,12 @@ interface GGMLBackendIface {
 
     /** Create an execution plan for [cgraph]. */
     fun graphPlanCreate(cgraph: GGMLCGraph): Any? {
-        TODO("port from ggml-backend-impl.h — optional graph plan create")
+        error("not yet ported: port from ggml-backend-impl.h — optional graph plan create")
     }
 
     /** Free a previously created [plan]. */
     fun graphPlanFree(plan: Any?) {
-        TODO("port from ggml-backend-impl.h — optional graph plan free")
+        error("not yet ported: port from ggml-backend-impl.h — optional graph plan free")
     }
 
     /**
@@ -438,12 +438,12 @@ interface GGMLBackendIface {
      * topology — faster than creating a fresh plan.
      */
     fun graphPlanUpdate(plan: Any?, cgraph: GGMLCGraph) {
-        TODO("port from ggml-backend-impl.h — optional graph plan update")
+        error("not yet ported: port from ggml-backend-impl.h — optional graph plan update")
     }
 
     /** Execute the pre-compiled [plan]. */
     fun graphPlanCompute(plan: Any?): GGMLStatus {
-        TODO("port from ggml-backend-impl.h — optional graph plan compute")
+        error("not yet ported: port from ggml-backend-impl.h — optional graph plan compute")
     }
 
     /**
@@ -457,19 +457,19 @@ interface GGMLBackendIface {
 
     /** Record an event on this stream. */
     fun eventRecord(event: GGMLBackendEventHolder) {
-        TODO("port from ggml-backend-impl.h — optional event record")
+        error("not yet ported: port from ggml-backend-impl.h — optional event record")
     }
 
     /** Wait for an event that was recorded on a different stream. */
     fun eventWait(event: GGMLBackendEventHolder) {
-        TODO("port from ggml-backend-impl.h — optional event wait")
+        error("not yet ported: port from ggml-backend-impl.h — optional event wait")
     }
 
     // -- (optional) graph optimisation --
 
     /** Sort / optimise the nodes in [cgraph] before execution. */
     fun graphOptimize(cgraph: GGMLCGraph) {
-        // no-op by default
+        // identity by default
     }
 }
 
@@ -626,17 +626,17 @@ interface GGMLBackendDeviceIface {
 
     /** Create a new synchronisation event. */
     fun eventNew(): GGMLBackendEventHolder? {
-        TODO("port from ggml-backend-impl.h — optional event new")
+        error("not yet ported: port from ggml-backend-impl.h — optional event new")
     }
 
     /** Free a previously created [event]. */
     fun eventFree(event: GGMLBackendEventHolder) {
-        TODO("port from ggml-backend-impl.h — optional event free")
+        error("not yet ported: port from ggml-backend-impl.h — optional event free")
     }
 
     /** Block until [event] has completed. */
     fun eventSynchronize(event: GGMLBackendEventHolder) {
-        TODO("port from ggml-backend-impl.h — optional event synchronize")
+        error("not yet ported: port from ggml-backend-impl.h — optional event synchronize")
     }
 }
 

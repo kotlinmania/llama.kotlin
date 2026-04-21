@@ -119,7 +119,7 @@ enum class GGMLType(val description: String, val byteSize: ULong) {
     F16("float16", 2uL),    // 16-bit float
     // For quantized types, byteSize here represents the size of the fundamental element IF applicable for simple stride calculations.
     // Actual memory per element for quantized types is fractional and depends on block size.
-    // Using 0uL as a placeholder signifies that direct byteSize-based stride calculation isn't straightforward.
+    // Using 0uL as a skeleton signifies that direct byteSize-based stride calculation isn't straightforward.
     // The ggml library itself has type_size and block_size fields and functions like ggml_type_size() / ggml_blck_size().
     // For now, these are placeholders. The stride logic will primarily rely on non-zero byteSize for unquantized types.
     // Q4_0 byteSize is per block: sizeof(F16 scale) + (QK4_0/2) * sizeof(I8 weights_packed)

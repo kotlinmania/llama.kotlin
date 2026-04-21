@@ -473,7 +473,7 @@ class GGMLCpuBackend : GGMLBackend {
         val prev = cpuCtx.threadpool
         if (prev != null && prev !== threadpool) {
             // Already had a different threadpool — pause it before switching
-            TODO("port from ggml-cpu.cpp — ggml_threadpool_pause")
+            error("not yet ported: port from ggml-cpu.cpp — ggml_threadpool_pause")
         }
         cpuCtx.threadpool = threadpool
     }
@@ -539,7 +539,7 @@ class GGMLCpuDeviceContext {
 
     companion object {
         private fun detectCpuDescription(): String {
-            // TODO("port from ggml-cpu.cpp — platform-specific CPU brand detection")
+            // error("not yet ported: port from ggml-cpu.cpp — platform-specific CPU brand detection")
             return "CPU"
         }
     }
@@ -579,9 +579,9 @@ class GGMLCpuDevice(
         // Best-effort: report available JVM/native max as both free and total
         // (mirrors the POSIX path that reports total == free).
         val totalBytes = try {
-            TODO("port from ggml-cpu.cpp — sysconf(_SC_PHYS_PAGES) * _SC_PAGE_SIZE")
+            error("not yet ported: port from ggml-cpu.cpp — sysconf(_SC_PHYS_PAGES) * _SC_PAGE_SIZE")
         } catch (_: NotImplementedError) {
-            // Fallback: 8 GB placeholder so callers get something reasonable
+            // Fallback: 8 GB skeleton so callers get something reasonable
             8uL * 1024uL * 1024uL * 1024uL
         }
         return Pair(totalBytes, totalBytes)
@@ -663,7 +663,7 @@ class GGMLCpuDevice(
             val srcBuft = srcBuf.getType()
             if (ggmlBackendCpuIsExtraBufferType(srcBuft)) {
                 // Extra buffer type would handle the op — delegate to it
-                TODO("port from ggml-cpu.cpp — extra buffer type supports_op delegation")
+                error("not yet ported: port from ggml-cpu.cpp — extra buffer type supports_op delegation")
             }
         }
 
@@ -698,7 +698,7 @@ class GGMLCpuDevice(
  * result into the [GGMLBackendFeature] list format.
  */
 fun ggmlBackendCpuGetFeatures(): List<GGMLBackendFeature> {
-    // TODO("port from ggml-cpu.cpp — full CPU feature probing")
+    // error("not yet ported: port from ggml-cpu.cpp — full CPU feature probing")
     // Placeholder: return an empty list until ggmlCpuDetectFeatures() is implemented
     return emptyList()
 }

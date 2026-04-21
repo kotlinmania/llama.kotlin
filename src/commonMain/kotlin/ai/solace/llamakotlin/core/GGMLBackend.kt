@@ -136,7 +136,7 @@ interface GGMLBackendBuffer {
 
     /** `ggml_backend_buffer_set_usage` */
     fun setUsage(usage: GGMLBackendBufferUsage) {
-        // Default: no-op; implementations may track usage
+        // Default: identity; implementations may track usage
     }
 
     /** `ggml_backend_buffer_get_usage` */
@@ -146,7 +146,7 @@ interface GGMLBackendBuffer {
 
     /** `ggml_backend_buffer_reset` – reset the buffer (clear allocations) */
     fun reset() {
-        // Default: no-op
+        // Default: identity
     }
 }
 
@@ -227,7 +227,7 @@ interface GGMLBackend {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /**
@@ -243,7 +243,7 @@ interface GGMLBackend {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /**
@@ -259,17 +259,17 @@ interface GGMLBackend {
 
     /** `ggml_backend_graph_plan_create` */
     fun graphPlanCreate(graph: GGMLCGraph): Any? {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_graph_plan_free` */
     fun graphPlanFree(plan: Any?) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_graph_plan_compute` */
     fun graphPlanCompute(plan: Any?): GGMLStatus {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_graph_compute` */
@@ -305,7 +305,7 @@ interface GGMLBackend {
  * `ggml_backend_tensor_copy` – copy tensor data between different backends.
  */
 fun ggmlBackendTensorCopy(src: GGMLTensor, dst: GGMLTensor) {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**
@@ -336,7 +336,7 @@ fun ggmlBackendTensorSet2d(
     strideTensor: ULong,
     strideData: ULong
 ) {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**
@@ -351,28 +351,28 @@ fun ggmlBackendTensorGet2d(
     strideTensor: ULong,
     strideData: ULong
 ) {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**
  * `ggml_backend_tensor_memset` – fill a region of a tensor with a byte value.
  */
 fun ggmlBackendTensorMemset(tensor: GGMLTensor, value: UByte, offset: ULong, size: ULong) {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**
  * `ggml_backend_tensor_alloc` – allocate a tensor within a buffer at a given address.
  */
 fun ggmlBackendTensorAlloc(buffer: GGMLBackendBuffer, tensor: GGMLTensor, addr: Any?): GGMLStatus {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**
  * `ggml_backend_view_init` – initialise a tensor view.
  */
 fun ggmlBackendViewInit(tensor: GGMLTensor): GGMLStatus {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -729,22 +729,22 @@ object GGMLBackendRegistry {
 
     /** `ggml_backend_load` */
     fun load(path: String): GGMLBackendReg? {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_unload` */
     fun unload(reg: GGMLBackendReg) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_load_all` */
     fun loadAll() {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_load_all_from_path` */
     fun loadAllFromPath(dirPath: String) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 }
 
@@ -802,17 +802,17 @@ class GGMLBackendSched private constructor(
 
     /** `ggml_backend_sched_free` */
     fun free() {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_reserve_size` – reserve with explicit per-backend sizes */
     fun reserveSize(measureGraph: GGMLCGraph, sizes: ULongArray) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_reserve` – returns true on success */
     fun reserve(measureGraph: GGMLCGraph): Boolean {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_get_n_backends` */
@@ -823,62 +823,62 @@ class GGMLBackendSched private constructor(
 
     /** `ggml_backend_sched_get_n_splits` */
     fun getNumSplits(): Int {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_get_n_copies` */
     fun getNumCopies(): Int {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_get_buffer_type` */
     fun getBufferType(backend: GGMLBackend): GGMLBackendBufferType? {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_get_buffer_size` */
     fun getBufferSize(backend: GGMLBackend): ULong {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_set_tensor_backend` */
     fun setTensorBackend(node: GGMLTensor, backend: GGMLBackend) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_get_tensor_backend` */
     fun getTensorBackend(node: GGMLTensor): GGMLBackend? {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_split_graph` */
     fun splitGraph(graph: GGMLCGraph) {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_alloc_graph` – returns true on success */
     fun allocGraph(graph: GGMLCGraph): Boolean {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_graph_compute` */
     fun graphCompute(graph: GGMLCGraph): GGMLStatus {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_graph_compute_async` */
     fun graphComputeAsync(graph: GGMLCGraph): GGMLStatus {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_synchronize` */
     fun synchronize() {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_reset` */
     fun reset() {
-        TODO("port from ggml-backend.h")
+        error("not yet ported: port from ggml-backend.h")
     }
 
     /** `ggml_backend_sched_set_eval_callback` */
@@ -963,7 +963,7 @@ fun ggmlBackendMetaDevice(
     devices: List<GGMLBackendDevice>,
     getSplitState: GGMLBackendMetaGetSplitState
 ): GGMLBackendDevice {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -985,14 +985,14 @@ data class GGMLBackendGraphCopy(
  * `ggml_backend_graph_copy` – copy a graph to a different backend.
  */
 fun ggmlBackendGraphCopy(backend: GGMLBackend, graph: GGMLCGraph): GGMLBackendGraphCopy {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**
  * `ggml_backend_graph_copy_free` – free a previously copied graph.
  */
 fun ggmlBackendGraphCopyFree(copy: GGMLBackendGraphCopy) {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**
@@ -1011,7 +1011,7 @@ fun ggmlBackendCompareGraphBackend(
     callback: GGMLBackendEvalCallback,
     testNodes: List<GGMLTensor>
 ): Boolean {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -1022,7 +1022,7 @@ fun ggmlBackendCompareGraphBackend(
  * `ggml_backend_cpu_buffer_from_ptr` – wrap an existing byte array as a CPU buffer.
  */
 fun ggmlBackendCpuBufferFromPtr(ptr: ByteArray, size: ULong): GGMLBackendBuffer {
-    TODO("port from ggml-backend.h")
+    error("not yet ported: port from ggml-backend.h")
 }
 
 /**

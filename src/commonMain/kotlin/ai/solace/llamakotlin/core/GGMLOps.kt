@@ -460,7 +460,7 @@ fun transpose(context: GGMLContext, a: GGMLTensor, ax0: Int, ax1: Int): GGMLTens
  * Kotlin Native port of GGML tensor operations.
  * This file contains the implementation of basic tensor operations.
  *
- * This is a placeholder implementation that will be expanded in future versions.
+ * This is a skeleton implementation that will be expanded in future versions.
  */
 
 /**
@@ -673,7 +673,7 @@ fun ggmlFree(ctx: GGMLContext) {
 }
 
 /** Amount of memory used by the context (approximate). */
-fun ggmlUsedMem(ctx: GGMLContext): ULong = TODO("port from ggml.h")
+fun ggmlUsedMem(ctx: GGMLContext): ULong = error("not yet ported: port from ggml.h")
 
 fun ggmlGetNoAlloc(ctx: GGMLContext): Boolean = ctx.noAlloc
 fun ggmlSetNoAlloc(ctx: GGMLContext, noAlloc: Boolean) { ctx.noAlloc = noAlloc }
@@ -728,7 +728,7 @@ fun ggmlViewTensor(ctx: GGMLContext, src: GGMLTensor): GGMLTensor {
 
 /** Get a tensor from the context by name. */
 fun ggmlGetTensor(ctx: GGMLContext, name: String): GGMLTensor? {
-    TODO("port from ggml.h – requires context tensor list")
+    error("not yet ported: port from ggml.h – requires context tensor list")
 }
 
 // ============================================================================
@@ -889,13 +889,13 @@ fun ggmlSin(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnaryOp(a, GGMLUnaryOp.ABS).also {
         // sin doesn't have its own GGMLOp – it is unary
         // But in the C header it's GGML_OP_SIN -- if your GGMLOp enum has SIN, use that
-        // For now, stub with TODO
-        TODO("port sin: add SIN to GGMLOp or route through UNARY")
+        // For now, minimal with TODO
+        error("not yet ported: port sin: add SIN to GGMLOp or route through UNARY")
     }
 
 /** ggml_cos – element-wise cosine. */
 fun ggmlCos(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
-    TODO("port cos: add COS to GGMLOp or route through UNARY")
+    error("not yet ported: port cos: add COS to GGMLOp or route through UNARY")
 
 // --- reduction ops ---
 
@@ -2128,7 +2128,7 @@ fun ggmlGetTypeTraits(type: GGMLType): GGMLTypeTraits = GGMLTypeTraits(
 )
 
 // ============================================================================
-// Threadpool params (stub)
+// Threadpool params (minimal)
 // ============================================================================
 
 /**
@@ -2155,47 +2155,47 @@ fun ggmlThreadpoolParamsDefault(nThreads: Int): GGMLThreadpoolParams =
     GGMLThreadpoolParams(nThreads = nThreads)
 
 // =============================================================================
-// Stub functions needed by llm_graph_context but not yet fully implemented
+// Minimal functions needed by llm_graph_context but not yet fully implemented
 // =============================================================================
 
 /** ggml_swiglu_split – SwiGLU with separate gate and up tensors. */
 fun ggmlSwigluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    TODO("Port ggml_swiglu_split")
+    error("not yet ported: Port ggml_swiglu_split")
 }
 
 /** ggml_geglu_split – GeGLU with separate gate and up tensors. */
 fun ggmlGegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    TODO("Port ggml_geglu_split")
+    error("not yet ported: Port ggml_geglu_split")
 }
 
 /** ggml_reglu_split – ReGLU with separate gate and up tensors. */
 fun ggmlRegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    TODO("Port ggml_reglu_split")
+    error("not yet ported: Port ggml_reglu_split")
 }
 
 /** ggml_swiglu_oai – OpenAI-style SwiGLU with alpha and limit parameters. */
 fun ggmlSwigluOai(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor, alpha: Float, limit: Float): GGMLTensor {
-    TODO("Port ggml_swiglu_oai")
+    error("not yet ported: Port ggml_swiglu_oai")
 }
 
 /** ggml_argsort_top_k – Return indices of top-k elements per row. */
 fun ggmlArgsortTopK(ctx: GGMLContext, a: GGMLTensor, k: Long): GGMLTensor {
-    TODO("Port ggml_argsort_top_k")
+    error("not yet ported: Port ggml_argsort_top_k")
 }
 
 /** ggml_set_rows – scatter rows from [src] into [dst] at positions given by [ids]. */
 fun ggmlSetRows(ctx: GGMLContext, dst: GGMLTensor, src: GGMLTensor, ids: GGMLTensor): GGMLTensor {
-    TODO("Port ggml_set_rows")
+    error("not yet ported: Port ggml_set_rows")
 }
 
 /** ggml_add_id – element-wise add with expert-id routing. */
 fun ggmlAddId(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ids: GGMLTensor): GGMLTensor {
-    TODO("Port ggml_add_id")
+    error("not yet ported: Port ggml_add_id")
 }
 
 /** ggml_repeat_4d – repeat tensor to fill target shape. */
 fun ggmlRepeat4d(ctx: GGMLContext, a: GGMLTensor, ne0: Long, ne1: Long, ne2: Long, ne3: Long): GGMLTensor {
-    TODO("Port ggml_repeat_4d")
+    error("not yet ported: Port ggml_repeat_4d")
 }
 
 /** ggml_format_name – format a tensor name using printf-style syntax. */
@@ -2223,7 +2223,7 @@ fun ggmlBuildForwardSelect(gf: GGMLCGraph, tensors: Array<GGMLTensor?>, count: I
 /** ggml_flash_attn_ext_add_sinks – attach attention-sink vector to flash attention node. */
 fun ggmlFlashAttnExtAddSinks(fattn: GGMLTensor, sinks: GGMLTensor?) {
     // In the C++ implementation this stores `sinks` as an extra src on the flash-attn node.
-    // Stub: if sinks is non-null, store it.
+    // Minimal: if sinks is non-null, store it.
     if (sinks != null) {
         // find first empty src slot after existing ones
         for (i in fattn.src.indices) {

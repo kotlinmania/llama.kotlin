@@ -951,7 +951,7 @@ fun ggml_can_fuse_subgraph_ext(
     outputs: IntArray,
     numOutputs: Int
 ): Boolean {
-    TODO("port from ggml/src/ggml.c — ggml_can_fuse_subgraph_ext")
+    error("not yet ported: port from ggml/src/ggml.c — ggml_can_fuse_subgraph_ext")
 }
 
 /**

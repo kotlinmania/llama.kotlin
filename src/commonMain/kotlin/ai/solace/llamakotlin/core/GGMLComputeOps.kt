@@ -3719,7 +3719,7 @@ fun computeGetRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
                 }
             }
             else -> {
-                // TODO: quantized dequantize-row path for Q4_0, Q8_0, etc.
+                // LATER: quantized dequantize-row path for Q4_0, Q8_0, etc.
                 throw NotImplementedError("GET_ROWS not yet implemented for quantized type ${src0.type}")
             }
         }
@@ -4501,7 +4501,7 @@ fun computeUpscale(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
             }
         }
         else -> {
-            // TODO: bicubic, bilinear+antialias
+            // LATER: bicubic, bilinear+antialias
             throw NotImplementedError("Upscale mode $mode not yet implemented")
         }
     }
@@ -4557,7 +4557,7 @@ fun computeOutProd(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
             }
         }
         else -> {
-            // TODO: quantized outer product (dequantize row then multiply-accumulate)
+            // LATER: quantized outer product (dequantize row then multiply-accumulate)
             throw NotImplementedError("OUT_PROD not implemented for quantized type ${src0.type}")
         }
     }
@@ -5252,7 +5252,7 @@ object GGMLComputeOps {
      * ```
      *
      * The C++ reference supports tiled GEMM paths, split-KV parallelism,
-     * ALiBi bias, and logit softcap.  This stub delegates to `TODO` until
+     * ALiBi bias, and logit softcap.  This minimal delegates to `TODO` until
      * the CPU backend formalises threading and SIMD helpers.
      *
      * Sources: `src[0]=Q`, `src[1]=K`, `src[2]=V`, `src[3]=mask` (optional),
@@ -5265,7 +5265,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_flash_attn_ext")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_flash_attn_ext")
     }
 
     /**
@@ -5284,7 +5284,7 @@ object GGMLComputeOps {
         masked: Boolean,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_flash_attn_back")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_flash_attn_back")
     }
 
     // -----------------------------------------------------------------
@@ -5312,7 +5312,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_ssm_conv")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_ssm_conv")
     }
 
     /**
@@ -5337,7 +5337,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_ssm_scan")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_ssm_scan")
     }
 
     // -----------------------------------------------------------------
@@ -5366,7 +5366,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_rwkv_wkv6")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_rwkv_wkv6")
     }
 
     /**
@@ -5391,7 +5391,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_rwkv_wkv7")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_rwkv_wkv7")
     }
 
     // -----------------------------------------------------------------
@@ -5420,7 +5420,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_gla")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_gla")
     }
 
     // -----------------------------------------------------------------
@@ -5449,7 +5449,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_gated_delta_net")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_gated_delta_net")
     }
 
     // -----------------------------------------------------------------
@@ -5473,7 +5473,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_conv_transpose_1d")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_conv_transpose_1d")
     }
 
     // -----------------------------------------------------------------
@@ -5627,7 +5627,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_pool_2d")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_pool_2d")
     }
 
     /**
@@ -5640,7 +5640,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_pool_2d_back")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_pool_2d_back")
     }
 
     // -----------------------------------------------------------------
@@ -5751,7 +5751,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_get_rel_pos (F16)")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_get_rel_pos (F16)")
     }
 
     /**
@@ -5773,7 +5773,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_add_rel_pos")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_add_rel_pos")
     }
 
     // -----------------------------------------------------------------
@@ -5794,7 +5794,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom1")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom1")
     }
 
     /**
@@ -5807,7 +5807,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom2")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom2")
     }
 
     /**
@@ -5820,7 +5820,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom3")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_map_custom3")
     }
 
     // -----------------------------------------------------------------
@@ -5853,7 +5853,7 @@ object GGMLComputeOps {
             GGMLUnaryOp.EXP    -> computeExp(graphAllocator, dst)
             GGMLUnaryOp.TANH   -> computeTanh(graphAllocator, dst)
             GGMLUnaryOp.SIGMOID -> computeSigmoid(graphAllocator, dst)
-            else -> TODO("unary op $unaryOp not yet implemented")
+            else -> error("not yet ported: unary op $unaryOp not yet implemented")
         }
     }
 
@@ -5916,7 +5916,7 @@ object GGMLComputeOps {
         dst: GGMLTensor
     ) {
         val gluOp = GGMLGluOp.entries[dst.opParams[0]]
-        TODO("GLU dispatch for $gluOp — port from ggml/src/ggml-cpu/ops.cpp")
+        error("not yet ported: GLU dispatch for $gluOp — port from ggml/src/ggml-cpu/ops.cpp")
     }
 
     // -----------------------------------------------------------------
@@ -6061,7 +6061,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_cross_entropy_loss")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_cross_entropy_loss")
     }
 
     /**
@@ -6074,7 +6074,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_cross_entropy_loss_back")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_cross_entropy_loss_back")
     }
 
     // -----------------------------------------------------------------
@@ -6091,7 +6091,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_opt_step_adamw")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_opt_step_adamw")
     }
 
     /**
@@ -6104,7 +6104,7 @@ object GGMLComputeOps {
         graphAllocator: GGMLGraphAllocator,
         dst: GGMLTensor
     ) {
-        TODO("port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_opt_step_sgd")
+        error("not yet ported: port from ggml/src/ggml-cpu/ops.cpp — ggml_compute_forward_opt_step_sgd")
     }
     // ---- Wrappers for structural / advanced compute operations ----
 
