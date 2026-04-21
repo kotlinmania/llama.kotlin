@@ -34,7 +34,7 @@ These files need significant work:
 
 - `llama` → `model.Grammar` (0.00, 16 deps)
 - `llama-hparams` → `model.LlamaHparams` (0.30, 4 deps)
-- `llama-graph` → `model.LlamaGraph` (0.44, 7 deps)
+- `llama-graph` → `model.LlamaGraph` (0.48, 7 deps)
 - `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
 - `llama-mmap` → `model.LlamaMmap` (0.19, 5 deps)
 - `llama-impl` → `model.LlamaImpl` (0.16, 19 deps)
@@ -108,7 +108,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4355 / 2 lines (217750%)
+**Documentation coverage:** 4349 / 2 lines (217450%)
 
 Top documentation gaps (>20%):
 

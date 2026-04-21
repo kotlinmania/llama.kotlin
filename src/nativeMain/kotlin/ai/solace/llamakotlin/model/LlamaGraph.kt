@@ -550,6 +550,107 @@ internal fun buildAttnInpKqMask(
     return res
 }
 
+// port-lint: source llama.cpp/src/llama-graph.cpp  print_mask
+/** Debug-print an attention mask (rows = query tokens, cols = KV tokens). */
+internal fun printMask(data: FloatArray, nTokens: Long, nKv: Long, nSwa: Long, swaType: LlamaSwaType) {
+    val swaTypeStr = when (swaType) {
+        LlamaSwaType.NONE      -> "LLAMA_SWA_TYPE_NONE"
+        LlamaSwaType.STANDARD  -> "LLAMA_SWA_TYPE_STANDARD"
+        LlamaSwaType.CHUNKED   -> "LLAMA_SWA_TYPE_CHUNKED"
+        LlamaSwaType.SYMMETRIC -> "LLAMA_SWA_TYPE_SYMMETRIC"
+    }
+    println("print_mask: === Attention mask ===")
+    println("print_mask: n_swa : $nSwa, n_kv: $nKv, swa_type: $swaTypeStr")
+    println("print_mask: '0' = can attend, '∞' = masked")
+    println("print_mask: Rows = query tokens, Columns = key/value tokens\n")
+
+    val colLimit = minOf(20L, nKv)
+    val rowLimit = minOf(20L, nTokens)
+
+    print("    ")
+    for (j in 0 until colLimit) print("${j.toString().padStart(2)}")
+    println()
+
+    for (i in 0 until rowLimit) {
+        print(" ${i.toString().padStart(2)} ")
+        for (j in 0 until colLimit) {
+            val v = data[(i * nKv + j).toInt()]
+            if (v == Float.NEGATIVE_INFINITY) print(" ∞") else print(" 0")
+        }
+        println()
+    }
+}
+
+// port-lint: source llama.cpp/src/llama-graph.cpp  build_attn_inp_kv_impl
+/** Build input for KV-cache attention. File-scope static. */
+internal fun buildAttnInpKvImpl(
+    ctx0: GGMLContext,
+    ubatch: LlamaUBatch,
+    hparams: LlamaHparams,
+    cparams: LlamaCParams,
+    mctxCur: KVCacheContext,
+): LlmGraphInputAttnKv {
+    val inp = LlmGraphInputAttnKv(hparams, cparams, mctxCur)
+
+    require(hparams.swaType == LlamaSwaType.NONE) { "Use llama_kv_cache_iswa for SWA" }
+
+    inp.selfKIdxs = mctxCur.buildInputKIdxs(ctx0, ubatch)
+    inp.selfVIdxs = mctxCur.buildInputVIdxs(ctx0, ubatch)
+
+    inp.selfKqMask = buildAttnInpKqMask(ctx0, mctxCur, ubatch, cparams)
+    inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(ctx0, inp.selfKqMask!!, GGMLType.F16) else inp.selfKqMask
+
+    inp.selfKRot = mctxCur.buildInputKRot(ctx0)
+    inp.selfVRot = mctxCur.buildInputVRot(ctx0)
+
+    return inp
+}
+
+// port-lint: source llama.cpp/src/llama-graph.cpp  build_attn_inp_k_impl
+/** Build input for K-only cache attention. File-scope static. */
+internal fun buildAttnInpKImpl(
+    ctx0: GGMLContext,
+    ubatch: LlamaUBatch,
+    hparams: LlamaHparams,
+    cparams: LlamaCParams,
+    mctxCur: KVCacheContext,
+): LlmGraphInputAttnK {
+    val inp = LlmGraphInputAttnK(hparams, cparams, mctxCur)
+
+    require(hparams.swaType == LlamaSwaType.NONE) { "Use llama_kv_cache_iswa for SWA" }
+
+    inp.selfKIdxs = mctxCur.buildInputKIdxs(ctx0, ubatch)
+
+    inp.selfKqMask = buildAttnInpKqMask(ctx0, mctxCur, ubatch, cparams)
+    inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(ctx0, inp.selfKqMask!!, GGMLType.F16) else inp.selfKqMask
+
+    return inp
+}
+
+// port-lint: source llama.cpp/src/llama-graph.cpp  build_rs_inp_impl
+/** Build input for recurrent-state memory. File-scope static. */
+internal fun buildRsInpImpl(
+    ctx0: GGMLContext,
+    ubatch: LlamaUBatch,
+    mctxCur: LlamaMemoryRecurrentContext,
+): LlmGraphInputRs {
+    val inp = LlmGraphInputRs(mctxCur)
+
+    val nRs = mctxCur.getNRs().toLong()
+    val nSeqs = ubatch.nSeqs.toLong()
+
+    inp.sCopy = ggmlNewTensor1d(ctx0, GGMLType.I32, nRs)
+    ggmlSetInput(inp.sCopy!!)
+
+    inp.sCopyMain  = ggmlView1d(ctx0, inp.sCopy!!, nSeqs, 0UL)
+    inp.sCopyExtra = ggmlView1d(ctx0, inp.sCopy!!, nRs - nSeqs, nSeqs.toULong() * inp.sCopy!!.nb[0])
+
+    inp.head = mctxCur.getHead()
+    inp.rsZ  = mctxCur.getRsZ()
+
+    return inp
+}
+
 // ---------------------------------------------------------------------------
 // Tensor data-writing helpers (mirror ggml_backend_tensor_set)
 // ---------------------------------------------------------------------------
@@ -1093,6 +1194,12 @@ class LlmGraphResult(val maxNodes: Long = 8192) {
         params = LlmGraphParams()
         inputs.clear()
     }
+
+    // port-lint: source llama-graph.h  llm_graph_result accessors
+    fun getInpTokens(): GGMLTensor? = tInpTokens
+    fun getLogits(): GGMLTensor? = tLogits
+    fun getEmbd(): GGMLTensor? = tEmbd
+    fun getEmbdPooled(): GGMLTensor? = tEmbdPooled
 
     fun getCtx(): GGMLContext? = ctxCompute
     fun getGf(): GGMLCGraph? = gf
@@ -2046,25 +2153,10 @@ open class LlmGraphContext(val params: LlmGraphParams) {
     fun buildAttnInpKv(): LlmGraphInputAttnKv {
         val c = ctx0 ?: error("ctx0 not initialised")
         val r = res ?: error("res not initialised")
-        val mctx = params.mctx ?: error("mctx required for KV attention")
-        val mctxCur = mctx as KVCacheContext
+        val mctxCur = params.mctx as? KVCacheContext
+            ?: error("mctx must be KVCacheContext for attn_inp_kv")
 
-        val inp = LlmGraphInputAttnKv(hparams, cparams)
-
-        // Build K/V index tensors from the cache context
-        inp.selfKIdxs = mctxCur.buildInputKIdxs(c, ubatch)
-        inp.selfVIdxs = mctxCur.buildInputVIdxs(c, ubatch)
-
-        // Build causal KQ mask: [nKv, nTokens, 1, 1]
-        val nKv = mctxCur.getNKv().toLong()
-        inp.selfKqMask = ggmlNewTensor4d(c, GGMLType.F32, nKv, nTokens, 1, 1)
-        ggmlSetInput(inp.selfKqMask!!)
-        inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMask!!, GGMLType.F16)
-            else inp.selfKqMask
-
-        // Optional rotation matrices (for k-shift)
-        inp.selfKRot = mctxCur.buildInputKRot(c)
-        inp.selfVRot = mctxCur.buildInputVRot(c)
+        val inp = buildAttnInpKvImpl(c, ubatch, hparams, cparams, mctxCur)
 
         return r.addInputTyped(inp)
     }
@@ -2278,13 +2370,9 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         val r = res ?: error("res not initialised")
         val mctxCur = params.mctx as? KVCacheContext
             ?: error("mctx must be KVCacheContext for attn_inp_k")
-        val inp = LlmGraphInputAttnK(hparams, cparams)
-        inp.selfKIdxs = mctxCur.buildInputKIdxs(c, ubatch)
-        val nKv = mctxCur.getNKv().toLong()
-        inp.selfKqMask = ggmlNewTensor4d(c, GGMLType.F32, nKv, nTokens, 1, 1)
-        ggmlSetInput(inp.selfKqMask!!)
-        inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMask!!, GGMLType.F16)
-            else inp.selfKqMask
+
+        val inp = buildAttnInpKImpl(c, ubatch, hparams, cparams, mctxCur)
+
         return r.addInputTyped(inp)
     }
 
@@ -2485,18 +2573,8 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         val r = res ?: error("res not initialised")
         val mctxCur = params.mctx as? LlamaMemoryRecurrentContext
             ?: error("mctx must be LlamaMemoryRecurrentContext for rs_inp")
-        val inp = LlmGraphInputRs(mctx = mctxCur)
 
-        val nRs = mctxCur.getNRs().toLong()
-        val nSeqs = ubatch.nSeqs.toLong()
-
-        inp.sCopy = ggmlNewTensor1d(c, GGMLType.I32, nRs)
-        ggmlSetInput(inp.sCopy!!)
-        inp.sCopyMain = ggmlView1d(c, inp.sCopy!!, nSeqs, 0u)
-        inp.sCopyExtra = ggmlView1d(c, inp.sCopy!!, nRs - nSeqs,
-            (nSeqs * ggmlElementSize(inp.sCopy!!).toLong()).toULong())
-        inp.head = mctxCur.getHead()
-        inp.rsZ = mctxCur.getRsZ()
+        val inp = buildRsInpImpl(c, ubatch, mctxCur)
 
         return r.addInputTyped(inp)
     }
@@ -2617,9 +2695,14 @@ open class LlmGraphContext(val params: LlmGraphParams) {
     /** Build hybrid (KV + recurrent) memory inputs. Port of `build_inp_mem_hybrid`. */
     // port-lint: source llama.cpp/src/llama-graph.cpp
     fun buildInpMemHybrid(): LlmGraphInputMemHybrid {
+        val c = ctx0 ?: error("ctx0 not initialised")
         val r = res ?: error("res not initialised")
-        val inpRs = buildRsInp()
-        val inpAttn = buildAttnInpKv()
+        val mctxCur = params.mctx as? LlamaMemoryHybridContext
+            ?: error("mctx must be LlamaMemoryHybridContext for mem_hybrid")
+
+        val inpRs   = buildRsInpImpl(c, ubatch, mctxCur.getRecr() ?: error("recr context required"))
+        val inpAttn = buildAttnInpKvImpl(c, ubatch, hparams, cparams, mctxCur.getAttn() ?: error("attn context required"))
+
         val inp = LlmGraphInputMemHybrid(cparams, inpAttn, inpRs)
         return r.addInputTyped(inp)
     }
@@ -2627,9 +2710,14 @@ open class LlmGraphContext(val params: LlmGraphParams) {
     /** Build hybrid (K-only + recurrent) memory inputs. Port of `build_inp_mem_hybrid_k`. */
     // port-lint: source llama.cpp/src/llama-graph.cpp
     fun buildInpMemHybridK(): LlmGraphInputMemHybridK {
+        val c = ctx0 ?: error("ctx0 not initialised")
         val r = res ?: error("res not initialised")
-        val inpRs = buildRsInp()
-        val inpAttn = buildAttnInpK()
+        val mctxCur = params.mctx as? LlamaMemoryHybridContext
+            ?: error("mctx must be LlamaMemoryHybridContext for mem_hybrid_k")
+
+        val inpRs   = buildRsInpImpl(c, ubatch, mctxCur.getRecr() ?: error("recr context required"))
+        val inpAttn = buildAttnInpKImpl(c, ubatch, hparams, cparams, mctxCur.getAttn() ?: error("attn context required"))
+
         val inp = LlmGraphInputMemHybridK(cparams, inpAttn, inpRs)
         return r.addInputTyped(inp)
     }

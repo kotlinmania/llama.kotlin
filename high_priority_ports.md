@@ -8,7 +8,7 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 |------|--------|--------|------------|------|-----------|----------|
 | 1 | `llama` | `model.Grammar` | 0.00 | 16 | 52 | 828.8 |
 | 2 | `llama-hparams` | `model.LlamaHparams` | 0.30 | 4 | 50 | 666.6 |
-| 3 | `llama-graph` | `model.LlamaGraph` | 0.44 | 7 | 39 | 558.0 |
+| 3 | `llama-graph` | `model.LlamaGraph` | 0.48 | 7 | 35 | 501.0 |
 | 4 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
 | 5 | `llama-mmap` | `model.LlamaMmap` | 0.19 | 5 | 18 | 251.7 |
 | 6 | `llama-impl` | `model.LlamaImpl` | 0.16 | 19 | 11 | 188.6 |
@@ -40,7 +40,7 @@ These files need immediate attention:
   - Dependencies: 4
 
 - **llama-graph** → `model.LlamaGraph`
-  - Similarity: 0.44
+  - Similarity: 0.48
   - Dependencies: 7
   - Lint issues: 6
 
