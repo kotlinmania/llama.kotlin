@@ -29,7 +29,7 @@ class LlamaMemoryHybridIswa(
 
     // -- LlamaMemory interface ------------------------------------------------
 
-    override fun initBatch(nUbatch: Int, embdAll: Boolean): LlamaMemoryContext {
+    override fun initBatch(balloc: LlamaBatchAllocr, nUbatch: Int, embdAll: Boolean): LlamaMemoryContext {
         // Full port requires LlamaBatchAllocr integration and the ISWA
         // dual-stream prepare logic (base + SWA slot infos).
         // TODO: complete when batch splitting infrastructure is ready
@@ -40,7 +40,7 @@ class LlamaMemoryHybridIswa(
         return LlamaMemoryHybridIswaContext.full(this)
     }
 
-    override fun initUpdate(optimize: Boolean): LlamaMemoryContext {
+    override fun initUpdate(lctx: LlamaContext, optimize: Boolean): LlamaMemoryContext {
         // TODO: requires LlamaContext integration for defrag/shift
         return LlamaMemoryHybridIswaContext.error(LlamaMemoryStatus.NO_UPDATE)
     }

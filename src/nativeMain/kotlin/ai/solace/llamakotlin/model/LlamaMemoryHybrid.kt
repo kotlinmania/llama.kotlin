@@ -39,7 +39,7 @@ class LlamaMemoryHybrid(
 
     // -- LlamaMemory interface ------------------------------------------------
 
-    override fun initBatch(nUbatch: Int, embdAll: Boolean): LlamaMemoryContext {
+    override fun initBatch(balloc: LlamaBatchAllocr, nUbatch: Int, embdAll: Boolean): LlamaMemoryContext {
         // Batch splitting follows the recurrent pattern (split_seq when embdAll).
         // The actual split logic depends on LlamaBatchAllocr which is stubbed;
         // return a hybrid context that delegates to both sub-memories.
@@ -51,7 +51,7 @@ class LlamaMemoryHybrid(
         return LlamaMemoryHybridContext.full(this)
     }
 
-    override fun initUpdate(optimize: Boolean): LlamaMemoryContext {
+    override fun initUpdate(lctx: LlamaContext, optimize: Boolean): LlamaMemoryContext {
         // TODO: requires LlamaContext integration for defrag/shift
         return LlamaMemoryHybridContext.error(LlamaMemoryStatus.NO_UPDATE)
     }

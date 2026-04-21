@@ -103,7 +103,7 @@ class LlamaKvCacheIswa(
 
     // -- LlamaMemory implementation -------------------------------------------
 
-    override fun initBatch(nUbatch: Int, embdAll: Boolean): LlamaMemoryContext {
+    override fun initBatch(balloc: LlamaBatchAllocr, nUbatch: Int, embdAll: Boolean): LlamaMemoryContext {
         // For now, return a simple delegating context.
         // Full batch splitting logic (simple then equal) is complex and depends on
         // LlamaBatchAllocr which would be ported separately.
@@ -114,7 +114,7 @@ class LlamaKvCacheIswa(
         return LlamaKvCacheIswaContext(this)
     }
 
-    override fun initUpdate(optimize: Boolean): LlamaMemoryContext {
+    override fun initUpdate(lctx: LlamaContext, optimize: Boolean): LlamaMemoryContext {
         return LlamaKvCacheIswaContext(this, optimize)
     }
 

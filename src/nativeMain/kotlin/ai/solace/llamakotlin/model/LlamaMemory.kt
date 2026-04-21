@@ -72,12 +72,17 @@ fun llamaMemoryStatusCombine(s0: LlamaMemoryStatus, s1: LlamaMemoryStatus): Llam
  *
  * Port of `llama_memory_status_is_fail()` from `llama-memory.cpp`.
  */
-fun LlamaMemoryStatus.isFail(): Boolean = when (this) {
+fun llamaMemoryStatusIsFail(status: LlamaMemoryStatus): Boolean = when (status) {
     LlamaMemoryStatus.SUCCESS,
     LlamaMemoryStatus.NO_UPDATE -> false
     LlamaMemoryStatus.FAILED_PREPARE,
     LlamaMemoryStatus.FAILED_COMPUTE -> true
 }
+
+/**
+ * Extension shorthand for [llamaMemoryStatusIsFail].
+ */
+fun LlamaMemoryStatus.isFail(): Boolean = llamaMemoryStatusIsFail(this)
 
 // ---------------------------------------------------------------------------
 // LlamaMemoryContext – per-batch processing context
@@ -141,11 +146,12 @@ interface LlamaMemory {
      *
      * Check [LlamaMemoryContext.getStatus] on the returned context for errors.
      *
+     * @param balloc   Batch allocator used to split the input batch into micro-batches.
      * @param nUbatch  Maximum micro-batch size.
      * @param embdAll  Whether to embed all tokens.
      * @return A [LlamaMemoryContext] ready for iteration.
      */
-    fun initBatch(nUbatch: Int, embdAll: Boolean): LlamaMemoryContext
+    fun initBatch(balloc: LlamaBatchAllocr, nUbatch: Int, embdAll: Boolean): LlamaMemoryContext
 
     /**
      * Create a context that simulates a full cache. Used for allocating
@@ -159,9 +165,10 @@ interface LlamaMemory {
      * The returned context has [LlamaMemoryStatus.NO_UPDATE] when nothing
      * needs to change.
      *
+     * @param lctx      The parent [LlamaContext] (needed for graph builds during updates).
      * @param optimize  Whether to also perform optional optimisations (e.g. defrag).
      */
-    fun initUpdate(optimize: Boolean): LlamaMemoryContext
+    fun initUpdate(lctx: LlamaContext, optimize: Boolean): LlamaMemoryContext
 
     /** Whether this memory type supports K-shift (position shifting). */
     fun getCanShift(): Boolean
