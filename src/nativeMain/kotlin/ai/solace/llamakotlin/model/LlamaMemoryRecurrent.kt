@@ -988,7 +988,7 @@ class LlamaMemoryRecurrentContext private constructor(
     private val mem: LlamaMemoryRecurrent?,
     private val ubatches: List<LlamaUBatch>,
     private val isFull: Boolean,
-) {
+) : LlamaMemoryContext {
     private var iNext: Int = 0
 
     // -- factory constructors matching C++ overloads -----------------------
@@ -1016,7 +1016,7 @@ class LlamaMemoryRecurrentContext private constructor(
      *
      * @return `true` while there is a ubatch to process; `false` when done.
      */
-    fun next(): Boolean {
+    override fun next(): Boolean {
         if (++iNext >= ubatches.size) {
             return false
         }
@@ -1028,7 +1028,7 @@ class LlamaMemoryRecurrentContext private constructor(
      *
      * Port of `llama_memory_recurrent_context::apply()`.
      */
-    fun apply(): Boolean {
+    override fun apply(): Boolean {
         check(!status.isFail()) { "Cannot apply on a failed context" }
 
         // no ubatches -> this is an update context
@@ -1043,10 +1043,10 @@ class LlamaMemoryRecurrentContext private constructor(
     }
 
     /** Status of this context. */
-    fun getStatus(): LlamaMemoryStatus = status
+    override fun getStatus(): LlamaMemoryStatus = status
 
     /** Currently active ubatch (valid after a successful [next] call). */
-    fun getUbatch(): LlamaUBatch {
+    override fun getUbatch(): LlamaUBatch {
         check(status == LlamaMemoryStatus.SUCCESS) { "getUbatch requires SUCCESS status" }
         return ubatches[iNext]
     }

@@ -13,6 +13,55 @@ import ai.solace.llamakotlin.core.*
 import kotlin.math.*
 
 // ---------------------------------------------------------------------------
+// Tensor data-writing helpers (mirror ggml_backend_tensor_set)
+// ---------------------------------------------------------------------------
+
+/** Write an IntArray into a tensor's backing ByteArray at byte [offset]. */
+private fun tensorSetI32(tensor: GGMLTensor, src: IntArray, offset: Int, count: Int) {
+    val data = tensor.data as? ByteArray ?: return
+    for (i in 0 until count) {
+        val v = src[i]
+        val pos = offset + i * 4
+        data[pos]     = (v and 0xFF).toByte()
+        data[pos + 1] = ((v shr 8) and 0xFF).toByte()
+        data[pos + 2] = ((v shr 16) and 0xFF).toByte()
+        data[pos + 3] = ((v shr 24) and 0xFF).toByte()
+    }
+}
+
+/** Write a FloatArray into a tensor's backing ByteArray at byte [offset]. */
+private fun tensorSetF32(tensor: GGMLTensor, src: FloatArray, offset: Int, count: Int) {
+    val data = tensor.data as? ByteArray ?: return
+    for (i in 0 until count) {
+        val bits = src[i].toRawBits()
+        val pos = offset + i * 4
+        data[pos]     = (bits and 0xFF).toByte()
+        data[pos + 1] = ((bits shr 8) and 0xFF).toByte()
+        data[pos + 2] = ((bits shr 16) and 0xFF).toByte()
+        data[pos + 3] = ((bits shr 24) and 0xFF).toByte()
+    }
+}
+
+/** Write a single float into a tensor at byte [offset]. */
+private fun tensorSetF32Single(tensor: GGMLTensor, value: Float, offset: Int) {
+    val data = tensor.data as? ByteArray ?: return
+    val bits = value.toRawBits()
+    data[offset]     = (bits and 0xFF).toByte()
+    data[offset + 1] = ((bits shr 8) and 0xFF).toByte()
+    data[offset + 2] = ((bits shr 16) and 0xFF).toByte()
+    data[offset + 3] = ((bits shr 24) and 0xFF).toByte()
+}
+
+/** Write a single I32 into a tensor at byte [offset]. */
+private fun tensorSetI32Single(tensor: GGMLTensor, value: Int, offset: Int) {
+    val data = tensor.data as? ByteArray ?: return
+    data[offset]     = (value and 0xFF).toByte()
+    data[offset + 1] = ((value shr 8) and 0xFF).toByte()
+    data[offset + 2] = ((value shr 16) and 0xFF).toByte()
+    data[offset + 3] = ((value shr 24) and 0xFF).toByte()
+}
+
+// ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
@@ -91,7 +140,19 @@ class LlmGraphInputEmbd(val nEmbd: Long) : LlmGraphInput {
     var embd: GGMLTensor? = null
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_embd::set_input — backend tensor set")
+        // Set token ids into the tokens tensor
+        val tok = ubatch.tokens
+        val tokTensor = tokens
+        if (tok != null && tokTensor != null) {
+            tensorSetI32(tokTensor, tok, 0, ubatch.nTokens)
+        }
+
+        // Set pre-computed embeddings
+        val emb = ubatch.embeddings
+        val embTensor = embd
+        if (emb != null && embTensor != null) {
+            tensorSetF32(embTensor, emb, 0, ubatch.nTokens * nEmbd.toInt())
+        }
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean {
@@ -110,7 +171,23 @@ class LlmGraphInputPos(val nPosPerEmbd: Int = 1) : LlmGraphInput {
     var pos: GGMLTensor? = null
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_pos::set_input — backend tensor set")
+        val p = ubatch.pos ?: return
+        val t = pos ?: return
+        val nTokens = ubatch.nTokens
+
+        if (ubatch.tokens != null && nPosPerEmbd == 4) {
+            // M-RoPE with text tokens: convert 1D positions to 4D
+            val posData = IntArray(nTokens * 4)
+            for (i in 0 until nTokens) {
+                posData[i] = p[i]
+                posData[nTokens + i] = p[i]
+                posData[2 * nTokens + i] = p[i]
+                posData[3 * nTokens + i] = 0
+            }
+            tensorSetI32(t, posData, 0, posData.size)
+        } else {
+            tensorSetI32(t, p, 0, nTokens * nPosPerEmbd)
+        }
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean {
@@ -131,7 +208,21 @@ class LlmGraphInputOutIds(
     var outIds: GGMLTensor? = null
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_out_ids::set_input — backend tensor set")
+        val t = outIds ?: return
+        val nTokens = ubatch.nTokens
+
+        if (nOutputs == nTokens) {
+            val ids = IntArray(nTokens) { it }
+            tensorSetI32(t, ids, 0, nTokens)
+            return
+        }
+
+        val output = ubatch.output ?: return
+        val ids = mutableListOf<Int>()
+        for (i in 0 until nTokens) {
+            if (output[i]) ids.add(i)
+        }
+        tensorSetI32(t, ids.toIntArray(), 0, ids.size)
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean = nOutputs == params.nOutputs
@@ -145,7 +236,54 @@ class LlmGraphInputMean(val cparams: LlamaCParams) : LlmGraphInput {
     var mean: GGMLTensor? = null
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_mean::set_input — backend tensor set")
+        if (!cparams.embeddings) return
+        if (cparams.poolingType != LlamaPoolingType.MEAN &&
+            cparams.poolingType != LlamaPoolingType.RANK) return
+
+        val t = mean ?: return
+        val nTokens = ubatch.nTokens
+        val nSeqTokens = ubatch.nSeqTokens
+        val nSeqsUnq = ubatch.nSeqsUnq
+
+        // Zero-fill the weight matrix
+        val data = FloatArray(nTokens * nSeqsUnq)
+
+        // Sum up how many tokens belong to each unique sequence
+        val sums = LongArray(nSeqsUnq)
+        val seqIdArr = ubatch.seqId ?: return
+        val nSeqIdArr = ubatch.nSeqId ?: return
+        val seqIdxArr = ubatch.seqIdx ?: return
+
+        var i = 0
+        while (i < nTokens) {
+            for (s in 0 until nSeqIdArr[i]) {
+                val seqId = seqIdArr[i][s]
+                val seqIdx = seqIdxArr[seqId]
+                sums[seqIdx] += nSeqTokens.toLong()
+            }
+            i += nSeqTokens
+        }
+
+        // Compute reciprocals
+        val div = FloatArray(nSeqsUnq) { s ->
+            val sum = sums[s]
+            if (sum > 0) 1.0f / sum.toFloat() else 0.0f
+        }
+
+        // Fill the weight matrix: each token row gets 1/count for its sequence
+        i = 0
+        while (i < nTokens) {
+            for (s in 0 until nSeqIdArr[i]) {
+                val seqId = seqIdArr[i][s]
+                val seqIdx = seqIdxArr[seqId]
+                for (j in 0 until nSeqTokens) {
+                    data[seqIdx * nTokens + i + j] = div[seqIdx]
+                }
+            }
+            i += nSeqTokens
+        }
+
+        tensorSetF32(t, data, 0, data.size)
     }
 }
 
@@ -160,14 +298,58 @@ class LlmGraphInputCls(
     var cls: GGMLTensor? = null
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_cls::set_input — backend tensor set")
+        val nTokens = ubatch.nTokens
+        val nSeqsUnq = ubatch.nSeqsUnq
+
+        if (!cparams.embeddings) return
+        if (cparams.poolingType != LlamaPoolingType.CLS &&
+            cparams.poolingType != LlamaPoolingType.RANK &&
+            cparams.poolingType != LlamaPoolingType.LAST) return
+
+        val t = cls ?: return
+        val posArr = ubatch.pos ?: return
+        val seqIdArr = ubatch.seqId ?: return
+        val nSeqIdArr = ubatch.nSeqId ?: return
+        val seqIdxArr = ubatch.seqIdx ?: return
+
+        val targetPos = IntArray(nSeqsUnq) { -1 }
+        val targetRow = IntArray(nSeqsUnq) { -1 }
+
+        // Qwen3 reranking/embedding models use last token for RANK pooling
+        val last = (cparams.poolingType == LlamaPoolingType.LAST ||
+            (cparams.poolingType == LlamaPoolingType.RANK &&
+                (arch == LlamaModelArch.QWEN3 || arch == LlamaModelArch.QWEN3VL)))
+
+        for (i in 0 until nTokens) {
+            val pos = posArr[i]
+
+            for (s in 0 until nSeqIdArr[i]) {
+                val seqId = seqIdArr[i][s]
+                val seqIdx = seqIdxArr[seqId]
+
+                if (targetPos[seqIdx] == -1 ||
+                    (last && pos >= targetPos[seqIdx]) ||
+                    (!last && pos < targetPos[seqIdx])) {
+                    targetPos[seqIdx] = pos
+                    targetRow[seqIdx] = i
+                }
+            }
+        }
+
+        // Write indices as I32 (uint32_t in C++)
+        val data = IntArray(nSeqsUnq) { s ->
+            if (targetRow[s] >= 0) targetRow[s] else 0
+        }
+        tensorSetI32(t, data, 0, nSeqsUnq)
     }
 }
 
 // -- recurrent state --------------------------------------------------------
 
 /** Input: state-copy bookkeeping for recurrent (SSM / RWKV) models. */
-class LlmGraphInputRs : LlmGraphInput {
+class LlmGraphInputRs(
+    var mctx: LlamaMemoryRecurrentContext?,
+) : LlmGraphInput {
     /** I32 [nRs] – full state-copy source indices. */
     var sCopy: GGMLTensor? = null
     /** I32 [nSeqs] – state-copy indices for the main sequences. */
@@ -178,11 +360,33 @@ class LlmGraphInputRs : LlmGraphInput {
     var rsZ: Int = 0
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_rs::set_input — backend tensor set")
+        val ctx = mctx ?: return
+        val nRs = ctx.getNRs()
+
+        val t = sCopy ?: return
+        val data = IntArray(nRs)
+        // Assuming copy destinations ALWAYS happen ONLY on the cells between head and head+n
+        for (i in 0 until nRs) {
+            data[i] = ctx.sCopy(i)
+        }
+        tensorSetI32(t, data, 0, nRs)
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean {
-        TODO("Port llm_graph_input_rs::can_reuse — requires recurrent memory context")
+        val ctx = params.mctx as? LlamaMemoryRecurrentContext ?: return false
+        this.mctx = ctx
+
+        val sc = sCopy ?: return false
+        val scMain = sCopyMain ?: return false
+        val scExtra = sCopyExtra ?: return false
+
+        var res = true
+        res = res && sc.ne[0] == ctx.getNRs().toLong()
+        res = res && scMain.ne[0] == params.ubatch.nSeqs.toLong()
+        res = res && scExtra.ne[0] == (ctx.getNRs() - params.ubatch.nSeqs).toLong()
+        res = res && head == ctx.getHead()
+        res = res && rsZ == ctx.getRsZ()
+        return res
     }
 }
 
@@ -205,7 +409,54 @@ class LlmGraphInputAttnNoCache(
     fun getKqMaskSwa(): GGMLTensor? = selfKqMaskSwaCnv
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_attn_no_cache::set_input — fill mask data")
+        val nKv = ubatch.nTokens
+        val nTokens = ubatch.nTokens
+        val posArr = ubatch.pos ?: return
+        val seqIdArr = ubatch.seqId ?: return
+
+        // Lambda to fill a mask tensor
+        fun fillMask(tensor: GGMLTensor, nSwa: Int, swaType: LlamaSwaType) {
+            val data = FloatArray(nTokens * nKv) { Float.NEGATIVE_INFINITY }
+
+            for (i1 in 0 until nTokens) {
+                val s1 = seqIdArr[i1][0]
+                val p1 = posArr[i1]
+                val idst = i1 * nKv
+
+                for (i0 in 0 until nTokens) {
+                    val s0 = seqIdArr[i0][0]
+                    val p0 = posArr[i0]
+
+                    // Mask different sequences
+                    if (s0 != s1) continue
+                    // Mask future tokens (causal)
+                    if (cparams.causalAttn && p0 > p1) continue
+                    // Apply SWA if any
+                    if (LlamaModelHParams.isMaskedSwa(nSwa, swaType, p0, p1)) continue
+
+                    data[idst + i0] = if (hparams.useAlibi) {
+                        -(kotlin.math.abs(p0 - p1)).toFloat()
+                    } else {
+                        0.0f
+                    }
+                }
+            }
+            tensorSetF32(tensor, data, 0, data.size)
+        }
+
+        // Fill the main self-attention mask
+        val mask = selfKqMask
+        if (mask != null) {
+            fillMask(mask, 0, LlamaSwaType.NONE)
+        }
+
+        // Fill the SWA mask if sliding-window attention is configured
+        if (hparams.swaType != LlamaSwaType.NONE) {
+            val swaMask = selfKqMaskSwa
+            if (swaMask != null) {
+                fillMask(swaMask, hparams.nSwa, hparams.swaType)
+            }
+        }
     }
 }
 
@@ -220,7 +471,33 @@ class LlmGraphInputAttnCross(val cross: LlamaCross?) : LlmGraphInput {
     fun getKqMaskCross(): GGMLTensor? = crossKqMaskCnv
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_attn_cross::set_input — fill cross mask")
+        val mask = crossKqMask ?: return
+        val cr = cross ?: return
+
+        val nEnc = mask.ne[0].toInt()
+        val nTokens = ubatch.nTokens
+        val seqIdArr = ubatch.seqId ?: return
+        val nSeqIdArr = ubatch.nSeqId ?: return
+
+        require(cr.seqIdsEnc.isNotEmpty()) { "llamaEncode must be called first" }
+        require(!ubatch.equalSeqs) // TODO: use ubatch.nSeqs instead of failing
+
+        val data = FloatArray(nTokens * nEnc)
+        for (i in 0 until nTokens) {
+            for (j in 0 until nEnc) {
+                var f = Float.NEGATIVE_INFINITY
+
+                for (s in 0 until nSeqIdArr[i]) {
+                    val seqId = seqIdArr[i][s]
+                    if (j < cr.seqIdsEnc.size && seqId in cr.seqIdsEnc[j]) {
+                        f = 0.0f
+                    }
+                }
+
+                data[i * nEnc + j] = f
+            }
+        }
+        tensorSetF32(mask, data, 0, data.size)
     }
 }
 
@@ -338,6 +615,8 @@ data class LlmGraphParams(
     // Adapter references
     val cvec: LlamaAdapterCvec? = null,
     val loras: LlamaAdapterLoras? = null,
+    /** Memory context for KV cache / recurrent state. */
+    val mctx: LlamaMemoryContext? = null,
     val cross: LlamaCross? = null,
 
     // Graph callback for tensor naming / offloading

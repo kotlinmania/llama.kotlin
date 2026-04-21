@@ -1,5 +1,10 @@
 // port-lint: source llama.cpp/src/llama-mmap.h
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package ai.solace.llamakotlin.model
+
+import kotlinx.cinterop.*
+import platform.posix.*
 
 // =============================================================================
 // LlamaMmap – memory-mapped file types for model loading
@@ -9,15 +14,22 @@ package ai.solace.llamakotlin.model
 /**
  * Abstraction over a file handle with positioned read/write operations.
  *
- * Port of `llama_file` from `llama-mmap.h`. On Kotlin/Native the actual
- * implementation will use platform-specific POSIX I/O.
+ * Port of `llama_file` from `llama-mmap.h`. Uses POSIX I/O on Kotlin/Native.
  *
  * @property path  The filesystem path that was opened.
  */
-class LlamaFile(val path: String) {
+class LlamaFile private constructor(val path: String, private var fd: Int) {
 
     private var position: Long = 0
-    private var fileSize: Long = 0
+    private var fileSize: Long = computeFileSize()
+
+    private fun computeFileSize(): Long = memScoped {
+        val st = alloc<stat>()
+        if (fstat(fd, st.ptr) != 0) {
+            throw IllegalStateException("fstat failed for '$path': ${strerror(errno)?.toKString()}")
+        }
+        st.st_size
+    }
 
     /** Current read/write position in bytes. */
     fun tell(): Long = position
@@ -25,9 +37,16 @@ class LlamaFile(val path: String) {
     /** Total size of the file in bytes. */
     fun size(): Long = fileSize
 
+    /** Return the underlying file descriptor (needed for mmap). */
+    fun fileno(): Int = fd
+
     /** Seek to an absolute [offset]. */
     fun seek(offset: Long) {
-        TODO("Port llama_file::seek — implement via POSIX lseek or Kotlin/Native file API")
+        val result = lseek(fd, offset, SEEK_SET)
+        if (result == -1L) {
+            throw IllegalStateException("lseek failed for '$path': ${strerror(errno)?.toKString()}")
+        }
+        position = offset
     }
 
     /**
@@ -36,40 +55,92 @@ class LlamaFile(val path: String) {
      * @throws IllegalStateException if fewer bytes are available.
      */
     fun readRaw(dst: ByteArray, len: Int, dstOffset: Int = 0) {
-        TODO("Port llama_file::read_raw — implement via POSIX read")
+        var totalRead = 0
+        dst.usePinned { pinned ->
+            while (totalRead < len) {
+                val n = read(fd, pinned.addressOf(dstOffset + totalRead), (len - totalRead).convert())
+                    .toInt()
+                if (n <= 0) {
+                    throw IllegalStateException(
+                        "read failed for '$path': expected $len bytes, got $totalRead" +
+                            " (errno: ${strerror(errno)?.toKString()})"
+                    )
+                }
+                totalRead += n
+            }
+        }
+        position += totalRead
     }
 
     /** Read a little-endian 32-bit unsigned integer. */
     fun readU32(): UInt {
-        TODO("Port llama_file::read_u32")
+        val buf = ByteArray(4)
+        readRaw(buf, 4)
+        return (buf[0].toUByte().toUInt()) or
+            (buf[1].toUByte().toUInt() shl 8) or
+            (buf[2].toUByte().toUInt() shl 16) or
+            (buf[3].toUByte().toUInt() shl 24)
     }
 
     /** Write [len] bytes from [src] starting at [srcOffset]. */
     fun writeRaw(src: ByteArray, len: Int, srcOffset: Int = 0) {
-        TODO("Port llama_file::write_raw — implement via POSIX write")
+        var totalWritten = 0
+        src.usePinned { pinned ->
+            while (totalWritten < len) {
+                val n = write(fd, pinned.addressOf(srcOffset + totalWritten), (len - totalWritten).convert())
+                    .toInt()
+                if (n <= 0) {
+                    throw IllegalStateException(
+                        "write failed for '$path': expected $len bytes, wrote $totalWritten" +
+                            " (errno: ${strerror(errno)?.toKString()})"
+                    )
+                }
+                totalWritten += n
+            }
+        }
+        position += totalWritten
     }
 
     /** Write a little-endian 32-bit unsigned integer. */
     fun writeU32(value: UInt) {
-        TODO("Port llama_file::write_u32")
+        val buf = ByteArray(4)
+        buf[0] = (value and 0xFFu).toByte()
+        buf[1] = ((value shr 8) and 0xFFu).toByte()
+        buf[2] = ((value shr 16) and 0xFFu).toByte()
+        buf[3] = ((value shr 24) and 0xFFu).toByte()
+        writeRaw(buf, 4)
     }
 
     /** Alignment used for direct-I/O reads, or 1 for normal I/O. */
-    fun readAlignment(): Long {
-        TODO("Port llama_file::read_alignment")
-    }
+    fun readAlignment(): Long = 1L  // No O_DIRECT on macOS
 
     /** Whether this file was opened with direct I/O (O_DIRECT). */
     fun hasDirectIo(): Boolean = false
+
+    /** Close the file descriptor. */
+    fun close() {
+        if (fd >= 0) {
+            platform.posix.close(fd)
+            fd = -1
+        }
+    }
 
     companion object {
         /**
          * Open a file at [path] with the given [mode] (e.g. "rb", "wb").
          *
-         * @param useDirectIo  Attempt O_DIRECT for bypassing the page cache.
+         * @param useDirectIo  Attempt O_DIRECT for bypassing the page cache (ignored on macOS).
          */
         fun open(path: String, mode: String, useDirectIo: Boolean = false): LlamaFile {
-            TODO("Port llama_file constructor — implement via POSIX open")
+            val flags = when {
+                mode.startsWith("w") -> O_WRONLY or O_CREAT or O_TRUNC
+                else -> O_RDONLY
+            }
+            val fd = platform.posix.open(path, flags, S_IRUSR or S_IWUSR or S_IRGRP or S_IROTH)
+            if (fd < 0) {
+                throw IllegalStateException("Failed to open '$path': ${strerror(errno)?.toKString()}")
+            }
+            return LlamaFile(path, fd)
         }
     }
 }
@@ -85,18 +156,43 @@ class LlamaMmap private constructor(
     val file: LlamaFile,
 ) {
     private var mappedSize: Long = 0
-    private var mappedAddr: Long = 0  // raw pointer address (platform-specific)
+    private var mappedPtr: COpaquePointer? = null
 
     /** Size of the mapped region in bytes. */
     fun size(): Long = mappedSize
+
+    /** Return the base address of the mapped region. */
+    fun getAddr(): COpaquePointer? = mappedPtr
 
     /**
      * Unmap a fragment of the region between byte offsets [first] and [last].
      *
      * This can release physical pages back to the OS for memory savings.
+     * Offsets are page-aligned internally.
      */
     fun unmapFragment(first: Long, last: Long) {
-        TODO("Port llama_mmap::unmap_fragment — implement via munmap")
+        val pageSize = sysconf(_SC_PAGESIZE)
+        if (pageSize <= 0 || first >= last) return
+
+        // Align first up to page boundary, last down to page boundary
+        val alignedFirst = ((first + pageSize - 1) / pageSize) * pageSize
+        val alignedLast = (last / pageSize) * pageSize
+
+        if (alignedFirst >= alignedLast) return
+
+        val basePtr = mappedPtr ?: return
+        val fragmentPtr = interpretCPointer<ByteVar>(basePtr.rawValue + alignedFirst) ?: return
+        munmap(fragmentPtr, (alignedLast - alignedFirst).convert())
+    }
+
+    /** Unmap the entire region. */
+    fun close() {
+        val ptr = mappedPtr
+        if (ptr != null && mappedSize > 0) {
+            munmap(ptr, mappedSize.convert())
+            mappedPtr = null
+            mappedSize = 0
+        }
     }
 
     companion object {
@@ -108,10 +204,40 @@ class LlamaMmap private constructor(
          *
          * @param file      The file to map.
          * @param prefetch  Number of bytes to prefetch (hint to the OS).
-         * @param numa      Whether to use NUMA-aware allocation.
+         * @param numa      Whether to use NUMA-aware allocation (ignored on macOS).
          */
         fun create(file: LlamaFile, prefetch: Long = -1, numa: Boolean = false): LlamaMmap {
-            TODO("Port llama_mmap constructor — implement via mmap(2)")
+            val size = file.size()
+            if (size == 0L) {
+                throw IllegalStateException("Cannot mmap empty file '${file.path}'")
+            }
+
+            val ptr = mmap(
+                null,
+                size.convert(),
+                PROT_READ,
+                MAP_PRIVATE,
+                file.fileno(),
+                0
+            )
+            if (ptr == MAP_FAILED) {
+                throw IllegalStateException(
+                    "mmap failed for '${file.path}': ${strerror(errno)?.toKString()}"
+                )
+            }
+
+            // Advise the kernel about access patterns
+            if (prefetch > 0) {
+                val adviseLen = if (prefetch > size) size else prefetch
+                posix_madvise(ptr, adviseLen.convert(), POSIX_MADV_WILLNEED)
+            } else {
+                posix_madvise(ptr, size.convert(), POSIX_MADV_SEQUENTIAL)
+            }
+
+            val mmap = LlamaMmap(file)
+            mmap.mappedPtr = ptr
+            mmap.mappedSize = size
+            return mmap
         }
     }
 }
@@ -123,7 +249,7 @@ class LlamaMmap private constructor(
  */
 class LlamaMlock {
 
-    private var lockedAddr: Long = 0
+    private var basePtr: COpaquePointer? = null
     private var lockedSize: Long = 0
 
     /**
@@ -131,8 +257,9 @@ class LlamaMlock {
      *
      * Must be called before [growTo].
      */
-    fun init(addr: Long) {
-        TODO("Port llama_mlock::init")
+    fun init(addr: COpaquePointer?) {
+        basePtr = addr
+        lockedSize = 0
     }
 
     /**
@@ -141,7 +268,27 @@ class LlamaMlock {
      * Pages between the current locked size and [targetSize] are locked.
      */
     fun growTo(targetSize: Long) {
-        TODO("Port llama_mlock::grow_to — implement via mlock(2)")
+        if (targetSize <= lockedSize) return
+        val ptr = basePtr ?: throw IllegalStateException("LlamaMlock not initialized — call init() first")
+
+        val lockFrom = interpretCPointer<ByteVar>(ptr.rawValue + lockedSize) ?: return
+        val lockLen = targetSize - lockedSize
+
+        val result = mlock(lockFrom, lockLen.convert())
+        if (result != 0) {
+            // mlock can fail due to resource limits — log but don't throw
+            // (matches llama.cpp behavior which warns but continues)
+        }
+        lockedSize = targetSize
+    }
+
+    /** Unlock all locked pages. */
+    fun close() {
+        val ptr = basePtr
+        if (ptr != null && lockedSize > 0) {
+            munlock(ptr, lockedSize.convert())
+            lockedSize = 0
+        }
     }
 
     companion object {

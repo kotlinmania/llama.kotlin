@@ -202,14 +202,30 @@ data class LlamaUBatch(
     val nTokens: Int = 0,
     val nSeqTokens: Int = 0,
     val nSeqs: Int = 0,
+    /** Number of unique sequence IDs in this ubatch. */
+    val nSeqsUnq: Int = 0,
+    /** Number of position dimensions per token/embedding (1 for normal, 4 for M-RoPE). */
+    val nPos: Int = 1,
     val tokens: IntArray? = null,
     val embeddings: FloatArray? = null,
+    /** Positions array of size [nTokens * nPos]. */
     val pos: IntArray? = null,
     val nSeqId: IntArray? = null,
     val seqId: Array<IntArray>? = null,
+    /** Unique sequence IDs present in this ubatch. Size = [nSeqsUnq]. */
+    val seqIdUnq: IntArray? = null,
+    /**
+     * Mapping from sequence ID → index in [0, nSeqsUnq).
+     * Size = LLAMA_MAX_SEQ (or large enough for all seq IDs).
+     * Used for pooled embedding extraction.
+     */
+    val seqIdx: IntArray? = null,
     val output: BooleanArray? = null,
     val equalSeqs: Boolean = false,
 ) {
+    /** True when positions are multi-dimensional (M-RoPE with ≥3 dimensions). */
+    fun isPos2d(): Boolean = nPos >= 3
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is LlamaUBatch) return false
