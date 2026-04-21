@@ -22,7 +22,7 @@ import ai.solace.llamakotlin.core.*
  * @param memRecr      The recurrent memory instance.
  */
 class LlamaMemoryHybridIswa(
-    private val hparams: LlamaModelHParams,
+    private val hparams: LlamaHparams,
     val memAttn: KVCache,
     val memRecr: LlamaMemoryRecurrent,
 ) : LlamaMemory {

@@ -32,7 +32,7 @@ object LlamaStateSeqFlags {
  * @param memRecr      The recurrent memory instance.
  */
 class LlamaMemoryHybrid(
-    private val hparams: LlamaModelHParams,
+    private val hparams: LlamaHparams,
     val memAttn: KVCache,
     val memRecr: LlamaMemoryRecurrent,
 ) : LlamaMemory {

@@ -352,8 +352,6 @@ enum class LlamaExpertGatingFuncType(val id: Int) {
 // LlamaHparams is now defined in LlamaHparams.kt (port of llama-hparams.h/cpp)
 // =============================================================================
 
-/** Backward-compatible typealias so existing call sites using LlamaModelHParams still compile. */
-typealias LlamaModelHParams = LlamaHparams
 
 
 // =============================================================================

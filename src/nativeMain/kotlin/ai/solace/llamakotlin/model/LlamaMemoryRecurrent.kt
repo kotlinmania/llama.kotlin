@@ -64,7 +64,7 @@ data class RecurrentMemCell(
  * @param filter     Per-layer filter deciding which layers get state buffers.
  */
 class LlamaMemoryRecurrent(
-    private val hparams: LlamaModelHParams,
+    private val hparams: LlamaHparams,
     private val typeR: GGMLType = GGMLType.F32,
     private val typeS: GGMLType = GGMLType.F32,
     private val offload: Boolean = false,

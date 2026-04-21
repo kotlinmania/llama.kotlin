@@ -876,7 +876,7 @@ class KVCache private constructor(
                 if (!canUse && cells.seqCount(idx) == 1) {
                     val posCell = cells.posGet(idx)
                     val seqIdCell = cells.seqGet(idx)
-                    if (LlamaModelHParams.isMaskedSwa(nSwa, swaType, posCell, cells.seqPosMax(seqIdCell) + 1)) {
+                    if (LlamaHparams.isMaskedSwa(nSwa, swaType, posCell, cells.seqPosMax(seqIdCell) + 1)) {
                         canUse = true
                     }
                 }

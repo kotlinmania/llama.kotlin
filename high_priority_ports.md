@@ -6,9 +6,9 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
-| 1 | `llama-hparams` | `model.LlamaHparams` | 0.00 | 4 | 79 | 1052.3 |
-| 2 | `llama-graph` | `model.LlamaGraph` | 0.20 | 7 | 63 | 900.3 |
-| 3 | `llama` | `model.Grammar` | 0.00 | 16 | 52 | 828.8 |
+| 1 | `llama` | `model.Grammar` | 0.00 | 16 | 52 | 828.8 |
+| 2 | `llama-graph` | `model.LlamaGraph` | 0.34 | 7 | 48 | 686.4 |
+| 3 | `llama-hparams` | `model.LlamaHparams` | 0.30 | 4 | 50 | 666.6 |
 | 4 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
 | 5 | `llama-mmap` | `model.LlamaMmap` | 0.18 | 5 | 19 | 265.5 |
 | 6 | `llama-impl` | `model.LlamaImpl` | 0.13 | 19 | 12 | 204.9 |
@@ -31,18 +31,18 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 These files need immediate attention:
 
-- **llama-hparams** → `model.LlamaHparams`
-  - Similarity: 0.00
-  - Dependencies: 4
-
-- **llama-graph** → `model.LlamaGraph`
-  - Similarity: 0.20
-  - Dependencies: 7
-  - Lint issues: 2
-
 - **llama** → `model.Grammar`
   - Similarity: 0.00
   - Dependencies: 16
+
+- **llama-graph** → `model.LlamaGraph`
+  - Similarity: 0.34
+  - Dependencies: 7
+  - Lint issues: 2
+
+- **llama-hparams** → `model.LlamaHparams`
+  - Similarity: 0.30
+  - Dependencies: 4
 
 - **llama-memory** → `model.LlamaMemory`
   - Similarity: 0.07

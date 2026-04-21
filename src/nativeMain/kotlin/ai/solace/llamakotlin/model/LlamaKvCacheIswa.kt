@@ -24,7 +24,7 @@ import kotlin.math.min
  * @property kvSwa     KV cache for SWA layers.
  */
 class LlamaKvCacheIswa(
-    private val hparams: LlamaModelHParams,
+    private val hparams: LlamaHparams,
     private val unified: Boolean,
     val kvBase: KVCache,
     val kvSwa: KVCache,
@@ -48,7 +48,7 @@ class LlamaKvCacheIswa(
          * @param reuse     Optional layer reuse callback.
          */
         fun create(
-            hparams: LlamaModelHParams,
+            hparams: LlamaHparams,
             typeK: GGMLType = GGMLType.F16,
             typeV: GGMLType = GGMLType.F16,
             vTrans: Boolean = true,

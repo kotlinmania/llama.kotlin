@@ -363,7 +363,7 @@ fun LlamaContext.graphParamsImpl(
 ): LlmGraphParams {
     return LlmGraphParams(
         arch = LlamaModelArch.LLAMA,
-        hparams = LlamaModelHParams(
+        hparams = LlamaHparams(
             nEmbd = model.config.hiddenSize,
             nLayer = model.config.numHiddenLayers,
         ),

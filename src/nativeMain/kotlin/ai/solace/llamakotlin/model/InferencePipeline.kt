@@ -16,7 +16,7 @@ import kotlin.math.sqrt
  * cached keys/values.  Ports `llm_graph_input_attn_kv` from `llama-graph.h`.
  */
 class LlmGraphInputAttnKv(
-    val hparams: LlamaModelHParams,
+    val hparams: LlamaHparams,
     val cparams: LlamaCParams,
 ) : LlmGraphInput {
     var selfKIdxs: GGMLTensor? = null       // I64 [nBatch]

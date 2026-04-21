@@ -16,7 +16,7 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.13
+**Average Similarity:** 0.14
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -32,9 +32,9 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
-- `llama-hparams` → `model.LlamaHparams` (0.00, 4 deps)
-- `llama-graph` → `model.LlamaGraph` (0.20, 7 deps)
 - `llama` → `model.Grammar` (0.00, 16 deps)
+- `llama-graph` → `model.LlamaGraph` (0.34, 7 deps)
+- `llama-hparams` → `model.LlamaHparams` (0.30, 4 deps)
 - `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
 - `llama-mmap` → `model.LlamaMmap` (0.18, 5 deps)
 - `llama-impl` → `model.LlamaImpl` (0.13, 19 deps)
@@ -70,8 +70,8 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
-| `llama-graph` | `model.LlamaGraph` | 1/1 | `llama_sampler_data` |
 | `llama` | `model.Grammar` | 18/18 | `llama_flash_attn_type`, `llama_device_memory_data`, `user_data_t` … |
+| `llama-graph` | `model.LlamaGraph` | 1/1 | `llama_sampler_data` |
 | `llama-memory` | `model.LlamaMemory` | 7/8 | `llama_ubatch`, `llama_batch_allocr`, `llama_io_write_i` … |
 | `llama-mmap` | `model.LlamaMmap` | 1/4 | `impl` |
 | `llama-impl` | `model.LlamaImpl` | 3/5 | `no_init`, `ggml_tensor`, `gguf_context` |
@@ -108,7 +108,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4241 / 2 lines (212050%)
+**Documentation coverage:** 4303 / 2 lines (215150%)
 
 Top documentation gaps (>20%):
 
