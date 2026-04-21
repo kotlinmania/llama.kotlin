@@ -76,6 +76,19 @@ class RingBuffer<T>(val capacity: Int, private val default: T) {
         return data[first]
     }
 
+    fun back(): T {
+        check(sz > 0) { "ring buffer is empty" }
+        return data[pos]
+    }
+
+    fun popFront(): T {
+        check(sz > 0) { "ring buffer is empty" }
+        val value = data[first]
+        first = (first + 1) % capacity
+        sz--
+        return value
+    }
+
     fun pushBack(value: T) {
         check(capacity > 0) { "ring buffer: capacity is zero" }
         if (sz == capacity) {
@@ -136,15 +149,93 @@ private fun getRngSeed(seed: UInt): Long {
 }
 
 /**
+ * Non-inplace partial sort via bucket sort. Writes result to [res], does not mutate [curP].
+ * Matches C++ `llama_token_data_array_partial_sort`.
+ */
+private fun partialSort(curP: LlamaTokenDataArray, nPartial: Int, res: MutableList<SamplerTokenData>) {
+    val nBuckets = 128
+    val bucketLow = -10.0f
+    val bucketHigh = 10.0f
+    val bucketScale = nBuckets / (bucketHigh - bucketLow)
+    val bucketInter = -bucketLow * bucketScale
+
+    val bucketIdx = IntArray(curP.size)
+    val histo = IntArray(nBuckets)
+
+    for (i in 0 until curP.size) {
+        val v = curP.data[i].logit
+        var ib = (bucketScale * v + bucketInter).toInt()
+        ib = maxOf(0, minOf(nBuckets - 1, ib))
+        bucketIdx[i] = ib
+        histo[ib]++
+    }
+
+    var nHave = 0
+    var ib = nBuckets - 1
+    while (ib >= 0) {
+        nHave += histo[ib]
+        if (nHave >= nPartial) break
+        ib--
+    }
+
+    res.clear()
+    for (i in 0 until nHave) res.add(SamplerTokenData(0, 0f))
+
+    // compute per-bucket write offsets
+    val bucketOffsets = IntArray(nBuckets - ib)
+    var offset = 0
+    for (j in nBuckets - 1 downTo ib) {
+        bucketOffsets[nBuckets - 1 - j] = offset
+        offset += histo[j]
+    }
+    val bucketPtrs = IntArray(nBuckets - ib)
+    for (i in bucketPtrs.indices) bucketPtrs[i] = bucketOffsets[i]
+
+    for (i in 0 until curP.size) {
+        val j = bucketIdx[i]
+        if (j >= ib) {
+            res[bucketPtrs[nBuckets - 1 - j]++] = curP.data[i]
+        }
+    }
+
+    // sort each bucket, partial sort last bucket
+    var ptr = 0
+    var nDone = 0
+    for (j in nBuckets - 1 downTo ib + 1) {
+        val sub = res.subList(ptr, ptr + histo[j])
+        sub.sortByDescending { it.logit }
+        ptr += histo[j]
+        nDone += histo[j]
+    }
+    // partial sort the boundary bucket
+    val remaining = nPartial - nDone
+    if (remaining > 0 && histo[ib] > 0) {
+        val sub = res.subList(ptr, ptr + histo[ib])
+        sub.sortByDescending { it.logit }
+    }
+}
+
+/**
  * In-place partial sort: keep only the top [k] elements (by descending logit).
+ * For small k (≤ 128) uses a simple sort; for larger k uses bucket sort.
+ * Matches C++ `llama_token_data_array_partial_sort_inplace`.
  */
 private fun partialSortInPlace(curP: LlamaTokenDataArray, k: Int) {
     val n = minOf(k, curP.size)
     if (n <= 0) return
 
-    // sort region [0, size) by descending logit, keep first n
-    val sub = curP.data.subList(0, curP.size)
-    sub.sortByDescending { it.logit }
+    if (n <= 128) {
+        // simple partial sort for small sizes
+        val sub = curP.data.subList(0, curP.size)
+        sub.sortByDescending { it.logit }
+        curP.size = n
+        curP.sorted = true
+        return
+    }
+
+    val tmp = mutableListOf<SamplerTokenData>()
+    partialSort(curP, n, tmp)
+    for (i in 0 until n) curP.data[i] = tmp[i]
     curP.size = n
     curP.sorted = true
 }
@@ -336,8 +427,6 @@ class LlamaSamplerChain(
                 is LlamaSamplerDist -> s.seedCur
                 is LlamaSamplerMirostat -> s.seedCur
                 is LlamaSamplerMirostatV2 -> s.seedCur
-                is LlamaSamplerXtc -> s.seedCur
-                is LlamaSamplerAdaptiveP -> s.seedCur
                 is LlamaSamplerChain -> {
                     val inner = s.getSeed()
                     if (inner != LLAMA_DEFAULT_SEED) inner else continue
@@ -455,16 +544,39 @@ class LlamaSamplerTopP(val p: Float, val minKeep: Int = 1) : LlamaSampler {
         if (p >= 1.0f) return
 
         softmaxImpl(curP, false)
-        if (!curP.sorted) partialSortInPlace(curP, curP.size)
+
+        var k = curP.size
+        var pdata = curP.data
+        val bufSort = mutableListOf<SamplerTokenData>()
+
+        // if not sorted, try adaptive top-k sorting
+        if (!curP.sorted && curP.size > 1024) {
+            k = minOf(256, curP.size)
+            partialSort(curP, k, bufSort)
+            pdata = bufSort
+        } else if (!curP.sorted) {
+            partialSortInPlace(curP, k)
+        }
 
         var cumSum = 0.0f
         var lastIdx = curP.size
         for (i in 0 until curP.size) {
-            cumSum += curP.data[i].p
+            cumSum += pdata[i].p
             if (cumSum >= p && i + 1 >= minKeep) {
                 lastIdx = i + 1
                 break
             }
+            // exceeded current top-k heuristic -> expand and re-sort
+            if (!curP.sorted && i == k - 1) {
+                k = curP.size
+                partialSort(curP, k, bufSort)
+                pdata = bufSort
+            }
+        }
+
+        if (!curP.sorted) {
+            for (i in 0 until lastIdx) curP.data[i] = bufSort[i]
+            curP.sorted = true
         }
         curP.size = lastIdx
     }
@@ -1122,30 +1234,55 @@ class LlamaSamplerMirostatV2(
  * Grammar-constrained sampling. Delegates to the GBNF grammar engine in
  * Grammar.kt to mask out tokens that would violate the grammar.
  *
- * LATER: Wire up to `LlamaGrammar` once the grammar-apply / grammar-accept
- * interface is exposed.
+ * Transliteration of `llama_sampler_grammar` from llama-sampler.cpp.
  */
 class LlamaSamplerGrammar(
+    val vocab: LlamaVocab?,
     val grammarStr: String = "",
     val grammarRoot: String = "root"
 ) : LlamaSampler {
 
+    var grammar: LlamaGrammar? = if (vocab != null && grammarStr.isNotEmpty()) {
+        LlamaGrammar.fromString(grammarStr, grammarRoot)
+    } else {
+        null
+    }
+
     override fun name(): String = "grammar"
 
     override fun accept(token: LlamaToken) {
-        // LATER: forward to grammar.acceptToken(token)
+        val g = grammar ?: return
+        val piece = vocab?.tokenToPiece(token) ?: return
+        g.acceptImpl(token, piece) { vocab.isEog(it) }
     }
 
     override fun apply(curP: LlamaTokenDataArray) {
-        if (grammarStr.isEmpty()) return
-        // LATER: forward to grammar.applyConstraints(curP)
+        val g = grammar ?: return
+        val v = vocab ?: return
+        // Build an Array<TokenData> wrapper for the grammar engine
+        val candidates = Array(curP.size) { i ->
+            TokenData(curP.data[i].id, curP.data[i].logit, curP.data[i].p)
+        }
+        g.apply(candidates, { id -> v.tokenToPiece(id) }, { id -> v.isEog(id) })
+        // Write back any logit changes (grammar sets rejected logits to -Inf)
+        for (i in 0 until curP.size) {
+            curP.data[i].logit = candidates[i].logit
+        }
     }
 
     override fun reset() {
-        // LATER: re-parse grammarStr
+        val v = vocab ?: return
+        if (grammar == null) return
+        grammar = LlamaGrammar.fromString(grammarStr, grammarRoot)
     }
 
-    override fun clone(): LlamaSampler = LlamaSamplerGrammar(grammarStr, grammarRoot)
+    override fun clone(): LlamaSampler {
+        val c = LlamaSamplerGrammar(vocab, "", "")
+        if (grammar != null) {
+            c.grammar = grammar!!.clone()
+        }
+        return c
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1187,6 +1324,30 @@ class LlamaSamplerInfill(val vocab: LlamaVocab) : LlamaSampler {
             }
             for (i in 0 until curP.size) curP.data[i].p /= pSum
             return
+        }
+
+        // combine tokens with common prefix
+        for (i0 in 0 until curP.size) {
+            for (i1 in 0 until curP.size) {
+                if (curP.data[i0].logit == Float.NEGATIVE_INFINITY) break
+                if (i0 == i1 || curP.data[i1].logit == Float.NEGATIVE_INFINITY) continue
+
+                val piece0 = vocab.tokenToPiece(curP.data[i0].id, lstrip = 0, special = false)
+                val piece1 = vocab.tokenToPiece(curP.data[i1].id, lstrip = 0, special = false)
+
+                // token i0 is a prefix of token i1
+                if (piece0.isNotEmpty() && piece0.length <= piece1.length && piece1.startsWith(piece0)) {
+                    var dst = i0
+                    var src = i1
+                    if (curP.data[i1].p > curP.data[i0].p) {
+                        dst = i1
+                        src = i0
+                    }
+                    curP.data[dst].p += curP.data[src].p
+                    curP.data[src].logit = Float.NEGATIVE_INFINITY
+                    curP.data[src].p = 0.0f
+                }
+            }
         }
 
         // threshold pass
@@ -1403,8 +1564,8 @@ fun llamaSamplerInitMirostatV2(
 ): LlamaSampler = LlamaSamplerMirostatV2(seed, tau, eta)
 
 /** Create a grammar-constrained sampler. */
-fun llamaSamplerInitGrammar(grammarStr: String, grammarRoot: String = "root"): LlamaSampler =
-    LlamaSamplerGrammar(grammarStr, grammarRoot)
+fun llamaSamplerInitGrammar(vocab: LlamaVocab, grammarStr: String, grammarRoot: String = "root"): LlamaSampler =
+    LlamaSamplerGrammar(vocab, grammarStr, grammarRoot)
 
 /** Create an infill (FIM) sampler. */
 fun llamaSamplerInitInfill(vocab: LlamaVocab): LlamaSampler = LlamaSamplerInfill(vocab)
@@ -1416,7 +1577,7 @@ fun llamaSamplerInitAdaptiveP(
     seed: UInt = LLAMA_DEFAULT_SEED
 ): LlamaSampler = LlamaSamplerAdaptiveP(target, decay, seed)
 
-/** Create a DRY penalty sampler. */
+/** Create a DRY penalty sampler (with pre-processed breakers). */
 fun llamaSamplerInitDry(
     totalContextSize: Int,
     dryMultiplier: Float,
@@ -1430,6 +1591,81 @@ fun llamaSamplerInitDry(
     }
     return LlamaSamplerDry(
         totalContextSize, dryMultiplier, dryBase, dryAllowedLength, dryPenaltyLastN,
+        processedBreakers
+    )
+}
+
+/**
+ * Ported from Koboldcpp: find all token sequences that overlap with a given
+ * string [str] at the boundary. This populates [tokenSequences] with
+ * (head_token -> tail_token_list) entries used by the DRY sampler.
+ */
+private fun getOverlappingTokenSequences(
+    vocab: LlamaVocab,
+    str: String,
+    tokenSequences: HashMap<LlamaToken, MutableList<List<LlamaToken>>>,
+    maxTailLen: Int = -1
+) {
+    for (tokenId in 0 until vocab.nTokens()) {
+        val word = vocab.detokenize(listOf(tokenId), removeSpecial = false, unparseSpecial = true)
+        if (word.contains(str)) {
+            val existing = tokenSequences.getOrPut(tokenId) { mutableListOf() }
+            if (existing.none { it.isEmpty() }) {
+                existing.add(emptyList())
+            }
+        } else {
+            val wordLen = word.length
+            val strLen = str.length
+            var pos = -1
+            while (true) {
+                pos = word.indexOf(str[0], pos + 1)
+                if (pos == -1) break
+                var match = true
+                var i = 1
+                while (i < strLen && i + pos < wordLen) {
+                    if (word[pos + i] != str[i]) { match = false; break }
+                    i++
+                }
+                if (match) {
+                    var tokenization = vocab.tokenize(str.substring(i), addSpecial = false, parseSpecial = false)
+                    if (maxTailLen >= 0 && tokenization.size > maxTailLen) {
+                        tokenization = tokenization.subList(0, maxTailLen)
+                    }
+                    val existing = tokenSequences.getOrPut(tokenId) { mutableListOf() }
+                    if (existing.none { it == tokenization }) {
+                        existing.add(tokenization)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Create a DRY penalty sampler from raw sequence breaker strings (matches C++ API). */
+fun llamaSamplerInitDry(
+    vocab: LlamaVocab,
+    nCtxTrain: Int,
+    dryMultiplier: Float,
+    dryBase: Float,
+    dryAllowedLength: Int,
+    dryPenaltyLastN: Int,
+    seqBreakers: List<String>
+): LlamaSampler {
+    val dryEnabled = dryMultiplier != 0.0f && dryBase >= 1.0f && dryPenaltyLastN != 0
+    if (!dryEnabled) return LlamaSamplerEmpty("?dry")
+
+    val maxCharLen = 40
+    val maxSeqLen = 20
+    val processedBreakers = HashMap<LlamaToken, MutableList<List<LlamaToken>>>()
+
+    for (breaker in seqBreakers) {
+        if (breaker.isEmpty()) continue
+        val seq = if (breaker.length > maxCharLen) breaker.substring(0, maxCharLen) else breaker
+        getOverlappingTokenSequences(vocab, seq, processedBreakers, maxSeqLen)
+    }
+
+    return LlamaSamplerDry(
+        nCtxTrain, dryMultiplier, dryBase, dryAllowedLength, dryPenaltyLastN,
         processedBreakers
     )
 }
