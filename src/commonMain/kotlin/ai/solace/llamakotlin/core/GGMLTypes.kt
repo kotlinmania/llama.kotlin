@@ -219,7 +219,8 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     NORM(true), // LayerNorm, can be inplace if shapes match and specific handling
     RMS_NORM(true),
     RMS_NORM_BACK(true),
-    MUL_MAT, // Matrix multiplication, typically not inplace
+    MUL_MAT,    // Matrix multiplication, typically not inplace
+    MUL_MAT_ID, // Matrix multiplication by expert id (MoE)
     SCALE(true),
     CPY, // Copy, not inplace by definition of creating a new tensor with copied data
     RESHAPE, // Reshape is a view, metadata change, not inplace on data buffer in the same way
@@ -230,6 +231,10 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     DIAG_MASK_INF(true),
     SOFT_MAX(true), // Can be made inplace
     ROPE(true),
+    IM2COL,       // Image-to-column for convolution
+    SSM_CONV,     // State-space model convolution
+    SSM_SCAN,     // State-space model scan
+    RWKV_WKV6,    // RWKV WKV-6 attention mechanism
     CONCAT,
     SUM_ROWS,
     ARGMAX,
