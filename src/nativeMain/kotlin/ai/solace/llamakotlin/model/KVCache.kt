@@ -1151,6 +1151,28 @@ class KVCache private constructor(
 
     /** Sum of K + V byte sizes. */
     fun totalSize(): Long = sizeKBytes() + sizeVBytes()
+
+    // ── set_input_* helpers ────────────────────────────────────────────
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache::set_input_k_shift
+    fun setInputKShift(dst: GGMLTensor) { }
+
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache::set_input_k_idxs
+    fun setInputKIdxs(dst: GGMLTensor, ubatch: LlamaUBatch, sinfo: SlotInfo) { }
+
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache::set_input_v_idxs
+    fun setInputVIdxs(dst: GGMLTensor, ubatch: LlamaUBatch, sinfo: SlotInfo) { }
+
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache::set_input_kq_mask
+    fun setInputKqMask(dst: GGMLTensor, ubatch: LlamaUBatch, causalAttn: Boolean) { }
+
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache::set_input_pos_bucket
+    fun setInputPosBucket(dst: GGMLTensor, ubatch: LlamaUBatch) { }
+
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache::set_input_k_rot
+    fun setInputKRot(dst: GGMLTensor) { }
+
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache::set_input_v_rot
+    fun setInputVRot(dst: GGMLTensor) { }
 }
 
 // ---------------------------------------------------------------------------
@@ -1256,6 +1278,37 @@ class KVCacheContext(
         return ggmlNewTensor3d(ctx, vType, 128L, nKvCur, 1L) // TODO: use actual nEmbdHeadV, nHeadKv from hparams
     }
 
-    override fun getUbatch(): LlamaUBatch = LlamaUBatch() // TODO: wire up real ubatch from batch allocator
+    // ── set_input_* delegation ─────────────────────────────────────────
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache_context::set_input_*
+
+    fun setInputKShift(dst: GGMLTensor) {
+        kvCache?.setInputKShift(dst)
+    }
+
+    fun setInputKIdxs(dst: GGMLTensor, ubatch: LlamaUBatch) {
+        kvCache?.setInputKIdxs(dst, ubatch, sinfos[iCur])
+    }
+
+    fun setInputVIdxs(dst: GGMLTensor, ubatch: LlamaUBatch) {
+        kvCache?.setInputVIdxs(dst, ubatch, sinfos[iCur])
+    }
+
+    fun setInputKqMask(dst: GGMLTensor, ubatch: LlamaUBatch, causalAttn: Boolean) {
+        kvCache?.setInputKqMask(dst, ubatch, causalAttn)
+    }
+
+    fun setInputPosBucket(dst: GGMLTensor, ubatch: LlamaUBatch) {
+        kvCache?.setInputPosBucket(dst, ubatch)
+    }
+
+    fun setInputKRot(dst: GGMLTensor) {
+        kvCache?.setInputKRot(dst)
+    }
+
+    fun setInputVRot(dst: GGMLTensor) {
+        kvCache?.setInputVRot(dst)
+    }
+
+    override fun getUbatch(): LlamaUBatch = LlamaUBatch() // wire up real ubatch from batch allocator
     override fun getStatus(): LlamaMemoryStatus = status
 }
