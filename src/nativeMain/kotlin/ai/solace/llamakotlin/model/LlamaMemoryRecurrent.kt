@@ -8,68 +8,6 @@ import ai.solace.llamakotlin.core.*
 // Ported from: llama-memory-recurrent.h / llama-memory-recurrent.cpp
 // =============================================================================
 
-// ---------------------------------------------------------------------------
-// GGMLTensor extensions for recurrent memory (mirrors ggml utility functions)
-// ---------------------------------------------------------------------------
-
-/**
- * Total number of bytes occupied by this tensor's data.
- * Port of `ggml_nbytes()`.
- */
-internal fun GGMLTensor.nBytes(): Long {
-    val nElem = numElements().toULong()
-    if (nElem == 0uL) return 0L
-    return calculateTensorByteSize(this).toLong()
-}
-
-/**
- * Byte size of a single row with [nElements] elements of this tensor's type.
- * Port of `ggml_row_size(type, ne)`.
- *
- * For non-quantised types this is simply `type.byteSize * nElements`.
- * For block-quantised types the row must be a multiple of the block size.
- */
-internal fun GGMLTensor.rowSizeBytes(nElements: Int): Long {
-    val typeSize = type.byteSize.toLong()
-    if (typeSize == 0L) return 0L
-    // For block types, byteSize is per-block and block covers `blockElements` elements.
-    val blockElements = type.blockElements()
-    return if (blockElements > 1) {
-        (nElements.toLong() / blockElements) * typeSize
-    } else {
-        nElements.toLong() * typeSize
-    }
-}
-
-/**
- * Write raw data into this tensor's backing storage.
- *
- * Port of `ggml_backend_tensor_set()`. In the full backend port this would
- * dispatch to the appropriate device buffer. For now it writes into the
- * [data] field if it is a [ByteArray].
- */
-internal fun GGMLTensor.setData(bytes: ByteArray, offset: Int, size: Int) {
-    val backingData = data
-    if (backingData is ByteArray) {
-        bytes.copyInto(backingData, destinationOffset = offset, startIndex = 0, endIndex = size)
-    }
-    // TODO: dispatch through backend buffer when full backend is ported
-}
-
-/**
- * Number of fundamental elements per quantisation block.
- * Returns 1 for non-block types.
- */
-private fun GGMLType.blockElements(): Long = when (this) {
-    GGMLType.Q4_0 -> QK4_0.toLong()
-    GGMLType.Q4_1 -> QK4_1.toLong()
-    GGMLType.Q8_0 -> QK8_0.toLong()
-    GGMLType.BITNET_1_58 -> QK_BITNET_1_58.toLong()
-    GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K,
-    GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K -> QK_K.toLong()
-    else -> 1L
-}
-
 // LayerFilterCallback is defined in LlamaMemory.kt
 
 // ---------------------------------------------------------------------------
