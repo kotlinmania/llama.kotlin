@@ -7,12 +7,69 @@ import kotlin.math.ln
 import kotlin.math.min
 
 // =============================================================================
-// Additional graph types from llama-graph.h NOT already in InferencePipeline.kt
+// Graph type enums from llama-graph.h
+// =============================================================================
+
+/** Top-level graph variant used during inference. */
+enum class LlmGraphType {
+    DEFAULT,
+    ENCODER,
+    DECODER,
+}
+
+/** Activation / gating function applied inside feed-forward blocks. */
+enum class LlmFfnOpType {
+    SILU,
+    GELU,
+    RELU,
+    RELU_SQR,
+    SWIGLU,
+    GEGLU,
+    REGLU,
+    SWIGLU_OAI_MOE,
+}
+
+/** How the FFN gate tensor is combined with the up-projection. */
+enum class LlmFfnGateType {
+    /** Gate applied sequentially. */
+    SEQ,
+    /** Gate applied in parallel. */
+    PAR,
+}
+
+/** Normalisation variant applied to hidden states. */
+enum class LlmNormType {
+    NORM,
+    RMS,
+    GROUP,
+}
+
+/**
+ * Callback that allows custom logic to be applied to each tensor during graph
+ * construction (e.g. naming, offloading, ggml-alloc tagging).
+ *
+ * Port of `llm_graph_cb`.
+ */
+typealias LlmGraphCb = (ubatch: LlamaUBatch, cur: GGMLTensor, name: String, il: Int) -> Unit
+
+/**
+ * A single named input that must be populated before graph evaluation.
+ *
+ * Each implementation owns one or more [GGMLTensor] fields that are filled by
+ * [setInput] from the current micro-batch and can optionally report whether a
+ * previously built graph is still valid via [canReuse].
+ */
+interface LlmGraphInput {
+    /** Populate owned tensors from the supplied micro-batch. */
+    fun setInput(ubatch: LlamaUBatch)
+
+    /** Return `true` when the graph built with the previous params can be reused. */
+    fun canReuse(params: LlmGraphParams): Boolean = false
+}
+
+// =============================================================================
+// Additional graph types from llama-graph.h
 //
-// The core graph types (LlmFfnOpType, LlmFfnGateType, LlmNormType,
-// LlmGraphInput, LlmGraphInputEmbd/Pos/OutIds/Mean/Cls/AttnKv/AttnNoCache/Rs/
-// AttnCross, LlmGraphQkv, LlmGraphResult, LlmGraphParams, LlmGraphContext)
-// are defined in InferencePipeline.kt. This file ports the remaining types
 // from the full C++ llama-graph.h header.
 // =============================================================================
 

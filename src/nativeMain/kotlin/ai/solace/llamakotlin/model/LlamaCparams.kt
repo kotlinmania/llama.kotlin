@@ -2,14 +2,8 @@
 package ai.solace.llamakotlin.model
 
 // =============================================================================
-// LlamaCparams – context-parameter constants and callback types
-// Ported from: llama-cparams.h
-//
-// The main data classes `LlamaCParams` (computed context parameters) and
-// `LlamaContextParams` (user-facing context configuration) are defined in
-// LlamaAttention.kt because they were ported alongside the context logic.
-// This file contributes the constant `LLAMA_MAX_SEQ_CPARAMS` and the eval
-// callback typealias that the C++ header declares alongside the struct.
+// LlamaCparams – computed context parameters
+// Ported from: llama-cparams.h  struct llama_cparams
 // =============================================================================
 
 /**
@@ -23,12 +17,41 @@ package ai.solace.llamakotlin.model
 const val LLAMA_MAX_SEQ_CPARAMS: Int = 256
 
 /**
- * Callback invoked after each backend-scheduler evaluation step.
+ * Derived / computed context parameters that are resolved from [LlamaContextParams]
+ * and the model's hyper-parameters during [LlamaContext] construction.
  *
- * Port of `ggml_backend_sched_eval_callback` used by `llama_cparams`.
- *
- * - **nodeIndex**: index of the tensor node just evaluated.
- * - **isLast**: `true` when this is the final node in the graph.
- * - **return**: `true` to continue evaluation, `false` to abort early.
+ * Maps to `struct llama_cparams` in `llama-cparams.h`.
  */
-typealias GgmlBackendSchedEvalCallback = ((nodeIndex: Int, isLast: Boolean) -> Boolean)?
+data class LlamaCParams(
+    var nCtx: Int = 0,
+    var nCtxSeq: Int = 0,
+    var nBatch: Int = 0,
+    var nUbatch: Int = 0,
+    var nSeqMax: Int = 1,
+    var nThreads: Int = 4,
+    var nThreadsBatch: Int = 4,
+    var ropeFreqBase: Float = 10000.0f,
+    var ropeFreqScale: Float = 1.0f,
+    var nCtxOrigYarn: Int = 0,
+    var yarnExtFactor: Float = 0.0f,
+    var yarnAttnFactor: Float = 1.0f,
+    var yarnBetaFast: Float = 32.0f,
+    var yarnBetaSlow: Float = 1.0f,
+    var embeddings: Boolean = false,
+    var causalAttn: Boolean = true,
+    var offloadKqv: Boolean = true,
+    var flashAttn: Boolean = false,
+    var autoFa: Boolean = false,
+    var fusedGdnAr: Boolean = true,
+    var fusedGdnCh: Boolean = true,
+    var autoFgdn: Boolean = true,
+    var noPerf: Boolean = false,
+    var warmup: Boolean = false,
+    var opOffload: Boolean = true,
+    var kvUnified: Boolean = true,
+    var pipelineParallel: Boolean = false,
+    var poolingType: LlamaPoolingType = LlamaPoolingType.NONE,
+)
+
+/** Port of `llama_max_parallel_sequences()` from llama-cparams.cpp. */
+fun llamaMaxParallelSequences(): Int = LLAMA_MAX_SEQ_CPARAMS

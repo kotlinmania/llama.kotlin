@@ -2346,12 +2346,6 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
             useMad = true
         )
         scales[subBlock] = stats.scale
-        if (Q2KDiagnosticsRecorder.enabled && (subBlock == 0 || subBlock == 12)) {
-            println("kotlin scale[subBlock=$subBlock]=${stats.scale} min=${stats.min}")
-        }
-        if (subBlock == 12) {
-            println("stats scale subBlock12=${stats.scale}")
-        }
         if (stats.scale > maxScale) maxScale = stats.scale
         if (stats.min > maxMin) maxMin = stats.min
     }

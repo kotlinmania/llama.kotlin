@@ -8,7 +8,7 @@ import ai.solace.llamakotlin.core.*
 //
 // Items already ported live in:
 //   LlamaApi.kt        — LlamaModelParams, LlamaSplitMode, LlamaSamplerChainParams, etc.
-//   LlamaAttention.kt  — LlamaContextParams, LlamaBatch, LlamaPerfContextData, etc.
+//   LlamaContext.kt    — LlamaContextParams, LlamaPerfContextData, LlamaMemoryBreakdownData, etc.
 //   LlamaSampler.kt    — LlamaSampler interface, LlamaTokenDataArray, LlamaLogitBias, etc.
 //   LlamaVocab.kt      — LlamaVocabType, LlamaTokenType, LlamaTokenAttr, LlamaTokenData, etc.
 //   LlamaModel.kt      — LlamaRopeType, LlamaRopeScalingType, etc.
@@ -16,6 +16,13 @@ import ai.solace.llamakotlin.core.*
 //   KVCache.kt          — LlamaPos, LlamaSeqId
 //   LlamaMemoryHybrid.kt — LlamaStateSeqFlags
 // =============================================================================
+
+// ---------------------------------------------------------------------------
+// Fundamental type aliases  (llama.h)
+// ---------------------------------------------------------------------------
+
+/** Token ID type. Maps to `typedef int32_t llama_token` in C++. */
+typealias LlamaToken = Int
 
 // ---------------------------------------------------------------------------
 // Magic numbers & session constants  (llama.h lines 37–49)

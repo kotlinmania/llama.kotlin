@@ -137,16 +137,6 @@ typealias LlamaGrammarStack = List<GrammarStackPos>
 typealias MutableGrammarStack = MutableList<GrammarStackPos>
 typealias LlamaGrammarStacks = MutableList<LlamaGrammarStack>
 
-// ---------------------------------------------------------------------------
-// Legacy compatibility aliases (kept so existing call-sites still compile)
-// ---------------------------------------------------------------------------
-
-/** @see LlamaGretype */
-typealias GrammarElementType = LlamaGretype
-
-/** Thin wrapper around [LlamaGrammarElement] for backward compatibility. */
-typealias GrammarElement = LlamaGrammarElement
-
 /**
  * A complete grammar rule (legacy shape).
  * New code should use [LlamaGrammarRule] directly.
