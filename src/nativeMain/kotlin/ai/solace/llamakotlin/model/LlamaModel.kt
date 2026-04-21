@@ -1191,6 +1191,10 @@ class LlamaModelData(
     // ---- tensor index (for lookup by name) ----
     val tensorsByName: MutableList<Pair<String, GGMLTensor>> = mutableListOf()
 
+    // ---- cached stats (populated by loadStats) ----
+    var nElementsCached: Long = 0L
+    var nBytesCached: Long = 0L
+
     // ---- timing ----
     var tLoadUs: Long = 0L
     var tStartUs: Long = 0L
@@ -1230,7 +1234,367 @@ class LlamaModelData(
             if (bs > 0) count * bs else count
         }
 
-    // -- stubs for loading (to be implemented when model-loader is ported) --
+    /**
+     * The model's total byte size as reported by the model loader.
+     *
+     * Returns the cached value from [loadStats] if available, otherwise falls
+     * back to computing it from the loaded tensors.
+     *
+     * Ported from C++ `llama_model::size()` / `llama_model_size()`.
+     */
+    fun size(): Long = if (nBytesCached > 0) nBytesCached else nBytes()
+
+    /** Total number of loaded tensors. Ported from C++ `llama_model::n_tensors()`. */
+    fun nTensors(): Int = tensorsByName.size
+
+    // -- architecture classification --
+
+    /**
+     * Whether this model has an encoder component.
+     *
+     * Ported from C++ `llama_model_has_encoder()`.
+     */
+    fun hasEncoder(): Boolean = when (arch) {
+        LlamaModelArch.T5,
+        LlamaModelArch.T5ENCODER -> true
+        else -> false
+    }
+
+    /**
+     * Whether this model has a decoder component.
+     *
+     * Ported from C++ `llama_model_has_decoder()`.
+     */
+    fun hasDecoder(): Boolean = when (arch) {
+        LlamaModelArch.T5ENCODER -> false
+        else -> true
+    }
+
+    /**
+     * Whether this model uses a purely recurrent architecture (Mamba, RWKV, etc.).
+     *
+     * Ported from C++ `llama_model_is_recurrent()`.
+     */
+    fun isRecurrent(): Boolean = llmArchIsRecurrent(arch)
+
+    /**
+     * Whether this model uses a hybrid (attention + recurrent) architecture.
+     *
+     * Ported from C++ `llama_model_is_hybrid()`.
+     */
+    fun isHybrid(): Boolean = llmArchIsHybrid(arch)
+
+    /**
+     * Whether this model uses diffusion-based generation.
+     *
+     * Ported from C++ `llama_model_is_diffusion()`.
+     */
+    fun isDiffusion(): Boolean = llmArchIsDiffusion(arch)
+
+    /**
+     * The decoder start token ID, or -1 if not set.
+     *
+     * Ported from C++ `llama_model_decoder_start_token()`.
+     */
+    fun decoderStartToken(): Int = hparams.decStartTokenId
+
+    // -- RoPE helpers --
+
+    /**
+     * Determine the RoPE type for this architecture.
+     *
+     * Ported from C++ `llama_model_rope_type()`. The mapping follows the
+     * exhaustive switch in the original: architectures that don't use RoPE
+     * return [LlamaRopeType.NONE], standard pair-wise RoPE returns
+     * [LlamaRopeType.NORM], and NeoX-style (offset by nRot/2) returns
+     * [LlamaRopeType.NEOX].
+     */
+    fun ropeType(): LlamaRopeType = when (arch) {
+        // --- no RoPE ---
+        LlamaModelArch.CLIP,
+        LlamaModelArch.GPT2,
+        LlamaModelArch.GPTJ,
+        LlamaModelArch.MPT,
+        LlamaModelArch.REFACT,
+        LlamaModelArch.BLOOM,
+        LlamaModelArch.MAMBA,
+        LlamaModelArch.MAMBA2,
+        LlamaModelArch.JAMBA,
+        LlamaModelArch.JINA_BERT_V2,
+        LlamaModelArch.T5,
+        LlamaModelArch.T5ENCODER,
+        LlamaModelArch.JAIS,
+        LlamaModelArch.RWKV6,
+        LlamaModelArch.RWKV6QWEN2,
+        LlamaModelArch.RWKV7,
+        LlamaModelArch.ARWKV7,
+        LlamaModelArch.WAVTOKENIZER_DEC,
+        LlamaModelArch.NEMOTRON_H,
+        LlamaModelArch.NEMOTRON_H_MOE,
+        LlamaModelArch.KIMI_LINEAR
+            -> LlamaRopeType.NONE
+
+        // --- normal (consecutive-pair) RoPE ---
+        LlamaModelArch.LLAMA,
+        LlamaModelArch.LLADA,
+        LlamaModelArch.LLAMA4,
+        LlamaModelArch.DECI,
+        LlamaModelArch.BAICHUAN,
+        LlamaModelArch.STARCODER,
+        LlamaModelArch.INTERNLM2,
+        LlamaModelArch.MINICPM,
+        LlamaModelArch.XVERSE,
+        LlamaModelArch.COMMAND_R,
+        LlamaModelArch.COHERE2,
+        LlamaModelArch.OLMO,
+        LlamaModelArch.ARCTIC,
+        LlamaModelArch.DEEPSEEK,
+        LlamaModelArch.DEEPSEEK2,
+        LlamaModelArch.DEEPSEEK2OCR,
+        LlamaModelArch.PLM,
+        LlamaModelArch.CHATGLM,
+        LlamaModelArch.GRANITE,
+        LlamaModelArch.GRANITE_MOE,
+        LlamaModelArch.GRANITE_HYBRID,
+        LlamaModelArch.CHAMELEON,
+        LlamaModelArch.BAILINGMOE,
+        LlamaModelArch.NEO_BERT,
+        LlamaModelArch.SMOLLM3,
+        LlamaModelArch.ARCEE,
+        LlamaModelArch.ERNIE4_5,
+        LlamaModelArch.ERNIE4_5_MOE,
+        LlamaModelArch.MISTRAL3,
+        LlamaModelArch.MISTRAL4,
+        LlamaModelArch.LLAMA_EMBED,
+        LlamaModelArch.MAINCODER,
+        LlamaModelArch.GLM_DSA
+            -> LlamaRopeType.NORM
+
+        // --- NeoX (offset by nRot/2) RoPE ---
+        LlamaModelArch.FALCON,
+        LlamaModelArch.FALCON_H1,
+        LlamaModelArch.GROK,
+        LlamaModelArch.DBRX,
+        LlamaModelArch.BERT,
+        LlamaModelArch.JINA_BERT_V3,
+        LlamaModelArch.MODERN_BERT,
+        LlamaModelArch.NOMIC_BERT,
+        LlamaModelArch.NOMIC_BERT_MOE,
+        LlamaModelArch.EUROBERT,
+        LlamaModelArch.STABLELM,
+        LlamaModelArch.BITNET,
+        LlamaModelArch.QWEN,
+        LlamaModelArch.QWEN2,
+        LlamaModelArch.DREAM,
+        LlamaModelArch.QWEN2MOE,
+        LlamaModelArch.QWEN3,
+        LlamaModelArch.QWEN3MOE,
+        LlamaModelArch.LLADA_MOE,
+        LlamaModelArch.RND1,
+        LlamaModelArch.OLMO2,
+        LlamaModelArch.OLMOE,
+        LlamaModelArch.PHI2,
+        LlamaModelArch.PHI3,
+        LlamaModelArch.PHIMOE,
+        LlamaModelArch.PLAMO,
+        LlamaModelArch.PLAMO2,
+        LlamaModelArch.PLAMO3,
+        LlamaModelArch.GEMMA,
+        LlamaModelArch.GEMMA2,
+        LlamaModelArch.GEMMA3,
+        LlamaModelArch.GEMMA3N,
+        LlamaModelArch.GEMMA4,
+        LlamaModelArch.GEMMA_EMBEDDING,
+        LlamaModelArch.STARCODER2,
+        LlamaModelArch.OPENELM,
+        LlamaModelArch.GPTNEOX,
+        LlamaModelArch.CODESHELL,
+        LlamaModelArch.ORION,
+        LlamaModelArch.NEMOTRON,
+        LlamaModelArch.EXAONE,
+        LlamaModelArch.EXAONE4,
+        LlamaModelArch.EXAONE_MOE,
+        LlamaModelArch.MINICPM3,
+        LlamaModelArch.BAILINGMOE2,
+        LlamaModelArch.DOTS1,
+        LlamaModelArch.HUNYUAN_MOE,
+        LlamaModelArch.JAIS2,
+        LlamaModelArch.OPENAI_MOE,
+        LlamaModelArch.HUNYUAN_DENSE,
+        LlamaModelArch.LFM2,
+        LlamaModelArch.LFM2MOE,
+        LlamaModelArch.SMALLTHINKER,
+        LlamaModelArch.SEED_OSS,
+        LlamaModelArch.GROVEMOE,
+        LlamaModelArch.APERTUS,
+        LlamaModelArch.MINIMAX_M2,
+        LlamaModelArch.COGVLM,
+        LlamaModelArch.PANGU_EMBED,
+        LlamaModelArch.AFMOE,
+        LlamaModelArch.QWEN3NEXT,
+        LlamaModelArch.MIMO2,
+        LlamaModelArch.STEP35
+            -> LlamaRopeType.NEOX
+
+        // --- multi-dimensional RoPE ---
+        LlamaModelArch.QWEN2VL,
+        LlamaModelArch.PADDLEOCR
+            -> LlamaRopeType.MROPE
+
+        // --- interleaved multi-dimensional RoPE ---
+        LlamaModelArch.QWEN3VL,
+        LlamaModelArch.QWEN3VLMOE,
+        LlamaModelArch.QWEN35,
+        LlamaModelArch.QWEN35MOE
+            -> LlamaRopeType.IMROPE
+
+        // --- conditional ---
+        LlamaModelArch.GLM4 ->
+            if (hparams.useMrope()) LlamaRopeType.MROPE else LlamaRopeType.NORM
+        LlamaModelArch.GLM4_MOE ->
+            if (hparams.useMrope()) LlamaRopeType.MROPE else LlamaRopeType.NEOX
+
+        LlamaModelArch.UNKNOWN -> LlamaRopeType.NONE
+    }
+
+    /** RoPE frequency scale from training. Ported from C++ `llama_model_rope_freq_scale_train()`. */
+    fun ropeFreqScaleTrain(): Float = hparams.ropeFreqScaleTrain
+
+    /**
+     * Get the effective RoPE frequency base for a given layer, accounting for
+     * sliding-window attention layers that may use a different base.
+     *
+     * Ported from C++ `llama_model::get_rope_freq_base()`.
+     */
+    fun getRopeFreqBase(cparams: LlamaCParams, il: Int): Float =
+        if (hparams.isSwa(il)) hparams.ropeFreqBaseTrainSwa else cparams.ropeFreqBase
+
+    /**
+     * Get the effective RoPE frequency scale for a given layer.
+     *
+     * Ported from C++ `llama_model::get_rope_freq_scale()`.
+     */
+    fun getRopeFreqScale(cparams: LlamaCParams, il: Int): Float =
+        if (hparams.isSwa(il)) hparams.ropeFreqScaleTrainSwa else cparams.ropeFreqScale
+
+    /**
+     * Get the RoPE frequency-factor tensor for a given layer. Returns
+     * `rope_freqs` if present, otherwise selects `rope_long` or `rope_short`
+     * based on the sequence context length vs. the original training context.
+     *
+     * Ported from C++ `llama_model::get_rope_factors()`.
+     */
+    fun getRopeFactors(cparams: LlamaCParams, il: Int): GGMLTensor? {
+        val layer = layers.getOrNull(il) ?: return null
+        if (layer.ropeFreqs != null) return layer.ropeFreqs
+        return if (cparams.nCtxSeq > hparams.nCtxOrigYarn) layer.ropeLong else layer.ropeShort
+    }
+
+    // -- metadata accessors --
+
+    /**
+     * Look up a GGUF metadata value by key.
+     *
+     * Ported from C++ `llama_model_meta_val_str()`.
+     *
+     * @return the value string, or `null` if the key is absent.
+     */
+    fun metaValStr(key: String): String? = ggufKv[key]
+
+    /** Number of GGUF metadata key-value pairs. Ported from C++ `llama_model_meta_count()`. */
+    fun metaCount(): Int = ggufKv.size
+
+    /**
+     * Get the key at a given index in the metadata map.
+     *
+     * Ported from C++ `llama_model_meta_key_by_index()`.
+     *
+     * @return the key string, or `null` if [index] is out of range.
+     */
+    fun metaKeyByIndex(index: Int): String? {
+        if (index < 0 || index >= ggufKv.size) return null
+        return ggufKv.keys.elementAtOrNull(index)
+    }
+
+    /**
+     * Get the value at a given index in the metadata map.
+     *
+     * Ported from C++ `llama_model_meta_val_str_by_index()`.
+     *
+     * @return the value string, or `null` if [index] is out of range.
+     */
+    fun metaValStrByIndex(index: Int): String? {
+        if (index < 0 || index >= ggufKv.size) return null
+        return ggufKv.values.elementAtOrNull(index)
+    }
+
+    /**
+     * Retrieve the chat template from GGUF metadata.
+     *
+     * Ported from C++ `llama_model_chat_template()`.
+     *
+     * @param templateName Optional template name suffix. When `null`, uses the
+     *   default `tokenizer.chat_template` key.
+     * @return the chat template string, or `null` if not found.
+     */
+    fun chatTemplate(templateName: String? = null): String? {
+        val kv = LlmKvHelper(arch, templateName)
+        val key = kv(LlmKv.TOKENIZER_CHAT_TEMPLATE)
+        return ggufKv[key]
+    }
+
+    // -- tensor mutation --
+
+    /**
+     * Set the data of a tensor identified by name.
+     *
+     * Finds the tensor in [tensorsByName], validates that the provided data
+     * size matches the tensor's byte requirements, and copies the data into
+     * the tensor's backing storage.
+     *
+     * Ported from the concept of C++ `llama_model_set_tensor()` — in C++ this
+     * copies into a backend buffer; here we copy into the ByteArray-backed
+     * tensor data directly.
+     *
+     * @param name  GGUF tensor name (e.g. "blk.0.attn_q.weight").
+     * @param data  Raw bytes to copy into the tensor.
+     * @return `true` if the tensor was found and data was set, `false` otherwise.
+     */
+    fun setTensor(name: String, data: ByteArray): Boolean {
+        val tensor = getTensor(name) ?: return false
+        val expectedBytes = tensor.nBytes()
+        require(data.size.toLong() == expectedBytes) {
+            "setTensor('$name'): data size ${data.size} != expected $expectedBytes bytes"
+        }
+        data.copyInto(tensor.data, destinationOffset = 0)
+        return true
+    }
+
+    // -- loading --
+
+    /**
+     * Cache the aggregate element/byte counts from the model loader.
+     *
+     * Ported from C++ `llama_model::load_stats()`.
+     */
+    fun loadStats(ml: LlamaModelLoader) {
+        nElementsCached = ml.nElements
+        nBytesCached = ml.nBytes
+    }
+
+    /**
+     * Resolve the model architecture from the loader's GGUF metadata.
+     *
+     * Ported from C++ `llama_model::load_arch()`.
+     *
+     * @throws IllegalStateException if the architecture is unknown.
+     */
+    fun loadArch(ml: LlamaModelLoader) {
+        arch = LlamaModelArch.fromGgufName(ml.archName)
+        check(arch != LlamaModelArch.UNKNOWN) {
+            "Unknown model architecture: '${ml.archName}'"
+        }
+    }
 
     /**
      * Populate [hparams] from GGUF metadata.

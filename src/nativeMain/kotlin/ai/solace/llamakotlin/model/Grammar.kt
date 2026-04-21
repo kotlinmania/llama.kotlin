@@ -733,6 +733,15 @@ class LlamaGrammarParser {
         }
     }
 
+    /**
+     * Return the rules as a flat list, analogous to C++ `c_rules()`.
+     *
+     * In the C++ source this returns `vector<const llama_grammar_element *>`
+     * (one pointer per rule). In Kotlin we just return the rules list directly
+     * since callers can index into it.
+     */
+    fun cRules(): List<LlamaGrammarRule> = rules.toList()
+
     /** Pretty-print rules in GBNF notation (for debugging). */
     fun print(): String {
         val idToName = mutableMapOf<UInt, String>()
@@ -806,6 +815,116 @@ fun isEndOfSequence(rule: LlamaGrammarRule, elementIndex: Int): Boolean {
     if (elementIndex >= rule.size) return true
     return rule[elementIndex].type == LlamaGretype.END ||
            rule[elementIndex].type == LlamaGretype.ALT
+}
+
+// ---------------------------------------------------------------------------
+// Debug printing utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Print a grammar rule in its raw binary representation (element types and values).
+ *
+ * Port of `print_rule_binary()` from `llama-grammar.cpp`.
+ * Useful for low-level debugging of rule construction.
+ */
+fun printRuleBinary(rule: LlamaGrammarRule): String {
+    val sb = StringBuilder()
+    for (elem in rule) {
+        when (elem.type) {
+            LlamaGretype.END -> sb.append("END")
+            LlamaGretype.ALT -> sb.append("ALT")
+            LlamaGretype.RULE_REF -> sb.append("RULE_REF")
+            LlamaGretype.CHAR -> sb.append("CHAR")
+            LlamaGretype.CHAR_NOT -> sb.append("CHAR_NOT")
+            LlamaGretype.CHAR_RNG_UPPER -> sb.append("CHAR_RNG_UPPER")
+            LlamaGretype.CHAR_ALT -> sb.append("CHAR_ALT")
+            LlamaGretype.CHAR_ANY -> sb.append("CHAR_ANY")
+            LlamaGretype.TOKEN -> sb.append("TOKEN")
+            LlamaGretype.TOKEN_NOT -> sb.append("TOKEN_NOT")
+        }
+        when (elem.type) {
+            LlamaGretype.END,
+            LlamaGretype.ALT,
+            LlamaGretype.RULE_REF -> sb.append("(${elem.value}) ")
+            LlamaGretype.CHAR,
+            LlamaGretype.CHAR_NOT,
+            LlamaGretype.CHAR_RNG_UPPER,
+            LlamaGretype.CHAR_ALT,
+            LlamaGretype.CHAR_ANY -> {
+                sb.append("(\"")
+                appendPrintableGrammarChar(sb, elem.value)
+                sb.append("\") ")
+            }
+            LlamaGretype.TOKEN -> sb.append("<[${elem.value}]> ")
+            LlamaGretype.TOKEN_NOT -> sb.append("!<[${elem.value}]> ")
+        }
+    }
+    return sb.toString()
+}
+
+/**
+ * Print a grammar rule in human-readable GBNF notation.
+ *
+ * Port of the free-standing `print_rule()` function from `llama-grammar.cpp`.
+ *
+ * @param ruleId      Index of the rule being printed.
+ * @param rule        The rule element list (must be END-terminated).
+ * @param idToName    Mapping from rule id to symbol name.
+ * @return A single-line GBNF representation of the rule.
+ * @throws IllegalStateException if the rule is malformed.
+ */
+fun printRule(
+    ruleId: UInt,
+    rule: LlamaGrammarRule,
+    idToName: Map<UInt, String>
+): String {
+    if (rule.isEmpty() || rule.last().type != LlamaGretype.END) {
+        throw IllegalStateException("malformed rule (not END-terminated): $ruleId")
+    }
+    val sb = StringBuilder()
+    sb.append("${idToName[ruleId] ?: ruleId} ::= ")
+    for (i in 0 until rule.size - 1) {
+        val elem = rule[i]
+        when (elem.type) {
+            LlamaGretype.END -> throw IllegalStateException(
+                "unexpected END in rule $ruleId at position $i"
+            )
+            LlamaGretype.ALT -> sb.append("| ")
+            LlamaGretype.RULE_REF -> sb.append("${idToName[elem.value] ?: elem.value} ")
+            LlamaGretype.CHAR -> {
+                sb.append("[")
+                appendPrintableGrammarChar(sb, elem.value)
+            }
+            LlamaGretype.CHAR_NOT -> {
+                sb.append("[^")
+                appendPrintableGrammarChar(sb, elem.value)
+            }
+            LlamaGretype.CHAR_RNG_UPPER -> {
+                sb.append("-")
+                appendPrintableGrammarChar(sb, elem.value)
+            }
+            LlamaGretype.CHAR_ALT -> appendPrintableGrammarChar(sb, elem.value)
+            LlamaGretype.CHAR_ANY -> sb.append(".")
+            LlamaGretype.TOKEN -> sb.append("<[${elem.value}]> ")
+            LlamaGretype.TOKEN_NOT -> sb.append("!<[${elem.value}]> ")
+        }
+        if (isCharElement(elem)) {
+            val nextType = if (i + 1 < rule.size) rule[i + 1].type else null
+            if (nextType != LlamaGretype.CHAR_ALT &&
+                nextType != LlamaGretype.CHAR_RNG_UPPER &&
+                nextType != LlamaGretype.CHAR_ANY
+            ) {
+                sb.append("] ")
+            }
+        }
+    }
+    return sb.toString()
+}
+
+/** Append a single code point as a printable character, or as `<U+XXXX>` if non-printable. */
+private fun appendPrintableGrammarChar(sb: StringBuilder, c: UInt) {
+    if (c in 0x20u..0x7Fu) sb.append(c.toInt().toChar())
+    else sb.append("<U+${c.toString(16).padStart(4, '0').uppercase()}>")
 }
 
 // ---------------------------------------------------------------------------
@@ -1319,6 +1438,35 @@ class LlamaGrammar(
             }
             return rejects
         }
+
+        /**
+         * Accept a character [chr] on a single [stack], appending any resulting
+         * advanced stacks to [newStacks].
+         *
+         * Port of `llama_grammar_accept_chr()` from `llama-grammar.cpp`.
+         * Skips stacks whose top is a TOKEN/TOKEN_NOT element (those are
+         * matched at the token level, not character level).
+         */
+        fun acceptChr(
+            rules: List<LlamaGrammarRule>,
+            stack: LlamaGrammarStack,
+            chr: UInt,
+            newStacks: LlamaGrammarStacks
+        ) {
+            if (stack.isEmpty()) return
+            val pos = stack.last()
+            val elem = rules[pos.ruleIndex][pos.elementIndex]
+            if (elem.type == LlamaGretype.TOKEN || elem.type == LlamaGretype.TOKEN_NOT) return
+
+            val (matched, afterEi) = matchChar(rules[pos.ruleIndex], pos.elementIndex, chr)
+            if (matched) {
+                val newStack = stack.dropLast(1).toMutableList()
+                if (!isEndOfSequence(rules[pos.ruleIndex], afterEi)) {
+                    newStack.add(GrammarStackPos(pos.ruleIndex, afterEi))
+                }
+                advanceStack(rules, newStack, newStacks)
+            }
+        }
     }
 
     // -- Instance methods (mutating grammar state) --------------------------
@@ -1330,19 +1478,7 @@ class LlamaGrammar(
         val stacksNew: LlamaGrammarStacks = mutableListOf()
 
         for (stack in stacks) {
-            if (stack.isEmpty()) continue
-            val pos = stack.last()
-            val elem = rules[pos.ruleIndex][pos.elementIndex]
-            if (elem.type == LlamaGretype.TOKEN || elem.type == LlamaGretype.TOKEN_NOT) continue
-
-            val (matched, afterEi) = matchChar(rules[pos.ruleIndex], pos.elementIndex, chr)
-            if (matched) {
-                val newStack = stack.dropLast(1).toMutableList()
-                if (!isEndOfSequence(rules[pos.ruleIndex], afterEi)) {
-                    newStack.add(GrammarStackPos(pos.ruleIndex, afterEi))
-                }
-                advanceStack(rules, newStack, stacksNew)
-            }
+            acceptChr(rules, stack, chr, stacksNew)
         }
 
         stacks = stacksNew
@@ -1367,6 +1503,8 @@ class LlamaGrammar(
     /**
      * Accept a token by its id and text piece. Handles both token-level and
      * character-level grammar elements.
+     *
+     * Port of `llama_grammar_accept_token()` from `llama-grammar.cpp`.
      */
     fun acceptToken(tokenId: Int, piece: String) {
         val (codePoints, newPartial) = GrammarUtf8.decodeString(piece, partialUtf8)
@@ -1389,25 +1527,12 @@ class LlamaGrammar(
                     advanceStack(rules, newStack, stacksNew)
                 }
             } else {
-                // Character-level matching: walk through code points
+                // Character-level matching: walk through code points using acceptChr
                 var currentStacks: LlamaGrammarStacks = mutableListOf(stack.toList())
                 for (cpIdx in 0 until codePoints.size - 1) {
                     val nextStacks: LlamaGrammarStacks = mutableListOf()
                     for (curStack in currentStacks) {
-                        if (curStack.isEmpty()) continue
-                        val curPos = curStack.last()
-                        val curElem = rules[curPos.ruleIndex][curPos.elementIndex]
-                        if (curElem.type == LlamaGretype.TOKEN || curElem.type == LlamaGretype.TOKEN_NOT) continue
-                        val (matched, afterEi) = matchChar(
-                            rules[curPos.ruleIndex], curPos.elementIndex, codePoints[cpIdx]
-                        )
-                        if (matched) {
-                            val ns = curStack.dropLast(1).toMutableList()
-                            if (!isEndOfSequence(rules[curPos.ruleIndex], afterEi)) {
-                                ns.add(GrammarStackPos(curPos.ruleIndex, afterEi))
-                            }
-                            advanceStack(rules, ns, nextStacks)
-                        }
+                        acceptChr(rules, curStack, codePoints[cpIdx], nextStacks)
                     }
                     currentStacks = nextStacks
                     if (currentStacks.isEmpty()) break

@@ -1187,19 +1187,17 @@ fun llamaModelNHead(model: LlamaModelData): Int = model.hparams.nHead()
 fun llamaModelNHeadKv(model: LlamaModelData): Int = model.hparams.nHeadKv()
 
 /** Sliding-window attention size (0 if disabled). Maps to `llama_model_n_swa()`. */
-fun llamaModelNSwa(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): Int = 0 // TODO
+fun llamaModelNSwa(model: LlamaModelData): Int = model.hparams.nSwa
 
 /** RoPE frequency scale from training. Maps to `llama_model_rope_freq_scale_train()`. */
 fun llamaModelRopeFreqScaleTrain(model: LlamaModelData): Float = model.hparams.ropeFreqScaleTrain
 
 /** Number of classifier outputs. Maps to `llama_model_n_cls_out()`. */
-fun llamaModelNClsOut(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): UInt = 0u // TODO
+fun llamaModelNClsOut(model: LlamaModelData): UInt = model.hparams.nClsOut.toUInt()
 
 /** Classifier label by index. Maps to `llama_model_cls_label()`. */
-fun llamaModelClsLabel(
-    @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
-    @Suppress("UNUSED_PARAMETER") i: UInt,
-): String? = null // TODO
+fun llamaModelClsLabel(model: LlamaModelData, i: UInt): String? =
+    model.classifierLabels.getOrNull(i.toInt())
 
 /** Get vocab type. Maps to `llama_vocab_type()`. */
 fun llamaVocabType(vocab: LlamaVocab): LlamaVocabType = vocab.type
@@ -1208,13 +1206,10 @@ fun llamaVocabType(vocab: LlamaVocab): LlamaVocabType = vocab.type
 fun llamaVocabNTokens(vocab: LlamaVocab): Int = vocab.nTokens()
 
 /** Metadata value by key. Maps to `llama_model_meta_val_str()`. */
-fun llamaModelMetaValStr(
-    @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
-    @Suppress("UNUSED_PARAMETER") key: String,
-): String? = null // TODO
+fun llamaModelMetaValStr(model: LlamaModelData, key: String): String? = model.ggufKv[key]
 
 /** Number of metadata pairs. Maps to `llama_model_meta_count()`. */
-fun llamaModelMetaCount(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): Int = 0 // TODO
+fun llamaModelMetaCount(model: LlamaModelData): Int = model.ggufKv.size
 
 /** Sampling metadata key name. Maps to `llama_model_meta_key_str()`. */
 fun llamaModelMetaKeyStr(key: LlamaModelMetaKey): String = when (key) {
@@ -1233,31 +1228,41 @@ fun llamaModelMetaKeyStr(key: LlamaModelMetaKey): String = when (key) {
 }
 
 /** Total tensor size. Maps to `llama_model_size()`. */
-fun llamaModelSize(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): ULong = 0uL // TODO
+fun llamaModelSize(model: LlamaModelData): ULong = model.nBytes().toULong()
 
 /** Default chat template. Maps to `llama_model_chat_template()`. */
-fun llamaModelChatTemplate(
-    @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
-    @Suppress("UNUSED_PARAMETER") name: String? = null,
-): String? = null // TODO
+fun llamaModelChatTemplate(model: LlamaModelData, name: String? = null): String? {
+    val key = if (name != null) {
+        LlmKvHelper(model.arch, name)(LlmKv.TOKENIZER_CHAT_TEMPLATE)
+    } else {
+        LlmKvHelper(model.arch)(LlmKv.TOKENIZER_CHAT_TEMPLATE)
+    }
+    return model.ggufKv[key]
+}
 
 /** Whether the model has an encoder. Maps to `llama_model_has_encoder()`. */
-fun llamaModelHasEncoder(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): Boolean = false // TODO
+fun llamaModelHasEncoder(model: LlamaModelData): Boolean = when (model.arch) {
+    LlamaModelArch.T5, LlamaModelArch.T5ENCODER -> true
+    else -> false
+}
 
 /** Whether the model has a decoder. Maps to `llama_model_has_decoder()`. */
-fun llamaModelHasDecoder(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): Boolean = true // TODO
+fun llamaModelHasDecoder(model: LlamaModelData): Boolean = when (model.arch) {
+    LlamaModelArch.T5ENCODER -> false
+    else -> true
+}
 
 /** Decoder start token for enc-dec models. Maps to `llama_model_decoder_start_token()`. */
 fun llamaModelDecoderStartToken(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): LlamaToken = LLAMA_TOKEN_NULL
 
 /** Whether the model is recurrent. Maps to `llama_model_is_recurrent()`. */
-fun llamaModelIsRecurrent(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): Boolean = false // TODO
+fun llamaModelIsRecurrent(model: LlamaModelData): Boolean = llmArchIsRecurrent(model.arch)
 
 /** Whether the model is hybrid. Maps to `llama_model_is_hybrid()`. */
-fun llamaModelIsHybrid(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): Boolean = false // TODO
+fun llamaModelIsHybrid(model: LlamaModelData): Boolean = llmArchIsHybrid(model.arch)
 
 /** Whether the model is diffusion-based. Maps to `llama_model_is_diffusion()`. */
-fun llamaModelIsDiffusion(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): Boolean = false // TODO
+fun llamaModelIsDiffusion(model: LlamaModelData): Boolean = llmArchIsDiffusion(model.arch)
 
 /** Quantize a model file. Maps to `llama_model_quantize()`. */
 fun llamaModelQuantize(
