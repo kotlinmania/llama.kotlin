@@ -645,6 +645,85 @@ class LlamaBatchAllocr(
             data = udata,
         )
     }
+
+    // =========================================================================
+    // ubatch debug printing
+    // Ported from: llama-batch.cpp  llama_batch_allocr::ubatch_print
+    // =========================================================================
+
+    /**
+     * Debug-print the contents of a [LlamaUBatchInternal].
+     *
+     * Port of `llama_batch_allocr::ubatch_print()`.
+     *
+     * @param ubatch The micro-batch to print.
+     * @param debug  Verbosity level (1 = summary, 2 = per-token detail).
+     */
+    fun ubatchPrint(ubatch: LlamaUBatchInternal, debug: Int) {
+        if (debug <= 0) return
+
+        llamaLogDebug("ubatchPrint:   equal_seqs   = ${ubatch.equalSeqs}\n")
+        llamaLogDebug("ubatchPrint:   n_tokens     = ${ubatch.nTokens}\n")
+        llamaLogDebug("ubatchPrint:   n_seq_tokens = ${ubatch.nSeqTokens}\n")
+        llamaLogDebug("ubatchPrint:   n_seqs       = ${ubatch.nSeqs}\n")
+        llamaLogDebug("ubatchPrint:   n_seqs_unq   = ${ubatch.nSeqsUnq}\n")
+
+        val seqIdUnqStr = ubatch.seqIdUnq?.joinToString(" ", "[ ", " ]") ?: "[]"
+        val seqIdxStr = buildString {
+            append("[")
+            val seqIdx = ubatch.seqIdx
+            for (s in 0 until LLAMA_MAX_SEQ) {
+                val idx = seqIdx?.getOrElse(s) { -1 } ?: -1
+                if (idx >= 0) append(idx % 10) else append(".")
+            }
+            append("]")
+        }
+
+        llamaLogDebug("ubatchPrint:   seq_id_unq = $seqIdUnqStr\n")
+        llamaLogDebug("ubatchPrint:   seq_idx    = $seqIdxStr\n")
+        llamaLogDebug("ubatchPrint:   n_outputs  = $nOutputs\n")
+
+        if (debug > 1) {
+            val nSeqIdArr = ubatch.nSeqId
+            val seqIdArr = ubatch.seqId
+            val tokenArr = ubatch.token
+            val posArr = ubatch.pos
+            val outputArr = ubatch.output
+
+            var seqIdMax = 0
+            for (i in 0 until ubatch.nTokens) {
+                val nsi = nSeqIdArr?.getOrElse(i) { 0 } ?: 0
+                val sids = seqIdArr?.getOrElse(i) { intArrayOf() }
+                for (s in 0 until nsi) {
+                    seqIdMax = maxOf(seqIdMax, sids?.getOrElse(s) { 0 } ?: 0)
+                }
+            }
+            seqIdMax++
+
+            llamaLogDebug("ubatchPrint:   token     = [\n")
+            for (i in 0 until ubatch.nTokens) {
+                val seqBits = IntArray(seqIdMax)
+                val nsi = nSeqIdArr?.getOrElse(i) { 0 } ?: 0
+                val sids = seqIdArr?.getOrElse(i) { intArrayOf() }
+                for (s in 0 until nsi) {
+                    val sid = sids?.getOrElse(s) { 0 } ?: 0
+                    if (sid in 0 until seqIdMax) seqBits[sid] = 1
+                }
+                val seqStr = seqBits.joinToString("") { if (it != 0) (it % 10).toString() else "." }
+
+                val token = tokenArr?.getOrElse(i) { -1 } ?: -1
+                val pos = posArr?.getOrElse(i) { -1 } ?: -1
+                val output = outputArr?.getOrElse(i) { 0 } ?: 0
+
+                if (tokenArr != null && tokenArr.isNotEmpty()) {
+                    llamaLogDebug("ubatchPrint:  ${i.toString().padStart(4)}: id = ${token.toString().padStart(6)}, pos = ${pos.toString().padStart(4)}, n_seq_id = ${nsi.toString().padStart(2)}, seq_id = [$seqStr], output = $output\n")
+                } else {
+                    llamaLogDebug("ubatchPrint:  ${i.toString().padStart(4)}: [embd], pos = ${pos.toString().padStart(4)}, n_seq_id = ${nsi.toString().padStart(2)}, seq_id = [$seqStr], output = $output\n")
+                }
+            }
+            llamaLogDebug("ubatchPrint:   ]\n")
+        }
+    }
 }
 
 // =============================================================================

@@ -106,12 +106,12 @@ class LlamaMemoryHybridIswa(
 
     override fun stateWrite(io: LlamaIoWrite, seqId: LlamaSeqId, flags: Int) {
         memAttn.stateWrite(seqId)
-        memRecr.stateWrite(seqId)
+        memRecr.stateWrite(io, seqId)
     }
 
     override fun stateRead(io: LlamaIoRead, seqId: LlamaSeqId, flags: Int) {
         memAttn.stateRead(seqId)
-        memRecr.stateRead(seqId)
+        memRecr.stateRead(io, seqId)
     }
 }
 

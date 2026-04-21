@@ -9,19 +9,19 @@
 | Metric | Count | Percentage |
 |--------|-------|------------|
 | Total source files | 143 | 100% |
-| Target units (paired) | 159 | - |
-| Target files (total) | 159 | - |
-| Porting progress | 28 | 19.6% (matched) |
-| Missing files | 115 | 80.4% |
+| Target units (paired) | 165 | - |
+| Target files (total) | 165 | - |
+| Porting progress | 32 | 22.4% (matched) |
+| Missing files | 111 | 77.6% |
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.09
+**Average Similarity:** 0.12
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
-- Good (0.60-0.84): 2 files (7.1% of matched)
-- Critical (<0.60): 26 files (92.9% of matched)
+- Good (0.60-0.84): 2 files (6.2% of matched)
+- Critical (<0.60): 30 files (93.8% of matched)
 
 ### Excellent Ports (Similarity ≥ 0.85)
 
@@ -32,30 +32,34 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
-- `llama` → `model.Grammar` (0.00, 16 deps)
-- `llama-memory` → `model.LlamaMemory` (0.03, 7 deps)
+- `llama-hparams` → `model.LlamaHparams` (0.00, 4 deps)
+- `llama-grammar` → `model.Grammar` (0.21, 1 deps)
+- `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
 - `llama-impl` → `model.LlamaImpl` (0.13, 19 deps)
-- `llama-model-saver` → `model.IntegrationTest` (0.00, 1 deps)
-- `llama-arch` → `model.LlamaArch` (0.08, 5 deps)
-- `llama-io` → `model.LlamaIO` (0.08, 3 deps)
+- `llama-batch` → `model.LlamaBatch` (0.43, 7 deps)
+- `llama-arch` → `model.LlamaArch` (0.09, 5 deps)
+- `llama-model-saver` → `model.LlamaModelSaver` (0.28, 1 deps)
+- `llama-io` → `model.LlamaIO` (0.19, 3 deps)
 - `models.models` → `model.InferencePipeline` (0.00, 114 deps)
+- `llama-cparams` → `model.LlamaCparams` (0.00, 5 deps)
+- `llama` → `model.KVCache` (0.00, 16 deps)
 - `llama-chat` → `model.LlamaChat` (0.35, 1 deps)
 - `llama-model` → `model.LlamaModel` (0.00, 12 deps)
 - `llama-memory-recurrent` → `model.LlamaMemoryRecurrent` (0.00, 12 deps)
-- `llama-batch` → `model.LlamaBatch` (0.00, 7 deps)
 - `llama-graph` → `model.LlamaGraph` (0.00, 7 deps)
 - `llama-vocab` → `model.LlamaVocab` (0.00, 6 deps)
 - `llama-mmap` → `model.LlamaMmap` (0.00, 5 deps)
-- `llama-kv-cache` → `model.KVCache` (0.00, 4 deps)
-- `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
 - `llama-context` → `model.LlamaAttention` (0.00, 4 deps)
-- `llama-memory-hybrid-iswa` → `model.LlamaMemoryHybridIswa` (0.00, 3 deps)
+- `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
 - `llama-memory-hybrid` → `model.LlamaMemoryHybrid` (0.00, 3 deps)
-- `llama-adapter` → `model.LlamaAdapter` (0.00, 2 deps)
+- `llama-memory-hybrid-iswa` → `model.LlamaMemoryHybridIswa` (0.00, 3 deps)
 - `llama-ext` → `model.LlamaExt` (0.00, 2 deps)
+- `llama-adapter` → `model.LlamaAdapter` (0.00, 2 deps)
 - `llama-sampler` → `model.LlamaSampler` (0.00, 1 deps)
+- `unicode` → `model.LlamaUnicode` (0.00, 1 deps)
 - `unicode-data` → `model.LlamaUnicodeData` (0.32, 1 deps)
 - `models.llama` → `model.LlamaApi` (0.00)
+- `llama-quant` → `model.LlamaQuant` (0.00)
 - `models.maincoder` → `llamakotlin.main` (0.16)
 - `models.bitnet` → `core.GGMLBitNet158Test` (0.16)
 
@@ -66,42 +70,43 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
-| `llama` | `model.Grammar` | 18/18 | `llama_flash_attn_type`, `llama_device_memory_data`, `user_data_t` … |
+| `llama-grammar` | `model.Grammar` | 1/3 | `llama_vocab` |
 | `llama-memory` | `model.LlamaMemory` | 7/8 | `llama_ubatch`, `llama_batch_allocr`, `llama_io_write_i` … |
 | `llama-impl` | `model.LlamaImpl` | 3/5 | `no_init`, `ggml_tensor`, `gguf_context` |
-| `llama-model-saver` | `model.IntegrationTest` | 6/6 | `llama_model_saver`, `gguf_context`, `llama_model` … |
+| `llama-batch` | `model.LlamaBatch` | 1/1 | `llama_batch` |
 | `llama-arch` | `model.LlamaArch` | 3/7 | `llm_arch`, `LLM_TN_IMPL`, `LLM_TN` |
+| `llama-model-saver` | `model.LlamaModelSaver` | 5/6 | `gguf_context`, `llama_model`, `LLM_KV` … |
 
 ## High Priority Missing Files
 
 | Rank | Source file | Deps | Path |
 |------|------------|------|------|
-| 1 | `llama-cparams` | 5 | `llama-cparams.h` |
-| 2 | `llama-hparams` | 4 | `llama-hparams.h` |
-| 3 | `unicode` | 1 | `unicode.h` |
-| 4 | `llama-grammar` | 1 | `llama-grammar.h` |
-| 5 | `llama-quant` | 0 | `llama-quant.h` |
-| 6 | `models.llada` | 0 | `models/llada.cpp` |
-| 7 | `models.arcee` | 0 | `models/arcee.cpp` |
-| 8 | `models.arctic` | 0 | `models/arctic.cpp` |
-| 9 | `models.arwkv7` | 0 | `models/arwkv7.cpp` |
-| 10 | `models.baichuan` | 0 | `models/baichuan.cpp` |
-| 11 | `models.bailingmoe` | 0 | `models/bailingmoe.cpp` |
-| 12 | `models.bailingmoe2` | 0 | `models/bailingmoe2.cpp` |
-| 13 | `models.bert` | 0 | `models/bert.cpp` |
-| 14 | `models.bloom` | 0 | `models/bloom.cpp` |
-| 15 | `models.chameleon` | 0 | `models/chameleon.cpp` |
-| 16 | `models.chatglm` | 0 | `models/chatglm.cpp` |
-| 17 | `models.codeshell` | 0 | `models/codeshell.cpp` |
-| 18 | `models.cogvlm` | 0 | `models/cogvlm.cpp` |
-| 19 | `models.cohere2-iswa` | 0 | `models/cohere2-iswa.cpp` |
-| 20 | `models.command-r` | 0 | `models/command-r.cpp` |
+| 1 | `llama-kv-cache` | 4 | `llama-kv-cache.h` |
+| 2 | `models.llada-moe` | 0 | `models/llada-moe.cpp` |
+| 3 | `models.xverse` | 0 | `models/xverse.cpp` |
+| 4 | `models.arcee` | 0 | `models/arcee.cpp` |
+| 5 | `models.arctic` | 0 | `models/arctic.cpp` |
+| 6 | `models.arwkv7` | 0 | `models/arwkv7.cpp` |
+| 7 | `models.baichuan` | 0 | `models/baichuan.cpp` |
+| 8 | `models.bailingmoe` | 0 | `models/bailingmoe.cpp` |
+| 9 | `models.bailingmoe2` | 0 | `models/bailingmoe2.cpp` |
+| 10 | `models.bert` | 0 | `models/bert.cpp` |
+| 11 | `models.bloom` | 0 | `models/bloom.cpp` |
+| 12 | `models.chameleon` | 0 | `models/chameleon.cpp` |
+| 13 | `models.chatglm` | 0 | `models/chatglm.cpp` |
+| 14 | `models.codeshell` | 0 | `models/codeshell.cpp` |
+| 15 | `models.cogvlm` | 0 | `models/cogvlm.cpp` |
+| 16 | `models.cohere2-iswa` | 0 | `models/cohere2-iswa.cpp` |
+| 17 | `models.command-r` | 0 | `models/command-r.cpp` |
+| 18 | `models.dbrx` | 0 | `models/dbrx.cpp` |
+| 19 | `models.deci` | 0 | `models/deci.cpp` |
+| 20 | `models.deepseek` | 0 | `models/deepseek.cpp` |
 
-... and 95 more missing files.
+... and 91 more missing files.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 3299 / 2 lines (164950%)
+**Documentation coverage:** 3940 / 3 lines (131333%)
 
 Top documentation gaps (>20%):
 

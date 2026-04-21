@@ -113,14 +113,14 @@ class LlamaMemoryHybrid(
         if ((flags and LlamaStateSeqFlags.PARTIAL_ONLY) == 0) {
             memAttn.stateWrite(seqId)
         }
-        memRecr.stateWrite(seqId)
+        memRecr.stateWrite(io, seqId)
     }
 
     override fun stateRead(io: LlamaIoRead, seqId: LlamaSeqId, flags: Int) {
         if ((flags and LlamaStateSeqFlags.PARTIAL_ONLY) == 0) {
             memAttn.stateRead(seqId)
         }
-        memRecr.stateRead(seqId)
+        memRecr.stateRead(io, seqId)
     }
 
     override fun memoryBreakdown(): Map<String, Long> {

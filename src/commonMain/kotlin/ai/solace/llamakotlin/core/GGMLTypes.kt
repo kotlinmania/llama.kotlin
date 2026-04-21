@@ -361,6 +361,51 @@ class GGMLTensor(
     fun isOutput(): Boolean = (this.flags and GGML_TENSOR_FLAG_OUTPUT) != 0
 
     /**
+     * Total number of bytes used by this tensor's data.
+     *
+     * Port of `ggml_nbytes()` — computes `max(1, ne[3]) * nb[3]` which gives
+     * the tight byte count for the entire tensor, including padding implied by
+     * the stride array.
+     */
+    fun nBytes(): Long {
+        // If strides are properly set, use ne[3]*nb[3]
+        if (nb.size > 3 && nb[3] > 0u) {
+            val ne3 = if (ne.size > 3) maxOf(1L, ne[3]) else 1L
+            return ne3 * nb[3].toLong()
+        }
+        // Fallback: compute from element count and type byte size
+        val nelem = numElements()
+        val bs = type.byteSize.toLong()
+        return if (bs > 0) nelem * bs else 0L
+    }
+
+    /**
+     * Compute the number of bytes for a "row" of elements of this tensor's type.
+     *
+     * Port of `ggml_row_size(type, ne)` — for non-quantized types this is
+     * simply `typeByteSize * ne`. For block-quantized types this accounts for
+     * the block packing ratio.
+     *
+     * @param nElements Number of elements in the row.
+     */
+    fun rowSizeBytes(nElements: Int): Long {
+        val bs = type.byteSize.toLong()
+        return if (bs > 0) nElements.toLong() * bs else 0L
+    }
+
+    /**
+     * Copy [length] bytes from [src] into this tensor's data at byte offset [offset].
+     *
+     * Port of `memcpy(tensor->data + offset, src, length)`.
+     * Assumes [data] is a [ByteArray].
+     */
+    fun setData(src: ByteArray, offset: Int, length: Int) {
+        val dst = data as? ByteArray
+            ?: throw IllegalStateException("setData: tensor data is not a ByteArray")
+        src.copyInto(dst, destinationOffset = offset, startIndex = 0, endIndex = length)
+    }
+
+    /**
      * Calculates the rank of the tensor (number of dimensions > 1).
      * Or 0 for a scalar that might have ne=[1,1,1,1] or ne=[].
      * Or 1 for a vector that might be ne=[N,1,1,1].
