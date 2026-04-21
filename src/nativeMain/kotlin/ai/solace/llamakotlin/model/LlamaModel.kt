@@ -319,11 +319,17 @@ enum class LlamaRopeScalingType(val displayName: String) {
  * RoPE type — determines how positional encoding is applied.
  * Ported from: `llama_rope_type` in llama.h.
  */
-enum class LlamaRopeType {
-    NONE,
-    NORM,
-    MROPE,
-    IMROPE,
+enum class LlamaRopeType(val value: Int) {
+    NONE(-1),
+    NORM(0),
+    NEOX(2),
+    MROPE(8),
+    IMROPE(24),
+    VISION(32);
+
+    companion object {
+        fun fromValue(v: Int): LlamaRopeType = entries.firstOrNull { it.value == v } ?: NONE
+    }
 }
 
 /** Expert gating function type. */
@@ -508,6 +514,23 @@ data class LlamaModelHParams(
     var iAltupAct: Int = 0,
     var laurelRank: Int = 64,
     var nEmbdAltup: Int = 256,
+
+    // -- xIELU per-layer arrays --
+    val xieluAlphaN: FloatArray = FloatArray(LLAMA_MAX_LAYERS),
+    val xieluAlphaP: FloatArray = FloatArray(LLAMA_MAX_LAYERS),
+    val xieluBeta: FloatArray = FloatArray(LLAMA_MAX_LAYERS),
+    val xieluEps: FloatArray = FloatArray(LLAMA_MAX_LAYERS),
+
+    // -- Step35 per-layer SwiGLU clamping --
+    val swigluClampExp: FloatArray = FloatArray(LLAMA_MAX_LAYERS),
+    val swigluClampShexp: FloatArray = FloatArray(LLAMA_MAX_LAYERS),
+
+    // -- WavTokenizer sub-hparams --
+    val posnet: LlamaHparamsPosnet = LlamaHparamsPosnet(),
+    val convnext: LlamaHparamsConvnext = LlamaHparamsConvnext(),
+
+    // -- pooling type --
+    var poolingType: LlamaPoolingType = LlamaPoolingType.NONE,
 
     // -- sentence-transformers dense layers --
     var dense2FeatIn: Int = 0,

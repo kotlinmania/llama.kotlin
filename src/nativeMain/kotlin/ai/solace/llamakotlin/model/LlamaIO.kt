@@ -95,3 +95,113 @@ interface LlamaIoRead {
         return strBytes.decodeToString()
     }
 }
+
+// =============================================================================
+// Concrete implementations – byte-array-backed I/O
+// =============================================================================
+
+/**
+ * [LlamaIoWrite] backed by a growable [ByteArray].
+ *
+ * Useful for serialising state into memory before flushing to disk or network.
+ */
+class ByteArrayIoWriter(initialCapacity: Int = 4096) : LlamaIoWrite {
+    private var buffer = ByteArray(initialCapacity)
+    private var position = 0
+
+    private fun ensureCapacity(needed: Int) {
+        val required = position + needed
+        if (required <= buffer.size) return
+        var newCap = buffer.size * 2
+        while (newCap < required) newCap *= 2
+        buffer = buffer.copyOf(newCap)
+    }
+
+    override fun write(src: ByteArray, size: Int) {
+        ensureCapacity(size)
+        src.copyInto(buffer, position, 0, size)
+        position += size
+    }
+
+    override fun writeTensor(tensor: GGMLTensor, offset: Int, size: Int) {
+        val data = tensor.data as? ByteArray
+            ?: error("writeTensor: tensor '${tensor.name}' has no ByteArray data")
+        ensureCapacity(size)
+        data.copyInto(buffer, position, offset, offset + size)
+        position += size
+    }
+
+    override fun nBytes(): Long = position.toLong()
+
+    /** Return the written bytes as a trimmed [ByteArray]. */
+    fun toByteArray(): ByteArray = buffer.copyOf(position)
+}
+
+/**
+ * [LlamaIoRead] backed by a [ByteArray].
+ *
+ * Useful for deserialising state that was previously written by
+ * [ByteArrayIoWriter] or loaded from a file.
+ */
+class ByteArrayIoReader(private val data: ByteArray) : LlamaIoRead {
+    private var position = 0
+
+    override fun read(size: Int): ByteArray {
+        require(position + size <= data.size) {
+            "ByteArrayIoReader: cannot read $size bytes at position $position " +
+                    "(buffer size: ${data.size})"
+        }
+        val result = data.copyOfRange(position, position + size)
+        position += size
+        return result
+    }
+
+    override fun readTo(dst: ByteArray, size: Int) {
+        require(position + size <= data.size) {
+            "ByteArrayIoReader: cannot read $size bytes at position $position " +
+                    "(buffer size: ${data.size})"
+        }
+        data.copyInto(dst, 0, position, position + size)
+        position += size
+    }
+
+    override fun nBytes(): Long = position.toLong()
+
+    /** Number of bytes remaining in the buffer. */
+    fun remaining(): Int = data.size - position
+}
+
+// =============================================================================
+// Typed read/write helpers
+// =============================================================================
+
+/** Write a little-endian UInt (4 bytes). */
+fun LlamaIoWrite.writeU32(value: UInt) {
+    val bytes = ByteArray(4)
+    bytes[0] = (value.toInt() and 0xFF).toByte()
+    bytes[1] = ((value.toInt() shr 8) and 0xFF).toByte()
+    bytes[2] = ((value.toInt() shr 16) and 0xFF).toByte()
+    bytes[3] = ((value.toInt() shr 24) and 0xFF).toByte()
+    write(bytes)
+}
+
+/** Write a little-endian Int (4 bytes). */
+fun LlamaIoWrite.writeI32(value: Int) = writeU32(value.toUInt())
+
+/** Read a little-endian UInt (4 bytes). */
+fun LlamaIoRead.readU32(): UInt {
+    val bytes = read(4)
+    return ((bytes[0].toInt() and 0xFF) or
+            ((bytes[1].toInt() and 0xFF) shl 8) or
+            ((bytes[2].toInt() and 0xFF) shl 16) or
+            ((bytes[3].toInt() and 0xFF) shl 24)).toUInt()
+}
+
+/** Read a little-endian Int (4 bytes). */
+fun LlamaIoRead.readI32(): Int = readU32().toInt()
+
+/** Write a little-endian Float (4 bytes, IEEE 754). */
+fun LlamaIoWrite.writeF32(value: Float) = writeI32(value.toRawBits())
+
+/** Read a little-endian Float (4 bytes, IEEE 754). */
+fun LlamaIoRead.readF32(): Float = Float.fromBits(readI32())

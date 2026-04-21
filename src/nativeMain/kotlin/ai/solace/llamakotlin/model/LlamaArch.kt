@@ -794,6 +794,9 @@ class LlmTensorNameHelper(val arch: LlamaModelArch) {
 // Ported from: llama-arch.cpp  free functions
 // =============================================================================
 
+/** Return all known architectures (excluding UNKNOWN). */
+fun llmArchAll(): List<LlamaModelArch> = LlamaModelArch.entries.filter { it != LlamaModelArch.UNKNOWN }
+
 /** Look up a [LlamaModelArch] by its GGUF name string, or [LlamaModelArch.UNKNOWN] if not found. */
 fun llmArchFromString(name: String): LlamaModelArch {
     return LlamaModelArch.entries.find { it.ggufName == name } ?: LlamaModelArch.UNKNOWN

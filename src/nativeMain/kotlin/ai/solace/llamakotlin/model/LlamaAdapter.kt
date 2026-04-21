@@ -114,7 +114,14 @@ class LlamaAdapterLora(
     val abMap: MutableMap<String, LlamaAdapterLoraWeight> = mutableMapOf(),
     val ggufKv: MutableMap<String, String> = mutableMapOf(),
     val aloraInvocationTokens: MutableList<Int> = mutableListOf(),
+    /** Adapter metadata key-value pairs. */
+    val metadata: MutableMap<String, String> = mutableMapOf(),
 ) {
+    /** Number of invocation tokens for aLoRA adapters. */
+    val nInvocationTokens: Long get() = aloraInvocationTokens.size.toLong()
+
+    /** Invocation token IDs for aLoRA adapters. */
+    val invocationTokens: IntArray get() = aloraInvocationTokens.toIntArray()
     /**
      * Look up the LoRA delta for a given base-model weight tensor.
      *

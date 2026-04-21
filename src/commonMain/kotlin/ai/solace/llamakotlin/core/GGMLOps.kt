@@ -2153,3 +2153,96 @@ data class GGMLThreadpoolParams(
 /** ggml_threadpool_params_default */
 fun ggmlThreadpoolParamsDefault(nThreads: Int): GGMLThreadpoolParams =
     GGMLThreadpoolParams(nThreads = nThreads)
+
+// =============================================================================
+// Stub functions needed by llm_graph_context but not yet fully implemented
+// =============================================================================
+
+/** ggml_swiglu_split – SwiGLU with separate gate and up tensors. */
+fun ggmlSwigluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
+    TODO("Port ggml_swiglu_split")
+}
+
+/** ggml_geglu_split – GeGLU with separate gate and up tensors. */
+fun ggmlGegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
+    TODO("Port ggml_geglu_split")
+}
+
+/** ggml_reglu_split – ReGLU with separate gate and up tensors. */
+fun ggmlRegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
+    TODO("Port ggml_reglu_split")
+}
+
+/** ggml_swiglu_oai – OpenAI-style SwiGLU with alpha and limit parameters. */
+fun ggmlSwigluOai(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor, alpha: Float, limit: Float): GGMLTensor {
+    TODO("Port ggml_swiglu_oai")
+}
+
+/** ggml_argsort_top_k – Return indices of top-k elements per row. */
+fun ggmlArgsortTopK(ctx: GGMLContext, a: GGMLTensor, k: Long): GGMLTensor {
+    TODO("Port ggml_argsort_top_k")
+}
+
+/** ggml_set_rows – scatter rows from [src] into [dst] at positions given by [ids]. */
+fun ggmlSetRows(ctx: GGMLContext, dst: GGMLTensor, src: GGMLTensor, ids: GGMLTensor): GGMLTensor {
+    TODO("Port ggml_set_rows")
+}
+
+/** ggml_add_id – element-wise add with expert-id routing. */
+fun ggmlAddId(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ids: GGMLTensor): GGMLTensor {
+    TODO("Port ggml_add_id")
+}
+
+/** ggml_repeat_4d – repeat tensor to fill target shape. */
+fun ggmlRepeat4d(ctx: GGMLContext, a: GGMLTensor, ne0: Long, ne1: Long, ne2: Long, ne3: Long): GGMLTensor {
+    TODO("Port ggml_repeat_4d")
+}
+
+/** ggml_format_name – format a tensor name using printf-style syntax. */
+fun ggmlFormatName(tensor: GGMLTensor, format: String, vararg args: Any) {
+    tensor.name = if (args.isEmpty()) format else {
+        var result = format
+        for (arg in args) result = result.replaceFirst("%d", arg.toString()).replaceFirst("%s", arg.toString())
+        result
+    }
+}
+
+/**
+ * ggml_build_forward_select – select one of multiple tensors for the forward pass.
+ *
+ * Returns the selected tensor and adds all alternatives to the graph.
+ */
+fun ggmlBuildForwardSelect(gf: GGMLCGraph, tensors: Array<GGMLTensor?>, count: Int, selected: Int): GGMLTensor {
+    for (i in 0 until count) {
+        val t = tensors[i] ?: continue
+        ggmlBuildForwardExpand(gf, t)
+    }
+    return tensors[selected] ?: error("Selected tensor at index $selected is null")
+}
+
+/** ggml_flash_attn_ext_add_sinks – attach attention-sink vector to flash attention node. */
+fun ggmlFlashAttnExtAddSinks(fattn: GGMLTensor, sinks: GGMLTensor?) {
+    // In the C++ implementation this stores `sinks` as an extra src on the flash-attn node.
+    // Stub: if sinks is non-null, store it.
+    if (sinks != null) {
+        // find first empty src slot after existing ones
+        for (i in fattn.src.indices) {
+            if (fattn.src[i] == null) {
+                fattn.src[i] = sinks
+                break
+            }
+        }
+    }
+}
+
+/** ggml_soft_max_add_sinks – attach attention-sink vector to softmax node. */
+fun ggmlSoftMaxAddSinks(softmax: GGMLTensor, sinks: GGMLTensor?) {
+    if (sinks != null) {
+        for (i in softmax.src.indices) {
+            if (softmax.src[i] == null) {
+                softmax.src[i] = sinks
+                break
+            }
+        }
+    }
+}

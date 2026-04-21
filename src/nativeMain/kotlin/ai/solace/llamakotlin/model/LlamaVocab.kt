@@ -201,6 +201,8 @@ object LlamaTokenAttr {
     const val BYTE: Int = 1 shl 5
     const val LSTRIP: Int = 1 shl 6
     const val RSTRIP: Int = 1 shl 7
+    const val NORMALIZED: Int = 1 shl 6
+    const val SINGLE_WORD: Int = 1 shl 9
 }
 
 // ---------------------------------------------------------------------------

@@ -109,6 +109,9 @@ enum class LlamaFType(val value: Int) {
     MOSTLY_Q4_0_8_8      (35),
     MOSTLY_TQ1_0         (36),
     MOSTLY_TQ2_0         (37),
+    MOSTLY_MXFP4_MOE     (38),
+    MOSTLY_NVFP4         (39),
+    MOSTLY_Q1_0          (40),
 
     GUESSED              (1024);
 
@@ -147,11 +150,14 @@ data class LlamaModelQuantizeParams(
     val tokenEmbeddingType: GGMLType = GGMLType.COUNT,
     val allowRequantize: Boolean = false,
     val quantizeOutputTensor: Boolean = true,
-    val onlyQuantize: Boolean = false,
+    val onlyCopy: Boolean = false,
     val pure: Boolean = false,
     val keepSplit: Boolean = false,
-    val imatrix: FloatArray? = null,
-    val kvOverrides: Map<String, Any>? = null,
+    val dryRun: Boolean = false,
+    val imatrix: List<LlamaModelImatrixData>? = null,
+    val kvOverrides: List<LlamaModelKvOverride>? = null,
+    val ttOverrides: List<LlamaModelTensorOverride>? = null,
+    val pruneLayers: IntArray? = null,
 )
 
 /**

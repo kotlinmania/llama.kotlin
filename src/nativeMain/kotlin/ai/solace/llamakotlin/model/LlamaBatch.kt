@@ -117,7 +117,7 @@ class LlamaBatchAllocr(
     private var seqId = mutableListOf<IntArray>()
     private var seqIdUnq = mutableListOf<Int>()
     private var seqIdx = IntArray(LLAMA_MAX_SEQ) { -1 }
-    private var output = mutableListOf<Byte>()
+    private var output = mutableListOf<Boolean>()
 
     /** Whether any coupled sequences exist in the batch. */
     private var hasCpl = false
@@ -184,6 +184,7 @@ class LlamaBatchAllocr(
         nEmbd: Int,
         nSeqMax: Int,
         outputAll: Boolean,
+        memory: LlamaMemory? = null,
     ): Boolean {
         clear()
         batch = batchInp
@@ -208,9 +209,125 @@ class LlamaBatchAllocr(
             }
         }
 
-        // TODO: full init logic — auto-generate pos, seq_id, output arrays
-        //       when the input batch leaves them null (mirrors C++ init body)
-        nOutputs = if (outputAll) batch.nTokens else 0
+        // Validate seq_id ranges
+        batch.seqId?.let { batchSeqId ->
+            val batchNSeqId = batch.nSeqId
+            if (batchNSeqId != null) {
+                for (i in 0 until batch.nTokens) {
+                    for (s in 0 until batchNSeqId[i]) {
+                        val sid = batchSeqId[i][s]
+                        if (sid < 0 || sid >= nSeqMax) {
+                            llamaLogError("init: invalid seqId[$i][$s] = $sid >= $nSeqMax\n")
+                            return false
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto-generate nSeqId if missing
+        if (batch.nSeqId == null) {
+            nSeqId.clear()
+            for (i in 0 until batch.nTokens) {
+                nSeqId.add(1) // default: 1 sequence per token
+            }
+            batch = batch.copy(nSeqId = this.nSeqId.toIntArray())
+        }
+
+        // Auto-generate seqId if missing
+        if (batch.seqId == null) {
+            seqId.clear()
+            for (i in 0 until batch.nTokens) {
+                seqId.add(intArrayOf(0)) // default seq id 0
+            }
+            batch = batch.copy(seqId = seqId.toTypedArray())
+        }
+
+        // Auto-generate pos if missing
+        if (batch.pos == null) {
+            pos.clear()
+            val p0 = IntArray(nSeqMax) { s ->
+                if (memory == null) 0 else (memory.seqPosMax(s) + 1)
+            }
+            val batchSeqId = batch.seqId!!
+            for (i in 0 until batch.nTokens) {
+                val sid = batchSeqId[i][0]
+                pos.add(p0[sid])
+                val batchNSeqId = batch.nSeqId!!
+                for (s in 0 until batchNSeqId[i]) {
+                    p0[batchSeqId[i][s]] = pos[i] + 1
+                }
+            }
+            batch = batch.copy(pos = pos.toIntArray())
+        }
+
+        // Auto-generate output if missing
+        if (batch.logits == null) {
+            if (outputAll) {
+                output.clear()
+                output.addAll(List(batch.nTokens) { true })
+            } else {
+                output.clear()
+                output.addAll(List(batch.nTokens) { false })
+                if (output.isNotEmpty()) output[output.size - 1] = true
+            }
+            batch = batch.copy(logits = output.toBooleanArray())
+        } else if (outputAll) {
+            val logits = batch.logits!!
+            if (logits.any { !it }) {
+                llamaLogWarn("init: embeddings required but some input tokens not marked as outputs -> overriding\n")
+                output.clear()
+                output.addAll(List(batch.nTokens) { true })
+                batch = batch.copy(logits = output.toBooleanArray())
+            }
+        }
+
+        // Compute stats
+        val batchLogits = batch.logits!!
+        for (i in 0 until batch.nTokens) {
+            if (batchLogits[i]) nOutputs++
+        }
+
+        hasCpl = false
+
+        val batchSeqId = batch.seqId!!
+        val batchNSeqId = batch.nSeqId!!
+        val batchPos = batch.pos!!
+
+        // Determine coupled sequences
+        for (i in 0 until batch.nTokens) {
+            val s0 = batchSeqId[i][0]
+            for (s in 0 until batchNSeqId[i]) {
+                val s1 = batchSeqId[i][s]
+                seqPos[s1].add(batchPos[i])
+                if (s > 0) {
+                    seqCpl[s1][s0] = true
+                    hasCpl = true
+                }
+            }
+        }
+
+        // Precompute sequence sets and unique sequence ids
+        var seqSetUnq = 0L
+        for (i in 0 until batch.nTokens) {
+            var cur = 0L
+            for (s in 0 until batchNSeqId[i]) {
+                val sid = batchSeqId[i][s]
+                cur = cur or (1L shl sid)
+                seqSetUnq = seqSetUnq or (1L shl sid)
+            }
+            seqSet.add(cur)
+            seqSetMap.getOrPut(cur) { mutableListOf() }.add(i)
+        }
+
+        for (s in 0 until nSeqMax) {
+            if ((seqSetUnq and (1L shl s)) != 0L) {
+                seqIdx[s] = seqIdUnq.size
+                seqIdUnq.add(s)
+            }
+        }
+
+        splitReset()
         return true
     }
 
@@ -231,7 +348,23 @@ class LlamaBatchAllocr(
      * Port of `llama_batch_allocr::split_simple()`.
      */
     fun splitSimple(nUbatch: Int): LlamaUBatchInternal {
-        TODO("Port llama_batch_allocr::split_simple — iterate unprocessed tokens, respecting nUbatch budget")
+        // Find the first unused token
+        var curIdx = 0
+        while (curIdx < used.size && used[curIdx]) curIdx++
+
+        // We are done
+        if (curIdx >= used.size) return LlamaUBatchInternal()
+
+        val idxs = mutableListOf<Int>()
+        while (true) {
+            idxs.add(curIdx)
+            used[curIdx] = true
+            nUsed++
+            curIdx++
+            if (curIdx >= used.size) break
+            if (idxs.size >= nUbatch) break
+        }
+        return ubatchAdd(idxs, idxs.size, false)
     }
 
     /**
@@ -242,7 +375,78 @@ class LlamaBatchAllocr(
      * @param sequential When `true`, tokens carry incrementing sequence ids.
      */
     fun splitEqual(nUbatch: Int, sequential: Boolean): LlamaUBatchInternal {
-        TODO("Port llama_batch_allocr::split_equal")
+        if (sequential && hasCpl) {
+            llamaLogError("splitEqual: sequential split not supported with coupled sequences\n")
+            return LlamaUBatchInternal()
+        }
+
+        val curSeqSet = mutableListOf<Long>()
+        var lastSeqId = -1
+
+        // Determine non-overlapping sequence sets
+        val batchSeqId = batch.seqId!!
+        for (i in 0 until batch.nTokens) {
+            if (used[i]) continue
+
+            var add = true
+            for (s in curSeqSet.indices) {
+                if ((curSeqSet[s] and seqSet[i]) != 0L) {
+                    add = false
+                    break
+                }
+            }
+
+            if (sequential) {
+                add = add && (curSeqSet.isEmpty() || batchSeqId[i][0] == lastSeqId + 1)
+            }
+
+            if (add) {
+                curSeqSet.add(seqSet[i])
+                lastSeqId = batchSeqId[i][0]
+                if (curSeqSet.size > nUbatch) break
+            }
+        }
+
+        val nSeqs = curSeqSet.size
+        if (nSeqs == 0) return LlamaUBatchInternal()
+
+        // Current batch index for each sequence set
+        val curIdx = IntArray(nSeqs) { 0 }
+        for (s in 0 until nSeqs) {
+            val mapping = seqSetMap[curSeqSet[s]]!!
+            while (used[mapping[curIdx[s]]]) curIdx[s]++
+        }
+
+        val idxsPerSeq = Array(nSeqs) { mutableListOf<Int>() }
+
+        while (true) {
+            var canExpand = true
+            for (s in 0 until nSeqs) {
+                if (curIdx[s] >= seqSetMap[curSeqSet[s]]!!.size) {
+                    canExpand = false
+                    break
+                }
+            }
+            if (!canExpand) break
+
+            for (s in 0 until nSeqs) {
+                val idx = seqSetMap[curSeqSet[s]]!![curIdx[s]]
+                idxsPerSeq[s].add(idx)
+                used[idx] = true
+                nUsed++
+                curIdx[s]++
+            }
+
+            if ((idxsPerSeq[0].size + 1) * nSeqs > nUbatch) break
+        }
+
+        // Concat per-sequence-set lists
+        val idxs = mutableListOf<Int>()
+        for (s in 0 until nSeqs) {
+            idxs.addAll(idxsPerSeq[s])
+        }
+
+        return ubatchAdd(idxs, nSeqs, true)
     }
 
     /**
@@ -251,7 +455,33 @@ class LlamaBatchAllocr(
      * Port of `llama_batch_allocr::split_seq()`.
      */
     fun splitSeq(nUbatch: Int): LlamaUBatchInternal {
-        TODO("Port llama_batch_allocr::split_seq")
+        // Find the first unused token
+        var curIdx = 0
+        while (curIdx < used.size && used[curIdx]) curIdx++
+
+        if (curIdx >= used.size) return LlamaUBatchInternal()
+
+        // Starting sequence set — only allow subsets
+        var curSeqSetBits = seqSet[curIdx]
+        val idxs = mutableListOf<Int>()
+
+        while (true) {
+            idxs.add(curIdx)
+            used[curIdx] = true
+            nUsed++
+
+            if (idxs.size >= nUbatch) break
+
+            do {
+                curIdx++
+            } while (curIdx < getNTokens() && (used[curIdx] || (curSeqSetBits and seqSet[curIdx]) != seqSet[curIdx]))
+
+            if (curIdx == getNTokens()) break
+
+            curSeqSetBits = seqSet[curIdx]
+        }
+
+        return ubatchAdd(idxs, 1, true)
     }
 
     /**
@@ -260,7 +490,45 @@ class LlamaBatchAllocr(
      * Port of `llama_batch_allocr::ubatch_reserve()`.
      */
     fun ubatchReserve(nSeqTokens: Int, nSeqs: Int): LlamaUBatchInternal {
-        TODO("Port llama_batch_allocr::ubatch_reserve")
+        val nTokens = nSeqTokens * nSeqs
+        clear()
+        splitReset()
+
+        val nPosAll = nTokens * nPosPerEmbd
+
+        val udata = UBatchData(
+            token = MutableList(nTokens) { 0 },
+            pos = MutableList(nPosAll) { 0 },
+            nSeqId = MutableList(nTokens) { 0 },
+            seqIdUnq = mutableListOf(),
+            seqIdx = MutableList(LLAMA_MAX_SEQ) { -1 },
+            output = MutableList(nTokens) { 0.toByte() },
+        )
+
+        for (s in 0 until nSeqs) {
+            udata.seqIdx[s] = s
+            udata.seqIdUnq.add(s)
+        }
+
+        // Build seqId arrays (each token maps to its sequence)
+        val seqIdArrays = Array(nTokens) { IntArray(0) }
+
+        return LlamaUBatchInternal(
+            equalSeqs = true,
+            nTokens = nTokens,
+            nSeqTokens = nSeqTokens,
+            nSeqs = nSeqs,
+            nSeqsUnq = nSeqs,
+            nPos = nPosPerEmbd,
+            token = udata.token.toIntArray(),
+            pos = udata.pos.toIntArray(),
+            nSeqId = udata.nSeqId.toIntArray(),
+            seqId = seqIdArrays,
+            seqIdUnq = udata.seqIdUnq.toIntArray(),
+            seqIdx = udata.seqIdx.toIntArray(),
+            output = udata.output.toByteArray(),
+            data = udata,
+        )
     }
 
     // -- private -----------------------------------------------------------
@@ -287,7 +555,95 @@ class LlamaBatchAllocr(
      * Port of `llama_batch_allocr::ubatch_add()`.
      */
     private fun ubatchAdd(idxs: List<Int>, nSeqs: Int, equalSeqs: Boolean): LlamaUBatchInternal {
-        TODO("Port llama_batch_allocr::ubatch_add")
+        val nTokens = idxs.size
+        require(nTokens % nSeqs == 0)
+
+        val batchTokens = batch.tokens
+        val batchEmbd = batch.embeddings
+        val batchPos = batch.pos!!
+        val batchNSeqId = batch.nSeqId!!
+        val batchSeqId = batch.seqId!!
+        val batchLogits = batch.logits!!
+
+        val hasEmbd = batchEmbd != null
+        val nEmbdAll = if (hasEmbd) nTokens * nEmbd else 0
+        val nPosAll = nTokens * nPosPerEmbd
+
+        val udata = UBatchData(
+            token = MutableList(nTokens) { 0 },
+            embd = MutableList(nEmbdAll) { 0f },
+            pos = MutableList(nPosAll) { 0 },
+            nSeqId = MutableList(nTokens) { 0 },
+            seqIdUnq = mutableListOf(),
+            seqIdx = MutableList(LLAMA_MAX_SEQ) { -1 },
+            output = MutableList(nTokens) { 0.toByte() },
+        )
+
+        var seqSetUnq = 0L
+
+        for ((i, batchIdx) in idxs.withIndex()) {
+            if (batchTokens != null) {
+                udata.token[i] = batchTokens[batchIdx]
+            }
+            if (hasEmbd) {
+                for (e in 0 until nEmbd) {
+                    udata.embd[i * nEmbd + e] = batchEmbd!![batchIdx * nEmbd + e]
+                }
+            }
+
+            for (j in 0 until nPosPerEmbd) {
+                val srcOff = if (batchTokens != null) 0 else j * batch.nTokens
+                udata.pos[j * nTokens + i] = batchPos[srcOff + batchIdx]
+            }
+
+            udata.nSeqId[i] = batchNSeqId[batchIdx]
+            udata.output[i] = if (batchLogits[batchIdx]) 1.toByte() else 0.toByte()
+
+            for (s in 0 until udata.nSeqId[i]) {
+                val sid = batchSeqId[batchIdx][s]
+                udata.seqIdData.add(sid)
+                seqSetUnq = seqSetUnq or (1L shl sid)
+            }
+
+            if (batchLogits[batchIdx]) {
+                outIds.add(batchIdx)
+            }
+        }
+
+        // Build seqId arrays from flat seqIdData
+        val seqIdArrays = Array(nTokens) { IntArray(0) }
+        var dataIdx = 0
+        for (i in 0 until nTokens) {
+            val cnt = udata.nSeqId[i]
+            seqIdArrays[i] = IntArray(cnt) { udata.seqIdData[dataIdx + it] }
+            dataIdx += cnt
+        }
+
+        // Build seqIdUnq and seqIdx
+        for (s in 0 until nSeqMax) {
+            if ((seqSetUnq and (1L shl s)) != 0L) {
+                udata.seqIdx[s] = udata.seqIdUnq.size
+                udata.seqIdUnq.add(s)
+            }
+        }
+
+        return LlamaUBatchInternal(
+            equalSeqs = equalSeqs,
+            nTokens = nTokens,
+            nSeqTokens = nTokens / nSeqs,
+            nSeqs = nSeqs,
+            nSeqsUnq = udata.seqIdUnq.size,
+            nPos = nPosPerEmbd,
+            token = if (batchTokens != null) udata.token.toIntArray() else null,
+            embd = if (hasEmbd) udata.embd.toFloatArray() else null,
+            pos = udata.pos.toIntArray(),
+            nSeqId = udata.nSeqId.toIntArray(),
+            seqId = seqIdArrays,
+            seqIdUnq = udata.seqIdUnq.toIntArray(),
+            seqIdx = udata.seqIdx.toIntArray(),
+            output = udata.output.toByteArray(),
+            data = udata,
+        )
     }
 }
 
