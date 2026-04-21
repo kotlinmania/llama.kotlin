@@ -1011,33 +1011,51 @@ class LlmGraphResult(val maxNodes: Long = 8192) {
 
     val inputs: MutableList<LlmGraphInput> = mutableListOf()
 
+    // port-lint: source llama-graph.h  llm_graph_result::params
+    var params: LlmGraphParams = LlmGraphParams()
+
     /** The underlying ggml context for tensor allocation. */
     var ctxCompute: GGMLContext? = null
 
     /** The compute graph. */
     var gf: GGMLCGraph? = null
 
-    /** Register an input and return it (convenience for chaining). */
+    // port-lint: source llama-graph.cpp  llm_graph_result::debug
+    // C++ reads LLAMA_GRAPH_RESULT_DEBUG from env; cross-platform Kotlin has no getenv.
+    // Overridable via constructor param or direct assignment for testing.
+    var debug: Int = 0
+
+    init {
+        reset()
+    }
+
+    // port-lint: source llama-graph.cpp  llm_graph_result::get_max_nodes
+    fun getMaxNodes(): Long = maxNodes
+
+    // port-lint: source llama-graph.cpp  llm_graph_result::set_params
+    fun setParams(params: LlmGraphParams) {
+        this.params = params
+    }
+
     fun addInput(input: LlmGraphInput): LlmGraphInput {
         inputs.add(input)
         return input
     }
 
-    /** Typed variant that returns the concrete input type (avoids casts at call sites). */
     @Suppress("UNCHECKED_CAST")
     fun <T : LlmGraphInput> addInputTyped(input: T): T {
         inputs.add(input)
         return input
     }
 
-    /** Populate every registered input from [ubatch]. */
+    // port-lint: source llama-graph.cpp  llm_graph_result::set_inputs
     fun setInputs(ubatch: LlamaUBatch) {
         for (input in inputs) {
             input.setInput(ubatch)
         }
     }
 
-    /** Mark output tensors so backends know to preserve them. */
+    // port-lint: source llama-graph.cpp  llm_graph_result::set_outputs
     fun setOutputs() {
         tLogits?.let { ggmlSetOutput(it) }
         tEmbd?.let { ggmlSetOutput(it) }
@@ -1048,12 +1066,20 @@ class LlmGraphResult(val maxNodes: Long = 8192) {
         for ((_, t) in tCandidates) ggmlSetOutput(t)
     }
 
-    /** `true` when all inputs report the graph can be reused with [params]. */
+    // port-lint: source llama-graph.cpp  llm_graph_result::can_reuse
     fun canReuse(params: LlmGraphParams): Boolean {
-        return inputs.all { it.canReuse(params) }
+        if (!this.params.allowReuse(params)) {
+            return false
+        }
+        var res = true
+        for (input in inputs) {
+            val cur = input.canReuse(params)
+            res = res && cur
+        }
+        return res
     }
 
-    /** Clear all stored tensors and inputs so the result can be rebuilt. */
+    // port-lint: source llama-graph.cpp  llm_graph_result::reset
     fun reset() {
         tInpTokens = null
         tInpEmbd = null
@@ -1064,6 +1090,7 @@ class LlmGraphResult(val maxNodes: Long = 8192) {
         tCandidates.clear()
         tSampled.clear()
         tSampledProbs.clear()
+        params = LlmGraphParams()
         inputs.clear()
     }
 
@@ -1092,9 +1119,82 @@ data class LlmGraphParams(
     val mctx: LlamaMemoryContext? = null,
     val cross: LlamaCross? = null,
 
+    val samplers: Map<LlamaSeqId, LlamaSampler> = emptyMap(),
+
     // Graph callback for tensor naming / offloading
     val cb: LlmGraphCb? = null,
-)
+) {
+    companion object {
+        // port-lint: source llama-graph.h  llm_graph_params::samplers_equal
+        fun samplersEqual(
+            lhs: Map<LlamaSeqId, LlamaSampler>,
+            rhs: Map<LlamaSeqId, LlamaSampler>,
+        ): Boolean {
+            if (lhs.size != rhs.size) return false
+            for ((seqId, sampler) in lhs) {
+                val other = rhs[seqId] ?: return false
+                if (other !== sampler) return false
+            }
+            return true
+        }
+    }
+
+    // port-lint: source llama-graph.h  llm_graph_params::allow_reuse
+    fun allowReuse(other: LlmGraphParams): Boolean {
+        // first check the ubatch
+        var canReuseUbatch =
+            ubatch.equalSeqs == other.ubatch.equalSeqs &&
+            ubatch.nTokens == other.ubatch.nTokens &&
+            ubatch.nSeqTokens == other.ubatch.nSeqTokens &&
+            ubatch.nSeqs == other.ubatch.nSeqs &&
+            ubatch.nSeqsUnq == other.ubatch.nSeqsUnq &&
+            (
+                (ubatch.tokens == null && other.ubatch.tokens == null) ||
+                (ubatch.embeddings == null && other.ubatch.embeddings == null)
+            )
+
+        if (canReuseUbatch && ubatch.equalSeqs) {
+            val seqUnq = ubatch.seqIdUnq
+            val otherSeqUnq = other.ubatch.seqIdUnq
+            if (seqUnq != null && otherSeqUnq != null) {
+                for (s in 0 until ubatch.nSeqsUnq) {
+                    canReuseUbatch = canReuseUbatch && (seqUnq[s] == otherSeqUnq[s])
+                }
+            } else {
+                canReuseUbatch = false
+            }
+        }
+
+        if (!canReuseUbatch) return false
+        if (nOutputs != other.nOutputs) return false
+        if (!samplersEqual(samplers, other.samplers)) return false
+
+        if (samplers.isNotEmpty()) {
+            val output = ubatch.output
+            val otherOutput = other.ubatch.output
+            val seqId = ubatch.seqId
+            val otherSeqId = other.ubatch.seqId
+            if (output != null && otherOutput != null && seqId != null && otherSeqId != null) {
+                for (i in 0 until ubatch.nTokens) {
+                    if (output[i] != otherOutput[i] ||
+                        seqId[i][0] != otherSeqId[i][0]) {
+                        return false
+                    }
+                }
+            } else {
+                return false
+            }
+        }
+
+        return cparams.embeddings == other.cparams.embeddings &&
+            cparams.causalAttn == other.cparams.causalAttn &&
+            arch == other.arch &&
+            gtype == other.gtype &&
+            cvec == other.cvec &&
+            loras == other.loras &&
+            cross == other.cross
+    }
+}
 
 // ---------------------------------------------------------------------------
 // LlmGraphContext – base builder class for model-specific graph construction

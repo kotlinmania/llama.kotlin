@@ -8,7 +8,7 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 |------|--------|--------|------------|------|-----------|----------|
 | 1 | `llama` | `model.Grammar` | 0.00 | 16 | 52 | 828.8 |
 | 2 | `llama-hparams` | `model.LlamaHparams` | 0.30 | 4 | 50 | 666.6 |
-| 3 | `llama-graph` | `model.LlamaGraph` | 0.42 | 7 | 41 | 586.5 |
+| 3 | `llama-graph` | `model.LlamaGraph` | 0.44 | 7 | 39 | 558.0 |
 | 4 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
 | 5 | `llama-mmap` | `model.LlamaMmap` | 0.19 | 5 | 18 | 251.7 |
 | 6 | `llama-impl` | `model.LlamaImpl` | 0.16 | 19 | 11 | 188.6 |
@@ -40,9 +40,9 @@ These files need immediate attention:
   - Dependencies: 4
 
 - **llama-graph** → `model.LlamaGraph`
-  - Similarity: 0.42
+  - Similarity: 0.44
   - Dependencies: 7
-  - Lint issues: 8
+  - Lint issues: 6
 
 - **llama-memory** → `model.LlamaMemory`
   - Similarity: 0.07
@@ -119,8 +119,8 @@ These files need immediate attention:
 - **llama-kv-cache** → `model.KVCache`
   - Similarity: 0.00
   - Dependencies: 4
-  - TODOs: 5
-  - Lint issues: 8
+  - TODOs: 4
+  - Lint issues: 22
 
 - **llama-memory-hybrid-iswa** → `model.LlamaMemoryHybridIswa`
   - Similarity: 0.00
