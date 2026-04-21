@@ -17,8 +17,8 @@ package ai.solace.llamakotlin.core
  * 10. Graph-copy / compare utilities
  * 11. CPU backend buffer and buffer-type implementation
  *
- * Existing higher-level helpers (GGMLBackendManager, globalBackendManager, etc.)
- * are preserved at the bottom of the file.
+ * Scheduler, graph-copy, and CPU buffer implementations follow the
+ * transliterated C++ code from ggml-backend.cpp.
  */
 
 // =====================================================================
@@ -696,7 +696,7 @@ fun fmtSize(size: ULong): String {
 
 // =====================================================================
 // 10. Scheduler split data structure
-//     C: struct ggml_backend_sched_split
+//     C: struct ggml_backend_sched_split (ggml-backend.cpp lines 764-772)
 // =====================================================================
 
 /**
@@ -704,18 +704,12 @@ fun fmtSize(size: ULong): String {
  * Mirrors `struct ggml_backend_sched_split` in C.
  */
 data class GGMLBackendSchedSplit(
-    /** Index into the scheduler's backends array. */
     var backendId: Int = -1,
-    /** Start index (inclusive) into the graph's node list. */
     var iStart: Int = 0,
-    /** End index (exclusive) into the graph's node list. */
     var iEnd: Int = 0,
-    /** Tensor inputs that need to be copied to this split's backend. */
     val inputs: Array<GGMLTensor?> = arrayOfNulls(GGML_SCHED_MAX_SPLIT_INPUTS),
-    /** Number of valid entries in [inputs]. */
     var nInputs: Int = 0,
-    /** Graph view containing only the nodes for this split. */
-    var graph: GGMLCGraph? = null
+    var graph: GGMLCGraph = GGMLCGraph()
 ) {
     override fun equals(other: Any?): Boolean = this === other
     override fun hashCode(): Int = backendId xor iStart xor iEnd xor nInputs
@@ -729,29 +723,13 @@ data class GGMLBackendSchedSplit(
 // =====================================================================
 
 /**
- * Find the index of [backend] in the scheduler's backends list.
+ * Find the index of [backend] in the scheduler's backends array.
  * Returns -1 if not found. Lower index = higher priority.
- * C: `ggml_backend_sched_backend_id`
+ * C: `ggml_backend_sched_backend_id` (lines 836-843)
  */
-fun ggmlBackendSchedBackendId(backends: List<GGMLBackend>, backend: GGMLBackend): Int {
-    return backends.indexOfFirst { it === backend }
-}
-
-/**
- * Find the highest-priority backend that supports both the buffer type
- * of [tensor] and the operation [op].
- * C: `ggml_backend_sched_backend_from_buffer`
- */
-fun ggmlBackendSchedBackendFromBuffer(
-    backends: List<GGMLBackend>,
-    tensor: GGMLTensor,
-    op: GGMLTensor
-): Int {
-    val buffer = tensor.viewSrc?.buffer ?: tensor.buffer ?: return -1
-    for (i in backends.indices) {
-        if (ggmlBackendSupportsBufferType(backends[i], buffer.getType()) &&
-            ggmlBackendSupportsOp(backends[i], op)
-        ) {
+fun ggmlBackendSchedBackendId(sched: GGMLBackendSched, backend: GGMLBackend): Int {
+    for (i in 0 until sched.nBackends) {
+        if (sched.backends[i] === backend) {
             return i
         }
     }
@@ -759,90 +737,702 @@ fun ggmlBackendSchedBackendFromBuffer(
 }
 
 /**
+ * Find the highest-priority backend that supports the buffer type of [tensor] and the operation [op].
+ * C: `ggml_backend_sched_backend_from_buffer` (lines 845-865)
+ */
+fun ggmlBackendSchedBackendFromBuffer(sched: GGMLBackendSched, tensor: GGMLTensor, op: GGMLTensor): Int {
+    val buffer = tensor.viewSrc?.buffer ?: tensor.buffer ?: return -1
+
+    for (i in 0 until sched.nBackends) {
+        if (ggmlBackendSupportsBufferType(sched.backends[i]!!, buffer.getType()) &&
+            ggmlBackendSupportsOp(sched.backends[i]!!, op)
+        ) {
+            return i
+        }
+    }
+
+    return -1
+}
+
+/**
  * Determine the backend that should own a node based on its current buffer
  * allocations, view sources, and weight locations.
- * C: `ggml_backend_sched_backend_id_from_cur`
+ * C: `ggml_backend_sched_backend_id_from_cur` (lines 878-933)
  */
-fun ggmlBackendSchedBackendIdFromCur(
-    backends: List<GGMLBackend>,
-    tensor: GGMLTensor,
-    opOffload: Boolean
-): Int {
+fun ggmlBackendSchedBackendIdFromCur(sched: GGMLBackendSched, tensor: GGMLTensor): Int {
+    // assign pre-allocated nodes to their backend
+    var curBackendId = ggmlBackendSchedBackendFromBuffer(sched, tensor, tensor)
+    if (curBackendId != -1) {
+        return curBackendId
+    }
+
+    // view_src
+    if (tensor.viewSrc != null) {
+        curBackendId = ggmlBackendSchedBackendFromBuffer(sched, tensor.viewSrc!!, tensor)
+        if (curBackendId != -1) {
+            return curBackendId
+        }
+    }
+
+    if (tensor.buffer != null || (tensor.viewSrc != null && tensor.viewSrc!!.buffer != null)) {
+        val buffer = if (tensor.viewSrc != null) tensor.viewSrc!!.buffer else tensor.buffer
+        error("pre-allocated tensor (${tensor.name}) in a buffer (${ggmlBackendBufferName(buffer!!)}) that cannot run the operation (${tensor.op.name})")
+    }
+
+    // graph input
+    if (tensor.flags and GGML_TENSOR_FLAG_INPUT != 0) {
+        curBackendId = sched.nBackends - 1 // last backend (assumed CPU)
+        return curBackendId
+    }
+
+    // operations with weights are preferably run on the same backend as the weights
+    for (i in 0 until GGML_MAX_SRC) {
+        val src = tensor.src[i] ?: continue
+        // skip ROPE since the rope freqs tensor is too small to choose a backend based on it
+        if (tensor.op != GGMLOp.ROPE && src.buffer != null &&
+            src.buffer!!.getUsage() == GGMLBackendBufferUsage.WEIGHTS
+        ) {
+            val srcBackendId = ggmlBackendSchedBackendFromBuffer(sched, src, tensor)
+            // check if a backend with higher prio wants to offload the op
+            if (sched.opOffload && srcBackendId == sched.nBackends - 1 &&
+                ggmlBackendBufferIsHost(src.buffer!!)
+            ) {
+                for (b in 0 until srcBackendId) {
+                    if (ggmlBackendSupportsOp(sched.backends[b]!!, tensor) &&
+                        ggmlBackendOffloadOp(sched.backends[b]!!, tensor)
+                    ) {
+                        return b
+                    }
+                }
+            }
+            return srcBackendId
+        }
+    }
+
+    return -1
 }
 
 /**
  * Print the node→backend assignments for debugging.
- * C: `ggml_backend_sched_print_assignments`
+ * C: `ggml_backend_sched_print_assignments` (lines 945-983)
  */
-fun ggmlBackendSchedPrintAssignments(
-    backends: List<GGMLBackend>,
-    splits: List<GGMLBackendSchedSplit>,
-    graph: GGMLCGraph
-) {
+fun ggmlBackendSchedPrintAssignments(sched: GGMLBackendSched, graph: GGMLCGraph) {
+    var curSplit = 0
+    for (i in 0 until graph.nNodes) {
+        if (curSplit < sched.nSplits && i == sched.splits[curSplit].iStart) {
+            val splitBackend = sched.backends[sched.splits[curSplit].backendId]
+            val sb = StringBuilder()
+            sb.append("\n## SPLIT #$curSplit: ${ggmlBackendName(splitBackend)} # ${sched.splits[curSplit].nInputs} inputs")
+            for (j in 0 until sched.splits[curSplit].nInputs) {
+                if (j == 0) sb.append(": ")
+                val inp = sched.splits[curSplit].inputs[j]!!
+                sb.append("[${inp.name} (${fmtSize(ggmlNbytes(inp))})] ")
+            }
+            println(sb.toString())
+            curSplit++
+        }
+        val node = graph.nodes[i] ?: continue
+        if (ggmlIsViewOp(node.op)) continue
+
+        if (sched.debug > 1) {
+            val tensorBackend = sched.getTensorBackend(node)
+            val sb = StringBuilder()
+            sb.append("node #${i}: ${node.op.name} ${node.name} (${fmtSize(ggmlNbytes(node))}) [${tensorBackend?.getName() ?: "NULL"}]:")
+            for (j in 0 until GGML_MAX_SRC) {
+                val src = node.src[j] ?: continue
+                val srcBackend = sched.getTensorBackend(src)
+                sb.append(" ${src.name} (${fmtSize(ggmlNbytes(src))}) [${srcBackend?.getName() ?: "NULL"}]")
+            }
+            println(sb.toString())
+        }
+    }
 }
 
 /**
  * Check if a tensor's buffer type is supported on a given backend.
- * C: `ggml_backend_sched_buffer_supported`
+ * C: `ggml_backend_sched_buffer_supported` (lines 985-1004)
  */
-fun ggmlBackendSchedBufferSupported(
-    backends: List<GGMLBackend>,
-    bufferTypes: List<GGMLBackendBufferType?>,
-    tensorBackendIds: IntArray,
-    tensor: GGMLTensor,
-    backendId: Int
-): Boolean {
+fun ggmlBackendSchedBufferSupported(sched: GGMLBackendSched, t: GGMLTensor, backendId: Int): Boolean {
+    val buf = t.viewSrc?.buffer ?: t.buffer
+    var buft: GGMLBackendBufferType? = null
+
+    if (buf != null) {
+        buft = buf.getType()
+    } else {
+        var tensorBid = sched.tensorBackendId(t)
+        if (tensorBid == -1 && t.viewSrc != null) {
+            tensorBid = sched.tensorBackendId(t.viewSrc!!)
+        }
+        if (tensorBid != -1) {
+            buft = sched.bufts[tensorBid]
+        }
+    }
+
+    return buft != null && ggmlBackendSupportsBufferType(sched.backends[backendId]!!, buft)
 }
 
 /**
  * Assign a backend to a node if the backend supports the operation.
- * C: `ggml_backend_sched_set_if_supported`
+ * C: `ggml_backend_sched_set_if_supported` (lines 1006-1011)
  */
-fun ggmlBackendSchedSetIfSupported(
-    backends: List<GGMLBackend>,
-    node: GGMLTensor,
-    curBackendId: Int,
-    nodeBackendId: IntArray,
-    nodeIndex: Int
-) {
-    if (ggmlBackendSupportsOp(backends[curBackendId], node)) {
-        nodeBackendId[nodeIndex] = curBackendId
+fun ggmlBackendSchedSetIfSupported(sched: GGMLBackendSched, node: GGMLTensor, curBackendId: Int) {
+    if (ggmlBackendSupportsOp(sched.backends[curBackendId]!!, node)) {
+        sched.setTensorBackendId(node, curBackendId)
     }
 }
 
 /**
  * Split a computation graph into sub-graphs, each assigned to a single backend.
- * This is the core scheduling algorithm.
- * C: `ggml_backend_sched_split_graph`
+ * This is the core scheduling algorithm — 5-pass approach.
+ * C: `ggml_backend_sched_split_graph` (lines 1014-1487)
  */
-fun ggmlBackendSchedSplitGraph(
-    backends: List<GGMLBackend>,
-    bufferTypes: List<GGMLBackendBufferType?>,
-    graph: GGMLCGraph,
-    opOffload: Boolean
-): List<GGMLBackendSchedSplit> {
+fun ggmlBackendSchedSplitGraph(sched: GGMLBackendSched, graph: GGMLCGraph) {
+    // reset splits
+    sched.nSplits = 0
+    sched.nGraphInputs = 0
+    sched.isReset = false
+
+    // re-initialize context for temporary tensor allocations
+    sched.ctx = GGMLContext(noAlloc = true)
+
+    graph.uid = ggml_graph_next_uid()
+
+    // pass 1: assign backends to ops with pre-allocated inputs
+    for (i in 0 until graph.nLeafs) {
+        val leaf = graph.leafs[i] ?: continue
+        val leafBid = sched.tensorBackendId(leaf)
+        if (leafBid == -1) {
+            sched.setTensorBackendId(leaf, ggmlBackendSchedBackendIdFromCur(sched, leaf))
+        }
+    }
+
+    for (i in 0 until graph.nNodes) {
+        val node = graph.nodes[i] ?: continue
+        val nodeBid = sched.tensorBackendId(node)
+        if (nodeBid == -1) {
+            sched.setTensorBackendId(node, ggmlBackendSchedBackendIdFromCur(sched, node))
+        }
+    }
+
+    // pass 2: expand current backend assignments
+    // expand gpu backends (non-last-prio) down and up, ignoring cpu (lowest priority backend)
+    // expand gpu down
+    run {
+        var curBid = -1
+        for (i in 0 until graph.nNodes) {
+            val node = graph.nodes[i] ?: continue
+            if (ggmlIsViewOp(node.op)) continue
+            val nodeBid = sched.tensorBackendId(node)
+            if (nodeBid != -1) {
+                curBid = if (nodeBid == sched.nBackends - 1) -1 else nodeBid
+            } else if (curBid != -1) {
+                ggmlBackendSchedSetIfSupported(sched, node, curBid)
+            }
+        }
+    }
+    // expand gpu up
+    run {
+        var curBid = -1
+        for (i in graph.nNodes - 1 downTo 0) {
+            val node = graph.nodes[i] ?: continue
+            if (ggmlIsViewOp(node.op)) continue
+            val nodeBid = sched.tensorBackendId(node)
+            if (nodeBid != -1) {
+                curBid = if (nodeBid == sched.nBackends - 1) -1 else nodeBid
+            } else if (curBid != -1) {
+                ggmlBackendSchedSetIfSupported(sched, node, curBid)
+            }
+        }
+    }
+    // expand rest down
+    run {
+        var curBid = -1
+        for (i in 0 until graph.nNodes) {
+            val node = graph.nodes[i] ?: continue
+            if (ggmlIsViewOp(node.op)) continue
+            val nodeBid = sched.tensorBackendId(node)
+            if (nodeBid != -1) {
+                curBid = nodeBid
+            } else if (curBid != -1) {
+                ggmlBackendSchedSetIfSupported(sched, node, curBid)
+            }
+        }
+    }
+    // expand rest up
+    run {
+        var curBid = -1
+        for (i in graph.nNodes - 1 downTo 0) {
+            val node = graph.nodes[i] ?: continue
+            if (ggmlIsViewOp(node.op)) continue
+            val nodeBid = sched.tensorBackendId(node)
+            if (nodeBid != -1) {
+                curBid = nodeBid
+            } else if (curBid != -1) {
+                ggmlBackendSchedSetIfSupported(sched, node, curBid)
+            }
+        }
+    }
+
+    // pass 3: upgrade to higher prio backends with compatible buffer types
+    // and assign remaining unassigned nodes to backend with most supported inputs
+    for (i in 0 until graph.nNodes) {
+        val node = graph.nodes[i] ?: continue
+        if (ggmlIsViewOp(node.op)) continue
+        val nodeBid = sched.tensorBackendId(node)
+        if (nodeBid == -1) {
+            // unassigned node: find the backend with the most supported inputs
+            var nSupportedBest = -1
+            for (b in 0 until sched.nBackends) {
+                if (ggmlBackendSupportsOp(sched.backends[b]!!, node)) {
+                    var nSupported = 0
+                    for (j in 0 until GGML_MAX_SRC) {
+                        val src = node.src[j] ?: continue
+                        val srcBid = sched.tensorBackendId(src)
+                        val srcViewBid = if (src.viewSrc != null) sched.tensorBackendId(src.viewSrc!!) else -1
+                        if ((srcBid != -1 || srcViewBid != -1) && ggmlBackendSchedBufferSupported(sched, src, b)) {
+                            nSupported++
+                        }
+                    }
+                    if (nSupported > nSupportedBest) {
+                        nSupportedBest = nSupported
+                        sched.setTensorBackendId(node, b)
+                    }
+                }
+            }
+        } else {
+            // assigned node: upgrade to higher prio backend if possible
+            for (b in 0 until nodeBid) {
+                if (sched.bufts[b] === sched.bufts[nodeBid] &&
+                    ggmlBackendSupportsOp(sched.backends[b]!!, node)
+                ) {
+                    var supported = true
+                    for (j in 0 until GGML_MAX_SRC) {
+                        val src = node.src[j] ?: continue
+                        if (!ggmlBackendSchedBufferSupported(sched, src, b)) {
+                            supported = false
+                            break
+                        }
+                    }
+                    if (supported) {
+                        sched.setTensorBackendId(node, b)
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    // pass 4: assign backends to remaining src from dst and view_src
+    for (i in 0 until graph.nNodes) {
+        val node = graph.nodes[i] ?: continue
+        var curBid = sched.tensorBackendId(node)
+        if (node.viewSrc != null && curBid == -1) {
+            curBid = sched.tensorBackendId(node.viewSrc!!)
+            sched.setTensorBackendId(node, curBid)
+        }
+        for (j in 0 until GGML_MAX_SRC) {
+            val src = node.src[j] ?: continue
+            val srcBid = sched.tensorBackendId(src)
+            if (srcBid == -1) {
+                if (src.viewSrc != null) {
+                    sched.setTensorBackendId(src, sched.tensorBackendId(src.viewSrc!!))
+                } else {
+                    sched.setTensorBackendId(src, curBid)
+                }
+            }
+        }
+        // if node is still unassigned, assign to first backend that supports it
+        if (sched.tensorBackendId(node) == -1) {
+            for (b in 0 until sched.nBackends) {
+                if (ggmlBackendSupportsOp(sched.backends[b]!!, node)) {
+                    sched.setTensorBackendId(node, b)
+                    break
+                }
+            }
+        }
+        require(sched.tensorBackendId(node) != -1) { "node ${node.name} has no backend assigned" }
+    }
+
+    // pass 5: split graph, find tensors that need to be copied
+    run pass5@ {
+        var iSplit = 0
+        var split = sched.splits[0]
+        // find the backend of the first split, skipping view ops
+        var i = 0
+        while (i < graph.nNodes) {
+            val node = graph.nodes[i]
+            if (node == null) { i++; continue }
+            if (!ggmlIsViewOp(node.op)) {
+                split.backendId = sched.tensorBackendId(node)
+                break
+            }
+            i++
+        }
+        split.iStart = 0
+        split.nInputs = 0
+        var curBid = split.backendId
+
+        while (i < graph.nNodes) {
+            val node = graph.nodes[i]
+            if (node == null) { i++; continue }
+            if (ggmlIsViewOp(node.op)) { i++; continue }
+
+            val nodeBid = sched.tensorBackendId(node)
+            require(nodeBid != -1) { "all nodes should be assigned by now" }
+
+            // check if we should start a new split
+            var needNewSplit = false
+            if (nodeBid == curBid && split.nInputs > 0) {
+                for (j in 0 until GGML_MAX_SRC) {
+                    val src = node.src[j] ?: continue
+                    if (src.buffer != null && src.buffer!!.getUsage() == GGMLBackendBufferUsage.WEIGHTS) {
+                        val srcBid = sched.tensorBackendId(src)
+                        if (srcBid != curBid && !ggmlBackendSchedBufferSupported(sched, src, curBid)) {
+                            needNewSplit = true
+                            break
+                        }
+                    }
+                    if (split.nInputs == GGML_SCHED_MAX_SPLIT_INPUTS) {
+                        val srcId = sched.hashId(src)
+                        val srcBid2 = sched.hvTensorBackendIds[srcId]
+                        val supported = ggmlBackendSchedBufferSupported(sched, src, curBid)
+                        if (srcBid2 != curBid && sched.tensorIdCopy(srcId, curBid, 0) == null && !supported) {
+                            needNewSplit = true
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (nodeBid != curBid || needNewSplit) {
+                split.iEnd = i
+                iSplit++
+                if (iSplit >= sched.splitsCapacity) {
+                    sched.splitsCapacity *= 2
+                    while (sched.splits.size < sched.splitsCapacity) {
+                        sched.splits.add(GGMLBackendSchedSplit())
+                    }
+                }
+                split = sched.splits[iSplit]
+                split.backendId = nodeBid
+                split.iStart = i
+                split.nInputs = 0
+                curBid = nodeBid
+            }
+
+            // find inputs that are not on the same backend
+            for (j in 0 until GGML_MAX_SRC) {
+                val src = node.src[j] ?: continue
+
+                val srcId = sched.hashId(src)
+                val srcBid = sched.hvTensorBackendIds[srcId]
+                require(srcBid != -1) { "all inputs should be assigned by now" }
+
+                if (src.flags and GGML_TENSOR_FLAG_INPUT != 0 && sched.nCopies > 1) {
+                    if (sched.tensorIdCopy(srcId, srcBid, 0) == null) {
+                        val backend = sched.backends[srcBid]!!
+                        for (c in 0 until sched.nCopies) {
+                            val tensorCopy: GGMLTensor
+                            if (c == sched.curCopy) {
+                                tensorCopy = src
+                            } else {
+                                tensorCopy = ggmlDupTensorLayout(sched.ctx!!, src)
+                                ggmlFormatName(tensorCopy, "%s#%s#%d", ggmlBackendName(backend), src.name ?: "", c)
+                            }
+                            ggmlSetInput(tensorCopy)
+                            ggmlSetOutput(tensorCopy)
+                            sched.setTensorIdCopy(srcId, srcBid, c, tensorCopy)
+                        }
+                        val ngi = sched.nGraphInputs++
+                        require(ngi < GGML_SCHED_MAX_SPLIT_INPUTS)
+                        sched.graphInputs[ngi] = src
+                    }
+                }
+
+                if (srcBid != curBid && !ggmlBackendSchedBufferSupported(sched, src, curBid)) {
+                    if (sched.tensorIdCopy(srcId, curBid, 0) == null) {
+                        val backend = sched.backends[curBid]!!
+                        for (c in 0 until sched.nCopies) {
+                            val tensorCopy = ggmlDupTensorLayout(sched.ctx!!, src)
+                            ggmlFormatName(tensorCopy, "%s#%s#%d", ggmlBackendName(backend), src.name ?: "", c)
+                            if (sched.nCopies > 1) {
+                                ggmlSetInput(tensorCopy)
+                                ggmlSetOutput(tensorCopy)
+                            }
+                            sched.setTensorIdCopy(srcId, curBid, c, tensorCopy)
+                        }
+                        val ni = split.nInputs++
+                        require(ni < GGML_SCHED_MAX_SPLIT_INPUTS)
+                        split.inputs[ni] = src
+                    }
+                    node.src[j] = sched.tensorIdCopy(srcId, curBid, sched.curCopy)
+                }
+            }
+            i++
+        }
+        split.iEnd = graph.nNodes
+        sched.nSplits = iSplit + 1
+    }
+
+    if (sched.debug > 0) {
+        ggmlBackendSchedPrintAssignments(sched, graph)
+    }
+
+    // swap node_backend_ids and leaf_backend_ids with prevs
+    run {
+        val tmp = sched.nodeBackendIds
+        sched.nodeBackendIds = sched.prevNodeBackendIds
+        sched.prevNodeBackendIds = tmp
+
+        val tmp2 = sched.leafBackendIds
+        sched.leafBackendIds = sched.prevLeafBackendIds
+        sched.prevLeafBackendIds = tmp2
+    }
+
+    val graphSize = maxOf(graph.nNodes, graph.nLeafs) +
+        sched.nSplits * GGML_SCHED_MAX_SPLIT_INPUTS * 2 * sched.nCopies
+
+    sched.debugPrevGraphSize = sched.debugGraphSize
+    sched.debugGraphSize = graphSize
+
+    if (sched.graph.size < graphSize) {
+        sched.graph.size = graphSize
+        sched.graph.nodes = Array(graphSize) { null }
+        sched.graph.leafs = Array(graphSize) { null }
+    }
+    sched.graph.nNodes = 0
+    sched.graph.nLeafs = 0
+
+    val graphCopy = sched.graph
+
+    for (si in 0 until sched.nSplits) {
+        val sp = sched.splits[si]
+        sp.graph = ggml_graph_view(graph, sp.iStart, sp.iEnd)
+
+        // add inputs to graph copy so they are allocated by ggml-alloc at the start of the split
+        for (j in 0 until sp.nInputs) {
+            require(graphCopy.size > graphCopy.nNodes + 1)
+
+            val input = sp.inputs[j]!!
+            val inputId = sched.hashId(input)
+            val inputCpy = sched.tensorIdCopy(inputId, sp.backendId, sched.curCopy)
+
+            // add a dependency to the input source so that it is not freed before the copy is done
+            val inputDep = ggmlViewTensor(sched.ctx!!, input)
+            inputDep.src[0] = input
+            sched.nodeBackendIds[graphCopy.nNodes] = sched.hvTensorBackendIds[inputId]
+            graphCopy.nodes[graphCopy.nNodes++] = inputDep
+
+            // add the input copy
+            sched.nodeBackendIds[graphCopy.nNodes] = sp.backendId
+            graphCopy.nodes[graphCopy.nNodes++] = inputCpy
+        }
+
+        for (j in sp.iStart until sp.iEnd) {
+            require(graphCopy.size > graphCopy.nNodes)
+            sched.nodeBackendIds[graphCopy.nNodes] = sched.tensorBackendId(graph.nodes[j]!!)
+            graphCopy.nodes[graphCopy.nNodes++] = graph.nodes[j]
+        }
+    }
+
+    if (sched.nCopies > 1) {
+        // add input copies as leafs so that they are allocated first
+        for (gi in 0 until sched.nGraphInputs) {
+            val input = sched.graphInputs[gi]!!
+            val id = sched.hashId(input)
+            val bid = sched.tensorBackendId(input)
+            for (c in 0 until sched.nCopies) {
+                val inputCpy = sched.tensorIdCopy(id, bid, c)
+                sched.leafBackendIds[graphCopy.nLeafs] = bid
+                require(graphCopy.size > graphCopy.nLeafs)
+                graphCopy.leafs[graphCopy.nLeafs++] = inputCpy
+            }
+        }
+
+        for (si in 0 until sched.nSplits) {
+            val sp = sched.splits[si]
+            val bid = sp.backendId
+            for (j in 0 until sp.nInputs) {
+                val input = sp.inputs[j]!!
+                val id = sched.hashId(input)
+                for (c in 0 until sched.nCopies) {
+                    val inputCpy = sched.tensorIdCopy(id, bid, c)
+                    sched.leafBackendIds[graphCopy.nLeafs] = bid
+                    require(graphCopy.size > graphCopy.nLeafs)
+                    graphCopy.leafs[graphCopy.nLeafs++] = inputCpy
+                }
+            }
+        }
+    }
+
+    // add leafs from the original graph
+    for (i in 0 until graph.nLeafs) {
+        val leaf = graph.leafs[i] ?: continue
+        sched.leafBackendIds[graphCopy.nLeafs] = sched.tensorBackendId(leaf)
+        require(graphCopy.size > graphCopy.nLeafs)
+        graphCopy.leafs[graphCopy.nLeafs++] = leaf
+    }
+
+    // set ids for all splits
+    for (si in 0 until sched.nSplits) {
+        sched.splits[si].graph.uid = ggml_graph_next_uid()
+    }
 }
 
 /**
  * Allocate memory for all splits using the graph allocator.
- * C: `ggml_backend_sched_alloc_splits`
+ * C: `ggml_backend_sched_alloc_splits` (lines 1489-1539)
  */
-fun ggmlBackendSchedAllocSplits(
-    backends: List<GGMLBackend>,
-    splits: List<GGMLBackendSchedSplit>,
-    graph: GGMLCGraph
-): Boolean {
+fun ggmlBackendSchedAllocSplits(sched: GGMLBackendSched): Boolean {
+    var backendIdsChanged = false
+    for (i in 0 until sched.graph.nNodes) {
+        if (sched.nodeBackendIds[i] != sched.prevNodeBackendIds[i] &&
+            sched.bufts[sched.nodeBackendIds[i]] !== sched.bufts[sched.prevNodeBackendIds[i]]
+        ) {
+            backendIdsChanged = true
+            break
+        }
+    }
+    if (!backendIdsChanged) {
+        for (i in 0 until sched.graph.nLeafs) {
+            if (sched.leafBackendIds[i] != sched.prevLeafBackendIds[i] &&
+                sched.bufts[sched.leafBackendIds[i]] !== sched.bufts[sched.prevLeafBackendIds[i]]
+            ) {
+                backendIdsChanged = true
+                break
+            }
+        }
+    }
+
+    // allocate graph via gallocr
+    // if (backendIdsChanged || !ggmlGallocrAllocGraph(sched.galloc, sched.graph)) {
+    if (backendIdsChanged) {
+        if (sched.debugRealloc > 0) {
+            val unexpected = !backendIdsChanged && sched.debugPrevGraphSize == sched.debugGraphSize
+            if (unexpected || sched.debugRealloc > 1) {
+                error("unexpected graph reallocation (graph size = ${sched.debugGraphSize})")
+            }
+        }
+
+        // synchronize all backends before re-allocation
+        for (i in 0 until sched.nBackends) {
+            ggmlBackendSynchronize(sched.backends[i]!!)
+        }
+
+        // ggmlGallocrReserveN(sched.galloc, sched.graph, sched.nodeBackendIds, sched.leafBackendIds)
+        // if (!ggmlGallocrAllocGraph(sched.galloc, sched.graph)) {
+        //     return false
+        // }
+    }
+
+    return true
 }
 
 /**
  * Execute all splits, copying inputs between backends as needed.
- * C: `ggml_backend_sched_compute_splits`
+ * C: `ggml_backend_sched_compute_splits` (lines 1541-1725)
  */
-fun ggmlBackendSchedComputeSplits(
-    backends: List<GGMLBackend>,
-    splits: List<GGMLBackendSchedSplit>,
-    evalCallback: GGMLBackendSchedEvalCallback?
-): GGMLStatus {
+fun ggmlBackendSchedComputeSplits(sched: GGMLBackendSched): GGMLStatus {
+    for (splitId in 0 until sched.nSplits) {
+        val split = sched.splits[splitId]
+        val splitBid = split.backendId
+        val splitBackend = sched.backends[splitBid]!!
+
+        // copy the input tensors to the split backend
+        for (inputId in 0 until split.nInputs) {
+            val input = split.inputs[inputId]!!
+            val inputCpy = sched.tensorCopy(input, splitBid, sched.curCopy)!!
+
+            if (input.flags and GGML_TENSOR_FLAG_INPUT != 0) {
+                // inputs from the user must be copied immediately
+                if (sched.events[splitBid][sched.curCopy] != null) {
+                    ggmlBackendEventSynchronize(sched.events[splitBid][sched.curCopy]!!)
+                } else {
+                    ggmlBackendSynchronize(splitBackend)
+                }
+                ggmlBackendTensorCopyImpl(input, inputCpy)
+            } else {
+                // wait for the split backend to finish using the input before overwriting it
+                if (sched.events[splitBid][sched.curCopy] != null) {
+                    ggmlBackendEventWait(splitBackend, sched.events[splitBid][sched.curCopy]!!)
+                } else {
+                    ggmlBackendSynchronize(splitBackend)
+                }
+
+                // MoE expert optimization: check if we can copy only used experts
+                val firstNode = if (split.graph.nNodes > 0) split.graph.nodes[0] else null
+                if (firstNode != null &&
+                    input.buffer != null &&
+                    ggmlBackendBufferGetUsage(input.buffer!!) == GGMLBackendBufferUsage.WEIGHTS &&
+                    ggmlBackendBufferIsHost(input.buffer!!) &&
+                    firstNode.src[0] === inputCpy && firstNode.op == GGMLOp.MUL_MAT_ID
+                ) {
+                    // MoE weight copy optimization — copy full tensor for now
+                    // Full expert-level copy optimization requires bitset and ids tensor inspection
+                    ggmlBackendTensorCopyImpl(input, inputCpy)
+                } else {
+                    // try async copy, fallback to sync
+                    val inputBackend = sched.getTensorBackend(input)
+                    if (inputBackend != null) {
+                        if (!splitBackend.copyTensorAsync(inputBackend, input, inputCpy)) {
+                            ggmlBackendSynchronize(inputBackend)
+                            if (sched.events[splitBid][sched.curCopy] != null) {
+                                ggmlBackendEventSynchronize(sched.events[splitBid][sched.curCopy]!!)
+                            } else {
+                                ggmlBackendSynchronize(splitBackend)
+                            }
+                            ggmlBackendTensorCopyImpl(input, inputCpy)
+                        }
+                    } else {
+                        ggmlBackendTensorCopyImpl(input, inputCpy)
+                    }
+                }
+            }
+        }
+
+        if (sched.callbackEval == null) {
+            val ec = ggmlBackendGraphComputeAsync(splitBackend, split.graph)
+            if (ec != GGMLStatus.SUCCESS) {
+                return ec
+            }
+        } else {
+            // compute with eval callback — similar to compare_graph_backend
+            var j0 = 0
+            while (j0 < split.graph.nNodes) {
+                var t = split.graph.nodes[j0]!!
+                var need = sched.callbackEval!!(t, true, sched.callbackEvalUserData)
+                var j1 = j0
+
+                while (!need && j1 < split.graph.nNodes - 1) {
+                    t = split.graph.nodes[++j1]!!
+                    need = sched.callbackEval!!(t, true, sched.callbackEvalUserData)
+                }
+
+                val gv = ggml_graph_view(split.graph, j0, j1 + 1)
+                val ec = ggmlBackendGraphComputeAsync(splitBackend, gv)
+                if (ec != GGMLStatus.SUCCESS) {
+                    return ec
+                }
+
+                ggmlBackendSynchronize(splitBackend)
+
+                if (need && !sched.callbackEval!!(t, false, sched.callbackEvalUserData)) {
+                    break
+                }
+
+                j0 = j1 + 1
+            }
+        }
+
+        // record the event of this copy
+        if (split.nInputs > 0) {
+            if (sched.events[splitBid][sched.curCopy] != null) {
+                ggmlBackendEventRecord(sched.events[splitBid][sched.curCopy]!!, splitBackend)
+            }
+        }
+    }
+
+    return GGMLStatus.SUCCESS
 }
 
 // =====================================================================
@@ -852,233 +1442,169 @@ fun ggmlBackendSchedComputeSplits(
 
 /**
  * `ggml_backend_view_init` — initialise a tensor view.
- * Sets the view's buffer and data pointer from its view source.
+ * C: ggml-backend.cpp lines 1980-1989.
  */
-fun ggmlBackendViewInitImpl(tensor: GGMLTensor): GGMLStatus {
+fun ggmlBackendViewInit(tensor: GGMLTensor): GGMLStatus {
+    require(tensor.buffer == null) { "tensor already has a buffer" }
     requireNotNull(tensor.viewSrc) { "tensor is not a view" }
-    val viewSrc = tensor.viewSrc!!
-    requireNotNull(viewSrc.buffer) { "view_src buffer is null" }
-    tensor.buffer = viewSrc.buffer
+    requireNotNull(tensor.viewSrc!!.buffer) { "view_src buffer is null" }
+    requireNotNull(tensor.viewSrc!!.data) { "view_src data is null" }
+
+    tensor.buffer = tensor.viewSrc!!.buffer
+    // tensor.data = viewSrc.data + viewOffs — handled via viewOffs accessor
     return ggmlBackendBufferInitTensor(tensor.buffer!!, tensor)
 }
 
 /**
- * `ggml_backend_tensor_alloc` — place a tensor at a specific address
- * inside a buffer.
+ * `ggml_backend_tensor_alloc` — place a tensor at a specific address inside a buffer.
+ * C: ggml-backend.cpp lines 1992-2005.
  */
-fun ggmlBackendTensorAllocImpl(
-    buffer: GGMLBackendBuffer,
-    tensor: GGMLTensor,
-    addr: Any?
-): GGMLStatus {
+fun ggmlBackendTensorAlloc(buffer: GGMLBackendBuffer, tensor: GGMLTensor, addr: Any?): GGMLStatus {
     require(tensor.buffer == null) { "tensor already allocated" }
     require(tensor.viewSrc == null) { "tensor is a view, use view_init" }
+
     tensor.buffer = buffer
+    tensor.data = addr
     return ggmlBackendBufferInitTensor(buffer, tensor)
 }
 
 // =====================================================================
-// 13. Graph copy / compare
-//     C: ggml_backend_graph_copy, _free, ggml_backend_compare_graph_backend
-//
-// NOTE: GGMLBackendGraphCopy, ggmlBackendGraphCopyFree, and
-//       GGMLBackendEvalCallback are already declared in GGMLBackend.kt.
+// 13. Graph copy / compare helpers
+//     C: graph_copy_dup_tensor, graph_copy_init_tensor
+//     (ggml-backend.cpp lines 2007-2066)
 // =====================================================================
 
 /**
- * `ggml_backend_graph_copy` — deep-copy a graph and its tensors to
- * a target backend.
+ * Recursively duplicate a tensor and all its sources for graph copy.
+ * C: `graph_copy_dup_tensor` (lines 2007-2038)
  */
-fun ggmlBackendGraphCopyCreate(backend: GGMLBackend, graph: GGMLCGraph): GGMLBackendGraphCopy {
+fun graphCopyDupTensor(
+    hashSet: GGMLHashSet,
+    nodeCopies: Array<GGMLTensor?>,
+    ctxAllocated: GGMLContext,
+    ctxUnallocated: GGMLContext,
+    src: GGMLTensor
+): GGMLTensor {
+    val id = ggml_hash_insert(hashSet, src)
+    if (id == GGML_HASHSET_ALREADY_EXISTS) {
+        return nodeCopies[ggml_hash_find(hashSet, src)]!!
+    }
+
+    val ctx = if (src.data != null && src.viewSrc == null) ctxAllocated else ctxUnallocated
+    val dst = ggmlDupTensorLayout(ctx, src)
+    if (src.viewSrc != null) {
+        dst.viewSrc = graphCopyDupTensor(hashSet, nodeCopies, ctxAllocated, ctxUnallocated, src.viewSrc!!)
+        dst.viewOffs = src.viewOffs
+    }
+    dst.op = src.op
+    dst.flags = src.flags
+    src.opParams?.let { dst.opParams = it.copyOf() }
+    dst.name = src.name
+
+    for (i in 0 until GGML_MAX_SRC) {
+        val s = src.src[i] ?: continue
+        dst.src[i] = graphCopyDupTensor(hashSet, nodeCopies, ctxAllocated, ctxUnallocated, s)
+    }
+
+    nodeCopies[id] = dst
+    return dst
 }
 
 /**
- * `ggml_backend_compare_graph_backend` — compute a graph on two backends
- * and call [callback] to compare each pair of result tensors.
+ * Initialize a copied tensor — copy data or init view.
+ * C: `graph_copy_init_tensor` (lines 2041-2066)
  */
-fun ggmlBackendCompareGraphBackend(
-    backend1: GGMLBackend,
-    backend2: GGMLBackend,
-    graph: GGMLCGraph,
-    callback: GGMLBackendEvalCallback,
-    testNodes: List<GGMLTensor>? = null
-): Boolean {
+fun graphCopyInitTensor(
+    hashSet: GGMLHashSet,
+    nodeCopies: Array<GGMLTensor?>,
+    nodeInit: BooleanArray,
+    src: GGMLTensor
+) {
+    val id = ggml_hash_find(hashSet, src)
+    if (nodeInit[id]) return
+    nodeInit[id] = true
+
+    val dst = nodeCopies[id]!!
+    if (dst.viewSrc != null) {
+        graphCopyInitTensor(hashSet, nodeCopies, nodeInit, src.viewSrc!!)
+        val status = ggmlBackendViewInit(dst)
+        require(status == GGMLStatus.SUCCESS)
+    } else {
+        ggmlBackendTensorCopyImpl(src, dst)
+    }
+
+    for (i in 0 until GGML_MAX_SRC) {
+        val s = src.src[i] ?: continue
+        graphCopyInitTensor(hashSet, nodeCopies, nodeInit, s)
+    }
 }
 
 // =====================================================================
 // 14. CPU backend buffer / buffer-type
-//     C: ggml_backend_cpu_buffer_*, ggml_backend_cpu_buffer_type_*,
-//        ggml_backend_cpu_buffer_from_ptr
+//     C: ggml_backend_cpu_buffer_* (lines 2211-2371)
 //
-// NOTE: ggmlBackendCpuBufferType() and ggmlBackendCpuBufferFromPtr()
-//       are already declared in GGMLBackend.kt / GGMLCpuBackend.kt.
-// =====================================================================
-
-// =====================================================================
-// Existing higher-level helpers (preserved from original file)
+//     GGMLCpuBuffer and GGMLCpuBufferType are implemented in GGMLCpuBackend.kt.
+//     GGMLCpuBufferFromPtr and GGMLCpuBufferFromPtrType are unique to this file
+//     (they wrap external byte arrays without owning them).
 // =====================================================================
 
 /**
- * Backend selection strategy for hybrid execution
+ * CPU buffer type for buffers created from external pointers (not owned).
+ * C: `ggml_backend_cpu_buffer_from_ptr_type` (lines 2351-2366)
  */
-enum class GGMLBackendSelectionStrategy {
-    /** Always use CPU backend */
-    CPU_ONLY,
-    /** Automatic selection (currently identical to CPU_ONLY until new backends exist) */
-    AUTO
+class GGMLCpuBufferFromPtrType : GGMLBackendBufferType {
+    override fun getName(): String = "CPU_Mapped"
+    override fun allocBuffer(size: ULong): GGMLBackendBuffer {
+        val aligned = ((size.toInt() + TENSOR_ALIGNMENT - 1) / TENSOR_ALIGNMENT) * TENSOR_ALIGNMENT
+        val data = ByteArray(aligned)
+        return GGMLCpuBuffer(GGMLCpuBufferType(), data, size)
+    }
+    override fun getAlignment(): UInt = TENSOR_ALIGNMENT.toUInt()
+    override fun getMaxSize(): ULong = ULong.MAX_VALUE
+    override fun getAllocSize(tensor: GGMLTensor): ULong = ggmlNbytes(tensor)
+    override fun isHost(): Boolean = true
+    override fun getDevice(): GGMLBackendDevice? = null
 }
 
 /**
- * Backend manager for handling multiple backends and hybrid execution
+ * Create a CPU buffer wrapping an existing byte array (not owned by the buffer).
+ * C: `ggml_backend_cpu_buffer_from_ptr` (lines 2368-2371)
  */
-class GGMLBackendManager {
-    private val availableBackends = mutableMapOf<String, GGMLBackend>()
-    private var primaryBackend: GGMLBackend? = null
-    private var fallbackBackend: GGMLBackend? = null
-    private var selectionStrategy = GGMLBackendSelectionStrategy.AUTO
-    
-    init {
-        initializeBackends()
-    }
-    
-    /**
-     * Initialize available backends
-     */
-    private fun initializeBackends() {
-        val cpuBackend = GGMLCpuBackend()
-        availableBackends[cpuBackend.getName()] = cpuBackend
-        primaryBackend = cpuBackend
-        fallbackBackend = cpuBackend
-    }
-    
-    /**
-     * Get the list of available backend names
-     */
-    fun getAvailableBackends(): List<String> {
-        return availableBackends.keys.toList()
-    }
-    
-    /**
-     * Get a backend by name
-     */
-    fun getBackend(name: String): GGMLBackend? {
-        return availableBackends[name]
-    }
-    
-    /**
-     * Get the primary backend
-     */
-    fun getPrimaryBackend(): GGMLBackend? = primaryBackend
-    
-    /**
-     * Get the fallback backend (usually CPU)
-     */
-    fun getFallbackBackend(): GGMLBackend? = fallbackBackend
+class GGMLCpuBufferFromPtr(
+    private val ptr: ByteArray,
+    private val size: ULong
+) : GGMLBackendBuffer {
+    private val buft = GGMLCpuBufferFromPtrType()
+    private var usage = GGMLBackendBufferUsage.COMPUTE
 
-    /**
-     * Simple list of backend instances (for compatibility)
-     */
-    fun getBackends(): List<GGMLBackend> = availableBackends.values.toList()
-    
-    /**
-     * Set the backend selection strategy
-     */
-    fun setSelectionStrategy(strategy: GGMLBackendSelectionStrategy) {
-        selectionStrategy = strategy
+    override fun getType(): GGMLBackendBufferType = buft
+    override fun getName(): String = "CPU_Mapped"
+    override fun getBase(): Any = ptr
+    override fun getSize(): ULong = size
+    override fun free() {}
+    override fun initTensor(tensor: GGMLTensor): GGMLStatus = GGMLStatus.SUCCESS
+    override fun setTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+        val dst = tensor.data
+        if (dst is ByteArray) data.copyInto(dst, offset.toInt(), 0, size.toInt())
     }
-    
-    /**
-     * Select the best backend for a given operation
-     */
-    fun selectBackend(tensor: GGMLTensor): GGMLBackend? {
-        return fallbackBackend
+    override fun getTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+        val src = tensor.data
+        if (src is ByteArray) src.copyInto(data, 0, offset.toInt(), (offset + size).toInt())
     }
-    
-    /**
-     * Create a graph with automatic backend selection
-     */
-    fun createGraphWithBackend(size: Int, strategy: GGMLBackendSelectionStrategy? = null): GGMLCGraph {
-        val oldStrategy = selectionStrategy
-        strategy?.let { setSelectionStrategy(it) }
-        
-        val backend = fallbackBackend
-        val graph = createGraph(size, backend)
-        setSelectionStrategy(oldStrategy) // Restore old strategy
-        return graph
-    }
-    
-    /**
-     * Compute a graph with hybrid execution
-     */
-    fun computeGraphHybrid(graph: GGMLCGraph): GGMLStatus {
-        val allocator = graph.allocator
-        if (allocator == null) {
-            return GGMLStatus.FAILED
-        }
-        
-        // For now, use the graph's associated backend
-        // In a full hybrid implementation, we would analyze each node
-        // and potentially execute different nodes on different backends
-        return computeGraphWithBackend(graph)
-    }
-    
-    /**
-     * Get backend information for debugging
-     */
-    fun getBackendInfo(): Map<String, Any> {
-        val info = mutableMapOf<String, Any>()
-        
-        info["availableBackends"] = availableBackends.keys.toList()
-        info["primaryBackend"] = primaryBackend?.getName() ?: "None"
-        info["fallbackBackend"] = fallbackBackend?.getName() ?: "None" 
-        info["selectionStrategy"] = selectionStrategy.name
-
-        // Add backend-specific info
-        availableBackends.forEach { (name, backend) ->
-            info["${name}_guid"] = backend.getGuid()
-            info["${name}_bufferType"] = backend.getDefaultBufferType().getName()
-            info["${name}_alignment"] = backend.getAlignment()
-            info["${name}_maxSize"] = backend.getMaxSize()
-        }
-        
-        return info
-    }
-    
-    /**
-     * Clean up all backends
-     */
-    fun cleanup() {
-        availableBackends.values.forEach { backend ->
-            try {
-                backend.free()
-            } catch (e: Exception) {
-                println("Error freeing backend ${backend.getName()}: ${e.message}")
+    override fun copyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
+        val srcBuf = src.buffer ?: return false
+        if (ggmlBackendBufferIsHost(srcBuf)) {
+            val srcData = src.data
+            val dstData = dst.data
+            if (srcData is ByteArray && dstData is ByteArray) {
+                srcData.copyInto(dstData, 0, 0, ggmlNbytes(src).toInt())
+                return true
             }
         }
-        availableBackends.clear()
-        primaryBackend = null
-        fallbackBackend = null
+        return false
     }
-}
-
-/**
- * Global backend manager instance
- */
-val globalBackendManager = GGMLBackendManager()
-
-/**
- * Convenience function to create a graph with the global backend manager
- */
-fun createGraphWithGlobalBackend(
-    size: Int, 
-    strategy: GGMLBackendSelectionStrategy = GGMLBackendSelectionStrategy.AUTO
-): GGMLCGraph {
-    return globalBackendManager.createGraphWithBackend(size, strategy)
-}
-
-/**
- * Convenience function to compute a graph with hybrid execution
- */
-fun computeGraphHybrid(graph: GGMLCGraph): GGMLStatus {
-    return globalBackendManager.computeGraphHybrid(graph)
+    override fun clear(value: UByte) { ptr.fill(value.toByte()) }
+    override fun setUsage(usage: GGMLBackendBufferUsage) { this.usage = usage }
+    override fun getUsage(): GGMLBackendBufferUsage = usage
+    override fun reset() { clear(0u) }
 }

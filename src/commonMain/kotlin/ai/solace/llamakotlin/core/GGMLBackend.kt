@@ -352,17 +352,7 @@ fun ggmlBackendTensorGet2d(
 fun ggmlBackendTensorMemset(tensor: GGMLTensor, value: UByte, offset: ULong, size: ULong) {
 }
 
-/**
- * `ggml_backend_tensor_alloc` – allocate a tensor within a buffer at a given address.
- */
-fun ggmlBackendTensorAlloc(buffer: GGMLBackendBuffer, tensor: GGMLTensor, addr: Any?): GGMLStatus {
-}
-
-/**
- * `ggml_backend_view_init` – initialise a tensor view.
- */
-fun ggmlBackendViewInit(tensor: GGMLTensor): GGMLStatus {
-}
+// ggmlBackendTensorAlloc and ggmlBackendViewInit are implemented in GGMLBackendUtils.kt
 
 // ---------------------------------------------------------------------------
 // Events  (ggml_backend_event_t)
@@ -745,115 +735,318 @@ object GGMLBackendRegistry {
  * the tensor [t]. When [ask] is false the tensor is being presented for observation;
  * returning false cancels the graph compute.
  */
-typealias GGMLBackendSchedEvalCallback = (t: GGMLTensor, ask: Boolean) -> Boolean
+/**
+ * Eval callback for the scheduler.
+ * C: `ggml_backend_sched_eval_callback`
+ * @param t the tensor being evaluated
+ * @param ask true = asking if data is needed, false = data is ready
+ * @param userData opaque user data
+ * @return true to continue, false to stop
+ */
+typealias GGMLBackendSchedEvalCallback = (t: GGMLTensor, ask: Boolean, userData: Any?) -> Boolean
 
 /**
  * Backend scheduler – coordinates multiple backends, handles buffer allocation,
  * tensor assignment, and cross-backend copies.
- * Mirrors the C `ggml_backend_sched` opaque struct and associated free functions.
+ *
+ * Faithful transliteration of `struct ggml_backend_sched` from ggml-backend.cpp lines 774-828.
+ * All internal fields mirror the C struct. Public API methods mirror the C free functions.
  */
 class GGMLBackendSched private constructor(
-    private val backends: List<GGMLBackend>,
-    private val bufferTypes: List<GGMLBackendBufferType?>,
-    private val graphSize: ULong,
-    private val parallel: Boolean,
-    private val opOffload: Boolean
+    val nBackends: Int,
+    val nCopies: Int,
+    val opOffload: Boolean,
+    val debug: Int,
+    val debugRealloc: Int,
+    graphSize: Int
 ) {
-    private var evalCallback: GGMLBackendSchedEvalCallback? = null
+    // --- state flags ---
+    var isReset: Boolean = true
+    var isAlloc: Boolean = false
+
+    // --- backends and buffer types ---
+    val backends: Array<GGMLBackend?> = arrayOfNulls(GGML_SCHED_MAX_BACKENDS)
+    val bufts: Array<GGMLBackendBufferType?> = arrayOfNulls(GGML_SCHED_MAX_BACKENDS)
+
+    // --- graph allocator (ggml_gallocr_t) ---
+    // Will be typed as GGMLGAllocr when ggml-alloc.c gallocr is fully ported.
+    // For now, Any? placeholder matches the opaque pointer pattern.
+    var galloc: Any? = null
+
+    // --- hash map of the nodes in the graph ---
+    val hashSet: GGMLHashSet = GGMLHashSet(GGMLHashSet.ggml_hash_size(graphSize))
+    val hvTensorBackendIds: IntArray = IntArray(hashSet.size) { -1 }
+    val hvTensorCopies: Array<GGMLTensor?> = arrayOfNulls(hashSet.size * GGML_SCHED_MAX_BACKENDS * GGML_SCHED_MAX_COPIES)
+
+    // --- per-node/leaf backend assignments ---
+    private val nodesSize: Int = graphSize + graphSize * GGML_SCHED_MAX_SPLIT_INPUTS * 2
+    var nodeBackendIds: IntArray = IntArray(nodesSize)
+    var leafBackendIds: IntArray = IntArray(nodesSize)
+    var prevNodeBackendIds: IntArray = IntArray(nodesSize)
+    var prevLeafBackendIds: IntArray = IntArray(nodesSize)
+
+    // --- copy of the graph with modified inputs ---
+    val graph: GGMLCGraph = GGMLCGraph()
+
+    // --- graph splits ---
+    var splits: MutableList<GGMLBackendSchedSplit> = MutableList(16) { GGMLBackendSchedSplit() }
+    var nSplits: Int = 0
+    var splitsCapacity: Int = 16
+
+    // --- pipeline parallelism support ---
+    var curCopy: Int = 0
+    var nextCopy: Int = 0
+    val events: Array<Array<GGMLBackendEvent?>> = Array(GGML_SCHED_MAX_BACKENDS) { arrayOfNulls(GGML_SCHED_MAX_COPIES) }
+    val graphInputs: Array<GGMLTensor?> = arrayOfNulls(GGML_SCHED_MAX_SPLIT_INPUTS)
+    var nGraphInputs: Int = 0
+
+    // --- context for temporary tensor allocations during split_graph ---
+    var ctx: GGMLContext? = null
+
+    // --- eval callback ---
+    var callbackEval: GGMLBackendSchedEvalCallback? = null
+    var callbackEvalUserData: Any? = null
+
+    // --- context buffer (Kotlin heap-allocated, no manual memory management needed) ---
+    val contextBufferSize: Int = graphSize * GGML_SCHED_MAX_SPLIT_INPUTS * 2
+    var contextBuffer: ByteArray = ByteArray(contextBufferSize)
+
+    // --- debug ---
+    var debugGraphSize: Int = 0
+    var debugPrevGraphSize: Int = 0
+
+    // =====================================================================
+    // C macro equivalents: hash_id, tensor_backend_id, tensor_id_copy, tensor_copy
+    // =====================================================================
+
+    /** C: `hash_id(tensor)` → `ggml_hash_find_or_insert(&sched->hash_set, tensor)` */
+    fun hashId(tensor: GGMLTensor): Int = ggml_hash_find_or_insert(hashSet, tensor)
+
+    /** C: `tensor_backend_id(tensor)` → `sched->hv_tensor_backend_ids[hash_id(tensor)]` */
+    fun tensorBackendId(tensor: GGMLTensor): Int = hvTensorBackendIds[hashId(tensor)]
+
+    /** Set the backend id for a tensor in the hash map. */
+    fun setTensorBackendId(tensor: GGMLTensor, id: Int) {
+        hvTensorBackendIds[hashId(tensor)] = id
+    }
+
+    /**
+     * C: `tensor_id_copy(id, backend_id, copy_id)`
+     * → `sched->hv_tensor_copies[(id) * n_backends * n_copies + (backend_id) * n_copies + (copy_id)]`
+     */
+    fun tensorIdCopy(id: Int, backendId: Int, copyId: Int): GGMLTensor? =
+        hvTensorCopies[id * nBackends * nCopies + backendId * nCopies + copyId]
+
+    fun setTensorIdCopy(id: Int, backendId: Int, copyId: Int, value: GGMLTensor?) {
+        hvTensorCopies[id * nBackends * nCopies + backendId * nCopies + copyId] = value
+    }
+
+    /** C: `tensor_copy(tensor, backend_id, copy_id)` → `tensor_id_copy(hash_id(tensor), ...)` */
+    fun tensorCopy(tensor: GGMLTensor, backendId: Int, copyId: Int): GGMLTensor? =
+        tensorIdCopy(hashId(tensor), backendId, copyId)
+
+    fun setTensorCopy(tensor: GGMLTensor, backendId: Int, copyId: Int, value: GGMLTensor?) {
+        setTensorIdCopy(hashId(tensor), backendId, copyId, value)
+    }
+
+    // =====================================================================
+    // Factory (companion object)
+    // =====================================================================
 
     companion object {
         /**
-         * `ggml_backend_sched_new`
+         * `ggml_backend_sched_new` — C: ggml-backend.cpp lines 1727-1793.
          *
          * Create a new backend scheduler. Backends with a lower index are given
-         * higher priority.
+         * higher priority. The last backend MUST be CPU.
          */
         fun new(
             backends: List<GGMLBackend>,
-            bufferTypes: List<GGMLBackendBufferType?>?,
-            graphSize: ULong,
+            bufts: List<GGMLBackendBufferType?>?,
+            graphSize: Int,
             parallel: Boolean,
             opOffload: Boolean
         ): GGMLBackendSched {
-            return GGMLBackendSched(
-                backends = backends,
-                bufferTypes = bufferTypes ?: List(backends.size) { null },
-                graphSize = graphSize,
-                parallel = parallel,
-                opOffload = opOffload
+            require(backends.isNotEmpty())
+            require(backends.size <= GGML_SCHED_MAX_BACKENDS)
+
+            val nCopies = if (parallel) GGML_SCHED_MAX_COPIES else 1
+
+            val sched = GGMLBackendSched(
+                nBackends = backends.size,
+                nCopies = nCopies,
+                opOffload = opOffload,
+                debug = 0,
+                debugRealloc = 0,
+                graphSize = graphSize
             )
+
+            for (b in backends.indices) {
+                sched.backends[b] = backends[b]
+                sched.bufts[b] = bufts?.getOrNull(b)
+                    ?: ggmlBackendGetDefaultBufferType(backends[b])
+                require(ggmlBackendSupportsBufferType(backends[b], sched.bufts[b]!!))
+
+                if (nCopies > 1) {
+                    for (c in 0 until nCopies) {
+                        sched.events[b][c] = ggmlBackendEventNew(backends[b].getDevice())
+                    }
+                }
+            }
+
+            // galloc = ggmlGallocrNewN(sched.bufts, backends.size) — when gallocr is ported
+            sched.reset()
+
+            return sched
         }
     }
 
-    /** `ggml_backend_sched_free` */
+    // =====================================================================
+    // Public API methods — mirror C free functions
+    // =====================================================================
+
+    /** `ggml_backend_sched_free` — C: lines 1796-1818 */
     fun free() {
+        for (b in 0 until nBackends) {
+            for (c in 0 until nCopies) {
+                ggmlBackendEventFree(events[b][c])
+            }
+        }
+        // galloc?.free() — when gallocr is ported
+        ctx = null
+        // In Kotlin, GC handles the rest (no manual free needed for arrays)
     }
 
-    /** `ggml_backend_sched_reserve_size` – reserve with explicit per-backend sizes */
+    /** `ggml_backend_sched_reset` — C: lines 1821-1831 */
+    fun reset() {
+        if (!isReset) {
+            hashSet.reset()
+            hvTensorBackendIds.fill(-1)
+            hvTensorCopies.fill(null)
+            isReset = true
+        }
+        isAlloc = false
+    }
+
+    /**
+     * `ggml_backend_sched_reserve_size` — C: lines 1833-1844.
+     * Reserve with explicit per-backend sizes.
+     */
     fun reserveSize(measureGraph: GGMLCGraph, sizes: ULongArray) {
+        require(hashSet.size >= measureGraph.nNodes + measureGraph.nLeafs)
+        reset()
+        synchronize()
+        ggmlBackendSchedSplitGraph(this, measureGraph)
+        // ggmlGallocrReserveNSize(galloc, graph, nodeBackendIds, leafBackendIds, sizes)
     }
 
-    /** `ggml_backend_sched_reserve` – returns true on success */
+    /** `ggml_backend_sched_reserve` — C: lines 1847-1861. Returns true on success. */
     fun reserve(measureGraph: GGMLCGraph): Boolean {
+        require(hashSet.size >= measureGraph.nNodes + measureGraph.nLeafs)
+        synchronize()
+        ggmlBackendSchedSplitGraph(this, measureGraph)
+        // if (!ggmlGallocrReserveN(galloc, graph, nodeBackendIds, leafBackendIds)) return false
+        reset()
+        return true
     }
 
-    /** `ggml_backend_sched_get_n_backends` */
-    fun getNumBackends(): Int = backends.size
+    /** `ggml_backend_sched_alloc_graph` — C: lines 1864-1881. Returns true on success. */
+    fun allocGraph(graph: GGMLCGraph): Boolean {
+        require(hashSet.size >= graph.nNodes + graph.nLeafs)
+        require(!isAlloc)
 
-    /** `ggml_backend_sched_get_backend` */
-    fun getBackend(index: Int): GGMLBackend? = backends.getOrNull(index)
+        curCopy = nextCopy
+        nextCopy = (nextCopy + 1) % nCopies
+
+        ggmlBackendSchedSplitGraph(this, graph)
+
+        if (!ggmlBackendSchedAllocSplits(this)) {
+            return false
+        }
+
+        isAlloc = true
+        return true
+    }
+
+    /** `ggml_backend_sched_graph_compute` — C: lines 1883-1887 */
+    fun graphCompute(graph: GGMLCGraph): GGMLStatus {
+        val err = graphComputeAsync(graph)
+        synchronize()
+        return err
+    }
+
+    /** `ggml_backend_sched_graph_compute_async` — C: lines 1889-1902 */
+    fun graphComputeAsync(graph: GGMLCGraph): GGMLStatus {
+        if (!isReset && !isAlloc) {
+            reset()
+        }
+        if (!isAlloc) {
+            if (!allocGraph(graph)) {
+                return GGMLStatus.ALLOC_FAILED
+            }
+        }
+        return ggmlBackendSchedComputeSplits(this)
+    }
+
+    /** `ggml_backend_sched_synchronize` — C: lines 1904-1915 */
+    fun synchronize() {
+        for (i in 0 until nBackends) {
+            ggmlBackendSynchronize(backends[i]!!)
+        }
+        if (!isAlloc) {
+            nextCopy = 0
+        }
+    }
+
+    /** `ggml_backend_sched_set_eval_callback` — C: lines 1917-1921 */
+    fun setEvalCallback(callback: GGMLBackendSchedEvalCallback?, userData: Any? = null) {
+        callbackEval = callback
+        callbackEvalUserData = userData
+    }
 
     /** `ggml_backend_sched_get_n_splits` */
-    fun getNumSplits(): Int {
-    }
+    fun getNumSplits(): Int = nSplits
 
     /** `ggml_backend_sched_get_n_copies` */
-    fun getNumCopies(): Int {
+    fun getNumCopies(): Int = nCopies
+
+    /** `ggml_backend_sched_get_n_backends` */
+    fun getNumBackends(): Int = nBackends
+
+    /** `ggml_backend_sched_get_backend` */
+    fun getBackend(index: Int): GGMLBackend? {
+        require(index in 0 until nBackends)
+        return backends[index]
     }
 
-    /** `ggml_backend_sched_get_buffer_type` */
+    /** `ggml_backend_sched_get_buffer_type` — C: lines 1944-1949 */
     fun getBufferType(backend: GGMLBackend): GGMLBackendBufferType? {
+        val idx = ggmlBackendSchedBackendId(this, backend)
+        require(idx in 0 until nBackends)
+        return bufts[idx]
     }
 
-    /** `ggml_backend_sched_get_buffer_size` */
+    /** `ggml_backend_sched_get_buffer_size` — C: lines 1952-1957 */
     fun getBufferSize(backend: GGMLBackend): ULong {
+        val idx = ggmlBackendSchedBackendId(this, backend)
+        require(idx in 0 until nBackends)
+        // return ggmlGallocrGetBufferSize(galloc, idx) — when gallocr is ported
+        return 0UL
     }
 
-    /** `ggml_backend_sched_set_tensor_backend` */
+    /** `ggml_backend_sched_set_tensor_backend` — C: lines 1960-1967 */
     fun setTensorBackend(node: GGMLTensor, backend: GGMLBackend) {
+        val idx = ggmlBackendSchedBackendId(this, backend)
+        require(idx in 0 until nBackends)
+        setTensorBackendId(node, idx)
+        isReset = false
     }
 
-    /** `ggml_backend_sched_get_tensor_backend` */
+    /** `ggml_backend_sched_get_tensor_backend` — C: lines 1969-1976 */
     fun getTensorBackend(node: GGMLTensor): GGMLBackend? {
-    }
-
-    /** `ggml_backend_sched_split_graph` */
-    fun splitGraph(graph: GGMLCGraph) {
-    }
-
-    /** `ggml_backend_sched_alloc_graph` – returns true on success */
-    fun allocGraph(graph: GGMLCGraph): Boolean {
-    }
-
-    /** `ggml_backend_sched_graph_compute` */
-    fun graphCompute(graph: GGMLCGraph): GGMLStatus {
-    }
-
-    /** `ggml_backend_sched_graph_compute_async` */
-    fun graphComputeAsync(graph: GGMLCGraph): GGMLStatus {
-    }
-
-    /** `ggml_backend_sched_synchronize` */
-    fun synchronize() {
-    }
-
-    /** `ggml_backend_sched_reset` */
-    fun reset() {
-    }
-
-    /** `ggml_backend_sched_set_eval_callback` */
-    fun setEvalCallback(callback: GGMLBackendSchedEvalCallback?) {
-        this.evalCallback = callback
+        val idx = tensorBackendId(node)
+        if (idx == -1) return null
+        return backends[idx]
     }
 }
 
@@ -927,12 +1120,15 @@ data class GGMLBackendMetaSplitState(
 typealias GGMLBackendMetaGetSplitState = (tensor: GGMLTensor) -> GGMLBackendMetaSplitState
 
 /**
- * `ggml_backend_meta_device` – create a meta device from constituent devices.
+ * `ggml_backend_meta_device` — create a meta device from constituent devices.
+ * This is a placeholder for future tensor-parallelism support.
  */
 fun ggmlBackendMetaDevice(
     devices: List<GGMLBackendDevice>,
     getSplitState: GGMLBackendMetaGetSplitState
-): GGMLBackendDevice {
+): GGMLBackendDevice? {
+    // Meta backend not yet implemented — requires multi-device coordination
+    return null
 }
 
 // ---------------------------------------------------------------------------
@@ -951,15 +1147,55 @@ data class GGMLBackendGraphCopy(
 )
 
 /**
- * `ggml_backend_graph_copy` – copy a graph to a different backend.
+ * `ggml_backend_graph_copy` — deep-copy a graph and its tensors to a target backend.
+ * C: ggml-backend.cpp lines 2068-2148.
  */
 fun ggmlBackendGraphCopy(backend: GGMLBackend, graph: GGMLCGraph): GGMLBackendGraphCopy {
+    val hashSet = GGMLHashSet(GGMLHashSet.ggml_hash_size(graph.size))
+    val nodeCopies: Array<GGMLTensor?> = arrayOfNulls(hashSet.size)
+    val nodeInit = BooleanArray(hashSet.size)
+
+    val ctxAllocated = GGMLContext(noAlloc = true)
+    val ctxUnallocated = GGMLContext(noAlloc = true)
+
+    // dup nodes
+    for (i in 0 until graph.nNodes) {
+        val node = graph.nodes[i] ?: continue
+        graphCopyDupTensor(hashSet, nodeCopies, ctxAllocated, ctxUnallocated, node)
+    }
+
+    // allocate nodes — requires ggml_backend_alloc_ctx_tensors (from ggml-alloc)
+    // val buffer = ggmlBackendAllocCtxTensors(ctxAllocated, backend)
+
+    // copy data and init views
+    for (i in 0 until graph.nNodes) {
+        val node = graph.nodes[i] ?: continue
+        graphCopyInitTensor(hashSet, nodeCopies, nodeInit, node)
+    }
+
+    // build graph copy
+    val graphCopy = ggmlNewGraphCustom(ctxAllocated, graph.size.toULong(), false)
+    for (i in 0 until graph.nNodes) {
+        val node = graph.nodes[i] ?: continue
+        val nodeCopy = nodeCopies[ggml_hash_find(hashSet, node)]
+        graphCopy.nodes[i] = nodeCopy
+    }
+    graphCopy.nNodes = graph.nNodes
+
+    return GGMLBackendGraphCopy(
+        buffer = null, // buffer from alloc_ctx_tensors when ported
+        ctxAllocated = ctxAllocated,
+        ctxUnallocated = ctxUnallocated,
+        graph = graphCopy
+    )
 }
 
 /**
- * `ggml_backend_graph_copy_free` – free a previously copied graph.
+ * `ggml_backend_graph_copy_free` — C: ggml-backend.cpp lines 2150-2154.
  */
 fun ggmlBackendGraphCopyFree(copy: GGMLBackendGraphCopy) {
+    ggmlBackendBufferFree(copy.buffer)
+    // ctxAllocated and ctxUnallocated are GC'd in Kotlin
 }
 
 /**
@@ -969,7 +1205,8 @@ fun ggmlBackendGraphCopyFree(copy: GGMLBackendGraphCopy) {
 typealias GGMLBackendEvalCallback = (nodeIndex: Int, t1: GGMLTensor, t2: GGMLTensor) -> Boolean
 
 /**
- * `ggml_backend_compare_graph_backend` – compare the output of two backends.
+ * `ggml_backend_compare_graph_backend` — C: ggml-backend.cpp lines 2156-2209.
+ * Compute a graph on two backends and call [callback] to compare each pair of result tensors.
  */
 fun ggmlBackendCompareGraphBackend(
     backend1: GGMLBackend,
@@ -978,6 +1215,49 @@ fun ggmlBackendCompareGraphBackend(
     callback: GGMLBackendEvalCallback,
     testNodes: List<GGMLTensor>
 ): Boolean {
+    val copy = ggmlBackendGraphCopy(backend2, graph)
+    if (copy.buffer == null && copy.graph == null) {
+        return false
+    }
+
+    val g1 = graph
+    val g2 = copy.graph!!
+
+    require(g1.nNodes == g2.nNodes)
+
+    if (testNodes.isNotEmpty()) {
+        ggmlBackendGraphCompute(backend1, g1)
+        ggmlBackendGraphCompute(backend2, g2)
+
+        for (i in 0 until g1.nNodes) {
+            for (testNode in testNodes) {
+                if (g1.nodes[i] === testNode) {
+                    callback(i, g1.nodes[i]!!, g2.nodes[i]!!)
+                }
+            }
+        }
+    } else {
+        for (i in 0 until g1.nNodes) {
+            val t1 = g1.nodes[i]!!
+            val t2 = g2.nodes[i]!!
+
+            val g1v = ggml_graph_view(g1, i, i + 1)
+            val g2v = ggml_graph_view(g2, i, i + 1)
+
+            ggmlBackendGraphCompute(backend1, g1v)
+            ggmlBackendGraphCompute(backend2, g2v)
+
+            if (ggmlIsViewOp(t1.op)) {
+                continue
+            }
+
+            if (!callback(i, t1, t2)) {
+                break
+            }
+        }
+    }
+    ggmlBackendGraphCopyFree(copy)
+    return true
 }
 
 // ---------------------------------------------------------------------------
@@ -985,9 +1265,11 @@ fun ggmlBackendCompareGraphBackend(
 // ---------------------------------------------------------------------------
 
 /**
- * `ggml_backend_cpu_buffer_from_ptr` – wrap an existing byte array as a CPU buffer.
+ * `ggml_backend_cpu_buffer_from_ptr` — wrap an existing byte array as a CPU buffer.
+ * C: ggml-backend.cpp lines 2368-2371.
  */
 fun ggmlBackendCpuBufferFromPtr(ptr: ByteArray, size: ULong): GGMLBackendBuffer {
+    return GGMLCpuBufferFromPtr(ptr, size)
 }
 
 /**

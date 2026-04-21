@@ -8,12 +8,10 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GGMLBackendIntegrationTest {
-    private lateinit var manager: GGMLBackendManager
 
     @BeforeTest
     fun setUp() {
         GGMLBackendRegistry.init()
-        manager = GGMLBackendManager()
     }
 
     @Test
@@ -26,19 +24,8 @@ class GGMLBackendIntegrationTest {
     }
 
     @Test
-    fun backendSelectionIsCpuOnly() {
-        val tensor = GGMLTensor(op = GGMLOp.MUL_MAT).apply {
-            ne[0] = 1024
-            ne[1] = 1024
-        }
-        val backend = manager.selectBackend(tensor)
-        assertNotNull(backend)
-        assertEquals("CPU", backend.getName())
-    }
-
-    @Test
-    fun bufferDataIntegrityThroughManager() {
-        val backend = manager.getPrimaryBackend() as GGMLCpuBackend
+    fun bufferDataIntegrity() {
+        val backend = GGMLCpuBackend()
         val buffer = backend.allocBuffer(64u) as GGMLCpuBuffer
 
         val tensor = GGMLTensor(type = GGMLType.F32)
@@ -56,17 +43,5 @@ class GGMLBackendIntegrationTest {
 
         buffer.free()
         backend.free()
-    }
-
-    @Test
-    fun globalBackendManagerUsesCpu() {
-        val graph = createGraphWithGlobalBackend(10)
-        val status = computeGraphHybrid(graph)
-        assertEquals(GGMLStatus.SUCCESS, status)
-
-        val info = globalBackendManager.getBackendInfo()
-        assertTrue((info["availableBackends"] as List<*>).contains("CPU"))
-        assertEquals("CPU", info["primaryBackend"])
-        assertEquals("CPU", info["fallbackBackend"])
     }
 }

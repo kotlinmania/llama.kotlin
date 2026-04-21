@@ -16,7 +16,7 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.06
+**Average Similarity:** 0.07
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -34,7 +34,7 @@ These files need significant work:
 
 - `ggml-cpu.vec` → `fp.VectorOps` (0.00, 1 deps)
 - `gguf` → `gguf.GGUFParser` (0.01, 1 deps)
-- `ggml-backend` → `core.GGMLBackendUtils` (0.30, 20 deps)
+- `ggml-backend` → `core.GGMLBackendUtils` (0.44, 20 deps)
 - `ggml-cpu.quants` → `core.GGMLQuants` (0.00, 4 deps)
 - `ggml-opt` → `core.GGMLOptimizationSchedulerTest` (0.00)
 - `ggml-sycl.common` → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` (0.00)
@@ -63,9 +63,9 @@ These files need significant work:
 - `ggml` → `core.GGMLOps` (0.00, 50 deps)
 - `ggml-cpu.ggml-cpu` → `core.GGMLCpuBackend` (0.00, 12 deps)
 - `op.cont` → `gguf.GGUFContext` (0.00)
-- `ggml-sycl.backend` → `core.GGMLBackendIntegrationTest` (0.03, 2 deps)
+- `ggml-sycl.backend` → `core.GGMLBackendIntegrationTest` (0.04, 2 deps)
 - `ggml-cann.aclnn_ops` → `lnn.LNNCore` (0.00, 1 deps)
-- `ggml-threading` → `core.GGMLScheduler` (0.09, 1 deps)
+- `ggml-threading` → `core.GGMLScheduler` (0.10, 1 deps)
 - `ggml-cpu.ops` → `core.GGMLComputeOps` (0.00)
 
 ## Incorrect Ports (Missing Types)
@@ -122,7 +122,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4063 / 1661 lines (245%)
+**Documentation coverage:** 3999 / 1661 lines (241%)
 
 Top documentation gaps (>20%):
 

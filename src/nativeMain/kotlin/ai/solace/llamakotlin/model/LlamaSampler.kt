@@ -134,6 +134,48 @@ interface LlamaSampler {
     fun apply(curP: LlamaTokenDataArray)
     fun reset() {}
     fun clone(): LlamaSampler
+    fun backendInit(buft: GGMLBackendBufferType): Boolean = false
+    fun backendAccept(ctx: GGMLContext, gf: GGMLComputeGraph, selectedToken: GGMLTensor) {}
+    fun backendApply(ctx: GGMLContext, gf: GGMLComputeGraph, data: LlamaSamplerData) {}
+    fun backendSetInput() {}
+}
+
+data class LlamaSamplerData(
+    var logits: GGMLTensor?,
+    var probs: GGMLTensor? = null,
+    var sampled: GGMLTensor? = null,
+    var candidates: GGMLTensor? = null
+)
+
+data class LlamaSamplerChainParams(
+    val noPerf: Boolean = false
+)
+
+data class LlamaPerfSamplerData(
+    val tSampleMs: Double = 0.0,
+    val nSample: Int = 0
+)
+
+/**
+ * Common backend sampler functionality. Samplers that can run on a backend
+ * (GPU etc.) extend this class. The name is prefixed with +/- to indicate
+ * whether the backend supports the required ops.
+ */
+open class LlamaSamplerBackend(private val baseName: String) {
+    private var nameExt: String = baseName
+    private var isInit: Boolean = false
+    private var support: Boolean = false
+
+    fun getName(): String {
+        if (!isInit) return baseName
+        return if (support) "+$baseName" else "-$baseName"
+    }
+
+    fun init(support: Boolean) {
+        check(!isInit) { "backend already initialized" }
+        isInit = true
+        this.support = support
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1690,53 +1732,207 @@ class LlamaSamplerEmpty(private val label: String) : LlamaSampler {
 }
 
 // ---------------------------------------------------------------------------
-// Convenience: build a default sampling chain
+// llama_sampler API dispatch (matches C++ free functions)
 // ---------------------------------------------------------------------------
 
-/**
- * Builds a typical sampling chain from a [SamplingConfig]:
- *
- *   logit-bias → penalties → top-k → typical → top-p → min-p → temp(-ext) → dist
- *
- * Mirrors the default order in llama.cpp's `common_sampler_init`.
- */
-fun buildDefaultSamplerChain(
-    config: SamplingConfig,
-    nVocab: Int,
-    seed: UInt = LLAMA_DEFAULT_SEED,
-    logitBiases: List<LlamaLogitBias> = emptyList()
-): LlamaSamplerChain {
-    val chain = llamaSamplerChainInit()
+fun llamaSamplerName(smpl: LlamaSampler): String = smpl.name()
 
-    if (logitBiases.isNotEmpty()) {
-        chain.add(llamaSamplerInitLogitBias(nVocab, logitBiases))
+fun llamaSamplerAccept(smpl: LlamaSampler, token: LlamaToken) = smpl.accept(token)
+
+fun llamaSamplerApply(smpl: LlamaSampler, curP: LlamaTokenDataArray) = smpl.apply(curP)
+
+fun llamaSamplerReset(smpl: LlamaSampler) = smpl.reset()
+
+fun llamaSamplerClone(smpl: LlamaSampler): LlamaSampler = smpl.clone()
+
+// ---------------------------------------------------------------------------
+// llama_sampler_sample (matches C++ llama_sampler_sample)
+// ---------------------------------------------------------------------------
+
+fun llamaSamplerSample(smpl: LlamaSampler, ctx: LlamaContext, idx: Int): LlamaToken {
+    val sampledToken = ctx.getSampledTokenIth(idx)
+    val sampledProbs = ctx.getSampledProbsIth(idx)
+    val sampledLogits = ctx.getSampledLogitsIth(idx)
+    val sampledIds = ctx.getSampledCandidatesIth(idx)
+
+    if (sampledToken != LLAMA_TOKEN_NULL) {
+        return sampledToken
     }
 
-    chain.add(llamaSamplerInitPenalties(
-        penaltyLastN = 64,
-        penaltyRepeat = config.penaltyRepeat,
-        penaltyFreq = config.penaltyFreq,
-        penaltyPresent = config.penaltyPresent
-    ))
+    val vocab = ctx.model.vocab
+    val nVocab = vocab.nTokens()
 
-    when (config.mirostat) {
-        1 -> {
-            chain.add(llamaSamplerInitTemp(config.temperature))
-            chain.add(llamaSamplerInitMirostat(nVocab, seed, config.mirostatTau, config.mirostatEta))
+    val cur: MutableList<SamplerTokenData>
+    val chain = smpl as? LlamaSamplerChain
+
+    if (sampledProbs != null && sampledIds != null) {
+        val count = ctx.getSampledProbsCountIth(idx)
+        cur = ArrayList(count)
+        for (i in 0 until count) {
+            cur.add(SamplerTokenData(sampledIds[i], sampledLogits?.get(i) ?: 0f, sampledProbs[i]))
         }
-        2 -> {
-            chain.add(llamaSamplerInitTemp(config.temperature))
-            chain.add(llamaSamplerInitMirostatV2(seed, config.mirostatTau, config.mirostatEta))
+    } else if (sampledLogits != null && sampledIds != null) {
+        val count = ctx.getSampledLogitsCountIth(idx)
+        cur = ArrayList(count)
+        for (i in 0 until count) {
+            cur.add(SamplerTokenData(sampledIds[i], sampledLogits[i], 0f))
         }
-        else -> {
-            chain.add(llamaSamplerInitTopK(config.topK))
-            chain.add(llamaSamplerInitTypical(config.locallyTypical))
-            chain.add(llamaSamplerInitTopP(config.topP))
-            chain.add(llamaSamplerInitMinP(config.minP))
-            chain.add(llamaSamplerInitTemp(config.temperature))
-            chain.add(llamaSamplerInitDist(seed))
+    } else {
+        val logits = ctx.getLogitsIth(idx)
+        cur = ArrayList(nVocab)
+        for (tokenId in 0 until nVocab) {
+            cur.add(SamplerTokenData(tokenId, logits[tokenId], 0f))
         }
     }
 
-    return chain
+    val curP = LlamaTokenDataArray(cur)
+    llamaSamplerApply(smpl, curP)
+
+    require(curP.selected in 0 until curP.size) { "no token selected" }
+    val token = curP.data[curP.selected].id
+    llamaSamplerAccept(smpl, token)
+    return token
+}
+
+// ---------------------------------------------------------------------------
+// llama_sampler_get_seed
+// ---------------------------------------------------------------------------
+
+fun llamaSamplerGetSeed(smpl: LlamaSampler): UInt {
+    return when (smpl) {
+        is LlamaSamplerDist -> smpl.seedCur
+        is LlamaSamplerMirostat -> smpl.seedCur
+        is LlamaSamplerMirostatV2 -> smpl.seedCur
+        is LlamaSamplerChain -> smpl.getSeed()
+        else -> LLAMA_DEFAULT_SEED
+    }
+}
+
+// ---------------------------------------------------------------------------
+// llama_sampler_backend_support
+// ---------------------------------------------------------------------------
+
+fun llamaSamplerBackendSupport(smpl: LlamaSampler, buft: GGMLBackendBufferType): Boolean {
+    val device = ggmlBackendBuftGetDevice(buft) ?: return true
+
+    val n: Long = 1024L * 1024L
+    val data = LlamaSamplerData(
+        logits = ggmlNewTensor1d(GGMLType.F32, n),
+        candidates = ggmlNewTensor1d(GGMLType.I32, n)
+    )
+
+    val gf = GGMLComputeGraph()
+    smpl.backendApply(GGMLContext(), gf, data)
+
+    for (i in 0 until gf.nNodes()) {
+        val op = gf.node(i)
+        if (!ggmlBackendDevSupportsOp(device, op)) {
+            return false
+        }
+    }
+    return true
+}
+
+// ---------------------------------------------------------------------------
+// perf
+// ---------------------------------------------------------------------------
+
+fun llamaPerfSampler(chain: LlamaSampler): LlamaPerfSamplerData {
+    val c = chain as? LlamaSamplerChain
+        ?: throw IllegalArgumentException("requires a sampler created with llamaSamplerChainInit()")
+    return LlamaPerfSamplerData(
+        tSampleMs = 1e-3 * c.tSampleUs,
+        nSample = maxOf(0, c.nSample)
+    )
+}
+
+fun llamaPerfSamplerPrint(chain: LlamaSampler) {
+    val data = llamaPerfSampler(chain)
+    println("llama_perf_sampler:    samplers time = ${"%10.2f".format(data.tSampleMs)} ms / ${"%5d".format(data.nSample)} runs")
+}
+
+fun llamaPerfSamplerReset(chain: LlamaSampler) {
+    val c = chain as? LlamaSamplerChain
+        ?: throw IllegalArgumentException("requires a sampler created with llamaSamplerChainInit()")
+    c.resetPerf()
+}
+
+// ---------------------------------------------------------------------------
+// llama_sampler_init_dry_testing (wrapper for tests)
+// ---------------------------------------------------------------------------
+
+fun llamaSamplerInitDryTesting(
+    contextSize: Int,
+    dryMultiplier: Float,
+    dryBase: Float,
+    dryAllowedLength: Int,
+    dryPenaltyLastN: Int,
+    seqBreakers: List<List<LlamaToken>>
+): LlamaSampler {
+    val processedBreakers = HashMap<LlamaToken, MutableList<List<LlamaToken>>>()
+    for (breaker in seqBreakers) {
+        if (breaker.isEmpty()) continue
+        val headToken = breaker[0]
+        val tailTokens = if (breaker.size > 1) breaker.subList(1, breaker.size) else emptyList()
+        processedBreakers.getOrPut(headToken) { mutableListOf() }.add(tailTokens)
+    }
+    return llamaSamplerInitDry(
+        contextSize, dryMultiplier, dryBase, dryAllowedLength, dryPenaltyLastN,
+        processedBreakers
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Grammar lazy init variants
+// ---------------------------------------------------------------------------
+
+fun llamaSamplerInitGrammarLazy(
+    vocab: LlamaVocab,
+    grammarStr: String,
+    grammarRoot: String,
+    triggerWords: List<String>,
+    triggerTokens: List<LlamaToken>
+): LlamaSampler = LlamaSamplerGrammar(
+    vocab, grammarStr, grammarRoot,
+    lazy = true,
+    triggerWords = triggerWords,
+    triggerTokens = triggerTokens
+)
+
+fun llamaSamplerInitGrammarLazyPatterns(
+    vocab: LlamaVocab,
+    grammarStr: String,
+    grammarRoot: String,
+    triggerPatterns: List<String>,
+    triggerTokens: List<LlamaToken>
+): LlamaSampler = LlamaSamplerGrammar(
+    vocab, grammarStr, grammarRoot,
+    lazy = true,
+    triggerPatterns = triggerPatterns,
+    triggerTokens = triggerTokens
+)
+
+// ---------------------------------------------------------------------------
+// Backend temp sampling (shared by temp and temp-ext)
+// ---------------------------------------------------------------------------
+
+private fun backendTempSampling(
+    ctx: GGMLContext,
+    gf: GGMLComputeGraph,
+    data: LlamaSamplerData,
+    temp: Float
+) {
+    if (temp <= 0.0f) {
+        val maxIdx = ggmlArgmax(ctx, data.logits!!)
+        if (data.candidates != null) {
+            val candidatesRows = ggmlReshape2d(ctx, data.candidates!!, 1, data.candidates!!.ne[0])
+            data.candidates = ggmlGetRows(ctx, candidatesRows, maxIdx)
+        } else {
+            data.candidates = maxIdx
+        }
+        val logitsRows = ggmlReshape2d(ctx, data.logits!!, 1, data.logits!!.ne[0])
+        data.logits = ggmlGetRows(ctx, logitsRows, maxIdx)
+        return
+    }
+    data.logits = ggmlScale(ctx, data.logits!!, 1.0f / temp)
 }

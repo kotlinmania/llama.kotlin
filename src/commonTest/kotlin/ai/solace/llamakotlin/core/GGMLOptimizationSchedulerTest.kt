@@ -218,26 +218,16 @@ class GGMLOptimizationSchedulerTest {
 
     @Test
     fun testBackendManager() {
-        val manager = GGMLBackendManager()
-        val available = manager.getAvailableBackends()
-        assertTrue(available.contains("CPU"), "CPU backend should be available by default")
-
-        val primary = manager.getPrimaryBackend()
-        assertNotNull(primary, "Primary backend should be initialized")
-        assertTrue(manager.getBackends().isNotEmpty(), "At least one backend should be registered internally")
-
-        val tensor = GGMLTensor(type = GGMLType.F32).apply { op = GGMLOp.MUL }
-        val bestBackend = manager.selectBackend(tensor)
-        assertNotNull(bestBackend, "Backend manager should be able to select a backend")
-
-        manager.cleanup()
+        val backend = GGMLCpuBackend()
+        assertEquals("CPU", backend.getName())
+        backend.free()
     }
 
     @Test
     fun testSchedulerSequential() {
-        val backendManager = GGMLBackendManager()
+        val backends = listOf<GGMLBackend>(GGMLCpuBackend())
         val scheduler = GGMLScheduler(
-            backendManager, 
+            backends, 
             GGMLSchedulingStrategy.SEQUENTIAL
         )
 
@@ -260,8 +250,6 @@ class GGMLOptimizationSchedulerTest {
 
         val status = scheduler.execute(graph, context)
         assertEquals(GGMLBackendStatus.SUCCESS, status)
-        
-        backendManager.cleanup()
     }
     
     @Test
@@ -316,11 +304,11 @@ class GGMLOptimizationSchedulerTest {
         resetAllocatorTracking(allocator)
 
         // Set up backend manager
-        val backendManager = GGMLBackendManager()
+        val backends = listOf<GGMLBackend>(GGMLCpuBackend())
 
         // Create optimizer and scheduler
         val optimizer = GGMLGraphOptimizer()
-        val scheduler = GGMLScheduler(backendManager, GGMLSchedulingStrategy.SEQUENTIAL)
+        val scheduler = GGMLScheduler(backends, GGMLSchedulingStrategy.SEQUENTIAL)
 
         val a = createVectorTensor(allocator, "a", floatArrayOf(1.0f, 2.0f, 3.0f))
         val b = createVectorTensor(allocator, "b", floatArrayOf(4.0f, 5.0f, 6.0f))
@@ -351,7 +339,5 @@ class GGMLOptimizationSchedulerTest {
         
         // Verify the result was computed correctly
         assertNotNull(result.data)
-        
-        backendManager.cleanup()
     }
 }

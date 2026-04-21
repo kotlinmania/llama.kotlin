@@ -8,7 +8,7 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 |------|--------|--------|------------|------|-----------|----------|
 | 1 | `ggml-cpu.vec` | `fp.VectorOps` | 0.00 | 1 | 106 | 1210.4 |
 | 2 | `gguf` | `gguf.GGUFParser` | 0.01 | 1 | 97 | 1107.9 |
-| 3 | `ggml-backend` | `core.GGMLBackendUtils` | 0.30 | 20 | 67 | 1088.7 |
+| 3 | `ggml-backend` | `core.GGMLBackendUtils` | 0.44 | 20 | 64 | 1038.2 |
 | 4 | `ggml-cpu.quants` | `core.GGMLQuants` | 0.00 | 4 | 70 | 933.4 |
 | 5 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 0.00 | 0 | 57 | 570.0 |
 | 6 | `ggml-sycl.common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 0 | 57 | 570.0 |
@@ -41,9 +41,9 @@ These files need immediate attention:
   - Lint issues: 8
 
 - **ggml-backend** → `core.GGMLBackendUtils`
-  - Similarity: 0.30
+  - Similarity: 0.44
   - Dependencies: 20
-  - Lint issues: 40
+  - Lint issues: 11
 
 - **ggml-cpu.quants** → `core.GGMLQuants`
   - Similarity: 0.00
@@ -110,7 +110,7 @@ These files need immediate attention:
   - Lint issues: 2
 
 - **ggml-sycl.backend** → `core.GGMLBackendIntegrationTest`
-  - Similarity: 0.03
+  - Similarity: 0.04
   - Dependencies: 2
 
 - **ggml-cann.aclnn_ops** → `lnn.LNNCore`
@@ -120,7 +120,7 @@ These files need immediate attention:
   - Lint issues: 2
 
 - **ggml-threading** → `core.GGMLScheduler`
-  - Similarity: 0.09
+  - Similarity: 0.10
   - Dependencies: 1
   - Lint issues: 3
 

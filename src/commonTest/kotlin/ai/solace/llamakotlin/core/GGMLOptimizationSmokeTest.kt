@@ -28,14 +28,9 @@ class GGMLOptimizationSmokeTest {
 
     @Test
     fun testBackendManager() {
-        val manager = GGMLBackendManager()
-        val available = manager.getAvailableBackends()
-        assertTrue(available.contains("CPU"), "CPU backend should be available")
-
-        assertNotNull(manager.getPrimaryBackend(), "Primary backend should be set by default")
-        assertTrue(manager.getBackends().isNotEmpty(), "Backend manager should expose at least one backend")
-
-        manager.cleanup()
+        val backend = GGMLCpuBackend()
+        assertEquals("CPU", backend.getName())
+        backend.free()
     }
 
     @Test
@@ -44,22 +39,19 @@ class GGMLOptimizationSmokeTest {
         val optimizer = GGMLGraphOptimizer()
         val graph = createGraph(1)
         
-        // Test with empty graph
         val result = optimizer.optimize(graph, context)
         assertEquals(0, result.iterations, "Empty graph should not require optimization")
     }
     
     @Test
     fun testSchedulerCreation() {
-        val backendManager = GGMLBackendManager()
-        val scheduler = GGMLScheduler(backendManager, GGMLSchedulingStrategy.SEQUENTIAL)
+        val backends = listOf<GGMLBackend>(GGMLCpuBackend())
+        val scheduler = GGMLScheduler(backends, GGMLSchedulingStrategy.SEQUENTIAL)
         scheduler.setMaxWorkers(2)
         
         val stats = scheduler.getStats()
         assertEquals(2, stats.maxWorkers)
         assertEquals(GGMLSchedulingStrategy.SEQUENTIAL, stats.strategy)
-        
-        backendManager.cleanup()
     }
     
     @Test
