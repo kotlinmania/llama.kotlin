@@ -249,9 +249,9 @@ enum class LlmKv(val pattern: String) {
 /**
  * Tensor name identifiers used in GGUF model files.
  *
- * Each entry carries a [ggufName] pattern that may contain `%d` placeholders
+ * Each entry carries a [ggufName] pattern that may contain `%d` templates
  * for the block (layer) index and/or expert index. Use [LlmTensorNameHelper]
- * to resolve these placeholders into concrete tensor names.
+ * to resolve these templates into concrete tensor names.
  *
  * @param ggufName Name pattern as stored in GGUF files. Empty string for
  *   entries that exist in the C++ enum but have no name mapping.

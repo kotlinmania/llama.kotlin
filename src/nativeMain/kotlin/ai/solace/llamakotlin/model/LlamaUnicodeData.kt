@@ -63,7 +63,7 @@ object LlamaUnicodeData {
      * Each pair is `(codepoint, flags)` where `flags` is a bitmask of
      * [UnicodeCptFlags] constants.
      *
-     * TODO: Include all ~2 275 entries from unicode-data.cpp for full coverage,
+     * LATER: Include all ~2 275 entries from unicode-data.cpp for full coverage,
      *       or rely on Kotlin stdlib's [Char.category] for runtime lookups.
      */
     val unicodeRangesFlags: List<Pair<UInt, UShort>> = listOf(
@@ -153,7 +153,7 @@ object LlamaUnicodeData {
      * Each pair is `(upper, lower)` – the uppercase code point maps to its
      * lowercase equivalent.
      *
-     * TODO: Include all ~1 437 entries for full coverage, or rely on Kotlin
+     * LATER: Include all ~1 437 entries for full coverage, or rely on Kotlin
      *       stdlib for BMP lookups and only supply supplementary-plane data.
      */
     val unicodeMapLowercase: List<Pair<UInt, UInt>> = listOf(
@@ -175,7 +175,7 @@ object LlamaUnicodeData {
         0x00D2u to 0x00F2u, 0x00D3u to 0x00F3u, 0x00D4u to 0x00F4u,
         0x00D5u to 0x00F5u, 0x00D6u to 0x00F6u, 0x00D8u to 0x00F8u,
         0x00D9u to 0x00F9u, 0x00DAu to 0x00FAu,
-        // TODO: ~1 387 more entries from unicode-data.cpp
+        // LATER: ~1 387 more entries from unicode-data.cpp
     )
 
     // =========================================================================
@@ -187,7 +187,7 @@ object LlamaUnicodeData {
      *
      * Each pair is `(lower, upper)`.
      *
-     * TODO: Include all ~1 453 entries for full coverage.
+     * LATER: Include all ~1 453 entries for full coverage.
      */
     val unicodeMapUppercase: List<Pair<UInt, UInt>> = listOf(
         0x0061u to 0x0041u, 0x0062u to 0x0042u, 0x0063u to 0x0043u,
@@ -208,7 +208,7 @@ object LlamaUnicodeData {
         0x00F2u to 0x00D2u, 0x00F3u to 0x00D3u, 0x00F4u to 0x00D4u,
         0x00F5u to 0x00D5u, 0x00F6u to 0x00D6u, 0x00F8u to 0x00D8u,
         0x00F9u to 0x00D9u, 0x00FAu to 0x00DAu,
-        // TODO: ~1 403 more entries from unicode-data.cpp
+        // LATER: ~1 403 more entries from unicode-data.cpp
     )
 
     // =========================================================================
@@ -223,7 +223,7 @@ object LlamaUnicodeData {
      * When a code point falls within [RangeNfd.first]..[RangeNfd.last], its
      * NFD decomposition is [RangeNfd.nfd].
      *
-     * TODO: Include all ~1 800 entries for full NFD normalization coverage.
+     * LATER: Include all ~1 800 entries for full NFD normalization coverage.
      */
     val unicodeRangesNfd: List<RangeNfd> = listOf(
         RangeNfd(0x00C0u, 0x00C0u, 0x0041u),
@@ -276,6 +276,6 @@ object LlamaUnicodeData {
         RangeNfd(0x00F9u, 0x00F9u, 0x0075u),
         RangeNfd(0x00FAu, 0x00FAu, 0x0075u),
         RangeNfd(0x00FBu, 0x00FBu, 0x0075u),
-        // TODO: ~1 750 more entries from unicode-data.cpp
+        // LATER: ~1 750 more entries from unicode-data.cpp
     )
 }

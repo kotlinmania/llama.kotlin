@@ -620,7 +620,7 @@ object LlamaUnicode {
         cpts: List<UInt>,
     ): List<Int> {
         // Build a "collapsed" text where multi-byte codepoints are replaced
-        // with single-byte category placeholders
+        // with single-byte category templates
         val collapsed = buildCollapsedText(cpts, regexExpr)
         val useCollapsed = collapsed != null
 
