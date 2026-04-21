@@ -6,6 +6,66 @@ import kotlin.math.max
 import kotlin.math.min
 
 // ---------------------------------------------------------------------------
+// Kotlin/Native priority queue (no java.util available)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal binary-heap priority queue for use in Kotlin/Native where
+ * `java.util.PriorityQueue` is unavailable. Elements are ordered by their
+ * [Comparable] natural order (smallest first).
+ */
+private class MinPriorityQueue<T : Comparable<T>> {
+    private val heap = ArrayList<T>()
+
+    val size: Int get() = heap.size
+    fun isEmpty(): Boolean = heap.isEmpty()
+    fun isNotEmpty(): Boolean = heap.isNotEmpty()
+
+    fun add(element: T) {
+        heap.add(element)
+        siftUp(heap.size - 1)
+    }
+
+    fun poll(): T? {
+        if (heap.isEmpty()) return null
+        val result = heap[0]
+        val last = heap.removeAt(heap.size - 1)
+        if (heap.isNotEmpty()) {
+            heap[0] = last
+            siftDown(0)
+        }
+        return result
+    }
+
+    fun clear() { heap.clear() }
+
+    private fun siftUp(idx: Int) {
+        var i = idx
+        while (i > 0) {
+            val parent = (i - 1) / 2
+            if (heap[i] < heap[parent]) {
+                val tmp = heap[i]; heap[i] = heap[parent]; heap[parent] = tmp
+                i = parent
+            } else break
+        }
+    }
+
+    private fun siftDown(idx: Int) {
+        var i = idx
+        while (true) {
+            var smallest = i
+            val left = 2 * i + 1
+            val right = 2 * i + 2
+            if (left < heap.size && heap[left] < heap[smallest]) smallest = left
+            if (right < heap.size && heap[right] < heap[smallest]) smallest = right
+            if (smallest == i) break
+            val tmp = heap[i]; heap[i] = heap[smallest]; heap[smallest] = tmp
+            i = smallest
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -290,6 +350,9 @@ class LlmTokenizerPlamo2 : LlmTokenizer()
 /**
  * Bigram entry for the SPM priority queue. Higher [score] → higher priority;
  * ties broken by lower [left] index.
+ *
+ * [compareTo] returns lower values for higher-priority items (since
+ * [MinPriorityQueue] is a min-heap).
  */
 private data class SpmBigram(
     val left: Int,
@@ -298,8 +361,9 @@ private data class SpmBigram(
     val size: Int
 ) : Comparable<SpmBigram> {
     override fun compareTo(other: SpmBigram): Int {
-        val cmp = other.score.compareTo(score) // higher score first
-        return if (cmp != 0) cmp else left.compareTo(other.left) // lower left first
+        // higher score = higher priority = smaller compareTo value
+        val cmp = other.score.compareTo(score)
+        return if (cmp != 0) cmp else left.compareTo(other.left)
     }
 }
 
@@ -310,7 +374,7 @@ private data class SpmBigram(
 class LlmTokenizerSpmSession(private val vocab: LlamaVocab) {
 
     private val symbols = ArrayList<LlmSymbol>()
-    private val workQueue = java.util.PriorityQueue<SpmBigram>()
+    private val workQueue = MinPriorityQueue<SpmBigram>()
     private val revMerge = HashMap<String, Pair<Int, Int>>()
 
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
@@ -442,7 +506,7 @@ class LlmTokenizerBpeSession(
 ) {
     private val symbols = ArrayList<LlmSymbol>()
     private val symbolsFinal = ArrayList<LlmSymbol>()
-    private val workQueue = java.util.PriorityQueue<BpeBigram>()
+    private val workQueue = MinPriorityQueue<BpeBigram>()
 
     fun appendBos(output: MutableList<LlamaToken>): Boolean {
         if (vocab.addBos) {
@@ -1287,8 +1351,8 @@ class LlamaVocab {
                     (attr and (attrSpecial or LlamaTokenAttr.USER_DEFINED)) != 0 -> tokenText
                     (attr and LlamaTokenAttr.NORMAL) != 0 -> unescapeWhitespace(tokenText)
                     (attr and LlamaTokenAttr.BYTE) != 0 -> {
-                        val byte = tokenToByte(token)
-                        String(byteArrayOf(byte.toByte()))
+                        val b = tokenToByte(token)
+                        byteArrayOf(b.toByte()).decodeToString()
                     }
                     else -> ""
                 }
@@ -1300,8 +1364,8 @@ class LlamaVocab {
                         if (escapeWhitespaces) unescapeWhitespace(tokenText) else tokenText
                     }
                     (attr and LlamaTokenAttr.BYTE) != 0 -> {
-                        val byte = tokenToByte(token)
-                        String(byteArrayOf(byte.toByte()))
+                        val b = tokenToByte(token)
+                        byteArrayOf(b.toByte()).decodeToString()
                     }
                     else -> ""
                 }
@@ -1315,7 +1379,7 @@ class LlamaVocab {
                     tokenText.startsWith("<0x") && tokenText.endsWith(">")
                 ) {
                     val hexVal = tokenText.substring(3, 5).toInt(16)
-                    String(byteArrayOf(hexVal.toByte()))
+                    byteArrayOf(hexVal.toByte()).decodeToString()
                 } else {
                     tokenText
                 }
@@ -1388,7 +1452,7 @@ class LlamaVocab {
         for (i in 1 until text.length) {
             val x = text[i]
             if (text[i - 1] == ' ' && (x == '?' || x == '!' || x == '.' || x == ',')) {
-                sb.deleteCharAt(sb.length - 1)
+                sb.deleteAt(sb.length - 1)
             }
             sb.append(x)
         }
@@ -1401,7 +1465,7 @@ class LlamaVocab {
         while (i < pass1.length) {
             val x = pass1[i]
             if (x == '\'' && i + 1 < pass1.length && pass1[i - 1] == ' ' && pass1[i + 1] == ' ') {
-                sb.deleteCharAt(sb.length - 1) // remove prev space
+                sb.deleteAt(sb.length - 1) // remove prev space
                 i++ // skip next space
                 i++
                 continue
@@ -1419,11 +1483,11 @@ class LlamaVocab {
             if (pass2[j - 1] == ' ' && x == '\'' && j + 1 < pass2.length) {
                 val x1 = pass2[j + 1]
                 if (x1 == 's' || x1 == 'm') {
-                    sb.deleteCharAt(sb.length - 1) // remove space
+                    sb.deleteAt(sb.length - 1) // remove space
                 } else if (j + 2 < pass2.length) {
                     val x2 = pass2[j + 2]
                     if ((x1 == 'r' && x2 == 'e') || (x1 == 'v' && x2 == 'e')) {
-                        sb.deleteCharAt(sb.length - 1)
+                        sb.deleteAt(sb.length - 1)
                     }
                 }
             }
