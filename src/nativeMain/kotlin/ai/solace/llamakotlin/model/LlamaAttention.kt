@@ -200,9 +200,12 @@ data class LlamaBatch(
  */
 data class LlamaUBatch(
     val nTokens: Int = 0,
+    val nSeqTokens: Int = 0,
+    val nSeqs: Int = 0,
     val tokens: IntArray? = null,
     val embeddings: FloatArray? = null,
     val pos: IntArray? = null,
+    val nSeqId: IntArray? = null,
     val seqId: Array<IntArray>? = null,
     val output: BooleanArray? = null,
     val equalSeqs: Boolean = false,
@@ -255,55 +258,65 @@ class LlamaContext(
 
     // -- decode output (2-d array: [nOutputs][nVocab]) --
     var logits: FloatArray? = null
-        private set
+        internal set
     var logitsSize: Int = 0
-        private set
+        internal set
 
     // -- embeddings output (2-d array: [nOutputs][nEmbd]) --
     var embd: FloatArray? = null
-        private set
+        internal set
     var embdSize: Int = 0
-        private set
+        internal set
 
     // -- sequence-level embeddings (populated when pooling != NONE) --
     val embdSeq: MutableMap<LlamaSeqId, FloatArray> = mutableMapOf()
 
     // -- output bookkeeping --
     var nOutputs: Int = 0
-        private set
+        internal set
 
     /** Maps batch token positions → ids inside the logits / embd buffers. */
     var outputIds: IntArray = IntArray(0)
-        private set
+        internal set
 
     val outputSwaps: MutableList<SwapInfo> = mutableListOf()
 
     // -- scheduler state --
     var schedNeedReserve: Boolean = true
+        internal set
+
+    // -- backend sampling state --
+    val sampling: SamplingInfo = SamplingInfo()
+
+    // -- cross-attention state (for encoder-decoder models) --
+    val cross: LlamaCross = LlamaCross()
+
+    // -- graph reuse control --
+    var graphReuseDisable: Boolean = false
         private set
 
     // -- perf counters (microseconds) --
     var tStartUs: Long = 0L
-        private set
+        internal set
     var tLoadUs: Long = 0L
-        private set
+        internal set
     var tPEvalUs: Long = 0L
-        private set
+        internal set
     var tEvalUs: Long = 0L
-        private set
+        internal set
     var tComputeStartUs: Long = 0L
-        private set
+        internal set
     var nQueuedTokens: Long = 0L
-        private set
+        internal set
     var nPEval: Int = 0
-        private set
+        internal set
     var nEval: Int = 0
-        private set
+        internal set
     var nReused: Int = 0
-        private set
+        internal set
 
     var hasEvaluatedOnce: Boolean = false
-        private set
+        internal set
 
     // -- graph --
     /** Graph allocator for compute operations. */
@@ -315,6 +328,7 @@ class LlamaContext(
     init {
         tStartUs = currentTimeMicros()
         initMemory()
+        initSamplingVocab()
     }
 
     // -----------------------------------------------------------------------
@@ -438,9 +452,7 @@ class LlamaContext(
      * Returns `true` if anything was actually changed.
      * Mirrors `llama_context::memory_update(optimize)`.
      */
-    fun memoryUpdate(@Suppress("UNUSED_PARAMETER") optimize: Boolean): Boolean {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun memoryUpdate(optimize: Boolean): Boolean = memoryUpdateImpl(optimize)
 
     // -----------------------------------------------------------------------
     // Scheduler
@@ -451,17 +463,13 @@ class LlamaContext(
      * adapters, samplers, or attention type).
      * Mirrors `llama_context::sched_reserve()`.
      */
-    fun schedReserve() {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun schedReserve() = schedReserveImpl()
 
     /**
      * Wait for all pending backend computations to finish.
      * Mirrors `llama_context::synchronize()`.
      */
-    fun synchronize() {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun synchronize() = synchronizeImpl()
 
     // -----------------------------------------------------------------------
     // Core inference  (encode / decode)
@@ -481,10 +489,8 @@ class LlamaContext(
     fun processUBatch(
         ubatch: LlamaUBatch,
         gtype: LlmGraphType,
-        @Suppress("UNUSED_PARAMETER") memoryContext: Any? = null,
-    ): Pair<GGMLCGraph?, Int> {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+        @Suppress("UNUSED_PARAMETER") memoryContext: LlamaMemoryContext? = null,
+    ): Pair<GGMLCGraph?, Int> = processUBatchImpl(ubatch, gtype, memoryContext)
 
     /**
      * Encode a batch of tokens (non-causal / encoder path).
@@ -492,9 +498,7 @@ class LlamaContext(
      * Returns 0 on success, negative on failure (matches C++ convention).
      * Mirrors `llama_context::encode(batch_inp)`.
      */
-    fun encode(batchInp: LlamaBatch): Int {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun encode(batchInp: LlamaBatch): Int = encodeImpl(batchInp)
 
     /**
      * Decode a batch of tokens (causal / decoder path).
@@ -502,9 +506,7 @@ class LlamaContext(
      * Returns 0 on success, negative on failure (matches C++ convention).
      * Mirrors `llama_context::decode(batch_inp)`.
      */
-    fun decode(batchInp: LlamaBatch): Int {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun decode(batchInp: LlamaBatch): Int = decodeImpl(batchInp)
 
     // -----------------------------------------------------------------------
     // Output management
@@ -515,18 +517,14 @@ class LlamaContext(
      * Returns the actual number of rows reserved.
      * Mirrors `llama_context::output_reserve(n_outputs)`.
      */
-    fun outputReserve(nOutputsRequested: Int): Int {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun outputReserve(nOutputsRequested: Int): Int = outputReserveImpl(nOutputsRequested)
 
     /**
      * Reorder the output buffers according to [outputSwaps] so that
      * logits / embeddings are in the expected order.
      * Mirrors `llama_context::output_reorder()`.
      */
-    private fun outputReorder() {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    private fun outputReorder() = outputReorderImpl()
 
     /**
      * Map a batch-token index [i] to the actual row inside the output buffer.
@@ -556,9 +554,7 @@ class LlamaContext(
      * Maximum number of nodes a graph may contain for the given token count.
      * Mirrors `llama_context::graph_max_nodes(n_tokens)`.
      */
-    fun graphMaxNodes(@Suppress("UNUSED_PARAMETER") nTokens: Int): Int {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun graphMaxNodes(nTokens: Int): Int = graphMaxNodesImpl(nTokens)
 
     /**
      * Submit a compute graph for asynchronous execution.
@@ -566,11 +562,9 @@ class LlamaContext(
      * Mirrors `llama_context::graph_compute(gf, batched)`.
      */
     fun graphCompute(
-        @Suppress("UNUSED_PARAMETER") graph: GGMLCGraph,
-        @Suppress("UNUSED_PARAMETER") batched: Boolean,
-    ): Int {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+        graph: GGMLCGraph,
+        batched: Boolean,
+    ): Int = graphComputeImpl(graph, batched)
 
     /**
      * Reserve a graph with a dummy ubatch of the specified size.
@@ -578,40 +572,28 @@ class LlamaContext(
      * Mirrors `llama_context::graph_reserve(...)`.
      */
     fun graphReserve(
-        @Suppress("UNUSED_PARAMETER") nTokens: Int,
-        @Suppress("UNUSED_PARAMETER") nSeqs: Int,
-        @Suppress("UNUSED_PARAMETER") nOutputs: Int,
-    ): GGMLCGraph? {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+        nTokens: Int,
+        nSeqs: Int,
+        nOutputs: Int,
+    ): GGMLCGraph? = graphReserveImpl(nTokens, nSeqs, nOutputs)
 
     // -----------------------------------------------------------------------
     // State save / load
     // -----------------------------------------------------------------------
 
-    fun stateGetSize(): Long {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun stateGetSize(): Long = stateGetSizeImpl()
 
-    fun stateGetData(dst: ByteArray, size: Long): Long {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun stateGetData(dst: ByteArray, size: Long): Long = stateGetDataImpl(dst, size)
 
-    fun stateSetData(src: ByteArray, size: Long): Long {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun stateSetData(src: ByteArray, size: Long): Long = stateSetDataImpl(src, size)
 
-    fun stateSeqGetSize(seqId: LlamaSeqId): Long {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun stateSeqGetSize(seqId: LlamaSeqId): Long = stateSeqGetSizeImpl(seqId)
 
-    fun stateSeqGetData(seqId: LlamaSeqId, dst: ByteArray, size: Long): Long {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun stateSeqGetData(seqId: LlamaSeqId, dst: ByteArray, size: Long): Long =
+        stateSeqGetDataImpl(seqId, dst, size)
 
-    fun stateSeqSetData(seqId: LlamaSeqId, src: ByteArray, size: Long): Long {
-        TODO("port from llama.cpp/src/llama-context.cpp")
-    }
+    fun stateSeqSetData(seqId: LlamaSeqId, src: ByteArray, size: Long): Long =
+        stateSeqSetDataImpl(seqId, src, size)
 
     // -----------------------------------------------------------------------
     // Performance
@@ -635,6 +617,85 @@ class LlamaContext(
         tPEvalUs = 0L; nPEval = 0
         nReused = 0
     }
+
+    // -----------------------------------------------------------------------
+    // Internal helpers for extension functions (LlamaContextImpl.kt)
+    // -----------------------------------------------------------------------
+
+    /** Initialise the full-vocabulary token id array for backend samplers. */
+    private fun initSamplingVocab() {
+        val nVocab = model.config.vocabSize
+        sampling.tokenIdsFullVocab = IntArray(nVocab) { it }
+    }
+
+    internal fun allocateLogits(size: Int) {
+        logits = FloatArray(size)
+        logitsSize = size
+    }
+
+    internal fun allocateEmbd(size: Int) {
+        embd = FloatArray(size)
+        embdSize = size
+    }
+
+    internal fun allocateOutputIds(size: Int) {
+        outputIds = IntArray(size) { -1 }
+    }
+
+    internal fun resetOutputIds() {
+        outputIds.fill(-1)
+    }
+
+    internal fun resetNOutputs() {
+        nOutputs = 0
+    }
+
+    internal fun setNOutputsValue(value: Int) {
+        nOutputs = value
+    }
+
+    internal fun setOutputId(index: Int, value: Int) {
+        outputIds[index] = value
+    }
+
+    internal fun incrementNEval() {
+        nEval++
+    }
+
+    internal fun incrementNPEval(count: Int) {
+        nPEval += count
+    }
+
+    internal fun markEvaluated() {
+        hasEvaluatedOnce = true
+    }
+
+    internal fun resetQueuedTokens() {
+        nQueuedTokens = 0
+        tComputeStartUs = 0
+    }
+
+    internal fun addQueuedTokens(n: Long) {
+        nQueuedTokens += n
+    }
+
+    internal fun setComputeStart(us: Long) {
+        tComputeStartUs = us
+    }
+
+    internal fun clearSchedNeedReserve() {
+        schedNeedReserve = false
+    }
+
+    internal fun requestSchedReserve() {
+        schedNeedReserve = true
+    }
+
+    /**
+     * Public-facing wrapper around [outputResolveRow] for use by extension
+     * functions that cannot access private members.
+     */
+    internal fun outputResolveRowPublic(i: Int): Long = outputResolveRow(i)
 
     // -----------------------------------------------------------------------
     // Private helpers
