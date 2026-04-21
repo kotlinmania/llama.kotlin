@@ -256,16 +256,13 @@ interface GGMLBackend {
     fun synchronize() {}
 
     /** `ggml_backend_graph_plan_create` */
-    fun graphPlanCreate(graph: GGMLCGraph): Any? {
-    }
+    fun graphPlanCreate(graph: GGMLCGraph): Any? { return null }
 
     /** `ggml_backend_graph_plan_free` */
-    fun graphPlanFree(plan: Any?) {
-    }
+    fun graphPlanFree(plan: Any?) {}
 
     /** `ggml_backend_graph_plan_compute` */
-    fun graphPlanCompute(plan: Any?): GGMLStatus {
-    }
+    fun graphPlanCompute(plan: Any?): GGMLStatus { return GGMLStatus.FAILED }
 
     /** `ggml_backend_graph_compute` */
     fun graphCompute(graph: GGMLCGraph): GGMLStatus
@@ -293,66 +290,10 @@ interface GGMLBackend {
 }
 
 // ---------------------------------------------------------------------------
-// Free-standing tensor helpers (not tied to a backend instance)
-// ---------------------------------------------------------------------------
-
-/**
- * `ggml_backend_tensor_copy` – copy tensor data between different backends.
- */
-fun ggmlBackendTensorCopy(src: GGMLTensor, dst: GGMLTensor) {
-}
-
-/**
- * `ggml_backend_tensor_set` – synchronous set from host memory.
- */
-fun ggmlBackendTensorSet(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
-    val buffer = tensor.buffer ?: error("tensor has no buffer")
-    buffer.setTensor(tensor, data, offset, size)
-}
-
-/**
- * `ggml_backend_tensor_get` – synchronous get into host memory.
- */
-fun ggmlBackendTensorGet(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
-    val buffer = tensor.buffer ?: error("tensor has no buffer")
-    buffer.getTensor(tensor, data, offset, size)
-}
-
-/**
- * `ggml_backend_tensor_set_2d` – synchronous 2-D strided set.
- */
-fun ggmlBackendTensorSet2d(
-    tensor: GGMLTensor,
-    data: ByteArray,
-    offset: ULong,
-    size: ULong,
-    nCopies: ULong,
-    strideTensor: ULong,
-    strideData: ULong
-) {
-}
-
-/**
- * `ggml_backend_tensor_get_2d` – synchronous 2-D strided get.
- */
-fun ggmlBackendTensorGet2d(
-    tensor: GGMLTensor,
-    data: ByteArray,
-    offset: ULong,
-    size: ULong,
-    nCopies: ULong,
-    strideTensor: ULong,
-    strideData: ULong
-) {
-}
-
-/**
- * `ggml_backend_tensor_memset` – fill a region of a tensor with a byte value.
- */
-fun ggmlBackendTensorMemset(tensor: GGMLTensor, value: UByte, offset: ULong, size: ULong) {
-}
-
-// ggmlBackendTensorAlloc and ggmlBackendViewInit are implemented in GGMLBackendUtils.kt
+// Free-standing tensor helpers are implemented in GGMLBackendUtils.kt:
+// ggmlBackendTensorCopy, ggmlBackendTensorSet, ggmlBackendTensorGet,
+// ggmlBackendTensorSet2d, ggmlBackendTensorGet2d, ggmlBackendTensorMemset,
+// ggmlBackendTensorAlloc, ggmlBackendViewInit
 
 // ---------------------------------------------------------------------------
 // Events  (ggml_backend_event_t)
@@ -707,12 +648,10 @@ object GGMLBackendRegistry {
     // -- dynamic loading stubs ----------------------------------------------
 
     /** `ggml_backend_load` */
-    fun load(path: String): GGMLBackendReg? {
-    }
+    fun load(path: String): GGMLBackendReg? { return null }
 
     /** `ggml_backend_unload` */
-    fun unload(reg: GGMLBackendReg) {
-    }
+    fun unload(reg: GGMLBackendReg) {}
 
     /** `ggml_backend_load_all` */
     fun loadAll() {

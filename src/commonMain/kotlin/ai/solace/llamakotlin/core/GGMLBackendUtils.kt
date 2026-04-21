@@ -161,7 +161,7 @@ fun ggmlBackendBufferReset(buffer: GGMLBackendBuffer) {
  * `ggml_backend_buffer_copy_tensor` — copy src tensor data using the
  * destination buffer's copyTensor hook.
  */
-fun ggmlBackendBufferCopyTensorImpl(src: GGMLTensor, dst: GGMLTensor): Boolean {
+fun ggmlBackendBufferCopyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
     val dstBuf = dst.viewSrc?.buffer ?: dst.buffer ?: return false
     return dstBuf.copyTensor(src, dst)
 }
@@ -284,7 +284,7 @@ fun ggmlBackendTensorGet2dAsync(
  * `ggml_backend_tensor_set` — synchronous set from host memory.
  * (Re-implements the existing minimal with full C logic.)
  */
-fun ggmlBackendTensorSetImpl(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+fun ggmlBackendTensorSet(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
     val buf = tensor.viewSrc?.buffer ?: tensor.buffer
     requireNotNull(buf) { "tensor buffer not set" }
     if (size == 0UL) return
@@ -296,7 +296,7 @@ fun ggmlBackendTensorSetImpl(tensor: GGMLTensor, data: ByteArray, offset: ULong,
  * `ggml_backend_tensor_get` — synchronous get into host memory.
  * (Re-implements the existing minimal with full C logic.)
  */
-fun ggmlBackendTensorGetImpl(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+fun ggmlBackendTensorGet(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
     val buf = tensor.viewSrc?.buffer ?: tensor.buffer
     requireNotNull(buf) { "tensor buffer not set" }
     if (size == 0UL) return
@@ -307,7 +307,7 @@ fun ggmlBackendTensorGetImpl(tensor: GGMLTensor, data: ByteArray, offset: ULong,
 /**
  * `ggml_backend_tensor_set_2d` — synchronous 2-D strided set.
  */
-fun ggmlBackendTensorSet2dImpl(
+fun ggmlBackendTensorSet2d(
     tensor: GGMLTensor,
     data: ByteArray,
     offset: ULong,
@@ -320,14 +320,14 @@ fun ggmlBackendTensorSet2dImpl(
     requireNotNull(buf) { "tensor buffer not set" }
     // fallback to per-row set if no 2-D helper on the buffer
     for (i in 0UL until nCopies) {
-        ggmlBackendTensorSetImpl(tensor, data, offset + i * strideTensor, size)
+        ggmlBackendTensorSet(tensor, data, offset + i * strideTensor, size)
     }
 }
 
 /**
  * `ggml_backend_tensor_get_2d` — synchronous 2-D strided get.
  */
-fun ggmlBackendTensorGet2dImpl(
+fun ggmlBackendTensorGet2d(
     tensor: GGMLTensor,
     data: ByteArray,
     offset: ULong,
@@ -339,14 +339,14 @@ fun ggmlBackendTensorGet2dImpl(
     val buf = tensor.viewSrc?.buffer ?: tensor.buffer
     requireNotNull(buf) { "tensor buffer not set" }
     for (i in 0UL until nCopies) {
-        ggmlBackendTensorGetImpl(tensor, data, offset + i * strideTensor, size)
+        ggmlBackendTensorGet(tensor, data, offset + i * strideTensor, size)
     }
 }
 
 /**
  * `ggml_backend_tensor_memset` — fill a region of a tensor with a byte value.
  */
-fun ggmlBackendTensorMemsetImpl(tensor: GGMLTensor, value: UByte, offset: ULong, size: ULong) {
+fun ggmlBackendTensorMemset(tensor: GGMLTensor, value: UByte, offset: ULong, size: ULong) {
     if (size == 0UL) return
     val buf = tensor.viewSrc?.buffer ?: tensor.buffer
     requireNotNull(buf) { "tensor buffer not set" }
@@ -420,7 +420,7 @@ fun ggmlBackendGraphOptimize(backend: GGMLBackend, graph: GGMLCGraph) {
  * `ggml_backend_tensor_copy` — copy tensor data between different backends.
  * Tries direct buffer copy first, then falls back through host memory.
  */
-fun ggmlBackendTensorCopyImpl(src: GGMLTensor, dst: GGMLTensor) {
+fun ggmlBackendTensorCopy(src: GGMLTensor, dst: GGMLTensor) {
     if (src === dst) return
 
     val srcBuf = src.buffer
@@ -431,19 +431,19 @@ fun ggmlBackendTensorCopyImpl(src: GGMLTensor, dst: GGMLTensor) {
         val nbytes = ggmlNbytes(src)
         val tmp = ByteArray(nbytes.toInt())
         srcBuf.getTensor(src, tmp, 0UL, nbytes)
-        ggmlBackendTensorSetImpl(dst, tmp, 0UL, nbytes)
+        ggmlBackendTensorSet(dst, tmp, 0UL, nbytes)
     } else if (dstBuf != null && ggmlBackendBufferIsHost(dstBuf)) {
         // destination is in host memory — direct get from src
         val nbytes = ggmlNbytes(src)
         val tmp = ByteArray(nbytes.toInt())
-        ggmlBackendTensorGetImpl(src, tmp, 0UL, nbytes)
+        ggmlBackendTensorGet(src, tmp, 0UL, nbytes)
         dstBuf.setTensor(dst, tmp, 0UL, nbytes)
-    } else if (!ggmlBackendBufferCopyTensorImpl(src, dst)) {
+    } else if (!ggmlBackendBufferCopyTensor(src, dst)) {
         // slow path: round-trip through host
         val nbytes = ggmlNbytes(src)
         val tmp = ByteArray(nbytes.toInt())
-        ggmlBackendTensorGetImpl(src, tmp, 0UL, nbytes)
-        ggmlBackendTensorSetImpl(dst, tmp, 0UL, nbytes)
+        ggmlBackendTensorGet(src, tmp, 0UL, nbytes)
+        ggmlBackendTensorSet(dst, tmp, 0UL, nbytes)
     }
 }
 
@@ -451,7 +451,7 @@ fun ggmlBackendTensorCopyImpl(src: GGMLTensor, dst: GGMLTensor) {
  * `ggml_backend_tensor_copy_async` — async copy between two backends.
  * Falls back to synchronous copy when the backend doesn't support async copies.
  */
-fun ggmlBackendTensorCopyAsyncImpl(
+fun ggmlBackendTensorCopyAsync(
     backendSrc: GGMLBackend,
     backendDst: GGMLBackend,
     src: GGMLTensor,
@@ -465,7 +465,7 @@ fun ggmlBackendTensorCopyAsyncImpl(
     // fallback: synchronize both then do a blocking copy
     ggmlBackendSynchronize(backendSrc)
     ggmlBackendSynchronize(backendDst)
-    ggmlBackendTensorCopyImpl(src, dst)
+    ggmlBackendTensorCopy(src, dst)
 }
 
 // =====================================================================
@@ -616,6 +616,13 @@ class GGMLBackendMultiBufferContext(
  * Allocate a logical multi-buffer wrapping several sub-buffers.
  */
 fun ggmlBackendMultiBufferAllocBuffer(buffers: List<GGMLBackendBuffer>): GGMLBackendBuffer {
+    require(buffers.isNotEmpty()) { "multi-buffer requires at least one sub-buffer" }
+    val ctx = GGMLBackendMultiBufferContext(buffers.toMutableList())
+    var totalSize = 0UL
+    for (buf in buffers) {
+        totalSize += ggmlBackendBufferGetSize(buf)
+    }
+    return GGMLBackendMultiBufferWrapper(ctx, buffers[0].getType(), totalSize)
 }
 
 /**
@@ -659,7 +666,7 @@ class GGMLBackendMultiBufferWrapper(
  * `ggml_backend_multi_buffer_set_usage`
  * Set usage flag on every sub-buffer inside a multi-buffer.
  */
-fun ggmlBackendMultiBufferSetUsageImpl(buffer: GGMLBackendBuffer, usage: GGMLBackendBufferUsage) {
+fun ggmlBackendMultiBufferSetUsage(buffer: GGMLBackendBuffer, usage: GGMLBackendBufferUsage) {
     buffer.setUsage(usage)
 }
 
@@ -1350,7 +1357,7 @@ fun ggmlBackendSchedComputeSplits(sched: GGMLBackendSched): GGMLStatus {
                 } else {
                     ggmlBackendSynchronize(splitBackend)
                 }
-                ggmlBackendTensorCopyImpl(input, inputCpy)
+                ggmlBackendTensorCopy(input, inputCpy)
             } else {
                 // wait for the split backend to finish using the input before overwriting it
                 if (sched.events[splitBid][sched.curCopy] != null) {
@@ -1369,7 +1376,7 @@ fun ggmlBackendSchedComputeSplits(sched: GGMLBackendSched): GGMLStatus {
                 ) {
                     // MoE weight copy optimization — copy full tensor for now
                     // Full expert-level copy optimization requires bitset and ids tensor inspection
-                    ggmlBackendTensorCopyImpl(input, inputCpy)
+                    ggmlBackendTensorCopy(input, inputCpy)
                 } else {
                     // try async copy, fallback to sync
                     val inputBackend = sched.getTensorBackend(input)
@@ -1381,10 +1388,10 @@ fun ggmlBackendSchedComputeSplits(sched: GGMLBackendSched): GGMLStatus {
                             } else {
                                 ggmlBackendSynchronize(splitBackend)
                             }
-                            ggmlBackendTensorCopyImpl(input, inputCpy)
+                            ggmlBackendTensorCopy(input, inputCpy)
                         }
                     } else {
-                        ggmlBackendTensorCopyImpl(input, inputCpy)
+                        ggmlBackendTensorCopy(input, inputCpy)
                     }
                 }
             }
@@ -1530,7 +1537,7 @@ fun graphCopyInitTensor(
         val status = ggmlBackendViewInit(dst)
         require(status == GGMLStatus.SUCCESS)
     } else {
-        ggmlBackendTensorCopyImpl(src, dst)
+        ggmlBackendTensorCopy(src, dst)
     }
 
     for (i in 0 until GGML_MAX_SRC) {

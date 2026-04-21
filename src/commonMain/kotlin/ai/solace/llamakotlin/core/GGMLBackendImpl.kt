@@ -64,8 +64,7 @@ interface GGMLBackendBufferTypeImpl {
      *
      * Defaults to `ggml_nbytes(tensor)`.
      */
-    fun getAllocSize(tensor: GGMLTensor): ULong {
-    }
+    fun getAllocSize(tensor: GGMLTensor): ULong { return ggmlNbytes(tensor) }
 
     /**
      * (optional) Check if tensor data is in host memory and uses the
@@ -258,71 +257,18 @@ fun ggmlBackendBufferInit(
     )
 }
 
-/**
- * Copy tensor data from [src] to [dst] using the destination buffer's
- * `cpyTensor` implementation.
- *
- * **Do not use directly** — prefer the higher-level
- * `ggml_backend_tensor_copy` wrapper.
- *
- * Mirrors `ggml_backend_buffer_copy_tensor()` in C.
- */
-fun ggmlBackendBufferCopyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
-}
+// ggmlBackendBufferCopyTensor is implemented in GGMLBackendUtils.kt
 
 // ---------------------------------------------------------------------------
-// Multi-buffer helpers
+// Multi-buffer helpers — implemented in GGMLBackendUtils.kt
 // ---------------------------------------------------------------------------
 
-/**
- * Allocate a multi-buffer — a logical buffer that wraps several backing
- * buffers.
- *
- * Mirrors `ggml_backend_multi_buffer_alloc_buffer()` in C.
- */
-fun ggmlBackendMultiBufferAllocBuffer(
-    buffers: List<GGMLBackendBufferHolder>,
-    nBuffers: ULong
-): GGMLBackendBufferHolder {
-}
-
-/** Check whether [buffer] is a multi-buffer. */
-fun ggmlBackendBufferIsMultiBuffer(buffer: GGMLBackendBufferHolder): Boolean {
-}
-
-/** Set usage on every sub-buffer inside a multi-buffer. */
-fun ggmlBackendMultiBufferSetUsage(
-    buffer: GGMLBackendBufferHolder,
-    usage: GGMLBackendBufferUsage
-) {
-}
+// ggmlBackendMultiBufferAllocBuffer, ggmlBackendBufferIsMultiBuffer, ggmlBackendMultiBufferSetUsage
+// are all implemented in GGMLBackendUtils.kt
 
 // ---------------------------------------------------------------------------
-// Backend (meta) helpers
+// Backend (meta) helpers — not yet implemented (pending meta backend port)
 // ---------------------------------------------------------------------------
-
-/** Check whether [backend] is a meta (multi-backend) wrapper. */
-fun ggmlBackendIsMeta(backend: GGMLBackendHolder): Boolean {
-}
-
-/** Check whether [buffer] belongs to a meta backend. */
-fun ggmlBackendBufferIsMeta(buffer: GGMLBackendBufferHolder): Boolean {
-}
-
-/** Check whether [buft] belongs to a meta backend. */
-fun ggmlBackendBuftIsMeta(buft: GGMLBackendBufferTypeHolder): Boolean {
-}
-
-/** Number of simple backends inside a meta backend. */
-fun ggmlBackendMetaNBackends(metaBackend: GGMLBackendHolder): ULong {
-}
-
-/** Get simple backend at [index] inside a meta backend. */
-fun ggmlBackendMetaSimpleBackend(
-    metaBackend: GGMLBackendHolder,
-    index: ULong
-): GGMLBackendHolder {
-}
 
 // ---------------------------------------------------------------------------
 // Backend (stream) — implementation interface
@@ -407,23 +353,19 @@ interface GGMLBackendIface {
     // -- graph plans (not currently used) --
 
     /** Create an execution plan for [cgraph]. */
-    fun graphPlanCreate(cgraph: GGMLCGraph): Any? {
-    }
+    fun graphPlanCreate(cgraph: GGMLCGraph): Any? { return null }
 
     /** Free a previously created [plan]. */
-    fun graphPlanFree(plan: Any?) {
-    }
+    fun graphPlanFree(plan: Any?) {}
 
     /**
      * Update an existing [plan] with a new [cgraph] that shares the same
      * topology — faster than creating a fresh plan.
      */
-    fun graphPlanUpdate(plan: Any?, cgraph: GGMLCGraph) {
-    }
+    fun graphPlanUpdate(plan: Any?, cgraph: GGMLCGraph) {}
 
     /** Execute the pre-compiled [plan]. */
-    fun graphPlanCompute(plan: Any?): GGMLStatus {
-    }
+    fun graphPlanCompute(plan: Any?): GGMLStatus { return GGMLStatus.FAILED }
 
     /**
      * Compute [cgraph] — always asynchronous when the backend supports it.
@@ -602,8 +544,7 @@ interface GGMLBackendDeviceIface {
     // -- (optional) event synchronisation --
 
     /** Create a new synchronisation event. */
-    fun eventNew(): GGMLBackendEventHolder? {
-    }
+    fun eventNew(): GGMLBackendEventHolder? { return null }
 
     /** Free a previously created [event]. */
     fun eventFree(event: GGMLBackendEventHolder) {
