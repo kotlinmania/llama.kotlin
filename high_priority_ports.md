@@ -6,76 +6,112 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
-| 1 | `models.models` | `model.InferencePipeline` | 0.00 | 114 | 255 | 4993.6 |
-| 2 | `llama-model` | `model.LlamaModel` | 0.02 | 12 | 80 | 1222.9 |
-| 3 | `llama-grammar` | `model.Grammar` | 0.00 | 1 | 53 | 606.9 |
-| 4 | `llama` | `model.KVCache` | 0.00 | 16 | 0 | 14.2 |
-| 5 | `llama-model-loader` | `gguf.ModelLoader` | 0.00 | 4 | 0 | 8.0 |
-| 6 | `llama-context` | `model.LlamaAttention` | 0.00 | 4 | 0 | 8.0 |
-| 7 | `llama-model-saver` | `model.GGMLIntegration` | 0.00 | 1 | 0 | 3.5 |
-| 8 | `models.maincoder` | `main` | 0.16 | 0 | 0 | 0.0 |
+| 1 | `dpct.helper` | `QuantizationHelper` | 0.00 | 9 | 192 | 2815.7 |
+| 2 | `openvino.utils` | `GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
+| 3 | `ggml-sycl.type` | `GGMLTypes` | 0.00 | 2 | 4 | 54.3 |
+| 4 | `ggml-cpu.simd-gemm` | `simd.GGMLSimd` | 0.00 | 1 | 4 | 49.0 |
+| 5 | `ggml-common` | `GGMLCommon` | 0.00 | 16 | 2 | 45.5 |
+| 6 | `ggml-cpu.common` | `GGMLCpuCommon` | 0.56 | 47 | 2 | 43.9 |
+| 7 | `ggml-impl` | `NumericConversions` | 0.00 | 58 | 0 | 20.4 |
+| 8 | `ggml` | `GGMLOps` | 0.00 | 50 | 0 | 19.7 |
+| 9 | `ggml-backend-impl` | `GGMLBackendImpl` | 0.00 | 47 | 0 | 19.4 |
+| 10 | `ggml-backend` | `GGMLBackendUtils` | 0.00 | 20 | 0 | 15.2 |
+| 11 | `ggml-cpu.ggml-cpu` | `GGMLCpuBackend` | 0.00 | 12 | 0 | 12.8 |
+| 12 | `ggml-cpu.ggml-cpu-impl` | `GGMLCpuImpl` | 0.00 | 11 | 0 | 12.4 |
+| 13 | `ggml-cpu.quants` | `GGMLQuants` | 0.00 | 4 | 0 | 8.0 |
+| 14 | `ggml-threading` | `GGMLScheduler` | 0.09 | 1 | 0 | 3.1 |
+| 15 | `ggml-virtgpu.ggml-backend` | `GGMLBackend` | 0.00 | 0 | 0 | 0.0 |
+| 16 | `ggml-cpu.ops` | `GGMLComputeOps` | 0.00 | 0 | 0 | 0.0 |
 
 ## Critical Issues (Similarity < 0.60 with Dependencies)
 
 These files need immediate attention:
 
-- **models.models** → `model.InferencePipeline`
+- **dpct.helper** → `QuantizationHelper`
   - Similarity: 0.00
-  - Dependencies: 114
+  - Dependencies: 9
 
-- **llama-model** → `model.LlamaModel`
-  - Similarity: 0.02
-  - Dependencies: 12
-  - Lint issues: 5
+- **ggml-sycl.type** → `GGMLTypes`
+  - Similarity: 0.00
+  - Dependencies: 2
 
-- **llama-grammar** → `model.Grammar`
+- **ggml-cpu.simd-gemm** → `simd.GGMLSimd`
   - Similarity: 0.00
   - Dependencies: 1
 
-- **llama** → `model.KVCache`
+- **ggml-common** → `GGMLCommon`
   - Similarity: 0.00
   - Dependencies: 16
-  - Lint issues: 4
+  - TODOs: 6
 
-- **llama-model-loader** → `gguf.ModelLoader`
+- **ggml-cpu.common** → `GGMLCpuCommon`
+  - Similarity: 0.56
+  - Dependencies: 47
+
+- **ggml-impl** → `NumericConversions`
+  - Similarity: 0.00
+  - Dependencies: 58
+  - Lint issues: 6
+
+- **ggml** → `GGMLOps`
+  - Similarity: 0.00
+  - Dependencies: 50
+  - Lint issues: 83
+
+- **ggml-backend-impl** → `GGMLBackendImpl`
+  - Similarity: 0.00
+  - Dependencies: 47
+  - Lint issues: 54
+
+- **ggml-backend** → `GGMLBackendUtils`
+  - Similarity: 0.00
+  - Dependencies: 20
+  - Lint issues: 39
+
+- **ggml-cpu.ggml-cpu** → `GGMLCpuBackend`
+  - Similarity: 0.00
+  - Dependencies: 12
+  - Lint issues: 2
+
+- **ggml-cpu.ggml-cpu-impl** → `GGMLCpuImpl`
+  - Similarity: 0.00
+  - Dependencies: 11
+  - Lint issues: 5
+
+- **ggml-cpu.quants** → `GGMLQuants`
   - Similarity: 0.00
   - Dependencies: 4
-  - Lint issues: 1
+  - Lint issues: 87
 
-- **llama-context** → `model.LlamaAttention`
-  - Similarity: 0.00
-  - Dependencies: 4
-  - Lint issues: 16
-
-- **llama-model-saver** → `model.GGMLIntegration`
-  - Similarity: 0.00
+- **ggml-threading** → `GGMLScheduler`
+  - Similarity: 0.09
   - Dependencies: 1
-  - Lint issues: 10
+  - Lint issues: 3
 
 ## Missing Files (Top by Dependents)
 
 | Rank | Source file | Deps | Path |
 |------|------------|------|------|
-| 1 | `llama-impl` | 19 | `llama-impl.h` |
-| 2 | `llama-memory-recurrent` | 12 | `llama-memory-recurrent.h` |
-| 3 | `llama-batch` | 7 | `llama-batch.h` |
-| 4 | `llama-graph` | 7 | `llama-graph.h` |
-| 5 | `llama-memory` | 7 | `llama-memory.h` |
-| 6 | `llama-vocab` | 6 | `llama-vocab.h` |
-| 7 | `llama-mmap` | 5 | `llama-mmap.h` |
-| 8 | `llama-arch` | 5 | `llama-arch.h` |
-| 9 | `llama-cparams` | 5 | `llama-cparams.h` |
-| 10 | `llama-hparams` | 4 | `llama-hparams.h` |
-| 11 | `llama-kv-cache` | 4 | `llama-kv-cache.h` |
-| 12 | `llama-io` | 3 | `llama-io.h` |
-| 13 | `llama-kv-cache-iswa` | 3 | `llama-kv-cache-iswa.h` |
-| 14 | `llama-memory-hybrid` | 3 | `llama-memory-hybrid.h` |
-| 15 | `llama-memory-hybrid-iswa` | 3 | `llama-memory-hybrid-iswa.h` |
-| 16 | `llama-adapter` | 2 | `llama-adapter.h` |
-| 17 | `llama-ext` | 2 | `llama-ext.h` |
-| 18 | `unicode-data` | 1 | `unicode-data.h` |
-| 19 | `unicode` | 1 | `unicode.h` |
-| 20 | `llama-sampler` | 1 | `llama-sampler.h` |
+| 1 | `ggml-sycl.fattn-vec` | 37 | `ggml-sycl/fattn-vec.hpp` |
+| 2 | `ggml-zdnn.utils` | 23 | `ggml-zdnn/utils.hpp` |
+| 3 | `openvino.node_context` | 19 | `ggml-openvino/openvino/node_context.h` |
+| 4 | `openvino.op_table` | 18 | `ggml-openvino/openvino/op_table.h` |
+| 5 | `ggml-sycl.convert` | 17 | `ggml-sycl/convert.hpp` |
+| 6 | `htp.hvx-base` | 11 | `ggml-hexagon/htp/hvx-base.h` |
+| 7 | `ggml-sycl.fattn-tile` | 11 | `ggml-sycl/fattn-tile.hpp` |
+| 8 | `ggml-cpu.simd-mappings` | 10 | `ggml-cpu/simd-mappings.h` |
+| 9 | `ggml-sycl.concat` | 9 | `ggml-sycl/concat.hpp` |
+| 10 | `ggml-cpu.traits` | 9 | `ggml-cpu/traits.h` |
+| 11 | `op.reshape` | 9 | `ggml-openvino/openvino/op/reshape.cpp` |
+| 12 | `ggml-sycl.presets` | 8 | `ggml-sycl/presets.hpp` |
+| 13 | `ggml-virtgpu.ggml-remoting` | 8 | `ggml-virtgpu/ggml-remoting.h` |
+| 14 | `htp.hex-utils` | 8 | `ggml-hexagon/htp/hex-utils.h` |
+| 15 | `op.transpose` | 7 | `ggml-openvino/openvino/op/transpose.cpp` |
+| 16 | `ggml-quants` | 6 | `ggml-quants.h` |
+| 17 | `backend.backend-virgl-apir` | 6 | `ggml-virtgpu/backend/backend-virgl-apir.h` |
+| 18 | `shared.apir_backend` | 6 | `ggml-virtgpu/backend/shared/apir_backend.h` |
+| 19 | `ggml-sycl.set` | 6 | `ggml-sycl/set.hpp` |
+| 20 | `backend.backend-dispatched` | 5 | `ggml-virtgpu/backend/backend-dispatched.h` |
 
-... and 115 more missing files.
+... and 220 more missing files.
 

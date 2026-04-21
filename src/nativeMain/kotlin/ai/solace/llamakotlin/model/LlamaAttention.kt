@@ -36,11 +36,7 @@ enum class LlamaFlashAttnType {
 }
 
 /** Type of graph to build for a micro-batch. Maps to `llm_graph_type`. */
-enum class LlmGraphType {
-    DECODER,
-    ENCODER,
-    DEFAULT;
-}
+// LlmGraphType defined in LlmGraphTypes.kt
 
 typealias LlamaToken = Int
 // LlamaSeqId defined in KVCache.kt; LLAMA_MAX_SEQ defined in KVCache.kt
