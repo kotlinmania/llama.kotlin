@@ -192,7 +192,7 @@ class LlmBuildLlama(
     /**
      * Assign a debug name to [cur] following the `"name/il"` convention.
      */
-    private fun cb(cur: GGMLTensor, name: String, il: Int) {
+    private fun nameTensor(cur: GGMLTensor, name: String, il: Int) {
         cur.name = if (il >= 0) "$name/$il" else name
     }
 
@@ -237,7 +237,7 @@ class LlmBuildLlama(
 
             // ---- Pre-attention RMS norm ----
             var cur = buildNorm(inpL, layer.attnNorm, null, LlmNormType.RMS, il)
-            cb(cur, "attn_norm", il)
+            nameTensor(cur, "attn_norm", il)
 
             // ---- Self-attention ----
             run {
@@ -285,7 +285,7 @@ class LlmBuildLlama(
                 if (layer.woS != null) {
                     // cur = cur * woS  — TODO: wire ggml_mul
                 }
-                cb(cur, "attn_out", il)
+                nameTensor(cur, "attn_out", il)
             }
 
             // Last-layer output-id pruning
@@ -303,7 +303,7 @@ class LlmBuildLlama(
             if (layer.ffnGateInp == null) {
                 // Standard SwiGLU FFN
                 cur = buildNorm(ffnInp, layer.ffnNorm, null, LlmNormType.RMS, il)
-                cb(cur, "ffn_norm", il)
+                nameTensor(cur, "ffn_norm", il)
 
                 cur = buildFfn(
                     cur,
@@ -313,11 +313,11 @@ class LlmBuildLlama(
                     null,
                     LlmFfnOpType.SILU, LlmFfnGateType.PAR, il,
                 )
-                cb(cur, "ffn_out", il)
+                nameTensor(cur, "ffn_out", il)
             } else {
                 // MoE branch
                 cur = buildNorm(ffnInp, layer.ffnNorm, null, LlmNormType.RMS, il)
-                cb(cur, "ffn_norm", il)
+                nameTensor(cur, "ffn_norm", il)
 
                 cur = buildMoeFfn(
                     cur,
@@ -332,16 +332,16 @@ class LlmBuildLlama(
                     LlamaExpertGatingFuncType.SOFTMAX,
                     il,
                 )
-                cb(cur, "ffn_moe_out", il)
+                nameTensor(cur, "ffn_moe_out", il)
             }
 
             // ---- Residual connection (FFN) ----
             // cur = ggml_add(cur, ffnInp)  — TODO: wire element-wise add
-            cb(cur, "ffn_out", il)
+            nameTensor(cur, "ffn_out", il)
 
             // Control vector injection
             cur = buildCvec(cur, il)
-            cb(cur, "l_out", il)
+            nameTensor(cur, "l_out", il)
 
             // Feed into next layer
             inpL = cur
@@ -356,7 +356,7 @@ class LlmBuildLlama(
         // 6. lm_head projection (skip in embedding mode)
         if (!embedMode) {
             cur = buildLoraMm(model.output ?: error("LLaMA model missing output tensor"), cur)
-            cb(cur, "result_output", -1)
+            nameTensor(cur, "result_output", -1)
             result.tLogits = cur
         }
 
