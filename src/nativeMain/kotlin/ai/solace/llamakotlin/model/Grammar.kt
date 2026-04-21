@@ -833,14 +833,84 @@ fun isEndOfSequence(rule: LlamaGrammarRule, elementIndex: Int): Boolean {
  * @property awaitingTrigger True while a lazy grammar has not yet been triggered.
  * @property triggerTokens Token ids that activate a lazy grammar.
  */
+/**
+ * A trigger pattern for lazy grammars.
+ *
+ * When a lazy grammar is waiting for a trigger, incoming text is buffered and
+ * tested against each pattern. If a match is found, the grammar "wakes up"
+ * and starts constraining from the first capturing group onward.
+ *
+ * Port of `llama_grammar_trigger_pattern` from `llama-grammar.h`.
+ *
+ * @property pattern  The original regex string.
+ */
+class LlamaGrammarTriggerPattern(val pattern: String) {
+    private val regex: Regex = Regex(pattern)
+
+    /**
+     * Find the start position of the first capturing-group match (or the
+     * whole match if there is no group).
+     *
+     * @return The start offset, or -1 if no match was found.
+     */
+    fun find(input: String): Int {
+        val isAnchored = pattern.startsWith('^') && pattern.endsWith('$')
+        val matchResult = if (isAnchored) {
+            regex.matchEntire(input)
+        } else {
+            regex.find(input)
+        } ?: return -1
+
+        // Use the first non-empty capturing group as the start position
+        for (i in 1 until matchResult.groupValues.size) {
+            val group = matchResult.groups[i]
+            if (group != null && group.value.isNotEmpty()) {
+                return group.range.first
+            }
+        }
+        return matchResult.range.first
+    }
+}
+
+/**
+ * Runtime grammar state machine — a stack-based pushdown automaton that
+ * determines which tokens are valid at any point during generation.
+ *
+ * The matching logic faithfully mirrors the C++ `llama_grammar` functions:
+ * - [advanceStack]: expand rule references until every stack top is a terminal.
+ * - [matchChar]: test whether a code point satisfies a character element.
+ * - [matchPartialChar]: test whether a partial UTF-8 sequence *could* satisfy a character element.
+ * - [matchToken]: test whether a token id satisfies a TOKEN / TOKEN_NOT element.
+ * - [rejectCandidatesForStack]: core rejection loop for a single stack.
+ * - [rejectCandidates]: rejection across all active stacks.
+ * - [acceptChar]: advance stacks after a matched code point.
+ * - [acceptToken]: advance stacks after a matched token (with UTF-8 decoding).
+ *
+ * @property rules The immutable list of grammar rules (shared, never mutated).
+ * @property stacks The current set of active pushdown stacks.
+ * @property partialUtf8 Trailing partial UTF-8 state from the last accepted token.
+ * @property lazy When true, the grammar waits for a trigger before constraining.
+ * @property awaitingTrigger True while a lazy grammar has not yet been triggered.
+ * @property triggerTokens Token ids that activate a lazy grammar.
+ * @property triggerPatterns Regex patterns that trigger a lazy grammar.
+ */
 class LlamaGrammar(
     val rules: List<LlamaGrammarRule>,
     var stacks: LlamaGrammarStacks,
     var partialUtf8: LlamaPartialUtf8 = LlamaPartialUtf8(),
     val lazy: Boolean = false,
     var awaitingTrigger: Boolean = false,
-    val triggerTokens: List<Int> = emptyList()
+    val triggerTokens: List<Int> = emptyList(),
+    val triggerPatterns: List<LlamaGrammarTriggerPattern> = emptyList()
 ) {
+    /** Buffer of generated text while a lazy grammar is waiting for a trigger. */
+    var triggerBuffer: String = ""
+
+    /**
+     * Tokens buffered by a lazy grammar, with their (start, end) positions in
+     * [triggerBuffer]. Used to replay when a trigger is found.
+     */
+    val triggerBufferPositions: MutableList<Triple<Int, Int, Int>> = mutableListOf()
 
     // -- Static helpers (ported from C++ free functions) --------------------
 
@@ -902,7 +972,8 @@ class LlamaGrammar(
             grammarStr: String,
             grammarRoot: String = "root",
             lazy: Boolean = false,
-            triggerTokens: List<Int> = emptyList()
+            triggerTokens: List<Int> = emptyList(),
+            triggerPatterns: List<String> = emptyList()
         ): LlamaGrammar? {
             val parser = LlamaGrammarParser()
             if (!parser.parse(grammarStr) || parser.rules.isEmpty()) {
@@ -920,7 +991,8 @@ class LlamaGrammar(
                 stacks = g.stacks,
                 lazy = lazy,
                 awaitingTrigger = lazy,
-                triggerTokens = triggerTokens
+                triggerTokens = triggerTokens,
+                triggerPatterns = triggerPatterns.map { LlamaGrammarTriggerPattern(it) }
             )
         }
 
@@ -1404,15 +1476,110 @@ class LlamaGrammar(
         }
     }
 
-    /** Deep copy of this grammar, including independent stacks. */
-    fun clone(): LlamaGrammar = LlamaGrammar(
-        rules = rules, // rules are immutable
-        stacks = stacks.map { it.toList() }.toMutableList(),
-        partialUtf8 = partialUtf8,
-        lazy = lazy,
-        awaitingTrigger = awaitingTrigger,
-        triggerTokens = triggerTokens
-    )
+    /** Deep copy of this grammar, including independent stacks and trigger buffer. */
+    fun clone(): LlamaGrammar {
+        val copy = LlamaGrammar(
+            rules = rules, // rules are immutable
+            stacks = stacks.map { it.toList() }.toMutableList(),
+            partialUtf8 = partialUtf8,
+            lazy = lazy,
+            awaitingTrigger = awaitingTrigger,
+            triggerTokens = triggerTokens,
+            triggerPatterns = triggerPatterns
+        )
+        copy.triggerBuffer = triggerBuffer
+        copy.triggerBufferPositions.addAll(triggerBufferPositions)
+        return copy
+    }
+
+    /**
+     * Accept a token with full lazy-grammar trigger logic.
+     *
+     * Port of `llama_grammar_accept_impl()` from `llama-grammar.cpp`.
+     *
+     * If the grammar is awaiting a trigger:
+     * 1. Check if the token matches any trigger token — if so, wake up.
+     * 2. Otherwise buffer the text and test each trigger pattern.
+     * 3. When a pattern matches, replay buffered tokens from the match start.
+     *
+     * For non-lazy grammars (or after trigger), delegates to [acceptToken].
+     *
+     * @param tokenId  The accepted token id.
+     * @param piece    The string representation of the token.
+     * @param isEogFn  Returns `true` when [tokenId] is end-of-generation.
+     */
+    fun acceptImpl(
+        tokenId: Int,
+        piece: String,
+        isEogFn: (Int) -> Boolean
+    ) {
+        if (awaitingTrigger) {
+            // Check direct trigger tokens
+            if (tokenId in triggerTokens) {
+                awaitingTrigger = false
+                triggerBuffer = ""
+                triggerBufferPositions.clear()
+                acceptToken(tokenId, piece)
+                return
+            }
+
+            // Buffer the piece and check trigger patterns
+            val bufStart = triggerBuffer.length
+            val bufEnd = bufStart + piece.length
+            triggerBufferPositions.add(Triple(tokenId, bufStart, bufEnd))
+            triggerBuffer += piece
+
+            for (triggerPattern in triggerPatterns) {
+                val start = triggerPattern.find(triggerBuffer)
+                if (start >= 0) {
+                    awaitingTrigger = false
+
+                    // Replay tokens that overlap with [start, end)
+                    for ((tok, tokStart, tokEnd) in triggerBufferPositions) {
+                        if (tokEnd <= start) continue
+                        val pieceStart = if (tokStart < start) start else tokStart
+                        val pieceLen = tokEnd - pieceStart
+                        val tokPiece = triggerBuffer.substring(pieceStart, pieceStart + pieceLen)
+                        acceptToken(tok, tokPiece)
+                    }
+
+                    triggerBuffer = ""
+                    triggerBufferPositions.clear()
+                    return
+                }
+            }
+            // Still awaiting trigger
+            return
+        }
+
+        // Non-lazy path
+        if (isEogFn(tokenId)) {
+            // EOG is valid only if some stack is empty (grammar is complete)
+            if (stacks.any { it.isEmpty() }) return
+            throw IllegalStateException("grammar received EOG token $tokenId but no stack is complete")
+        }
+
+        acceptToken(tokenId, piece)
+    }
+
+    /**
+     * Debug representation of the current grammar stacks.
+     *
+     * Port of `print_rule_binary` / debug helpers from `llama-grammar.cpp`.
+     */
+    fun printStacks(): String {
+        val sb = StringBuilder()
+        sb.appendLine("stacks (${stacks.size}):")
+        for ((i, stack) in stacks.withIndex()) {
+            sb.append("  [$i]: ")
+            for (pos in stack) {
+                val elem = rules[pos.ruleIndex][pos.elementIndex]
+                sb.append("${elem.type}(${elem.value}) ")
+            }
+            sb.appendLine(if (stack.isEmpty()) "(empty)" else "")
+        }
+        return sb.toString()
+    }
 }
 
 // ---------------------------------------------------------------------------
