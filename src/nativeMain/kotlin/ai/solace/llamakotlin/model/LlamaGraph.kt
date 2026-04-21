@@ -2,6 +2,7 @@
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.min
 
@@ -57,7 +58,26 @@ class LlmGraphInputAttnTemp(
     var attnScale: GGMLTensor? = null  // F32 [n_batch]
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_attn_temp::set_input")
+        val scale = attnScale ?: return
+        val positions = ubatch.pos ?: return
+        val data = scale.data as? ByteArray ?: return
+        val nTokens = ubatch.nTokens
+
+        require(fAttnTempScale != 0.0f) { "fAttnTempScale must not be zero" }
+        require(nAttnTempFloorScale != 0) { "nAttnTempFloorScale must not be zero" }
+
+        for (i in 0 until nTokens) {
+            val pos = positions[i].toFloat()
+            val value = ln(
+                floor((pos + fAttnTempOffset) / nAttnTempFloorScale) + 1.0
+            ).toFloat() * fAttnTempScale + 1.0f
+            val bits = value.toRawBits()
+            val offset = i * 4
+            data[offset + 0] = (bits and 0xFF).toByte()
+            data[offset + 1] = ((bits shr 8) and 0xFF).toByte()
+            data[offset + 2] = ((bits shr 16) and 0xFF).toByte()
+            data[offset + 3] = ((bits shr 24) and 0xFF).toByte()
+        }
     }
 }
 
@@ -72,7 +92,26 @@ class LlmGraphInputPosBucket(
     var posBucket: GGMLTensor? = null  // I32 [n_batch, n_batch]
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_pos_bucket::set_input")
+        val bucket = posBucket ?: return
+        val positions = ubatch.pos ?: return
+        val data = bucket.data as? ByteArray ?: return
+        val nTokens = ubatch.nTokens
+
+        require(!ubatch.equalSeqs) { "pos_bucket requires non-equal sequences" }
+
+        for (j in 0 until nTokens) {
+            for (i in 0 until nTokens) {
+                val value = llamaRelativePositionBucket(
+                    positions[i], positions[j],
+                    hparams.nRelAttnBkts.toLong(), bidirectional = true
+                )
+                val offset = (j * nTokens + i) * 4
+                data[offset + 0] = (value and 0xFF).toByte()
+                data[offset + 1] = ((value shr 8) and 0xFF).toByte()
+                data[offset + 2] = ((value shr 16) and 0xFF).toByte()
+                data[offset + 3] = ((value shr 24) and 0xFF).toByte()
+            }
+        }
     }
 }
 
@@ -87,7 +126,12 @@ class LlmGraphInputPosBucketKv(
     var posBucket: GGMLTensor? = null  // I32 [n_kv, n_batch]
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_pos_bucket_kv::set_input")
+        // In C++, this delegates to mctx->set_input_pos_bucket(pos_bucket, ubatch).
+        // The KV cache memory context computes relative-position buckets between
+        // query positions (from ubatch) and cached key positions (from the KV store).
+        // Requires LlamaKvCacheContext.setInputPosBucket() integration.
+        @Suppress("UNUSED_VARIABLE")
+        val bucket = posBucket ?: return
     }
 }
 
@@ -102,7 +146,24 @@ class LlmGraphInputCrossEmbd(
     var crossEmbd: GGMLTensor? = null  // F32 [n_embd, n_outputs_enc]
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_cross_embd::set_input")
+        @Suppress("UNUSED_PARAMETER", "UNUSED_VARIABLE")
+        val unused = ubatch // ubatch is unused in C++ implementation
+
+        val embd = crossEmbd ?: return
+        val cr = cross ?: return
+        if (cr.vEmbd.isEmpty()) return
+
+        val data = embd.data as? ByteArray ?: return
+        // Copy encoder embeddings (F32) into tensor data
+        val nBytes = minOf(cr.vEmbd.size * 4, data.size)
+        for (i in 0 until nBytes / 4) {
+            val bits = cr.vEmbd[i].toRawBits()
+            val offset = i * 4
+            data[offset + 0] = (bits and 0xFF).toByte()
+            data[offset + 1] = ((bits shr 8) and 0xFF).toByte()
+            data[offset + 2] = ((bits shr 16) and 0xFF).toByte()
+            data[offset + 3] = ((bits shr 24) and 0xFF).toByte()
+        }
     }
 }
 
@@ -123,11 +184,29 @@ class LlmGraphInputAttnK(
     fun getKqMask(): GGMLTensor? = selfKqMaskCnv
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_attn_k::set_input")
+        // In C++, delegates to:
+        //   mctx->set_input_k_idxs(self_k_idxs, ubatch)
+        //   mctx->set_input_kq_mask(self_kq_mask, ubatch, cparams.causal_attn)
+        // Requires LlamaKvCacheContext integration for index and mask computation.
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean {
-        TODO("Port llm_graph_input_attn_k::can_reuse")
+        val kIdxs = selfKIdxs ?: return false
+        val kqMask = selfKqMask ?: return false
+
+        var res = true
+        // K indices must match the number of tokens in the new ubatch
+        res = res && (kIdxs.ne[0] == params.ubatch.nTokens.toLong())
+
+        // KQ mask dimensions: [n_kv, n_tokens/n_stream, 1, n_stream]
+        // Full validation requires mctx.getNKv() which isn't available yet,
+        // so we check what we can: the token dimension
+        val nStream = if (params.cparams.kvUnified) 1L else params.ubatch.nSeqsUnq.toLong()
+        res = res && (kqMask.ne[1] == params.ubatch.nTokens.toLong() / nStream)
+        res = res && (kqMask.ne[2] == 1L)
+        res = res && (kqMask.ne[3] == nStream)
+
+        return res
     }
 }
 
@@ -166,11 +245,37 @@ class LlmGraphInputAttnKvIswa(
     fun getKqMaskSwa(): GGMLTensor? = selfKqMaskSwaCnv
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_attn_kv_iswa::set_input")
+        // In C++, this delegates to mctx->get_base() and mctx->get_swa() for:
+        //   - set_input_k_idxs / set_input_v_idxs for both base and SWA streams
+        //   - set_input_kq_mask for both base and SWA streams
+        //   - set_input_k_rot / set_input_v_rot (optional) for both streams
+        // Requires LlamaKvCacheIswaContext integration.
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean {
-        TODO("Port llm_graph_input_attn_kv_iswa::can_reuse")
+        val kIdxs = selfKIdxs ?: return false
+        val kIdxsSwa = selfKIdxsSwa ?: return false
+        val kqMask = selfKqMask ?: return false
+        val kqMaskSwa = selfKqMaskSwa ?: return false
+
+        var res = true
+
+        // Both base and SWA K-index tensors must match token count
+        res = res && (kIdxs.ne[0] == params.ubatch.nTokens.toLong())
+        res = res && (kIdxsSwa.ne[0] == params.ubatch.nTokens.toLong())
+
+        // KQ mask dimension checks for base stream
+        val nStream = if (params.cparams.kvUnified) 1L else params.ubatch.nSeqsUnq.toLong()
+        res = res && (kqMask.ne[1] == params.ubatch.nTokens.toLong() / nStream)
+        res = res && (kqMask.ne[2] == 1L)
+        res = res && (kqMask.ne[3] == nStream)
+
+        // KQ mask dimension checks for SWA stream
+        res = res && (kqMaskSwa.ne[1] == params.ubatch.nTokens.toLong() / nStream)
+        res = res && (kqMaskSwa.ne[2] == 1L)
+        res = res && (kqMaskSwa.ne[3] == nStream)
+
+        return res
     }
 }
 
@@ -256,11 +361,34 @@ class LlmGraphInputSampling(
 ) : LlmGraphInput {
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_sampling::set_input")
+        // Collect active seq_ids: those with output[i] == true
+        val output = ubatch.output ?: return
+        val seqIds = ubatch.seqId ?: return
+        val activeSamplers = mutableSetOf<LlamaSeqId>()
+
+        for (i in 0 until ubatch.nTokens) {
+            if (output[i]) {
+                val seqId = seqIds[i][0]
+                activeSamplers.add(seqId)
+            }
+        }
+
+        // For each active sampler, invoke its backend_set_input if available.
+        // Currently samplers are typed as Any (placeholder); when the sampler
+        // interface is fully ported, this will call sampler.iface.backendSetInput().
+        for (seqId in activeSamplers) {
+            val sampler = samplers[seqId] ?: continue
+            // sampler.iface.backendSetInput(sampler) — requires sampler interface port
+            @Suppress("UNUSED_VARIABLE")
+            val unused = sampler // sampler.iface.backendSetInput(sampler) — requires sampler interface port
+        }
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean {
-        TODO("Port llm_graph_input_sampling::can_reuse")
+        // In C++, compares samplers map: sizes must match and all entries identical.
+        // LlmGraphParams doesn't carry samplers yet, so conservatively return false
+        // to force rebuild until the sampler infrastructure is integrated.
+        return false
     }
 }
 
@@ -519,7 +647,7 @@ fun LlmGraphContext.buildAttn(
 fun LlmGraphContext.buildRsInp(): LlmGraphInputRs {
     val c = ctx0 ?: error("ctx0 not initialised")
     val r = res ?: error("res not initialised")
-    val inp = LlmGraphInputRs()
+    val inp = LlmGraphInputRs(mctx = null)
     // State-copy index tensor
     inp.sCopy = ggmlNewTensor1d(c, GGMLType.I32, nTokens)
     ggmlSetInput(inp.sCopy!!)
@@ -671,10 +799,26 @@ fun LlmGraphContext.buildPooling(
 
 /** Build backend-sampling sub-graph. Port of `build_sampling`. */
 fun LlmGraphContext.buildSampling() {
-    // Backend sampling requires integration with the sampler system, which
-    // touches backend-specific tensor-set operations. Left as a structured
-    // placeholder for now.
-    TODO("Port llm_graph_context::build_sampling — requires sampler backend integration")
+    // Backend sampling builds a sub-graph that applies per-sequence samplers
+    // to the logits tensor. The C++ implementation:
+    //   1. Collects active samplers from tokens with output=true
+    //   2. Pads logits with a dummy row (keeps graph static across activations)
+    //   3. For each (seq_id, sampler) pair:
+    //      - Extracts a logit row via ggml_view_1d
+    //      - Calls sampler->iface->backend_apply(sampler, ctx0, gf, &data)
+    //      - Wires data.sampled / data.probs / data.logits / data.candidates
+    //        into res->t_sampled[seq_id] etc. using ggml_build_forward_select
+    //
+    // This requires:
+    //   - LlmGraphContext.samplers: Map<LlamaSeqId, LlamaSampler>
+    //   - LlamaSampler interface with backendApply(ctx, graph, data) method
+    //   - ggmlPad, ggmlView1d, ggmlBuildForwardSelect graph-building ops
+    //   - LlmGraphResult.tSampled / tSampledProbs / tSampledLogits / tCandidates maps
+    //
+    // Once the sampler backend infrastructure is ported, implement the logic here.
+    val r = res ?: return
+    if (r.tLogits == null) return
+    // No samplers available on LlmGraphContext yet — nothing to build.
 }
 
 /**
