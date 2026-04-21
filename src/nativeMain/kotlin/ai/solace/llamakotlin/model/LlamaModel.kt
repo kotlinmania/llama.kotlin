@@ -1188,6 +1188,9 @@ class LlamaModelData(
     // ---- GGUF key-value metadata ----
     val ggufKv: MutableMap<String, String> = mutableMapOf()
 
+    // ---- vocabulary (populated by model loader) ----
+    var vocab: LlamaVocab? = null
+
     // ---- tensor index (for lookup by name) ----
     val tensorsByName: MutableList<Pair<String, GGMLTensor>> = mutableListOf()
 
@@ -1554,7 +1557,7 @@ class LlamaModelData(
      *
      * Ported from the concept of C++ `llama_model_set_tensor()` — in C++ this
      * copies into a backend buffer; here we copy into the ByteArray-backed
-     * tensor data directly.
+     * tensor data directly via [GGMLTensor.setData].
      *
      * @param name  GGUF tensor name (e.g. "blk.0.attn_q.weight").
      * @param data  Raw bytes to copy into the tensor.
@@ -1566,7 +1569,7 @@ class LlamaModelData(
         require(data.size.toLong() == expectedBytes) {
             "setTensor('$name'): data size ${data.size} != expected $expectedBytes bytes"
         }
-        data.copyInto(tensor.data, destinationOffset = 0)
+        tensor.setData(data, offset = 0, length = data.size)
         return true
     }
 
@@ -1746,6 +1749,9 @@ class LlamaModelData(
                 println("WARNING: loadHParams not yet implemented for arch: ${arch.ggufName}")
             }
         }
+
+        // Resolve the rope type from the architecture (C++ line 2949)
+        hparams.ropeType = ropeType()
     }
 
     /**
@@ -2023,11 +2029,13 @@ class LlamaModelData(
             println("llama_model_info: swaType      = ${hp.swaType}")
         }
         val nParams = nParams()
-        val nBytes = nBytes()
-        val bpw = if (nParams > 0) nBytes * 8.0 / nParams else 0.0
+        val modelSize = size()
+        val bpw = if (nParams > 0) modelSize * 8.0 / nParams else 0.0
         println("llama_model_info: nParams      = $nParams")
-        println("llama_model_info: nTensors     = ${tensorsByName.size}")
+        println("llama_model_info: nTensors     = ${nTensors()}")
+        println("llama_model_info: size         = ${modelSize}")
         println("llama_model_info: BPW          = ${GGMLUtilities.formatDouble(bpw)}")
+        println("llama_model_info: ropeType     = ${hp.ropeType}")
     }
 }
 

@@ -1157,10 +1157,7 @@ fun llamaPoolingType(ctx: LlamaContext): LlamaPoolingType = ctx.cparams.poolingT
 // ---------------------------------------------------------------------------
 
 /** Get the vocab from a model. Maps to `llama_model_get_vocab()`. */
-fun llamaModelGetVocab(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): LlamaVocab? {
-    // TODO: return model vocab when LlamaModelData includes it
-    return null
-}
+fun llamaModelGetVocab(model: LlamaModelData): LlamaVocab? = model.vocab
 
 /** Get the RoPE type. Maps to `llama_model_rope_type()`. */
 fun llamaModelRopeType(model: LlamaModelData): LlamaRopeType = model.hparams.ropeType
@@ -1532,34 +1529,22 @@ fun llamaSynchronize(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext) {
 // ---------------------------------------------------------------------------
 
 /** Get all output logits. Maps to `llama_get_logits()`. */
-fun llamaGetLogits(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext): FloatArray? = null // TODO
+fun llamaGetLogits(ctx: LlamaContext): FloatArray? = ctx.getLogits()
 
 /** Get logits for the i-th output token. Maps to `llama_get_logits_ith()`. */
-fun llamaGetLogitsIth(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") i: Int,
-): FloatArray? = null // TODO
+fun llamaGetLogitsIth(ctx: LlamaContext, i: Int): FloatArray? = ctx.getLogitsIth(i)
 
 /** Get all output embeddings. Maps to `llama_get_embeddings()`. */
-fun llamaGetEmbeddings(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext): FloatArray? = null // TODO
+fun llamaGetEmbeddings(ctx: LlamaContext): FloatArray? = ctx.getEmbeddings()
 
 /** Get embeddings for the i-th output token. Maps to `llama_get_embeddings_ith()`. */
-fun llamaGetEmbeddingsIth(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") i: Int,
-): FloatArray? = null // TODO
+fun llamaGetEmbeddingsIth(ctx: LlamaContext, i: Int): FloatArray? = ctx.getEmbeddingsIth(i)
 
 /** Get embeddings for a sequence. Maps to `llama_get_embeddings_seq()`. */
-fun llamaGetEmbeddingsSeq(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") seqId: LlamaSeqId,
-): FloatArray? = null // TODO
+fun llamaGetEmbeddingsSeq(ctx: LlamaContext, seqId: LlamaSeqId): FloatArray? = ctx.getEmbeddingsSeq(seqId)
 
 /** Backend-sampled token for i-th position. Maps to `llama_get_sampled_token_ith()`. */
-fun llamaGetSampledTokenIth(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") i: Int,
-): LlamaToken = LLAMA_TOKEN_NULL // TODO
+fun llamaGetSampledTokenIth(ctx: LlamaContext, i: Int): LlamaToken = ctx.getSampledTokenIth(i)
 
 // ---------------------------------------------------------------------------
 // Vocab accessors  (llama_vocab_get_text, etc.)
