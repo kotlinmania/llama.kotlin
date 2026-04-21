@@ -5,43 +5,6 @@ import ai.solace.llamakotlin.core.*
 import kotlin.math.sqrt
 
 // =============================================================================
-// KV-cached attention input (missing from LlamaGraph.kt)
-// Ported from: llama-graph.h  class llm_graph_input_attn_kv
-// =============================================================================
-
-/**
- * Input for self-attention backed by a KV cache.
- *
- * Holds KV-index tensors and the causal mask used during self-attention with
- * cached keys/values.  Ports `llm_graph_input_attn_kv` from `llama-graph.h`.
- */
-class LlmGraphInputAttnKv(
-    val hparams: LlamaHparams,
-    val cparams: LlamaCParams,
-) : LlmGraphInput {
-    var selfKIdxs: GGMLTensor? = null       // I64 [nBatch]
-    var selfVIdxs: GGMLTensor? = null       // I64 [nBatch] or [nBatch*nEmbdVGqa]
-    var selfKqMask: GGMLTensor? = null      // F32 [nKv, nBatch/nStream, 1, nStream]
-    var selfKqMaskCnv: GGMLTensor? = null
-
-    // Optional rotation matrices (for k-shift)
-    var selfKRot: GGMLTensor? = null
-    var selfVRot: GGMLTensor? = null
-
-    fun getKIdxs(): GGMLTensor? = selfKIdxs
-    fun getVIdxs(): GGMLTensor? = selfVIdxs
-    fun getKqMask(): GGMLTensor? = selfKqMaskCnv
-
-    override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_attn_kv::set_input")
-    }
-
-    override fun canReuse(params: LlmGraphParams): Boolean {
-        TODO("Port llm_graph_input_attn_kv::can_reuse")
-    }
-}
-
-// =============================================================================
 // Model Architecture Interface — base for all architectures
 // Ported from: models.h  dispatch pattern
 // =============================================================================
