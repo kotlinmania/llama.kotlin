@@ -16,7 +16,7 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.11
+**Average Similarity:** 0.12
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -33,8 +33,10 @@ These files are well-ported and likely complete:
 These files need significant work:
 
 - `llama-hparams` → `model.LlamaHparams` (0.00, 4 deps)
+- `llama-graph` → `model.LlamaGraph` (0.20, 7 deps)
 - `llama` → `model.Grammar` (0.00, 16 deps)
 - `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
+- `llama-mmap` → `model.LlamaMmap` (0.18, 5 deps)
 - `llama-impl` → `model.LlamaImpl` (0.13, 19 deps)
 - `llama-batch` → `model.LlamaBatch` (0.47, 7 deps)
 - `llama-arch` → `model.LlamaArch` (0.09, 5 deps)
@@ -45,9 +47,7 @@ These files need significant work:
 - `llama-chat` → `model.LlamaChat` (0.35, 1 deps)
 - `llama-memory-recurrent` → `model.LlamaMemoryRecurrent` (0.00, 12 deps)
 - `llama-model` → `model.LlamaModel` (0.00, 12 deps)
-- `llama-graph` → `model.LlamaGraph` (0.00, 7 deps)
 - `llama-vocab` → `model.LlamaVocab` (0.00, 6 deps)
-- `llama-mmap` → `model.LlamaMmap` (0.00, 5 deps)
 - `llama-kv-cache` → `model.KVCache` (0.00, 4 deps)
 - `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
 - `llama-context` → `model.LlamaAttention` (0.00, 4 deps)
@@ -70,8 +70,10 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
+| `llama-graph` | `model.LlamaGraph` | 1/1 | `llama_sampler_data` |
 | `llama` | `model.Grammar` | 18/18 | `llama_flash_attn_type`, `llama_device_memory_data`, `user_data_t` … |
 | `llama-memory` | `model.LlamaMemory` | 7/8 | `llama_ubatch`, `llama_batch_allocr`, `llama_io_write_i` … |
+| `llama-mmap` | `model.LlamaMmap` | 1/4 | `impl` |
 | `llama-impl` | `model.LlamaImpl` | 3/5 | `no_init`, `ggml_tensor`, `gguf_context` |
 | `llama-batch` | `model.LlamaBatch` | 1/1 | `llama_batch` |
 | `llama-arch` | `model.LlamaArch` | 3/7 | `llm_arch`, `LLM_TN_IMPL`, `LLM_TN` |
@@ -106,7 +108,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4199 / 2 lines (209950%)
+**Documentation coverage:** 4214 / 2 lines (210700%)
 
 Top documentation gaps (>20%):
 

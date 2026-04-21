@@ -1448,15 +1448,49 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         return cur
     }
 
-    /** Build attention inputs for the KV-cache path. Port of `build_attn_inp_kv`. */
+    // port-lint: source llama.cpp/src/llama-graph.cpp  llm_graph_context::build_attn_inp_kv
+
+    /**
+     * Build attention inputs for the KV-cache path.
+     *
+     * Port of `llm_graph_context::build_attn_inp_kv`.  Creates K/V index
+     * tensors, the causal KQ mask, and optional rotation matrices from the
+     * [KVCacheContext] stored in [params].mctx.
+     */
     open fun buildAttnInpKv(): LlmGraphInputAttnKv {
-        TODO("Port llm_graph_context::build_attn_inp_kv — requires KV cache context")
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val mctx = params.mctx ?: error("mctx required for KV attention")
+        val mctxCur = mctx as KVCacheContext
+
+        val inp = LlmGraphInputAttnKv(hparams, cparams)
+
+        // Build K/V index tensors from the cache context
+        inp.selfKIdxs = mctxCur.buildInputKIdxs(c, ubatch)
+        inp.selfVIdxs = mctxCur.buildInputVIdxs(c, ubatch)
+
+        // Build causal KQ mask: [nKv, nTokens, 1, 1]
+        val nKv = mctxCur.getNKv().toLong()
+        inp.selfKqMask = ggmlNewTensor4d(c, GGMLType.F32, nKv, nTokens, 1, 1)
+        ggmlSetInput(inp.selfKqMask!!)
+        inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMask!!, GGMLType.F16)
+            else inp.selfKqMask
+
+        // Optional rotation matrices (for k-shift)
+        inp.selfKRot = mctxCur.buildInputKRot(c)
+        inp.selfVRot = mctxCur.buildInputVRot(c)
+
+        return r.addInputTyped(inp)
     }
+
+    // port-lint: source llama.cpp/src/llama-graph.cpp  llm_graph_context::build_attn(llm_graph_input_attn_kv *)
 
     /**
      * Self-attention with a persistent KV cache.
      *
      * Port of `llm_graph_context::build_attn(llm_graph_input_attn_kv *)`.
+     * Applies optional rotation, stores K/V into the cache, retrieves cached
+     * K/V, runs multi-head attention, and applies the output projection.
      */
     open fun buildAttn(
         inp: LlmGraphInputAttnKv,
@@ -1465,6 +1499,65 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         kqB: GGMLTensor?, sinks: GGMLTensor?, vMla: GGMLTensor?,
         kqScale: Float, il: Int,
     ): GGMLTensor {
-        TODO("Port llm_graph_context::build_attn(kv) — requires KV cache memory ops")
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val graph = gf ?: error("gf not initialised")
+        val mctxCur = params.mctx as? KVCacheContext ?: error("mctx required for KV attention")
+
+        var q = qCur
+        var k = kCur
+        var v = vCur
+
+        // Apply optional rotation matrices
+        if (inp.selfKRot != null) {
+            q = ggmlMulMatAux(c, q, inp.selfKRot!!)
+            k = ggmlMulMatAux(c, k, inp.selfKRot!!)
+        }
+        if (inp.selfVRot != null) {
+            v = ggmlMulMatAux(c, v, inp.selfVRot!!)
+        }
+
+        // Ensure Q/K/V nodes are materialized before cache operations
+        ggmlBuildForwardExpand(graph, q)
+        ggmlBuildForwardExpand(graph, v)
+        ggmlBuildForwardExpand(graph, k)
+
+        // Store K and V into the cache
+        val kIdxs = inp.getKIdxs() ?: error("K indices not initialised")
+        val vIdxs = inp.getVIdxs() ?: error("V indices not initialised")
+
+        ggmlBuildForwardExpand(graph, mctxCur.cpyK(c, k, kIdxs, il))
+        ggmlBuildForwardExpand(graph, mctxCur.cpyV(c, v, vIdxs, il))
+
+        // Retrieve cached K/V for the full attention window
+        val kqMask = inp.getKqMask()
+        val kCached = mctxCur.getK(c, il)
+        val vCached = mctxCur.getV(c, il)
+
+        var cur = buildAttnMha(q, kCached, vCached, kqB, kqMask, sinks, vMla, kqScale, il)
+        cb(cur, "kqv_out", il)
+
+        // Apply optional V rotation to the output
+        if (inp.selfVRot != null) {
+            cur = ggmlMulMatAux(c, cur, inp.selfVRot!!)
+        }
+
+        // Output projection
+        if (wo != null) {
+            if (arch == LlamaModelArch.GLM4 || arch == LlamaModelArch.GLM4_MOE || arch == LlamaModelArch.JAIS2) {
+                // GLM4/JAIS2 need F32 precision accumulators
+                cur = buildLoraMm(wo, cur)
+                ggmlMulMatSetPrec(cur, GGMLPrec.F32)
+                if (woS != null) {
+                    cur = mul(c, cur, woS)
+                }
+            } else {
+                cur = buildLoraMm(wo, cur, woS)
+            }
+        }
+        if (woB != null) {
+            cur = add(c, cur, woB)
+        }
+
+        return cur
     }
 }

@@ -924,24 +924,10 @@ fun llamaChatApplyTemplate(
     messages: List<Pair<String, String>>,
     addAss: Boolean = true,
 ): String? {
-    // TODO: port llm_chat_detect_template / llm_chat_apply_template
-    val template = tmpl ?: "chatml"
-
-    // Minimal "chatml" implementation as a proof of concept
-    if (template == "chatml") {
-        val sb = StringBuilder()
-        for ((role, content) in messages) {
-            sb.append("<|im_start|>").append(role).append('\n')
-            sb.append(content).append("<|im_end|>\n")
-        }
-        if (addAss) {
-            sb.append("<|im_start|>assistant\n")
-        }
-        return sb.toString()
-    }
-
-    // Unknown template
-    return null
+    val templateStr = tmpl ?: "chatml"
+    val chatTemplate = llmChatDetectTemplate(templateStr)
+    val chatMessages = messages.map { (role, content) -> LlamaChatMessage(role, content) }
+    return llmChatApplyTemplate(chatTemplate, chatMessages, addAss)
 }
 
 // ---------------------------------------------------------------------------
@@ -1359,24 +1345,27 @@ fun llamaAdapterGetAloraInvocationTokens(adapter: LlamaAdapterLora): IntArray =
 
 /** Set LoRA adapters on a context. Maps to `llama_set_adapters_lora()`. */
 fun llamaSetAdaptersLora(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") adapters: List<LlamaAdapterLora>,
-    @Suppress("UNUSED_PARAMETER") scales: FloatArray,
+    ctx: LlamaContext,
+    adapters: List<LlamaAdapterLora>,
+    scales: FloatArray,
 ): Int {
-    // TODO: implement adapter application
-    return -1
+    ctx.setAdaptersLora(adapters, scales)
+    return 0
 }
 
 /** Apply a control vector. Maps to `llama_set_adapter_cvec()`. */
 fun llamaSetAdapterCvec(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") data: FloatArray?,
-    @Suppress("UNUSED_PARAMETER") nEmbd: Int,
-    @Suppress("UNUSED_PARAMETER") ilStart: Int,
-    @Suppress("UNUSED_PARAMETER") ilEnd: Int,
+    ctx: LlamaContext,
+    data: FloatArray?,
+    nEmbd: Int,
+    ilStart: Int,
+    ilEnd: Int,
 ): Int {
-    // TODO: implement control vector application
-    return -1
+    // Access the cvec through the context's model adapter infrastructure
+    // The control vector is applied to the context's cvec adapter
+    val cvec = LlamaAdapterCvec()
+    val success = cvec.apply(data ?: FloatArray(0), data?.size ?: 0, nEmbd, ilStart, ilEnd)
+    return if (success) 0 else -1
 }
 
 // ---------------------------------------------------------------------------
@@ -1420,25 +1409,31 @@ fun llamaMemoryCanShift(mem: LlamaMemoryT): Boolean = mem.canShift()
 
 /** State size with flags. Maps to `llama_state_seq_get_size_ext()`. */
 fun llamaStateSeqGetSizeExt(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") seqId: LlamaSeqId,
-    @Suppress("UNUSED_PARAMETER") flags: UInt,
-): ULong = 0uL // TODO
+    ctx: LlamaContext,
+    seqId: LlamaSeqId,
+    flags: UInt,
+): ULong = ctx.stateSeqGetSizeImpl(seqId, flags.toInt()).toULong()
 
 /** Get state data with flags. Maps to `llama_state_seq_get_data_ext()`. */
 fun llamaStateSeqGetDataExt(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") seqId: LlamaSeqId,
-    @Suppress("UNUSED_PARAMETER") flags: UInt,
-): ByteArray? = null // TODO
+    ctx: LlamaContext,
+    seqId: LlamaSeqId,
+    flags: UInt,
+): ByteArray? {
+    val size = ctx.stateSeqGetSizeImpl(seqId, flags.toInt())
+    if (size <= 0) return null
+    val dst = ByteArray(size.toInt())
+    ctx.stateSeqGetDataImpl(seqId, dst, size, flags.toInt())
+    return dst
+}
 
 /** Set state data with flags. Maps to `llama_state_seq_set_data_ext()`. */
 fun llamaStateSeqSetDataExt(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") data: ByteArray,
-    @Suppress("UNUSED_PARAMETER") destSeqId: LlamaSeqId,
-    @Suppress("UNUSED_PARAMETER") flags: UInt,
-): ULong = 0uL // TODO
+    ctx: LlamaContext,
+    data: ByteArray,
+    destSeqId: LlamaSeqId,
+    flags: UInt,
+): ULong = ctx.stateSeqSetDataImpl(destSeqId, data, data.size.toLong(), flags.toInt()).toULong()
 
 // ---------------------------------------------------------------------------
 // Sequence state file I/O
@@ -1446,63 +1441,29 @@ fun llamaStateSeqSetDataExt(
 
 /** Save sequence state to file. Maps to `llama_state_seq_save_file()`. */
 fun llamaStateSeqSaveFile(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") filepath: String,
-    @Suppress("UNUSED_PARAMETER") seqId: LlamaSeqId,
-    @Suppress("UNUSED_PARAMETER") tokens: List<LlamaToken>,
-): ULong = 0uL // TODO
+    ctx: LlamaContext,
+    filepath: String,
+    seqId: LlamaSeqId,
+    tokens: List<LlamaToken>,
+): ULong = ctx.stateSeqSaveFile(seqId, filepath, tokens.toIntArray(), tokens.size).toULong()
 
 /** Load sequence state from file. Maps to `llama_state_seq_load_file()`. */
 fun llamaStateSeqLoadFile(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") filepath: String,
-    @Suppress("UNUSED_PARAMETER") destSeqId: LlamaSeqId,
-): Pair<ULong, List<LlamaToken>>? = null // TODO
+    ctx: LlamaContext,
+    filepath: String,
+    destSeqId: LlamaSeqId,
+): Pair<ULong, List<LlamaToken>>? {
+    val tokensOut = IntArray(4096) // capacity
+    val result = ctx.stateSeqLoadFile(destSeqId, filepath, tokensOut, tokensOut.size)
+    if (result.first == 0L) return null
+    return Pair(result.first.toULong(), tokensOut.take(result.second).toList())
+}
 
 // ---------------------------------------------------------------------------
 // Batch helpers  (llama_batch_get_one, llama_batch_init, llama_batch_free)
+// port-lint: source llama.cpp/src/llama.cpp  llama_batch_get_one, llama_batch_init, llama_batch_free
+// NOTE: Primary implementations live in LlamaBatch.kt.
 // ---------------------------------------------------------------------------
-
-/**
- * Return a batch for a single sequence of tokens. Position tracking is automatic.
- * Maps to `llama_batch_get_one()`.
- */
-fun llamaBatchGetOne(tokens: List<LlamaToken>): LlamaBatch = LlamaBatch(
-    nTokens = tokens.size,
-    tokens = tokens.toIntArray(),
-)
-
-/**
- * Allocate a batch that can hold up to [nTokens] tokens.
- * Maps to `llama_batch_init()`.
- */
-fun llamaBatchInit(nTokens: Int, embd: Int = 0, nSeqMax: Int = 1): LlamaBatch {
-    return if (embd != 0) {
-        LlamaBatch(
-            nTokens = 0,
-            embeddings = FloatArray(nTokens * embd),
-            nEmbeddings = embd,
-            pos = IntArray(nTokens),
-            nSeqId = IntArray(nTokens) { 1 },
-            seqId = Array(nTokens) { IntArray(nSeqMax) },
-            logits = BooleanArray(nTokens),
-        )
-    } else {
-        LlamaBatch(
-            nTokens = 0,
-            tokens = IntArray(nTokens),
-            pos = IntArray(nTokens),
-            nSeqId = IntArray(nTokens) { 1 },
-            seqId = Array(nTokens) { IntArray(nSeqMax) },
-            logits = BooleanArray(nTokens),
-        )
-    }
-}
-
-/** Free a batch. No-op in Kotlin. Maps to `llama_batch_free()`. */
-fun llamaBatchFree(@Suppress("UNUSED_PARAMETER") batch: LlamaBatch) {
-    // No-op — Kotlin GC handles cleanup
-}
 
 // ---------------------------------------------------------------------------
 // Encode / Decode  (llama_encode, llama_decode)
@@ -1719,11 +1680,37 @@ fun llamaSamplerChainRemove(chain: LlamaSamplerChain, i: Int): LlamaSampler? = c
  */
 fun llamaSamplerSample(
     smpl: LlamaSampler,
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") idx: Int,
+    ctx: LlamaContext,
+    idx: Int,
 ): LlamaToken {
-    // TODO: get logits from ctx at idx, build token data array, apply, return selected
-    return LLAMA_TOKEN_NULL
+    // Get logits from the context at the given output index
+    val logits = ctx.getLogitsIth(idx) ?: return LLAMA_TOKEN_NULL
+    val nVocab = logits.size
+
+    // Build token data array from logits
+    val cur = MutableList(nVocab) { tokenId ->
+        SamplerTokenData(id = tokenId, logit = logits[tokenId], p = 0.0f)
+    }
+
+    val curP = LlamaTokenDataArray(
+        data = cur,
+        size = cur.size,
+        selected = -1,
+        sorted = false,
+    )
+
+    // Apply the sampler chain
+    smpl.apply(curP)
+
+    check(curP.selected in 0 until curP.size) {
+        "Sampler did not select a token (selected=${curP.selected}, size=${curP.size})"
+    }
+
+    val token = curP.data[curP.selected].id
+
+    smpl.accept(token)
+
+    return token
 }
 
 // ---------------------------------------------------------------------------
@@ -1731,8 +1718,15 @@ fun llamaSamplerSample(
 // ---------------------------------------------------------------------------
 
 /** Collect perf data from a sampler chain. Maps to `llama_perf_sampler()`. */
-fun llamaPerfSampler(@Suppress("UNUSED_PARAMETER") chain: LlamaSampler): LlamaPerfSamplerData =
-    LlamaPerfSamplerData()
+fun llamaPerfSampler(chain: LlamaSampler): LlamaPerfSamplerData {
+    if (chain is LlamaSamplerChain) {
+        return LlamaPerfSamplerData(
+            tSampleMs = chain.tSampleUs / 1000.0,
+            nSample = chain.nSample,
+        )
+    }
+    return LlamaPerfSamplerData()
+}
 
 /** Print sampler perf data. Maps to `llama_perf_sampler_print()`. */
 fun llamaPerfSamplerPrint(chain: LlamaSampler) {
@@ -1743,13 +1737,25 @@ fun llamaPerfSamplerPrint(chain: LlamaSampler) {
 }
 
 /** Reset sampler perf counters. Maps to `llama_perf_sampler_reset()`. */
-fun llamaPerfSamplerReset(@Suppress("UNUSED_PARAMETER") chain: LlamaSampler) {
-    // TODO: reset when LlamaSamplerChain tracks perf
+fun llamaPerfSamplerReset(chain: LlamaSampler) {
+    if (chain is LlamaSamplerChain) {
+        chain.resetPerf()
+    }
 }
 
 /** Print memory breakdown. Maps to `llama_memory_breakdown_print()`. */
-fun llamaMemoryBreakdownPrint(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext) {
-    // TODO: implement memory breakdown reporting
+fun llamaMemoryBreakdownPrint(ctx: LlamaContext) {
+    val mem = ctx.getMemory() ?: return
+    val breakdown = mem.memoryBreakdown()
+    if (breakdown.isEmpty()) {
+        llamaLogInfo("llama_memory_breakdown: no memory breakdown available\n")
+        return
+    }
+    llamaLogInfo("llama_memory_breakdown:\n")
+    for ((key, size) in breakdown) {
+        val mib = size.toDouble() / (1024.0 * 1024.0)
+        llamaLogInfo("  $key ${llamaFormat("%.2f", mib)} MiB\n")
+    }
 }
 
 // ---------------------------------------------------------------------------

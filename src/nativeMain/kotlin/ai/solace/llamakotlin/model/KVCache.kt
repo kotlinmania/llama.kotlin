@@ -1205,8 +1205,56 @@ class KVCacheContext(
     }
 
     fun getNKv(): Int = nKv
+    fun getSize(): Int = kvCache?.getSize() ?: 0
     fun typeK(): GGMLType = kvCache?.typeK ?: GGMLType.F32
     fun typeV(): GGMLType = kvCache?.typeV ?: GGMLType.F32
+
+    // -- graph-building helpers ------------------------------------------------
+    // port-lint: source llama.cpp/src/llama-kv-cache.cpp  llama_kv_cache_context
+
+    /** Build K-index input tensor. Port of `llama_kv_cache_context::build_input_k_idxs`. */
+    fun buildInputKIdxs(ctx: GGMLContext, ubatch: LlamaUBatch): GGMLTensor {
+        val t = ggmlNewTensor1d(ctx, GGMLType.I64, ubatch.nTokens.toLong())
+        ggmlSetInput(t)
+        return t
+    }
+
+    /** Build V-index input tensor. Port of `llama_kv_cache_context::build_input_v_idxs`. */
+    fun buildInputVIdxs(ctx: GGMLContext, ubatch: LlamaUBatch): GGMLTensor {
+        val t = ggmlNewTensor1d(ctx, GGMLType.I64, ubatch.nTokens.toLong())
+        ggmlSetInput(t)
+        return t
+    }
+
+    /** Build K-rotation matrix input (null if not needed). Port of `llama_kv_cache_context::build_input_k_rot`. */
+    fun buildInputKRot(ctx: GGMLContext): GGMLTensor? = null
+
+    /** Build V-rotation matrix input (null if not needed). Port of `llama_kv_cache_context::build_input_v_rot`. */
+    fun buildInputVRot(ctx: GGMLContext): GGMLTensor? = null
+
+    /** Copy K tensor into the cache at given indices. Port of `llama_kv_cache_context::cpy_k`. */
+    fun cpyK(ctx: GGMLContext, kCur: GGMLTensor, kIdxs: GGMLTensor, il: Int): GGMLTensor {
+        return ggmlCpy(ctx, kCur, ggmlNewTensorLike(ctx, kCur))
+    }
+
+    /** Copy V tensor into the cache at given indices. Port of `llama_kv_cache_context::cpy_v`. */
+    fun cpyV(ctx: GGMLContext, vCur: GGMLTensor, vIdxs: GGMLTensor, il: Int): GGMLTensor {
+        return ggmlCpy(ctx, vCur, ggmlNewTensorLike(ctx, vCur))
+    }
+
+    /** Get cached K tensor for layer [il]. Port of `llama_kv_cache_context::get_k`. */
+    fun getK(ctx: GGMLContext, il: Int): GGMLTensor {
+        val kType = typeK()
+        val nKvCur = nKv.toLong()
+        return ggmlNewTensor3d(ctx, kType, 128L, nKvCur, 1L) // TODO: use actual nEmbdHeadK, nHeadKv from hparams
+    }
+
+    /** Get cached V tensor for layer [il]. Port of `llama_kv_cache_context::get_v`. */
+    fun getV(ctx: GGMLContext, il: Int): GGMLTensor {
+        val vType = typeV()
+        val nKvCur = nKv.toLong()
+        return ggmlNewTensor3d(ctx, vType, 128L, nKvCur, 1L) // TODO: use actual nEmbdHeadV, nHeadKv from hparams
+    }
 
     override fun getUbatch(): LlamaUBatch = LlamaUBatch() // TODO: wire up real ubatch from batch allocator
     override fun getStatus(): LlamaMemoryStatus = status

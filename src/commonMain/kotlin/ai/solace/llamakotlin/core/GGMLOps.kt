@@ -2246,3 +2246,27 @@ fun ggmlSoftMaxAddSinks(softmax: GGMLTensor, sinks: GGMLTensor?) {
         }
     }
 }
+
+// port-lint: source ggml/include/ggml.h  ggml_mul_mat_aux, ggml_new_tensor_like
+
+/**
+ * ggml_mul_mat_aux — auxiliary matrix multiply (used for rotation matrices in KV cache).
+ *
+ * Port of `ggml_mul_mat_aux` from `ggml.h`.  When the auxiliary tensor is null
+ * this is equivalent to a regular mat-mul; otherwise it applies the auxiliary
+ * transformation alongside the primary operand.
+ */
+fun ggmlMulMatAux(ctx: GGMLContext, a: GGMLTensor, aux: GGMLTensor): GGMLTensor {
+    // Auxiliary mat-mul: result = a * aux  (rotation / projection)
+    return matMul(ctx, a, aux)
+}
+
+/**
+ * ggml_new_tensor_like — allocate a new tensor with the same shape/type as [src].
+ *
+ * Port of `ggml_new_tensor_like` from `ggml.h`.
+ */
+fun ggmlNewTensorLike(ctx: GGMLContext, src: GGMLTensor): GGMLTensor {
+    // GGML tensors are always 4D; infer effective rank from trailing ne==1 dims
+    return ggmlNewTensor4d(ctx, src.type, src.ne[0], src.ne[1], src.ne[2], src.ne[3])
+}

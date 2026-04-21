@@ -58,7 +58,42 @@ class LlamaAdapterCvec(
      * @return `true` on success.
      */
     fun apply(data: FloatArray, len: Int, nEmbd: Int, ilStart: Int, ilEnd: Int): Boolean {
-        TODO("Port llama_adapter_cvec::apply")
+        if (data.isEmpty()) {
+            // Disable the current control vector (but leave allocated for later)
+            layerStart = -1
+            layerEnd = -1
+            return true
+        }
+
+        layerStart = ilStart
+        layerEnd = ilEnd
+
+        // Ensure we have enough tensor slots
+        while (tensors.size < ilEnd) {
+            tensors.add(null)
+        }
+
+        for (il in 1 until tensors.size) {
+            val t = tensors[il] ?: continue
+
+            val off = nEmbd * (il - 1) // buffer doesn't have data for layer 0
+            if (off + nEmbd <= len) {
+                // Write the float data into the tensor's backing ByteArray
+                val tensorData = t.data as? ByteArray ?: continue
+                for (i in 0 until nEmbd) {
+                    val bits = data[off + i].toRawBits()
+                    val byteOff = i * 4
+                    if (byteOff + 3 < tensorData.size) {
+                        tensorData[byteOff] = (bits and 0xFF).toByte()
+                        tensorData[byteOff + 1] = ((bits shr 8) and 0xFF).toByte()
+                        tensorData[byteOff + 2] = ((bits shr 16) and 0xFF).toByte()
+                        tensorData[byteOff + 3] = ((bits shr 24) and 0xFF).toByte()
+                    }
+                }
+            }
+        }
+
+        return true
     }
 }
 
