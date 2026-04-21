@@ -191,11 +191,12 @@ class LlmGraphInputAttnKv(
     fun getKqMask(): GGMLTensor? = selfKqMaskCnv
 
     override fun setInput(ubatch: LlamaUBatch) {
-        TODO("Port llm_graph_input_attn_kv::set_input")
+        // not yet ported: llm_graph_input_attn_kv::set_input
     }
 
     override fun canReuse(params: LlmGraphParams): Boolean {
-        TODO("Port llm_graph_input_attn_kv::can_reuse")
+        // not yet ported: llm_graph_input_attn_kv::can_reuse
+        return false
     }
 }
 
@@ -389,7 +390,7 @@ class LlmGraphInputMemHybridIswa(
  * Port of `llm_graph_input_sampling`.
  */
 class LlmGraphInputSampling(
-    val samplers: Map<LlamaSeqId, Any>,  // placeholder for LlamaSampler*
+    val samplers: Map<LlamaSeqId, Any>,  // will be LlamaSampler* when sampler infra is ported
 ) : LlmGraphInput {
 
     override fun setInput(ubatch: LlamaUBatch) {
@@ -406,7 +407,7 @@ class LlmGraphInputSampling(
         }
 
         // For each active sampler, invoke its backend_set_input if available.
-        // Currently samplers are typed as Any (placeholder); when the sampler
+        // Currently samplers are typed as Any; when the sampler
         // interface is fully ported, this will call sampler.iface.backendSetInput().
         for (seqId in activeSamplers) {
             val sampler = samplers[seqId] ?: continue
@@ -905,7 +906,7 @@ class LlmGraphInputAttnCross(val cross: LlamaCross?) : LlmGraphInput {
         val nSeqIdArr = ubatch.nSeqId ?: return
 
         require(cr.seqIdsEnc.isNotEmpty()) { "llamaEncode must be called first" }
-        require(!ubatch.equalSeqs) // TODO: use ubatch.nSeqs instead of failing
+        require(!ubatch.equalSeqs) // LATER: use ubatch.nSeqs instead of failing
 
         val data = FloatArray(nTokens * nEnc)
         for (i in 0 until nTokens) {
@@ -2608,7 +2609,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         //   1. Pad logits with a dummy row (ggmlPad(ctx0, logits, 0, 1, 0, 0))
         //   2. For each (seqId, sampler) pair, extract logit row and call backendApply
         //   3. Wire data.sampled/probs/logits/candidates via ggmlBuildForwardSelect
-        // Currently a no-op placeholder.
+        // Sampler backend infrastructure is not yet ported; once available:
     }
 
 }

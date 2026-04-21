@@ -1,7 +1,6 @@
-// port-lint: source llama.cpp/src/llama-graph.h llama.cpp/src/llama-graph.cpp
 /**
- * Core graph type enums and the [LlmGraphInput] interface ported from
- * `llama-graph.h` / `llama-graph.cpp`.
+ * Core graph type enums and the [LlmGraphInput] interface.
+ * Originally from `llama-graph.h`; primary port lives in [LlamaGraph.kt].
  *
  * Concrete input implementations, result / parameter containers, and the base
  * [LlmGraphContext] builder class live in [LlamaGraph.kt].

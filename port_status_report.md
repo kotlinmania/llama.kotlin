@@ -33,8 +33,8 @@ These files are well-ported and likely complete:
 These files need significant work:
 
 - `llama` → `model.Grammar` (0.00, 16 deps)
-- `llama-graph` → `model.LlamaGraph` (0.34, 7 deps)
 - `llama-hparams` → `model.LlamaHparams` (0.30, 4 deps)
+- `llama-graph` → `model.LlamaGraph` (0.42, 7 deps)
 - `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
 - `llama-mmap` → `model.LlamaMmap` (0.19, 5 deps)
 - `llama-impl` → `model.LlamaImpl` (0.16, 19 deps)
@@ -48,18 +48,18 @@ These files need significant work:
 - `llama-memory-recurrent` → `model.LlamaMemoryRecurrent` (0.00, 12 deps)
 - `llama-model` → `model.LlamaModel` (0.00, 12 deps)
 - `llama-vocab` → `model.LlamaVocab` (0.00, 6 deps)
-- `llama-kv-cache` → `model.KVCache` (0.00, 4 deps)
-- `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
 - `llama-context` → `model.LlamaAttention` (0.00, 4 deps)
-- `llama-memory-hybrid` → `model.LlamaMemoryHybrid` (0.00, 3 deps)
+- `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
+- `llama-kv-cache` → `model.KVCache` (0.00, 4 deps)
 - `llama-memory-hybrid-iswa` → `model.LlamaMemoryHybridIswa` (0.00, 3 deps)
+- `llama-memory-hybrid` → `model.LlamaMemoryHybrid` (0.00, 3 deps)
 - `llama-adapter` → `model.LlamaAdapter` (0.00, 2 deps)
 - `llama-ext` → `model.LlamaExt` (0.00, 2 deps)
 - `llama-sampler` → `model.LlamaSampler` (0.00, 1 deps)
 - `unicode` → `model.LlamaUnicode` (0.00, 1 deps)
 - `unicode-data` → `model.LlamaUnicodeData` (0.32, 1 deps)
-- `llama-quant` → `model.LlamaQuant` (0.00)
 - `models.llama` → `model.LlamaApi` (0.00)
+- `llama-quant` → `model.LlamaQuant` (0.00)
 - `models.maincoder` → `llamakotlin.main` (0.16)
 - `models.bitnet` → `core.GGMLBitNet158Test` (0.16)
 
@@ -108,7 +108,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4307 / 2 lines (215350%)
+**Documentation coverage:** 4353 / 2 lines (217650%)
 
 Top documentation gaps (>20%):
 

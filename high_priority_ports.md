@@ -7,8 +7,8 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
 | 1 | `llama` | `model.Grammar` | 0.00 | 16 | 52 | 828.8 |
-| 2 | `llama-graph` | `model.LlamaGraph` | 0.34 | 7 | 48 | 686.4 |
-| 3 | `llama-hparams` | `model.LlamaHparams` | 0.30 | 4 | 50 | 666.6 |
+| 2 | `llama-hparams` | `model.LlamaHparams` | 0.30 | 4 | 50 | 666.6 |
+| 3 | `llama-graph` | `model.LlamaGraph` | 0.42 | 7 | 41 | 586.5 |
 | 4 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
 | 5 | `llama-mmap` | `model.LlamaMmap` | 0.19 | 5 | 18 | 251.7 |
 | 6 | `llama-impl` | `model.LlamaImpl` | 0.16 | 19 | 11 | 188.6 |
@@ -24,7 +24,7 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 16 | `llama-memory-recurrent` | `model.LlamaMemoryRecurrent` | 0.00 | 12 | 0 | 12.8 |
 | 17 | `llama-model` | `model.LlamaModel` | 0.00 | 12 | 0 | 12.8 |
 | 18 | `llama-vocab` | `model.LlamaVocab` | 0.00 | 6 | 0 | 9.7 |
-| 19 | `llama-kv-cache` | `model.KVCache` | 0.00 | 4 | 0 | 8.0 |
+| 19 | `llama-context` | `model.LlamaAttention` | 0.00 | 4 | 0 | 8.0 |
 | 20 | `llama-model-loader` | `gguf.ModelLoader` | 0.00 | 4 | 0 | 8.0 |
 
 ## Critical Issues (Similarity < 0.60 with Dependencies)
@@ -35,14 +35,14 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 16
 
-- **llama-graph** → `model.LlamaGraph`
-  - Similarity: 0.34
-  - Dependencies: 7
-  - Lint issues: 2
-
 - **llama-hparams** → `model.LlamaHparams`
   - Similarity: 0.30
   - Dependencies: 4
+
+- **llama-graph** → `model.LlamaGraph`
+  - Similarity: 0.42
+  - Dependencies: 7
+  - Lint issues: 8
 
 - **llama-memory** → `model.LlamaMemory`
   - Similarity: 0.07
@@ -78,7 +78,6 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 114
   - TODOs: 2
-  - Lint issues: 2
 
 - **llama-cparams** → `model.LlamaCparams`
   - Similarity: 0.00
@@ -106,34 +105,34 @@ These files need immediate attention:
   - TODOs: 2
   - Lint issues: 8
 
-- **llama-kv-cache** → `model.KVCache`
-  - Similarity: 0.00
-  - Dependencies: 4
-  - TODOs: 5
-  - Lint issues: 8
-
-- **llama-model-loader** → `gguf.ModelLoader`
-  - Similarity: 0.00
-  - Dependencies: 4
-  - Lint issues: 1
-
 - **llama-context** → `model.LlamaAttention`
   - Similarity: 0.00
   - Dependencies: 4
   - TODOs: 4
   - Lint issues: 18
 
-- **llama-memory-hybrid** → `model.LlamaMemoryHybrid`
+- **llama-model-loader** → `gguf.ModelLoader`
   - Similarity: 0.00
-  - Dependencies: 3
-  - TODOs: 2
-  - Lint issues: 4
+  - Dependencies: 4
+  - Lint issues: 1
+
+- **llama-kv-cache** → `model.KVCache`
+  - Similarity: 0.00
+  - Dependencies: 4
+  - TODOs: 5
+  - Lint issues: 8
 
 - **llama-memory-hybrid-iswa** → `model.LlamaMemoryHybridIswa`
   - Similarity: 0.00
   - Dependencies: 3
   - TODOs: 2
   - Lint issues: 7
+
+- **llama-memory-hybrid** → `model.LlamaMemoryHybrid`
+  - Similarity: 0.00
+  - Dependencies: 3
+  - TODOs: 2
+  - Lint issues: 4
 
 - **llama-adapter** → `model.LlamaAdapter`
   - Similarity: 0.00
