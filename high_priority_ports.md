@@ -6,35 +6,30 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
-| 1 | `llama-context` | `model.LlamaAttention` | 0.07 | 4 | 153 | 2030.0 |
-| 2 | `llama-hparams` | `model.LlamaHparams` | 0.00 | 4 | 79 | 1052.3 |
-| 3 | `llama` | `model.Grammar` | 0.00 | 16 | 52 | 828.8 |
-| 4 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
-| 5 | `llama-impl` | `model.LlamaImpl` | 0.13 | 19 | 12 | 204.9 |
-| 6 | `llama-batch` | `model.LlamaBatch` | 0.47 | 7 | 8 | 118.8 |
-| 7 | `llama-arch` | `model.LlamaArch` | 0.09 | 5 | 8 | 116.8 |
-| 8 | `llama-model-saver` | `model.LlamaModelSaver` | 0.28 | 1 | 9 | 105.0 |
-| 9 | `llama-kv-cache-iswa` | `model.LlamaKvCacheIswa` | 0.61 | 3 | 3 | 41.0 |
-| 10 | `llama-io` | `model.LlamaIO` | 0.19 | 3 | 2 | 31.2 |
-| 11 | `models.models` | `model.InferencePipeline` | 0.00 | 114 | 0 | 23.7 |
-| 12 | `llama-kv-cells` | `model.LlamaKvCells` | 0.73 | 1 | 2 | 23.7 |
-| 13 | `llama-cparams` | `model.LlamaCparams` | 0.00 | 5 | 1 | 22.5 |
-| 14 | `llama-chat` | `model.LlamaChat` | 0.35 | 1 | 1 | 13.6 |
-| 15 | `llama-memory-recurrent` | `model.LlamaMemoryRecurrent` | 0.00 | 12 | 0 | 12.8 |
-| 16 | `llama-model` | `model.LlamaModel` | 0.00 | 12 | 0 | 12.8 |
-| 17 | `llama-graph` | `model.LlamaGraph` | 0.00 | 7 | 0 | 10.4 |
-| 18 | `llama-vocab` | `model.LlamaVocab` | 0.00 | 6 | 0 | 9.7 |
-| 19 | `llama-mmap` | `model.LlamaMmap` | 0.00 | 5 | 0 | 9.0 |
-| 20 | `llama-kv-cache` | `model.KVCache` | 0.00 | 4 | 0 | 8.0 |
+| 1 | `llama-hparams` | `model.LlamaHparams` | 0.00 | 4 | 79 | 1052.3 |
+| 2 | `llama` | `model.Grammar` | 0.00 | 16 | 52 | 828.8 |
+| 3 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
+| 4 | `llama-impl` | `model.LlamaImpl` | 0.13 | 19 | 12 | 204.9 |
+| 5 | `llama-batch` | `model.LlamaBatch` | 0.47 | 7 | 8 | 118.8 |
+| 6 | `llama-arch` | `model.LlamaArch` | 0.09 | 5 | 8 | 116.8 |
+| 7 | `llama-model-saver` | `model.LlamaModelSaver` | 0.28 | 1 | 9 | 105.0 |
+| 8 | `llama-kv-cache-iswa` | `model.LlamaKvCacheIswa` | 0.61 | 3 | 3 | 41.0 |
+| 9 | `llama-io` | `model.LlamaIO` | 0.19 | 3 | 2 | 31.2 |
+| 10 | `models.models` | `model.InferencePipeline` | 0.00 | 114 | 0 | 23.7 |
+| 11 | `llama-kv-cells` | `model.LlamaKvCells` | 0.73 | 1 | 2 | 23.7 |
+| 12 | `llama-cparams` | `model.LlamaCparams` | 0.00 | 5 | 1 | 22.5 |
+| 13 | `llama-chat` | `model.LlamaChat` | 0.35 | 1 | 1 | 13.6 |
+| 14 | `llama-memory-recurrent` | `model.LlamaMemoryRecurrent` | 0.00 | 12 | 0 | 12.8 |
+| 15 | `llama-model` | `model.LlamaModel` | 0.00 | 12 | 0 | 12.8 |
+| 16 | `llama-graph` | `model.LlamaGraph` | 0.00 | 7 | 0 | 10.4 |
+| 17 | `llama-vocab` | `model.LlamaVocab` | 0.00 | 6 | 0 | 9.7 |
+| 18 | `llama-mmap` | `model.LlamaMmap` | 0.00 | 5 | 0 | 9.0 |
+| 19 | `llama-kv-cache` | `model.KVCache` | 0.00 | 4 | 0 | 8.0 |
+| 20 | `llama-model-loader` | `gguf.ModelLoader` | 0.00 | 4 | 0 | 8.0 |
 
 ## Critical Issues (Similarity < 0.60 with Dependencies)
 
 These files need immediate attention:
-
-- **llama-context** → `model.LlamaAttention`
-  - Similarity: 0.07
-  - Dependencies: 4
-  - Lint issues: 4
 
 - **llama-hparams** → `model.LlamaHparams`
   - Similarity: 0.00
@@ -120,6 +115,12 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 4
   - Lint issues: 1
+
+- **llama-context** → `model.LlamaAttention`
+  - Similarity: 0.00
+  - Dependencies: 4
+  - TODOs: 4
+  - Lint issues: 18
 
 - **llama-memory-hybrid** → `model.LlamaMemoryHybrid`
   - Similarity: 0.00

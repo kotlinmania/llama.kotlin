@@ -32,7 +32,6 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
-- `llama-context` → `model.LlamaAttention` (0.07, 4 deps)
 - `llama-hparams` → `model.LlamaHparams` (0.00, 4 deps)
 - `llama` → `model.Grammar` (0.00, 16 deps)
 - `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
@@ -51,6 +50,7 @@ These files need significant work:
 - `llama-mmap` → `model.LlamaMmap` (0.00, 5 deps)
 - `llama-kv-cache` → `model.KVCache` (0.00, 4 deps)
 - `llama-model-loader` → `gguf.ModelLoader` (0.00, 4 deps)
+- `llama-context` → `model.LlamaAttention` (0.00, 4 deps)
 - `llama-memory-hybrid` → `model.LlamaMemoryHybrid` (0.00, 3 deps)
 - `llama-memory-hybrid-iswa` → `model.LlamaMemoryHybridIswa` (0.00, 3 deps)
 - `llama-adapter` → `model.LlamaAdapter` (0.00, 2 deps)
@@ -70,7 +70,6 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
-| `llama-context` | `model.LlamaAttention` | 8/12 | `llama_model`, `llama_batch_allocr`, `llama_io_read_i` … |
 | `llama` | `model.Grammar` | 18/18 | `llama_flash_attn_type`, `llama_device_memory_data`, `user_data_t` … |
 | `llama-memory` | `model.LlamaMemory` | 7/8 | `llama_ubatch`, `llama_batch_allocr`, `llama_io_write_i` … |
 | `llama-impl` | `model.LlamaImpl` | 3/5 | `no_init`, `ggml_tensor`, `gguf_context` |
@@ -107,7 +106,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4140 / 2 lines (207000%)
+**Documentation coverage:** 4199 / 2 lines (209950%)
 
 Top documentation gaps (>20%):
 
