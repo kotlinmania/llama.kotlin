@@ -137,18 +137,29 @@ enum class GGMLType(val description: String, val byteSize: ULong) {
     Q4_K("q4_k", (2uL * Short.SIZE_BYTES.toULong()) + K_SCALE_SIZE.toULong() + (QK_K / 2).toULong()),   // 2*F16 + K_SCALE_SIZE + QK_K/2 = 4 + 12 + 128 = 144 bytes
     Q5_K("q5_k", (2uL * Short.SIZE_BYTES.toULong()) + K_SCALE_SIZE.toULong() + (QK_K / 8).toULong() + (QK_K / 2).toULong()),   // 2*F16 + K_SCALE_SIZE + QK_K/8 + QK_K/2 = 4 + 12 + 32 + 128 = 176 bytes  
     Q6_K("q6_k", Short.SIZE_BYTES.toULong() + (QK_K / 16).toULong() + ((3 * QK_K) / 4).toULong()),   // F16 + QK_K/16 + 3*QK_K/4 = 2 + 16 + 192 = 210 bytes
-    Q8_K("q8_k", 4uL + QK_K.toULong() + ((QK_K / 16) * 2).toULong()),   // F32 + QK_K + QK_K/16*sizeof(int16_t) = 4 + 256 + 32 = 292 bytes
-    // BitNet 1.58 quantization (ternary values: -1, 0, +1)
-    // Block structure: F16 scale + packed ternary values
-    // 32 ternary values packed efficiently: log2(3^32) ≈ 50.6 bits, but we use a simpler packing
-    // We pack 5 ternary values into 1 byte (3^5 = 243 < 256), so 32/5 = 6.4 ≈ 7 bytes for values + padding
-    BITNET_1_58("bitnet_1_58", Short.SIZE_BYTES.toULong() + 8uL), // F16 scale + 8 bytes for packed ternary values (with padding)
-    Q1_5_K("q1_5_k", 0uL), // 1.5-bit quantized for K-quants (ternary: -1, 0, 1) - size is complex - TODO
-    I8("int8", 1uL),     // 8-bit integer
-    I16("int16", 2uL),    // 16-bit integer
-    I32("int32", 4uL),    // 32-bit integer
-    I64("int64", 8uL),    // 64-bit integer
-    COUNT("count", 0uL);   // Number of types (not a real data type)
+    Q8_K("q8_k", 4uL + QK_K.toULong() + ((QK_K / 16) * 2).toULong()),   // (15) F32 + QK_K + QK_K/16*sizeof(int16_t)
+    IQ2_XXS("iq2_xxs", 0uL), // (16)
+    IQ2_XS("iq2_xs", 0uL),   // (17)
+    IQ3_XXS("iq3_xxs", 0uL), // (18)
+    IQ1_S("iq1_s", 0uL),     // (19)
+    IQ4_NL("iq4_nl", 0uL),   // (20)
+    IQ3_S("iq3_s", 0uL),     // (21)
+    IQ2_S("iq2_s", 0uL),     // (22)
+    IQ4_XS("iq4_xs", 0uL),   // (23)
+    I8("int8", 1uL),         // (24) 8-bit integer
+    I16("int16", 2uL),       // (25) 16-bit integer
+    I32("int32", 4uL),       // (26) 32-bit integer
+    I64("int64", 8uL),       // (27) 64-bit integer
+    F64("float64", 8uL),     // (28) double precision
+    IQ1_M("iq1_m", 0uL),     // (29)
+    BF16("bf16", 2uL),       // (30) Brain float 16
+    // 31-33 removed (Q4_0_4_4, Q4_0_4_8, Q4_0_8_8)
+    TQ1_0("tq1_0", 0uL),     // (34) Ternary quantization
+    TQ2_0("tq2_0", 0uL),     // (35) Ternary quantization v2
+    // Custom extension types (not in C++ ggml)
+    BITNET_1_58("bitnet_1_58", Short.SIZE_BYTES.toULong() + 8uL),
+    Q1_5_K("q1_5_k", 0uL),
+    COUNT("count", 0uL);   // sentinel — not a real data type
 
     /**
      * Get size in bytes as Int (convenience property)
@@ -166,23 +177,35 @@ enum class GGMLType(val description: String, val byteSize: ULong) {
                 1 -> F16
                 2 -> Q4_0
                 3 -> Q4_1
-                4 -> Q5_0
-                5 -> Q5_1
-                6 -> Q8_0
-                7 -> Q8_1
-                8 -> Q2_K
-                9 -> Q3_K
-                10 -> Q4_K
-                11 -> Q5_K
-                12 -> Q6_K
-                13 -> Q8_K
-                14 -> BITNET_1_58
-                15 -> Q1_5_K
-                16 -> I8
-                17 -> I16
-                18 -> I32
-                19 -> I64
-                20 -> COUNT
+                // 4, 5 removed (Q4_2, Q4_3)
+                6 -> Q5_0
+                7 -> Q5_1
+                8 -> Q8_0
+                9 -> Q8_1
+                10 -> Q2_K
+                11 -> Q3_K
+                12 -> Q4_K
+                13 -> Q5_K
+                14 -> Q6_K
+                15 -> Q8_K
+                16 -> IQ2_XXS
+                17 -> IQ2_XS
+                18 -> IQ3_XXS
+                19 -> IQ1_S
+                20 -> IQ4_NL
+                21 -> IQ3_S
+                22 -> IQ2_S
+                23 -> IQ4_XS
+                24 -> I8
+                25 -> I16
+                26 -> I32
+                27 -> I64
+                28 -> F64
+                29 -> IQ1_M
+                30 -> BF16
+                // 31-33 removed
+                34 -> TQ1_0
+                35 -> TQ2_0
                 else -> null
             }
         }

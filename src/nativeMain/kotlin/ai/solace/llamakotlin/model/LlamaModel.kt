@@ -315,6 +315,17 @@ enum class LlamaRopeScalingType(val displayName: String) {
     }
 }
 
+/**
+ * RoPE type — determines how positional encoding is applied.
+ * Ported from: `llama_rope_type` in llama.h.
+ */
+enum class LlamaRopeType {
+    NONE,
+    NORM,
+    MROPE,
+    IMROPE,
+}
+
 /** Expert gating function type. */
 enum class LlamaExpertGatingFuncType(val id: Int) {
     NONE(0),
@@ -520,6 +531,7 @@ data class LlamaModelHParams(
     var decNLayer: Int = 0,
 
     // -- rope types (stored as ordinal, resolved at use site) --
+    var ropeType: LlamaRopeType = LlamaRopeType.NONE,
     var ropeScalingTypeTrain: LlamaRopeScalingType = LlamaRopeScalingType.NONE,
 ) {
     // -- convenience accessors matching C++ member functions --
@@ -585,6 +597,148 @@ data class LlamaModelHParams(
                 denseFirst -> if (il % nPattern == 0) 0 else 1
                 else -> if (il % nPattern == nPattern - 1) 0 else 1
             }
+        }
+    }
+
+    // -- additional accessors ported from llama-hparams.cpp -------------------
+
+    /** Input embedding dimension (includes deepstack layers if present). */
+    fun nEmbdInp(): Int {
+        var result = nEmbd
+        if (nDeepstackLayers > 0) {
+            result += nEmbd * nDeepstackLayers
+        }
+        return result
+    }
+
+    /** Whether key GQA size varies across layers. */
+    fun isNEmbdKGqaVariable(): Boolean {
+        val baseline = nEmbdKGqa()
+        for (il in 0 until nLayer) {
+            if (nEmbdKGqa(il) != baseline) return true
+        }
+        return false
+    }
+
+    /** Whether value GQA size varies across layers. */
+    fun isNEmbdVGqaVariable(): Boolean {
+        val baseline = nEmbdVGqa()
+        for (il in 0 until nLayer) {
+            if (nEmbdVGqa(il) != baseline) return true
+        }
+        return false
+    }
+
+    /** Maximum key GQA size across all layers. */
+    fun nEmbdKGqaMax(): Int {
+        var v = nEmbdKGqa()
+        for (il in 0 until nLayer) v = maxOf(v, nEmbdKGqa(il))
+        return v
+    }
+
+    /** Maximum value GQA size across all layers. */
+    fun nEmbdVGqaMax(): Int {
+        var v = nEmbdVGqa()
+        for (il in 0 until nLayer) v = maxOf(v, nEmbdVGqa(il))
+        return v
+    }
+
+    /**
+     * Recurrent state size for convolution-based layers (RWKV, LFM2, Mamba, Kimi KDA).
+     * Port of `llama_hparams::n_embd_r()`.
+     */
+    fun nEmbdR(): Int {
+        if (wkvHeadSize != 0) {
+            return tokenShiftCount * nEmbd
+        }
+        if (nShortconvLCache != 0) {
+            return nEmbd * (nShortconvLCache - 1)
+        }
+        if (nEmbdHeadKda != 0) {
+            val dInner = nHead() * nEmbdHeadKda
+            return 3 * (if (ssmDConv > 0) ssmDConv - 1 else 3) * dInner
+        }
+        return (if (ssmDConv > 0) ssmDConv - 1 else 0) * (ssmDInner + 2 * ssmNGroup * ssmDState)
+    }
+
+    /**
+     * Recurrent state size for SSM/RWKV states.
+     * Port of `llama_hparams::n_embd_s()`.
+     */
+    fun nEmbdS(): Int {
+        if (wkvHeadSize != 0) {
+            return nEmbd * wkvHeadSize
+        }
+        if (nEmbdHeadKda != 0) {
+            return nEmbdHeadKda * nEmbdHeadKda * nHead()
+        }
+        return ssmDState * ssmDInner
+    }
+
+    /** Number of position values per embedding (4 for M-RoPE/iM-RoPE, 1 otherwise). */
+    fun nPosPerEmbd(): Int =
+        if (ropeType == LlamaRopeType.MROPE || ropeType == LlamaRopeType.IMROPE) 4 else 1
+
+    /** Whether this model uses Multi-head Latent Attention (DeepSeek-V2 style). */
+    fun isMla(): Boolean {
+        check(
+            (nEmbdHeadKMlaImpl == 0 && nEmbdHeadVMlaImpl == 0) ||
+            (nEmbdHeadKMlaImpl != 0 && nEmbdHeadVMlaImpl != 0)
+        )
+        return nEmbdHeadKMlaImpl != 0 && nEmbdHeadVMlaImpl != 0
+    }
+
+    /** Key head dimension for MLA (falls back to full attention dimension). */
+    fun nEmbdHeadKMla(): Int = if (isMla()) nEmbdHeadKMlaImpl else nEmbdHeadK()
+
+    /** Value head dimension for MLA (falls back to full attention dimension). */
+    fun nEmbdHeadVMla(): Int = if (isMla()) nEmbdHeadVMlaImpl else nEmbdHeadV()
+
+    /** Whether layer [il] has a KV cache (vs. pure cross-attention / no-KV layer). */
+    fun hasKv(il: Int): Boolean {
+        if (nLayerKvFromStart >= 0) {
+            return il < nLayerKvFromStart
+        }
+        return true
+    }
+
+    /** Total number of layers that have KV caches. */
+    fun nLayerKv(): Int {
+        var count = 0
+        for (il in 0 until nLayer) {
+            if (hasKv(il)) count++
+        }
+        return count
+    }
+
+    /** Whether M-RoPE is active (first two rope sections are positive). */
+    fun useMrope(): Boolean = ropeSections[0] > 0 && ropeSections[1] > 0
+
+    companion object {
+        /**
+         * Check whether position [p0] is masked out by sliding-window attention
+         * when the query position is [p1].
+         *
+         * Port of `llama_hparams::is_masked_swa()`.
+         */
+        fun isMaskedSwa(nSwa: Int, swaType: LlamaSwaType, p0: Int, p1: Int): Boolean {
+            require(p0 >= 0 && p1 >= 0)
+            when (swaType) {
+                LlamaSwaType.NONE -> { /* not masked */ }
+                LlamaSwaType.STANDARD -> {
+                    if (p1 - p0 >= nSwa) return true
+                }
+                LlamaSwaType.CHUNKED -> {
+                    val posChunkStart = (p1 / nSwa) * nSwa
+                    if (p0 < posChunkStart) return true
+                }
+                LlamaSwaType.SYMMETRIC -> {
+                    val halfNSwa = nSwa / 2
+                    val posDiff = p1 - p0
+                    if (posDiff < -halfNSwa || posDiff > halfNSwa) return true
+                }
+            }
+            return false
         }
     }
 }
