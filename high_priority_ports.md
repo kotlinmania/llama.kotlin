@@ -7,11 +7,11 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
 | 1 | `models.models` | `model.InferencePipeline` | 0.00 | 114 | 255 | 4993.6 |
-| 2 | `llama-context` | `model.LlamaAttention` | 0.00 | 4 | 195 | 2585.7 |
-| 3 | `llama-model` | `model.LlamaModel` | 0.00 | 12 | 92 | 1404.8 |
-| 4 | `llama-kv-cache` | `model.KVCache` | 0.00 | 4 | 81 | 1078.8 |
-| 5 | `llama-model-loader` | `gguf.ModelLoader` | 0.00 | 4 | 58 | 774.7 |
-| 6 | `llama-grammar` | `model.Grammar` | 0.00 | 1 | 53 | 606.9 |
+| 2 | `llama-model` | `model.LlamaModel` | 0.02 | 12 | 80 | 1222.9 |
+| 3 | `llama-grammar` | `model.Grammar` | 0.00 | 1 | 53 | 606.9 |
+| 4 | `llama` | `model.KVCache` | 0.00 | 16 | 0 | 14.2 |
+| 5 | `llama-model-loader` | `gguf.ModelLoader` | 0.00 | 4 | 0 | 8.0 |
+| 6 | `llama-context` | `model.LlamaAttention` | 0.00 | 4 | 0 | 8.0 |
 | 7 | `llama-model-saver` | `model.GGMLIntegration` | 0.00 | 1 | 0 | 3.5 |
 | 8 | `models.maincoder` | `main` | 0.16 | 0 | 0 | 0.0 |
 
@@ -23,28 +23,29 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 114
 
-- **llama-context** → `model.LlamaAttention`
-  - Similarity: 0.00
-  - Dependencies: 4
-  - Lint issues: 4
-
 - **llama-model** → `model.LlamaModel`
-  - Similarity: 0.00
+  - Similarity: 0.02
   - Dependencies: 12
   - Lint issues: 5
 
-- **llama-kv-cache** → `model.KVCache`
+- **llama-grammar** → `model.Grammar`
   - Similarity: 0.00
-  - Dependencies: 4
+  - Dependencies: 1
+
+- **llama** → `model.KVCache`
+  - Similarity: 0.00
+  - Dependencies: 16
+  - Lint issues: 4
 
 - **llama-model-loader** → `gguf.ModelLoader`
   - Similarity: 0.00
   - Dependencies: 4
   - Lint issues: 1
 
-- **llama-grammar** → `model.Grammar`
+- **llama-context** → `model.LlamaAttention`
   - Similarity: 0.00
-  - Dependencies: 1
+  - Dependencies: 4
+  - Lint issues: 16
 
 - **llama-model-saver** → `model.GGMLIntegration`
   - Similarity: 0.00
@@ -56,16 +57,16 @@ These files need immediate attention:
 | Rank | Source file | Deps | Path |
 |------|------------|------|------|
 | 1 | `llama-impl` | 19 | `llama-impl.h` |
-| 2 | `llama` | 16 | `llama.cpp` |
-| 3 | `llama-memory-recurrent` | 12 | `llama-memory-recurrent.h` |
-| 4 | `llama-batch` | 7 | `llama-batch.h` |
-| 5 | `llama-graph` | 7 | `llama-graph.h` |
-| 6 | `llama-memory` | 7 | `llama-memory.h` |
-| 7 | `llama-vocab` | 6 | `llama-vocab.h` |
-| 8 | `llama-mmap` | 5 | `llama-mmap.h` |
-| 9 | `llama-arch` | 5 | `llama-arch.h` |
-| 10 | `llama-cparams` | 5 | `llama-cparams.h` |
-| 11 | `llama-hparams` | 4 | `llama-hparams.h` |
+| 2 | `llama-memory-recurrent` | 12 | `llama-memory-recurrent.h` |
+| 3 | `llama-batch` | 7 | `llama-batch.h` |
+| 4 | `llama-graph` | 7 | `llama-graph.h` |
+| 5 | `llama-memory` | 7 | `llama-memory.h` |
+| 6 | `llama-vocab` | 6 | `llama-vocab.h` |
+| 7 | `llama-mmap` | 5 | `llama-mmap.h` |
+| 8 | `llama-arch` | 5 | `llama-arch.h` |
+| 9 | `llama-cparams` | 5 | `llama-cparams.h` |
+| 10 | `llama-hparams` | 4 | `llama-hparams.h` |
+| 11 | `llama-kv-cache` | 4 | `llama-kv-cache.h` |
 | 12 | `llama-io` | 3 | `llama-io.h` |
 | 13 | `llama-kv-cache-iswa` | 3 | `llama-kv-cache-iswa.h` |
 | 14 | `llama-memory-hybrid` | 3 | `llama-memory-hybrid.h` |

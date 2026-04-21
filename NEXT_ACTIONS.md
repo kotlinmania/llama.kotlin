@@ -19,10 +19,16 @@ Based on AST analysis, here are the concrete next steps.
 - **Action:** Deep review - likely missing major functionality
 
 ### 2. llama-model
-- **Similarity:** 0.00 (needs 85% improvement)
+- **Similarity:** 0.02 (needs 83% improvement)
 - **Dependencies:** 12
-- **Priority Score:** 1404.8
-- **Symbol Deficit:** 92 (functions: 77, types: 15)
+- **Priority Score:** 1222.9
+- **Symbol Deficit:** 80 (functions: 69, types: 11)
+- **Action:** Deep review - likely missing major functionality
+
+### 3. llama
+- **Similarity:** 0.00 (needs 85% improvement)
+- **Dependencies:** 16
+- **Priority Score:** 14.2
 - **Action:** Deep review - likely missing major functionality
 
 ## Priority 2: Port Missing High-Value Files
@@ -33,11 +39,7 @@ Critical missing files (>10 dependencies):
    - Path: `llama-impl.h`
    - Essential for 19 other files
 
-2. **llama** (16 deps)
-   - Path: `llama.cpp`
-   - Essential for 16 other files
-
-3. **llama-memory-recurrent** (12 deps)
+2. **llama-memory-recurrent** (12 deps)
    - Path: `llama-memory-recurrent.h`
    - Essential for 12 other files
 
