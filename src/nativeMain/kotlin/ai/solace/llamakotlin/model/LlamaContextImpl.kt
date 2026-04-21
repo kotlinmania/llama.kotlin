@@ -380,9 +380,80 @@ fun LlamaContext.graphParamsImpl(
 // =============================================================================
 
 /**
- * Process a single micro-batch through the graph.
+ * Process a single micro-batch through the graph (internal version).
  *
  * Port of `llama_context::process_ubatch(ubatch, gtype, mctx, ret)`.
+ *
+ * @return Pair of (LlmGraphResult or null, status code)
+ */
+private fun LlamaContext.processUBatchInternal(
+    ubatch: LlamaUBatch,
+    gtype: LlmGraphType,
+    memoryContext: LlamaMemoryContext? = null,
+): Pair<LlmGraphResult?, Int> {
+    // Apply memory context (e.g. set up KV cache view for current ubatch)
+    if (memoryContext != null && !memoryContext.apply()) {
+        llamaLogError("processUBatch: failed to apply memory context\n")
+        return null to GGMLStatus.FAILED
+    }
+
+    val res = gfResPrev as? LlmGraphResult
+    if (res == null) {
+        llamaLogError("processUBatch: no previous graph result available\n")
+        return null to GGMLStatus.FAILED
+    }
+
+    val gparams = graphParamsImpl(res, ubatch, gtype).copy(mctx = memoryContext)
+
+    if (!graphReuseDisable && res.canReuse(gparams)) {
+        // Graph can be reused — synchronize if pipeline parallel to avoid
+        // overwriting inputs that the previous compute is still reading.
+        if (cparams.pipelineParallel) {
+            synchronize()
+        }
+        nReused++
+    } else {
+        // Build a new graph
+        res.reset()
+
+        // In the full implementation this would call:
+        //   ggml_backend_sched_reset(sched)
+        //   gf = model.build_graph(gparams)
+        //   ggml_backend_sched_alloc_graph(sched, gf)
+        // For now, we build a minimal graph placeholder.
+        val gf = GGMLCGraph(size = graphMaxNodesImpl(ubatch.nTokens))
+        res.gf = gf
+
+        if (res.getGf() == null) {
+            llamaLogError("processUBatch: failed to build graph\n")
+            return null to GGMLStatus.FAILED
+        }
+    }
+
+    // Set the input data for the input tensors
+    res.setInputs(ubatch)
+
+    // Execute graph compute
+    val gf = res.getGf()
+    if (gf == null) {
+        llamaLogError("processUBatch: graph is null after setup\n")
+        return null to GGMLStatus.FAILED
+    }
+
+    val status = graphComputeImpl(gf, ubatch.nTokens > 1)
+    if (status != GGMLStatus.SUCCESS) {
+        llamaLogError("processUBatch: failed to compute graph, status: $status\n")
+        return null to status
+    }
+
+    return res to GGMLStatus.SUCCESS
+}
+
+/**
+ * Process a single micro-batch through the graph.
+ *
+ * Public-facing version that returns the compute graph (compatible with
+ * [LlamaContext.processUBatch] signature).
  *
  * @return Pair of (compute graph or null, status code)
  */
@@ -391,20 +462,8 @@ fun LlamaContext.processUBatchImpl(
     gtype: LlmGraphType,
     memoryContext: LlamaMemoryContext? = null,
 ): Pair<GGMLCGraph?, Int> {
-    // Apply memory context (e.g. set up KV cache view for current ubatch)
-    if (memoryContext != null && !memoryContext.apply()) {
-        return null to GGMLStatus.FAILED
-    }
-
-    // TODO: full implementation — build or reuse graph, set inputs, compute
-    //   1. Check if previous graph can be reused via res.canReuse(gparams)
-    //   2. If not reusable: reset scheduler, build graph via model.buildGraph(gparams)
-    //   3. Allocate graph in scheduler
-    //   4. Set inputs from ubatch via res.setInputs(ubatch)
-    //   5. Execute graph_compute
-    //   6. Return result
-
-    return null to GGMLStatus.FAILED
+    val (res, status) = processUBatchInternal(ubatch, gtype, memoryContext)
+    return (res?.getGf()) to status
 }
 
 // =============================================================================
@@ -423,12 +482,28 @@ fun LlamaContext.encodeImpl(batchInp: LlamaBatch): Int {
     }
 
     if (batchInp.nTokens == 0) {
+        llamaLogError("encode: nTokens == 0\n")
         return -1
     }
 
     val nVocab = model.config.vocabSize
     val nEmbd = model.config.hiddenSize
-    val nTokens = batchInp.nTokens
+
+    // Initialize the batch allocator
+    val ba = balloc
+    if (ba == null) {
+        llamaLogError("encode: batch allocator not initialized\n")
+        return -1
+    }
+
+    val nSeqMax = if (cparams.kvUnified) LLAMA_MAX_SEQ else cparams.nSeqMax
+
+    if (!ba.init(batchInp, nVocab, nEmbd, nSeqMax, true)) {
+        llamaLogError("encode: failed to initialize batch\n")
+        return -1
+    }
+
+    val nTokens = ba.getNTokens()
 
     // micro-batching is not possible for non-causal encoding — process full batch
     require(cparams.nUbatch >= nTokens) { "encoder requires nUbatch >= nTokens" }
@@ -440,9 +515,14 @@ fun LlamaContext.encodeImpl(batchInp: LlamaBatch): Int {
     // Clear sequence embeddings
     embdSeq.clear()
 
+    schedReserveImpl()
+
+    addQueuedTokens(nTokens.toLong())
+
     // Reserve output buffer
     val reserved = outputReserveImpl(nTokens)
     if (reserved < nTokens) {
+        llamaLogError("encode: could not reserve space for batch with $nTokens outputs\n")
         return -2
     }
 
@@ -452,30 +532,21 @@ fun LlamaContext.encodeImpl(batchInp: LlamaBatch): Int {
     }
     setNOutputsValue(nTokens)
 
-    addQueuedTokens(nTokens.toLong())
-
     // Save and temporarily override causal attention
     val causalAttnOrig = cparams.causalAttn
     cparams.causalAttn = false
 
-    // Build ubatch from the full batch
-    val ubatch = LlamaUBatch(
-        nTokens = nTokens,
-        tokens = batchInp.tokens,
-        embeddings = batchInp.embeddings,
-        pos = batchInp.pos,
-        seqId = batchInp.seqId,
-        output = BooleanArray(nTokens) { true },
-        equalSeqs = false,
-    )
+    // Build the ubatch from the full batch via splitSimple (processes everything at once)
+    val ubatchInternal = ba.splitSimple(nTokens)
+    val ubatch = ubatchInternal.toLlamaUBatch()
 
     // Process the ubatch
-    val (graph, status) = processUBatchImpl(ubatch, LlmGraphType.ENCODER, null)
+    val (res, status) = processUBatchInternal(ubatch, LlmGraphType.ENCODER, null)
 
     // Restore causal attention
     cparams.causalAttn = causalAttnOrig
 
-    if (graph == null) {
+    if (res == null) {
         return when (status) {
             GGMLStatus.ABORTED -> 2
             GGMLStatus.ALLOC_FAILED -> -2
@@ -483,11 +554,103 @@ fun LlamaContext.encodeImpl(batchInp: LlamaBatch): Int {
         }
     }
 
-    // TODO: extract logits and embeddings from graph result
-    // In full implementation this would:
-    //   - Get t_logits and t_embd from the result
-    //   - Copy them asynchronously to the host logits/embd buffers
-    //   - Handle pooled embeddings based on pooling_type
+    // Extract logits
+    val tLogits = res.tLogits
+    val tEmbd = res.tEmbdPooled ?: res.tEmbd
+
+    if (logits != null && tLogits != null) {
+        // In the full implementation this copies from the backend tensor to the host buffer.
+        // For now the data is assumed to already be accessible via the tensor's data field.
+        val logitsBuf = logits
+        val srcData = tLogits.data as? ByteArray
+        if (logitsBuf != null && srcData != null) {
+            val count = minOf(nTokens * nVocab, logitsSize)
+            copyF32FromBytes(srcData, logitsBuf, 0, count)
+        }
+    }
+
+    // Extract embeddings
+    if (embd != null && tEmbd != null) {
+        val embdBuf = embd!!
+        val nEmbdOut = nEmbd // In deepstack models this may differ
+        when (cparams.poolingType) {
+            LlamaPoolingType.NONE -> {
+                val srcData = tEmbd.data as? ByteArray
+                if (srcData != null) {
+                    val count = minOf(nTokens * nEmbdOut, embdSize)
+                    copyF32FromBytes(srcData, embdBuf, 0, count)
+                }
+            }
+            LlamaPoolingType.MEAN, LlamaPoolingType.CLS, LlamaPoolingType.LAST -> {
+                val srcData = tEmbd.data as? ByteArray
+                if (srcData != null) {
+                    val seqIdUnqArr = ubatch.seqIdUnq
+                    val seqIdxArr = ubatch.seqIdx
+                    if (seqIdUnqArr != null && seqIdxArr != null) {
+                        for (s in 0 until ubatch.nSeqsUnq) {
+                            val seqId = seqIdUnqArr[s]
+                            val seqIdx = seqIdxArr[seqId]
+                            val seqEmbd = FloatArray(nEmbdOut)
+                            copyF32FromBytes(srcData, seqEmbd, nEmbdOut * seqIdx, nEmbdOut)
+                            embdSeq[seqId] = seqEmbd
+                        }
+                    }
+                }
+            }
+            LlamaPoolingType.RANK -> {
+                // Extract rerank scores (n_cls_out floats per sequence)
+                val srcData = tEmbd.data as? ByteArray
+                if (srcData != null) {
+                    val seqIdUnqArr = ubatch.seqIdUnq
+                    val seqIdxArr = ubatch.seqIdx
+                    if (seqIdUnqArr != null && seqIdxArr != null) {
+                        for (s in 0 until ubatch.nSeqsUnq) {
+                            val seqId = seqIdUnqArr[s]
+                            val seqIdx = seqIdxArr[seqId]
+                            val rankEmbd = FloatArray(1) // nClsOut typically 1
+                            copyF32FromBytes(srcData, rankEmbd, seqIdx, 1)
+                            embdSeq[seqId] = rankEmbd
+                        }
+                    }
+                }
+            }
+            LlamaPoolingType.UNSPECIFIED -> {
+                error("unknown pooling type")
+            }
+        }
+    }
+
+    // T5 cross-attention: copy encoder output for later use by decoder
+    if (tEmbd != null) {
+        val tEmbdNe0 = tEmbd.ne[0]
+        val tEmbdNe1 = tEmbd.ne[1]
+        if (tEmbdNe0 > 0 && tEmbdNe1 > 0) {
+            cross.nEmbd = tEmbdNe0
+            cross.nEnc = tEmbdNe1
+            val nFloats = (tEmbdNe0 * tEmbdNe1).toInt()
+            cross.vEmbd.clear()
+            val embdBuf = embd
+            if (embdBuf != null && nFloats <= embdSize) {
+                for (k in 0 until nFloats) {
+                    cross.vEmbd.add(embdBuf[k])
+                }
+            }
+            // Remember sequence IDs used during encoding
+            val batchAfterInit = ba.getBatch()
+            cross.seqIdsEnc.clear()
+            val batchSeqId = batchAfterInit.seqId
+            val batchNSeqId = batchAfterInit.nSeqId
+            if (batchSeqId != null && batchNSeqId != null) {
+                for (i in 0 until nTokens) {
+                    val seqSet = mutableSetOf<LlamaSeqId>()
+                    for (s in 0 until batchNSeqId[i]) {
+                        seqSet.add(batchSeqId[i][s])
+                    }
+                    cross.seqIdsEnc.add(seqSet)
+                }
+            }
+        }
+    }
 
     return 0
 }
@@ -507,7 +670,14 @@ fun LlamaContext.decodeImpl(batchInp: LlamaBatch): Int {
         "Exactly one of tokens or embeddings must be set"
     }
 
+    // If no memory module, fall back to encode (encoder-only model)
+    if (memory == null) {
+        llamaLogDebug("decode: cannot decode without memory (calling encode instead)\n")
+        return encodeImpl(batchInp)
+    }
+
     if (batchInp.nTokens == 0) {
+        llamaLogError("decode: nTokens == 0\n")
         return -1
     }
 
@@ -516,16 +686,51 @@ fun LlamaContext.decodeImpl(batchInp: LlamaBatch): Int {
 
     // When computing embeddings, all tokens are output
     val outputAll = cparams.embeddings
+    val hasSamplers = sampling.samplers.isNotEmpty()
 
-    val nTokensAll = batchInp.nTokens
-    val nOutputsAll = if (outputAll) {
-        nTokensAll
-    } else {
-        batchInp.logits?.count { it } ?: nTokensAll
+    val nSeqMax = if (cparams.kvUnified) LLAMA_MAX_SEQ else cparams.nSeqMax
+
+    // Validate: backend sampling requires at most one output token per sequence
+    if (hasSamplers && batchInp.logits != null) {
+        val seqOutputCount = IntArray(nSeqMax)
+        for (i in 0 until batchInp.nTokens) {
+            if (batchInp.logits!![i] == false) continue
+            val ns = batchInp.nSeqId?.get(i) ?: 1
+            for (s in 0 until ns) {
+                val seqId = batchInp.seqId?.get(i)?.get(s) ?: 0
+                seqOutputCount[seqId]++
+                if (seqOutputCount[seqId] > 1) {
+                    llamaLogError("decode: backend sampling requires at most one output token per sequence (seq_id $seqId had ${seqOutputCount[seqId]})\n")
+                    return -1
+                }
+            }
+        }
     }
 
-    require(nTokensAll <= cparams.nBatch) { "batch size exceeds n_batch" }
-    require(cparams.causalAttn || cparams.nUbatch >= nTokensAll) {
+    // Initialize the batch allocator
+    val ba = balloc
+    if (ba == null) {
+        llamaLogError("decode: batch allocator not initialized\n")
+        return -1
+    }
+
+    if (!ba.init(batchInp, nVocab, nEmbd, nSeqMax, outputAll, memory)) {
+        llamaLogError("decode: failed to initialize batch\n")
+        return -1
+    }
+
+    val nTokensAll = ba.getNTokens()
+    val nOutputsAll = ba.getNOutputs()
+
+    if (outputAll) {
+        if (nOutputsAll != nTokensAll) {
+            llamaLogError("decode: pooled embedding requires that all tokens are output (nOutputsAll=$nOutputsAll, nTokensAll=$nTokensAll)\n")
+            return -1
+        }
+    }
+
+    check(nTokensAll <= cparams.nBatch) { "batch size $nTokensAll exceeds n_batch ${cparams.nBatch}" }
+    check(cparams.causalAttn || cparams.nUbatch >= nTokensAll) {
         "non-causal attention requires nUbatch >= nTokens"
     }
 
@@ -538,58 +743,228 @@ fun LlamaContext.decodeImpl(batchInp: LlamaBatch): Int {
     embdSeq.clear()
     outputSwaps.clear()
 
-    // Handle pending memory shifts/copies
+    schedReserveImpl()
+
+    var didOptimize = false
+
+    // Handle any pending shifts/copies
     memoryUpdateImpl(false)
 
-    // TODO: full memory context initialization via memory.initBatch()
-    //   In the full implementation this loop:
-    //   1. Initializes the memory context from the batch allocator
-    //   2. Handles FAILED_PREPARE by trying memory_update(optimize=true)
-    //   3. Returns 1 if still no slot available
+    // Initialize memory context — retry after optimization if needed
+    val mem = memory!!
+    var mctx: LlamaMemoryContext
+    while (true) {
+        mctx = mem.initBatch(ba, cparams.nUbatch, outputAll)
+
+        when (mctx.getStatus()) {
+            LlamaMemoryStatus.SUCCESS -> break
+            LlamaMemoryStatus.NO_UPDATE -> {
+                llamaLogError("decode: unexpected memory context status: NO_UPDATE\n")
+                return -2
+            }
+            LlamaMemoryStatus.FAILED_PREPARE -> {
+                if (!didOptimize) {
+                    didOptimize = true
+                    if (memoryUpdateImpl(true)) {
+                        llamaLogDebug("decode: retrying batch size ${ba.getNTokens()} after cache optimization\n")
+                        continue
+                    }
+                }
+                llamaLogWarn("decode: failed to find a memory slot for batch of size ${ba.getNTokens()}\n")
+                return 1
+            }
+            LlamaMemoryStatus.FAILED_COMPUTE -> {
+                llamaLogError("decode: compute failed while preparing batch of size ${ba.getNTokens()}\n")
+                return -2
+            }
+        }
+    }
 
     // Reserve output buffer
     val reserved = outputReserveImpl(nOutputsAll)
     if (reserved < nOutputsAll) {
+        llamaLogError("decode: could not reserve space for batch with $nOutputsAll outputs\n")
         return -2
     }
 
-    // Process ubatches
-    // In the full implementation this loops over ubatches from the memory context:
-    //   - Counts outputs per ubatch
-    //   - Calls process_ubatch for each
-    //   - Extracts logits/embeddings
-    //   - Handles output reordering
+    var nOutputsPrev = 0
 
-    val ubatch = LlamaUBatch(
-        nTokens = nTokensAll,
-        tokens = batchInp.tokens,
-        embeddings = batchInp.embeddings,
-        pos = batchInp.pos,
-        seqId = batchInp.seqId,
-        output = batchInp.logits ?: BooleanArray(nTokensAll) { true },
-        equalSeqs = false,
-    )
+    // Process ubatches from the memory context
+    do {
+        val ubatch = mctx.getUbatch()
 
-    setNOutputsValue(nOutputsAll)
-
-    val (graph, status) = processUBatchImpl(ubatch, LlmGraphType.DECODER, null)
-
-    if (graph == null) {
-        return when (status) {
-            GGMLStatus.ABORTED -> 2
-            GGMLStatus.ALLOC_FAILED -> -2
-            else -> -3
+        // Count the outputs in this ubatch
+        val nOutputsNew = if (nOutputsAll == nTokensAll) {
+            ubatch.nTokens
+        } else {
+            val outArr = ubatch.output
+            if (outArr != null) {
+                var count = 0
+                for (i in 0 until ubatch.nTokens) {
+                    if (outArr[i]) count++
+                }
+                count
+            } else {
+                ubatch.nTokens
+            }
         }
-    }
+
+        // Set before graph build
+        setNOutputsValue(nOutputsNew)
+
+        val (res, status) = processUBatchInternal(ubatch, LlmGraphType.DECODER, mctx)
+
+        if (res == null) {
+            // Failed — remove all positions of this ubatch from the memory module
+            val posMin = IntArray(LLAMA_MAX_SEQ) { Int.MAX_VALUE }
+
+            val ubatchSeqId = ubatch.seqId
+            val ubatchPos = ubatch.pos
+            if (ubatchSeqId != null && ubatchPos != null) {
+                for (i in 0 until ubatch.nTokens) {
+                    val seqId = ubatchSeqId[i][0]
+                    if (ubatchPos[i] < posMin[seqId]) {
+                        posMin[seqId] = ubatchPos[i]
+                    }
+                }
+            }
+
+            for (s in 0 until LLAMA_MAX_SEQ) {
+                if (posMin[s] == Int.MAX_VALUE) continue
+                llamaLogWarn("decode: removing memory entries for seq_id=$s, pos=[${posMin[s]}, +inf)\n")
+                mem.seqRm(s, posMin[s], -1)
+            }
+
+            return when (status) {
+                GGMLStatus.ABORTED -> 2
+                GGMLStatus.ALLOC_FAILED -> -2
+                else -> -3
+            }
+        }
+
+        // Extract logits
+        val tLogits = res.tLogits
+        if (logits != null && tLogits != null && nOutputsNew > 0 &&
+            needsRawLogits(ubatch, sampling.samplers)
+        ) {
+            val logitsBuf = logits!!
+            val srcData = tLogits.data as? ByteArray
+            if (srcData != null) {
+                check(nOutputsPrev + nOutputsNew <= nOutputsAll)
+                val offset = nOutputsPrev * nVocab
+                val count = minOf(nOutputsNew * nVocab, logitsSize - offset)
+                if (count > 0) {
+                    copyF32FromBytes(srcData, logitsBuf, offset, count)
+                }
+            }
+        }
+
+        // Extract embeddings
+        val tEmbd = if (cparams.embeddings) {
+            val pooled = res.tEmbdPooled
+            pooled ?: res.tEmbd
+        } else null
+
+        if (embd != null && tEmbd != null && nOutputsNew > 0) {
+            val embdBuf = embd!!
+            val nEmbdOut = nEmbd
+            val srcData = tEmbd.data as? ByteArray
+
+            when (cparams.poolingType) {
+                LlamaPoolingType.NONE -> {
+                    if (srcData != null) {
+                        val offset = nOutputsPrev * nEmbdOut
+                        val count = minOf(nOutputsNew * nEmbdOut, embdSize - offset)
+                        if (count > 0) {
+                            copyF32FromBytes(srcData, embdBuf, offset, count)
+                        }
+                    }
+                }
+                LlamaPoolingType.MEAN, LlamaPoolingType.CLS, LlamaPoolingType.LAST -> {
+                    if (srcData != null) {
+                        val seqIdUnqArr = ubatch.seqIdUnq
+                        val seqIdxArr = ubatch.seqIdx
+                        if (seqIdUnqArr != null && seqIdxArr != null) {
+                            for (s in 0 until ubatch.nSeqsUnq) {
+                                val seqId = seqIdUnqArr[s]
+                                val seqIdx = seqIdxArr[seqId]
+                                val seqEmbd = FloatArray(nEmbdOut)
+                                copyF32FromBytes(srcData, seqEmbd, nEmbdOut * seqIdx, nEmbdOut)
+                                embdSeq[seqId] = seqEmbd
+                            }
+                        }
+                    }
+                }
+                LlamaPoolingType.RANK -> {
+                    if (srcData != null) {
+                        val seqIdUnqArr = ubatch.seqIdUnq
+                        val seqIdxArr = ubatch.seqIdx
+                        if (seqIdUnqArr != null && seqIdxArr != null) {
+                            for (s in 0 until ubatch.nSeqsUnq) {
+                                val seqId = seqIdUnqArr[s]
+                                val seqIdx = seqIdxArr[seqId]
+                                val rankEmbd = FloatArray(1)
+                                copyF32FromBytes(srcData, rankEmbd, seqIdx, 1)
+                                embdSeq[seqId] = rankEmbd
+                            }
+                        }
+                    }
+                }
+                LlamaPoolingType.UNSPECIFIED -> error("unknown pooling type")
+            }
+        }
+
+        nOutputsPrev += nOutputsNew
+    } while (mctx.next())
+
+    // Set to total number of outputs in the batch
+    setNOutputsValue(nOutputsAll)
 
     // Set output mappings
     if (nOutputsAll > 0) {
+        var sortedOutput = true
+        val outIds = ba.getOutIds()
+
+        check(outIds.size == nOutputsAll) {
+            "outIds.size=${outIds.size} != nOutputsAll=$nOutputsAll"
+        }
+
         for (i in 0 until nOutputsAll) {
-            setOutputId(i, i)
+            val outId = outIds[i]
+            setOutputId(outId, i)
+            if (outId != i) {
+                sortedOutput = false
+            }
+        }
+
+        // Reorder outputs if not already sorted (relevant for recurrent models)
+        if (!sortedOutput && nOutputsAll > 1) {
+            // Selection sort to minimize swaps
+            for (i in 0 until nOutputsAll - 1) {
+                var jMin = i
+                for (j in (i + 1) until nOutputsAll) {
+                    if (outIds[j] < outIds[jMin]) {
+                        jMin = j
+                    }
+                }
+                if (jMin == i) continue
+
+                // Swap in outIds
+                val tmp = outIds[i]
+                outIds[i] = outIds[jMin]
+                outIds[jMin] = tmp
+
+                // Remember the swap for lazy logits/embeddings reordering
+                outputSwaps.add(SwapInfo(i, jMin))
+            }
+
+            // Rebuild output_ids mapping
+            resetOutputIds()
+            for (i in 0 until nOutputsAll) {
+                setOutputId(outIds[i], i)
+            }
         }
     }
-
-    // TODO: extract logits and embeddings from the result graph
 
     return 0
 }
@@ -1090,6 +1465,58 @@ fun needsRawLogits(ubatch: LlamaUBatch, samplers: Map<LlamaSeqId, Any>): Boolean
         }
     }
     return false
+}
+
+// =============================================================================
+// Utility: LlamaUBatchInternal → LlamaUBatch conversion
+// =============================================================================
+
+/**
+ * Convert an internal micro-batch (from the batch allocator) to the public
+ * [LlamaUBatch] type used by graph building and memory contexts.
+ */
+internal fun LlamaUBatchInternal.toLlamaUBatch(): LlamaUBatch {
+    return LlamaUBatch(
+        nTokens = nTokens,
+        nSeqTokens = nSeqTokens,
+        nSeqs = nSeqs,
+        nSeqsUnq = nSeqsUnq,
+        nPos = nPos,
+        tokens = token,
+        embeddings = embd,
+        pos = pos,
+        nSeqId = nSeqId,
+        seqId = seqId,
+        seqIdUnq = seqIdUnq,
+        seqIdx = seqIdx,
+        output = output?.let { bytes ->
+            BooleanArray(bytes.size) { i -> bytes[i] != 0.toByte() }
+        },
+        equalSeqs = equalSeqs,
+    )
+}
+
+// =============================================================================
+// Utility: copyF32FromBytes — extract Float values from a ByteArray
+// =============================================================================
+
+/**
+ * Copy [count] floats from a little-endian [src] ByteArray into [dst] starting
+ * at index [dstOffset]. Each float is 4 bytes in the source.
+ *
+ * Used to simulate `ggml_backend_tensor_get_async` for host-accessible tensors.
+ */
+internal fun copyF32FromBytes(src: ByteArray, dst: FloatArray, dstOffset: Int, count: Int) {
+    val effectiveCount = minOf(count, dst.size - dstOffset)
+    for (i in 0 until effectiveCount) {
+        val byteIdx = i * 4
+        if (byteIdx + 3 >= src.size) break
+        val bits = (src[byteIdx].toInt() and 0xFF) or
+            ((src[byteIdx + 1].toInt() and 0xFF) shl 8) or
+            ((src[byteIdx + 2].toInt() and 0xFF) shl 16) or
+            ((src[byteIdx + 3].toInt() and 0xFF) shl 24)
+        dst[dstOffset + i] = Float.fromBits(bits)
+    }
 }
 
 // =============================================================================
