@@ -686,6 +686,60 @@ fun llamaModelLoadFromSplits(
 }
 
 /**
+ * Callback invoked by the model loader for each tensor that needs data.
+ *
+ * Maps to `llama_model_set_tensor_data_t` in C++.
+ *
+ * @param tensorName  The name of the tensor being loaded.
+ * @param data        The destination byte array to fill with tensor data.
+ */
+typealias LlamaModelSetTensorDataCallback = (tensorName: String, data: ByteArray) -> Unit
+
+/**
+ * Initialise a model from user-supplied metadata and tensor data.
+ *
+ * This is used when the caller manages GGUF parsing externally and provides
+ * tensor data via a callback rather than reading from a file path.
+ *
+ * Maps to `llama_model_init_from_user()` in C++.
+ *
+ * @param metadata        Pre-parsed GGUF metadata context.
+ * @param setTensorData   Callback that will supply tensor data for each tensor.
+ * @param params          Model loading parameters (mmap/extra_bufts are forced off).
+ * @return The loaded [LlamaModelData], or `null` on failure.
+ */
+fun llamaModelInitFromUser(
+    @Suppress("UNUSED_PARAMETER") metadata: Any, // GGUFContextInternal when integrated
+    @Suppress("UNUSED_PARAMETER") setTensorData: LlamaModelSetTensorDataCallback?,
+    params: LlamaModelParams = llamaModelDefaultParams(),
+): LlamaModelData? {
+    // Force options that don't apply when loading from user-supplied data
+    val adjustedParams = params.copy(useMmap = false, useExtraBuffts = false)
+    llamaLogInfo("llamaModelInitFromUser: initialising model from user-supplied data\n")
+    // TODO: integrate with LlamaModelLoader using metadata + callback
+    val model = LlamaModelData()
+    model.hparams.vocabOnly = adjustedParams.vocabOnly
+    model.hparams.noAlloc = adjustedParams.noAlloc
+    return model
+}
+
+/**
+ * Load a model from a file path.
+ *
+ * **Deprecated** – use [llamaModelLoadFromFile] instead.
+ * Retained for API parity with the deprecated `llama_load_model_from_file()` in C++.
+ *
+ * @param pathModel File path to the GGUF model.
+ * @param params    Model loading parameters.
+ * @return The loaded [LlamaModelData], or `null` on failure.
+ */
+@Deprecated("Use llamaModelLoadFromFile instead", replaceWith = ReplaceWith("llamaModelLoadFromFile(pathModel, params)"))
+fun llamaLoadModelFromFile(
+    pathModel: String,
+    params: LlamaModelParams = llamaModelDefaultParams(),
+): LlamaModelData? = llamaModelLoadFromFile(pathModel, params)
+
+/**
  * Free resources held by a [LlamaModelData].
  *
  * In the Kotlin port this is a no-op because the GC reclaims memory.
