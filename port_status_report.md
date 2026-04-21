@@ -20,8 +20,8 @@
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
-- Good (0.60-0.84): 0 files (0.0% of matched)
-- Critical (<0.60): 36 files (100.0% of matched)
+- Good (0.60-0.84): 1 files (2.8% of matched)
+- Critical (<0.60): 35 files (97.2% of matched)
 
 ### Excellent Ports (Similarity ≥ 0.85)
 
@@ -35,7 +35,6 @@ These files need significant work:
 - `ggml-cpu.vec` → `fp.VectorOps` (0.00, 1 deps)
 - `gguf` → `gguf.GGUFParser` (0.01, 1 deps)
 - `ggml-cpu.quants` → `core.GGMLQuants` (0.00, 4 deps)
-- `ggml-backend` → `core.GGMLBackendUtils` (0.50, 20 deps)
 - `ggml-opt` → `core.GGMLOptimizationSchedulerTest` (0.00)
 - `ggml-sycl.common` → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` (0.00)
 - `ggml-cpu.ggml-cpu-impl` → `core.GGMLCpuImpl` (0.02, 11 deps)
@@ -52,8 +51,8 @@ These files need significant work:
 - `ggml-sycl.set_rows` → `core.GGMLTensorUtils` (0.00, 2 deps)
 - `openvino.input_model` → `model.Sampling` (0.00, 3 deps)
 - `backend.backend-dispatched-buffer` → `buffer.LimbBuffer` (0.00)
-- `backend.backend` → `core.GGMLBackendTest` (0.00)
 - `ggml-virtgpu.ggml-backend` → `core.GGMLBackend` (0.00)
+- `backend.backend` → `core.GGMLBackendTest` (0.00)
 - `backend.backend-dispatched-buffer-type` → `buffer.MemoryOps` (0.00)
 - `amx.common` → `common.ZlibLoggerNative` (0.00)
 - `ggml-sycl.type` → `gguf.GGUFTypes` (0.00, 2 deps)
@@ -77,13 +76,13 @@ present in the Rust source file.
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
 | `gguf` | `gguf.GGUFParser` | 14/14 | `type_to_gguf_type`, `gguf_type`, `gguf_kv` … |
-| `ggml-backend` | `core.GGMLBackendUtils` | 14/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 13/13 | `ggml_opt_dataset`, `ggml_context`, `ggml_tensor` … |
 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 5/7 | `ggml_int16x8x2_t`, `ggml_uint8x16x2_t`, `ggml_uint8x16x4_t` … |
 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 10/10 | `ggml_cann_device_info`, `cann_device_info`, `ggml_cann_pool` … |
 | `kleidiai.kernels` | `bench.ShiftKernels` | 5/5 | `cpu_feature`, `kernel_info`, `lhs_packing_info` … |
+| `ggml-backend` | `core.GGMLBackendUtils` | 14/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
 | `ggml-metal.ggml-metal-common` | `common.StatOps` | 4/4 | `ggml_tensor`, `ggml_cgraph`, `ggml_mem_range_type` … |
 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 5/5 | `graph_key`, `graph_key_hash`, `ov_runtime_context` … |
 | `openvino.input_model` | `model.Sampling` | 3/3 | `FrontEnd`, `GgmlDecoder`, `InputModel` |
@@ -123,7 +122,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 3959 / 1661 lines (238%)
+**Documentation coverage:** 3995 / 1661 lines (241%)
 
 Top documentation gaps (>20%):
 

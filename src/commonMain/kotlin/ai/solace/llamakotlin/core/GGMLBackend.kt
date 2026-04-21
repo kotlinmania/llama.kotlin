@@ -824,7 +824,7 @@ class GGMLBackendSched private constructor(
                 sched.backends[b] = backends[b]
                 sched.bufts[b] = bufts?.getOrNull(b)
                     ?: ggmlBackendGetDefaultBufferType(backends[b])
-                require(ggmlBackendSupportsBufferType(backends[b], sched.bufts[b]!!))
+                require(ggmlBackendSupportsBuft(backends[b], sched.bufts[b]!!))
 
                 if (nCopies > 1) {
                     for (c in 0 until nCopies) {
@@ -1199,21 +1199,5 @@ fun ggmlBackendCompareGraphBackend(
     return true
 }
 
-// ---------------------------------------------------------------------------
-// CPU convenience helpers
-// ---------------------------------------------------------------------------
-
-/**
- * `ggml_backend_cpu_buffer_from_ptr` — wrap an existing byte array as a CPU buffer.
- * C: ggml-backend.cpp lines 2368-2371.
- */
-fun ggmlBackendCpuBufferFromPtr(ptr: ByteArray, size: ULong): GGMLBackendBuffer {
-    return GGMLCpuBufferFromPtr(ptr, size)
-}
-
-/**
- * `ggml_backend_cpu_buffer_type` – get the CPU buffer type singleton.
- */
-fun ggmlBackendCpuBufferType(): GGMLBackendBufferType {
-    return GGMLCpuBufferType()
-}
+// CPU convenience helpers moved to GGMLBackendUtils.kt:
+// ggmlBackendCpuBufferFromPtr, ggmlBackendCpuBufferType

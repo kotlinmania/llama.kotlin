@@ -9,16 +9,16 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 1 | `ggml-cpu.vec` | `fp.VectorOps` | 0.00 | 1 | 106 | 1210.4 |
 | 2 | `gguf` | `gguf.GGUFParser` | 0.01 | 1 | 97 | 1107.9 |
 | 3 | `ggml-cpu.quants` | `core.GGMLQuants` | 0.00 | 4 | 70 | 933.4 |
-| 4 | `ggml-backend` | `core.GGMLBackendUtils` | 0.50 | 20 | 55 | 892.6 |
-| 5 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 0.00 | 0 | 57 | 570.0 |
-| 6 | `ggml-sycl.common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 0 | 57 | 570.0 |
-| 7 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 0.02 | 11 | 34 | 521.2 |
-| 8 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.00 | 47 | 24 | 445.2 |
-| 9 | `ggml-impl` | `core.NumericConversions` | 0.39 | 58 | 21 | 393.6 |
-| 10 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
-| 11 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
-| 12 | `ggml-sycl.fattn-common` | `common.Constants` | 0.00 | 3 | 27 | 351.8 |
-| 13 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
+| 4 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 0.00 | 0 | 57 | 570.0 |
+| 5 | `ggml-sycl.common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 0 | 57 | 570.0 |
+| 6 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 0.02 | 11 | 34 | 521.2 |
+| 7 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.00 | 47 | 24 | 445.2 |
+| 8 | `ggml-impl` | `core.NumericConversions` | 0.39 | 58 | 21 | 393.6 |
+| 9 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
+| 10 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
+| 11 | `ggml-sycl.fattn-common` | `common.Constants` | 0.00 | 3 | 27 | 351.8 |
+| 12 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
+| 13 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 20 | 18 | 293.9 |
 | 14 | `ggml-metal.ggml-metal-common` | `common.StatOps` | 0.00 | 1 | 24 | 276.7 |
 | 15 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
 | 16 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
@@ -43,11 +43,6 @@ These files need immediate attention:
 - **ggml-cpu.quants** → `core.GGMLQuants`
   - Similarity: 0.00
   - Dependencies: 4
-
-- **ggml-backend** → `core.GGMLBackendUtils`
-  - Similarity: 0.50
-  - Dependencies: 20
-  - Lint issues: 10
 
 - **ggml-cpu.ggml-cpu-impl** → `core.GGMLCpuImpl`
   - Similarity: 0.02

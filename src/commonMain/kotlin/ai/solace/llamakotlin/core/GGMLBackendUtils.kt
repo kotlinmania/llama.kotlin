@@ -392,7 +392,7 @@ fun ggmlBackendSupportsOp(backend: GGMLBackend, op: GGMLTensor): Boolean {
 }
 
 /** `ggml_backend_supports_buft` */
-fun ggmlBackendSupportsBufferType(backend: GGMLBackend, buft: GGMLBackendBufferType): Boolean {
+fun ggmlBackendSupportsBuft(backend: GGMLBackend, buft: GGMLBackendBufferType): Boolean {
     return backend.supportsBufferType(buft)
 }
 
@@ -564,7 +564,7 @@ fun ggmlBackendDevSupportsOp(device: GGMLBackendDevice, op: GGMLTensor): Boolean
 }
 
 /** `ggml_backend_dev_supports_buft` */
-fun ggmlBackendDevSupportsBufferType(device: GGMLBackendDevice, buft: GGMLBackendBufferType): Boolean {
+fun ggmlBackendDevSupportsBuft(device: GGMLBackendDevice, buft: GGMLBackendBufferType): Boolean {
     return device.supportsBufferType(buft)
 }
 
@@ -670,6 +670,22 @@ fun ggmlBackendMultiBufferSetUsage(buffer: GGMLBackendBuffer, usage: GGMLBackend
     buffer.setUsage(usage)
 }
 
+/**
+ * `ggml_backend_multi_buffer_free_buffer` — static vtable entry in C.
+ * Frees all sub-buffers in a multi-buffer wrapper.
+ */
+fun ggmlBackendMultiBufferFreeBuffer(buffer: GGMLBackendBuffer) {
+    buffer.free()
+}
+
+/**
+ * `ggml_backend_multi_buffer_clear` — static vtable entry in C.
+ * Clears all sub-buffers in a multi-buffer.
+ */
+fun ggmlBackendMultiBufferClear(buffer: GGMLBackendBuffer, value: UByte) {
+    buffer.clear(value)
+}
+
 // =====================================================================
 // 9. Utility helpers
 //    C: ggml_dup_tensor_layout, ggml_is_view_op, fmt_size
@@ -751,7 +767,7 @@ fun ggmlBackendSchedBackendFromBuffer(sched: GGMLBackendSched, tensor: GGMLTenso
     val buffer = tensor.viewSrc?.buffer ?: tensor.buffer ?: return -1
 
     for (i in 0 until sched.nBackends) {
-        if (ggmlBackendSupportsBufferType(sched.backends[i]!!, buffer.getType()) &&
+        if (ggmlBackendSupportsBuft(sched.backends[i]!!, buffer.getType()) &&
             ggmlBackendSupportsOp(sched.backends[i]!!, op)
         ) {
             return i
@@ -875,7 +891,7 @@ fun ggmlBackendSchedBufferSupported(sched: GGMLBackendSched, t: GGMLTensor, back
         }
     }
 
-    return buft != null && ggmlBackendSupportsBufferType(sched.backends[backendId]!!, buft)
+    return buft != null && ggmlBackendSupportsBuft(sched.backends[backendId]!!, buft)
 }
 
 /**
@@ -1614,4 +1630,184 @@ class GGMLCpuBufferFromPtr(
     override fun setUsage(usage: GGMLBackendBufferUsage) { this.usage = usage }
     override fun getUsage(): GGMLBackendBufferUsage = usage
     override fun reset() { clear(0u) }
+}
+
+// =====================================================================
+// 15. CPU buffer vtable functions (top-level wrappers)
+//     C: static ggml_backend_cpu_buffer_* functions (lines 2213-2327)
+//     These are static vtable entries in C. In Kotlin the logic is in
+//     GGMLCpuBuffer / GGMLCpuBufferType classes — these wrappers exist
+//     for naming parity with the C source.
+// =====================================================================
+
+/** `ggml_backend_cpu_buffer_get_base` — C line 2213 (static vtable entry). */
+fun ggmlBackendCpuBufferGetBase(buffer: GGMLBackendBuffer): Any? = buffer.getBase()
+
+/** `ggml_backend_cpu_buffer_free_buffer` — C line 2225 (static vtable entry). */
+fun ggmlBackendCpuBufferFreeBuffer(buffer: GGMLBackendBuffer) = buffer.free()
+
+/** `ggml_backend_cpu_buffer_memset_tensor` — C line 2230 (static vtable entry). */
+fun ggmlBackendCpuBufferMemsetTensor(buffer: GGMLBackendBuffer, tensor: GGMLTensor, value: UByte, offset: ULong, size: ULong) {
+    val data = tensor.data
+    if (data is ByteArray) {
+        data.fill(value.toByte(), offset.toInt(), (offset + size).toInt())
+    }
+}
+
+/** `ggml_backend_cpu_buffer_set_tensor` — C line 2237 (static vtable entry). */
+fun ggmlBackendCpuBufferSetTensor(buffer: GGMLBackendBuffer, tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+    buffer.setTensor(tensor, data, offset, size)
+}
+
+/** `ggml_backend_cpu_buffer_get_tensor` — C line 2244 (static vtable entry). */
+fun ggmlBackendCpuBufferGetTensor(buffer: GGMLBackendBuffer, tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+    buffer.getTensor(tensor, data, offset, size)
+}
+
+/** `ggml_backend_cpu_buffer_cpy_tensor` — C line 2251 (static vtable entry). */
+fun ggmlBackendCpuBufferCpyTensor(buffer: GGMLBackendBuffer, src: GGMLTensor, dst: GGMLTensor): Boolean {
+    return buffer.copyTensor(src, dst)
+}
+
+/** `ggml_backend_cpu_buffer_clear` — C line 2262 (static vtable entry). */
+fun ggmlBackendCpuBufferClear(buffer: GGMLBackendBuffer, value: UByte) {
+    buffer.clear(value)
+}
+
+/** `ggml_backend_cpu_buffer_type_get_name` — C line 2299 (static vtable entry). */
+fun ggmlBackendCpuBufferTypeGetName(buft: GGMLBackendBufferType): String = buft.getName()
+
+/** `ggml_backend_cpu_buffer_type_alloc_buffer` — C line 2305 (static vtable entry). */
+fun ggmlBackendCpuBufferTypeAllocBuffer(buft: GGMLBackendBufferType, size: ULong): GGMLBackendBuffer? {
+    return buft.allocBuffer(size)
+}
+
+/** `ggml_backend_cpu_buffer_type_get_alignment` — C line 2316 (static vtable entry). */
+fun ggmlBackendCpuBufferTypeGetAlignment(buft: GGMLBackendBufferType): UInt = buft.getAlignment()
+
+/** `ggml_backend_cpu_buffer_type_is_host` — C line 2322 (static vtable entry). */
+fun ggmlBackendCpuBufferTypeIsHost(buft: GGMLBackendBufferType): Boolean = buft.isHost()
+
+/** `ggml_backend_cpu_buffer_from_ptr_type_get_name` — C line 2345. */
+fun ggmlBackendCpuBufferFromPtrTypeGetName(buft: GGMLBackendBufferType): String = buft.getName()
+
+/** `ggml_backend_cpu_buffer_from_ptr_type` — C line 2351. Returns singleton buft. */
+fun ggmlBackendCpuBufferFromPtrType(): GGMLBackendBufferType = GGMLCpuBufferFromPtrType()
+
+/** `ggml_backend_cpu_buffer_from_ptr` — C line 2368. */
+fun ggmlBackendCpuBufferFromPtr(ptr: ByteArray, size: ULong): GGMLBackendBuffer {
+    return GGMLCpuBufferFromPtr(ptr, size)
+}
+
+/** `ggml_backend_cpu_buffer_type` — C line 2328. Returns the CPU buffer type. */
+fun ggmlBackendCpuBufferType(): GGMLBackendBufferType = GGMLCpuBufferType()
+
+// ---------------------------------------------------------------------------
+// Scheduler public API  (ggml-backend.cpp lines 1727-1976)
+// Top-level functions matching C naming, delegating to GGMLBackendSched class.
+// ---------------------------------------------------------------------------
+
+/**
+ * `ggml_backend_sched_new` — C: ggml-backend.cpp lines 1727-1793.
+ */
+fun ggmlBackendSchedNew(
+    backends: List<GGMLBackend>,
+    bufts: List<GGMLBackendBufferType>?,
+    nBackends: Int,
+    graphSize: Int,
+    parallel: Boolean,
+    opOffload: Boolean
+): GGMLBackendSched {
+    return GGMLBackendSched.new(
+        backends = backends.take(nBackends),
+        bufts = bufts,
+        graphSize = graphSize,
+        parallel = parallel,
+        opOffload = opOffload
+    )
+}
+
+/** `ggml_backend_sched_free` — C: ggml-backend.cpp lines 1796-1819. */
+fun ggmlBackendSchedFree(sched: GGMLBackendSched?) {
+    sched?.free()
+}
+
+/** `ggml_backend_sched_reset` — C: ggml-backend.cpp lines 1821-1831. */
+fun ggmlBackendSchedReset(sched: GGMLBackendSched) {
+    sched.reset()
+}
+
+/** `ggml_backend_sched_reserve_size` — C: ggml-backend.cpp lines 1833-1845. */
+fun ggmlBackendSchedReserveSize(sched: GGMLBackendSched, measureGraph: GGMLCGraph, sizes: ULongArray) {
+    sched.reserveSize(measureGraph, sizes)
+}
+
+/** `ggml_backend_sched_reserve` — C: ggml-backend.cpp lines 1847-1862. */
+fun ggmlBackendSchedReserve(sched: GGMLBackendSched, measureGraph: GGMLCGraph): Boolean {
+    return sched.reserve(measureGraph)
+}
+
+/** `ggml_backend_sched_alloc_graph` — C: ggml-backend.cpp lines 1864-1881. */
+fun ggmlBackendSchedAllocGraph(sched: GGMLBackendSched, graph: GGMLCGraph): Boolean {
+    return sched.allocGraph(graph)
+}
+
+/** `ggml_backend_sched_graph_compute` — C: ggml-backend.cpp lines 1883-1887. */
+fun ggmlBackendSchedGraphCompute(sched: GGMLBackendSched, graph: GGMLCGraph): GGMLStatus {
+    return sched.graphCompute(graph)
+}
+
+/** `ggml_backend_sched_graph_compute_async` — C: ggml-backend.cpp lines 1889-1902. */
+fun ggmlBackendSchedGraphComputeAsync(sched: GGMLBackendSched, graph: GGMLCGraph): GGMLStatus {
+    return sched.graphComputeAsync(graph)
+}
+
+/** `ggml_backend_sched_synchronize` — C: ggml-backend.cpp lines 1904-1915. */
+fun ggmlBackendSchedSynchronize(sched: GGMLBackendSched) {
+    sched.synchronize()
+}
+
+/** `ggml_backend_sched_set_eval_callback` — C: ggml-backend.cpp lines 1917-1921. */
+fun ggmlBackendSchedSetEvalCallback(sched: GGMLBackendSched, callback: GGMLBackendSchedEvalCallback?, userData: Any? = null) {
+    sched.setEvalCallback(callback, userData)
+}
+
+/** `ggml_backend_sched_get_n_splits` — C: ggml-backend.cpp line 1923. */
+fun ggmlBackendSchedGetNSplits(sched: GGMLBackendSched): Int {
+    return sched.getNumSplits()
+}
+
+/** `ggml_backend_sched_get_n_copies` — C: ggml-backend.cpp line 1928. */
+fun ggmlBackendSchedGetNCopies(sched: GGMLBackendSched): Int {
+    return sched.getNumCopies()
+}
+
+/** `ggml_backend_sched_get_n_backends` — C: ggml-backend.cpp line 1933. */
+fun ggmlBackendSchedGetNBackends(sched: GGMLBackendSched): Int {
+    return sched.getNumBackends()
+}
+
+/** `ggml_backend_sched_get_backend` — C: ggml-backend.cpp line 1938. */
+fun ggmlBackendSchedGetBackend(sched: GGMLBackendSched, i: Int): GGMLBackend? {
+    return sched.getBackend(i)
+}
+
+/** `ggml_backend_sched_get_buffer_type` — C: ggml-backend.cpp line 1944. */
+fun ggmlBackendSchedGetBufferType(sched: GGMLBackendSched, backend: GGMLBackend): GGMLBackendBufferType? {
+    return sched.getBufferType(backend)
+}
+
+/** `ggml_backend_sched_get_buffer_size` — C: ggml-backend.cpp line 1952. */
+fun ggmlBackendSchedGetBufferSize(sched: GGMLBackendSched, backend: GGMLBackend): ULong {
+    return sched.getBufferSize(backend)
+}
+
+/** `ggml_backend_sched_set_tensor_backend` — C: ggml-backend.cpp line 1960. */
+fun ggmlBackendSchedSetTensorBackend(sched: GGMLBackendSched, node: GGMLTensor, backend: GGMLBackend) {
+    sched.setTensorBackend(node, backend)
+}
+
+/** `ggml_backend_sched_get_tensor_backend` — C: ggml-backend.cpp line 1969. */
+fun ggmlBackendSchedGetTensorBackend(sched: GGMLBackendSched, node: GGMLTensor): GGMLBackend? {
+    return sched.getTensorBackend(node)
 }
