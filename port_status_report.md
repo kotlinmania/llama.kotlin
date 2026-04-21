@@ -16,7 +16,7 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.12
+**Average Similarity:** 0.13
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -38,9 +38,9 @@ These files need significant work:
 - `llama-memory` → `model.LlamaMemory` (0.07, 7 deps)
 - `llama-mmap` → `model.LlamaMmap` (0.18, 5 deps)
 - `llama-impl` → `model.LlamaImpl` (0.13, 19 deps)
-- `llama-batch` → `model.LlamaBatch` (0.47, 7 deps)
 - `llama-arch` → `model.LlamaArch` (0.09, 5 deps)
 - `llama-model-saver` → `model.LlamaModelSaver` (0.28, 1 deps)
+- `llama-batch` → `model.LlamaBatch` (0.56, 7 deps)
 - `llama-io` → `model.LlamaIO` (0.19, 3 deps)
 - `models.models` → `model.InferencePipeline` (0.00, 114 deps)
 - `llama-cparams` → `model.LlamaCparams` (0.00, 5 deps)
@@ -75,9 +75,9 @@ present in the Rust source file.
 | `llama-memory` | `model.LlamaMemory` | 7/8 | `llama_ubatch`, `llama_batch_allocr`, `llama_io_write_i` … |
 | `llama-mmap` | `model.LlamaMmap` | 1/4 | `impl` |
 | `llama-impl` | `model.LlamaImpl` | 3/5 | `no_init`, `ggml_tensor`, `gguf_context` |
-| `llama-batch` | `model.LlamaBatch` | 1/1 | `llama_batch` |
 | `llama-arch` | `model.LlamaArch` | 3/7 | `llm_arch`, `LLM_TN_IMPL`, `LLM_TN` |
 | `llama-model-saver` | `model.LlamaModelSaver` | 5/6 | `gguf_context`, `llama_model`, `LLM_KV` … |
+| `llama-batch` | `model.LlamaBatch` | 1/1 | `llama_batch` |
 
 ## High Priority Missing Files
 
@@ -108,7 +108,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4214 / 2 lines (210700%)
+**Documentation coverage:** 4241 / 2 lines (212050%)
 
 Top documentation gaps (>20%):
 

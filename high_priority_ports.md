@@ -12,9 +12,9 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 4 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
 | 5 | `llama-mmap` | `model.LlamaMmap` | 0.18 | 5 | 19 | 265.5 |
 | 6 | `llama-impl` | `model.LlamaImpl` | 0.13 | 19 | 12 | 204.9 |
-| 7 | `llama-batch` | `model.LlamaBatch` | 0.47 | 7 | 8 | 118.8 |
-| 8 | `llama-arch` | `model.LlamaArch` | 0.09 | 5 | 8 | 116.8 |
-| 9 | `llama-model-saver` | `model.LlamaModelSaver` | 0.28 | 1 | 9 | 105.0 |
+| 7 | `llama-arch` | `model.LlamaArch` | 0.09 | 5 | 8 | 116.8 |
+| 8 | `llama-model-saver` | `model.LlamaModelSaver` | 0.28 | 1 | 9 | 105.0 |
+| 9 | `llama-batch` | `model.LlamaBatch` | 0.56 | 7 | 5 | 75.4 |
 | 10 | `llama-kv-cache-iswa` | `model.LlamaKvCacheIswa` | 0.61 | 3 | 3 | 41.0 |
 | 11 | `llama-io` | `model.LlamaIO` | 0.19 | 3 | 2 | 31.2 |
 | 12 | `models.models` | `model.InferencePipeline` | 0.00 | 114 | 0 | 23.7 |
@@ -57,10 +57,6 @@ These files need immediate attention:
   - Similarity: 0.13
   - Dependencies: 19
 
-- **llama-batch** → `model.LlamaBatch`
-  - Similarity: 0.47
-  - Dependencies: 7
-
 - **llama-arch** → `model.LlamaArch`
   - Similarity: 0.09
   - Dependencies: 5
@@ -68,6 +64,11 @@ These files need immediate attention:
 - **llama-model-saver** → `model.LlamaModelSaver`
   - Similarity: 0.28
   - Dependencies: 1
+
+- **llama-batch** → `model.LlamaBatch`
+  - Similarity: 0.56
+  - Dependencies: 7
+  - Lint issues: 1
 
 - **llama-io** → `model.LlamaIO`
   - Similarity: 0.19
@@ -108,8 +109,8 @@ These files need immediate attention:
 - **llama-kv-cache** → `model.KVCache`
   - Similarity: 0.00
   - Dependencies: 4
-  - TODOs: 3
-  - Lint issues: 2
+  - TODOs: 5
+  - Lint issues: 8
 
 - **llama-model-loader** → `gguf.ModelLoader`
   - Similarity: 0.00

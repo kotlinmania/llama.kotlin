@@ -1560,4 +1560,617 @@ open class LlmGraphContext(val params: LlmGraphParams) {
 
         return cur
     }
+
+    // =========================================================================
+    // Builder methods ported from llama-graph.cpp (lines 1801–2897)
+    // =========================================================================
+
+    /** Build attention-temperature scaling input. Port of `build_inp_attn_scale`. */
+    open fun buildInpAttnScale(): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val inp = LlmGraphInputAttnTemp(
+            nAttnTempFloorScale = hparams.nAttnTempFloorScale,
+            fAttnTempScale = hparams.fAttnTempScale,
+            fAttnTempOffset = hparams.fAttnTempOffset,
+        )
+        // Must be 1x1xN for broadcasting across attention heads
+        inp.attnScale = ggmlNewTensor3d(c, GGMLType.F32, 1, 1, nTokens)
+        ggmlSetInput(inp.attnScale!!)
+        ggmlSetName(inp.attnScale!!, "attn_scale")
+        r.addInput(inp)
+        return inp.attnScale!!
+    }
+
+    /** Build mean-pooling input. Port of `build_inp_mean`. */
+    open fun buildInpMean(): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val inp = LlmGraphInputMean(cparams)
+        inp.mean = ggmlNewTensor2d(c, GGMLType.F32, nTokens, ubatch.nSeqsUnq.toLong())
+        ggmlSetInput(inp.mean!!)
+        r.addInput(inp)
+        return inp.mean!!
+    }
+
+    /** Build CLS-token selector input. Port of `build_inp_cls`. */
+    open fun buildInpCls(): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val inp = LlmGraphInputCls(cparams, arch)
+        inp.cls = ggmlNewTensor1d(c, GGMLType.I32, ubatch.nSeqsUnq.toLong())
+        ggmlSetInput(inp.cls!!)
+        r.addInput(inp)
+        return inp.cls!!
+    }
+
+    /** Build cross-attention embedding input. Port of `build_inp_cross_embd`. */
+    open fun buildInpCrossEmbd(): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val cr = cross
+        val inp = LlmGraphInputCrossEmbd(cr)
+        val nEmbdCross = if (cr != null && cr.vEmbd.isNotEmpty()) cr.nEmbd else hparams.nEmbdInp().toLong()
+        val nEnc = if (cr != null && cr.vEmbd.isNotEmpty()) cr.nEnc else hparams.nCtxTrain.toLong()
+        inp.crossEmbd = ggmlNewTensor2d(c, GGMLType.F32, nEmbdCross, nEnc)
+        ggmlSetInput(inp.crossEmbd!!)
+        r.addInput(inp)
+        return inp.crossEmbd!!
+    }
+
+    /** Build encoder-side position-bucket input. Port of `build_inp_pos_bucket_enc`. */
+    open fun buildInpPosBucketEnc(): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val inp = LlmGraphInputPosBucket(hparams)
+        inp.posBucket = ggmlNewTensor2d(c, GGMLType.I32, nTokens, nTokens)
+        ggmlSetInput(inp.posBucket!!)
+        r.addInput(inp)
+        return inp.posBucket!!
+    }
+
+    /** Build decoder-side position-bucket input. Port of `build_inp_pos_bucket_dec`. */
+    open fun buildInpPosBucketDec(): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val mctxCur = params.mctx as? KVCacheContext
+            ?: error("mctx must be KVCacheContext for pos_bucket_dec")
+        val inp = LlmGraphInputPosBucketKv(hparams)
+        val nKv = mctxCur.getNKv().toLong()
+        inp.posBucket = ggmlNewTensor2d(c, GGMLType.I32, nKv, nTokens)
+        ggmlSetInput(inp.posBucket!!)
+        r.addInput(inp)
+        return inp.posBucket!!
+    }
+
+    /**
+     * Compute position bias from a bucket tensor and relative-attention bias weights.
+     * Port of `build_pos_bias`.
+     */
+    open fun buildPosBias(posBucket: GGMLTensor, attnRelB: GGMLTensor): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        // Flatten the 2D bucket to 1D for ggml_get_rows
+        val posBucket1d = ggmlReshape1d(c, posBucket, posBucket.ne[0] * posBucket.ne[1])
+        cb(posBucket1d, "pos_bucket_1d", -1)
+
+        var posBias = ggmlGetRows(c, attnRelB, posBucket1d)
+        // Reshape to 3D and permute to [nHead, ne0, ne1] layout
+        posBias = ggmlReshape3d(c, posBias, posBias.ne[0], posBucket.ne[0], posBucket.ne[1])
+        posBias = ggmlPermute(c, posBias, 2, 0, 1, 3)
+        posBias = ggmlCont(c, posBias)
+        cb(posBias, "pos_bias", -1)
+        return posBias
+    }
+
+    /** Build cross-attention inputs. Port of `build_attn_inp_cross`. */
+    open fun buildAttnInpCross(): LlmGraphInputAttnCross {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val cr = cross
+        val inp = LlmGraphInputAttnCross(cr)
+        val nEnc = if (cr != null && cr.vEmbd.isNotEmpty()) cr.nEnc else hparams.nCtxTrain.toLong()
+        inp.crossKqMask = ggmlNewTensor4d(c, GGMLType.F32, nEnc, nTokens, 1, 1)
+        ggmlSetInput(inp.crossKqMask!!)
+        inp.crossKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.crossKqMask!!, GGMLType.F16)
+            else inp.crossKqMask
+        return r.addInputTyped(inp)
+    }
+
+    /** Build V-less (K-only) attention inputs. Port of `build_attn_inp_k`. */
+    open fun buildAttnInpK(): LlmGraphInputAttnK {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val mctxCur = params.mctx as? KVCacheContext
+            ?: error("mctx must be KVCacheContext for attn_inp_k")
+        val inp = LlmGraphInputAttnK(hparams, cparams)
+        inp.selfKIdxs = mctxCur.buildInputKIdxs(c, ubatch)
+        val nKv = mctxCur.getNKv().toLong()
+        inp.selfKqMask = ggmlNewTensor4d(c, GGMLType.F32, nKv, nTokens, 1, 1)
+        ggmlSetInput(inp.selfKqMask!!)
+        inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMask!!, GGMLType.F16)
+            else inp.selfKqMask
+        return r.addInputTyped(inp)
+    }
+
+    /** Build ISWA attention inputs. Port of `build_attn_inp_kv_iswa`. */
+    open fun buildAttnInpKvIswa(): LlmGraphInputAttnKvIswa {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val mctxCur = params.mctx as? LlamaKvCacheIswaContext
+            ?: error("mctx must be LlamaKvCacheIswaContext for attn_inp_kv_iswa")
+        val inp = LlmGraphInputAttnKvIswa(hparams, cparams)
+
+        // Base stream
+        val baseCtx = mctxCur.getBase() as? KVCacheContext
+            ?: error("ISWA base context must be KVCacheContext")
+        inp.selfKIdxs = baseCtx.buildInputKIdxs(c, ubatch)
+        inp.selfVIdxs = baseCtx.buildInputVIdxs(c, ubatch)
+        inp.selfKqMask = buildAttnInpKqMask(c, baseCtx, ubatch, cparams)
+        inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMask!!, GGMLType.F16)
+            else inp.selfKqMask
+
+        // SWA stream
+        val swaCtx = mctxCur.getSwa() as? KVCacheContext
+            ?: error("ISWA SWA context must be KVCacheContext")
+        inp.selfKIdxsSwa = swaCtx.buildInputKIdxs(c, ubatch)
+        inp.selfVIdxsSwa = swaCtx.buildInputVIdxs(c, ubatch)
+        inp.selfKqMaskSwa = buildAttnInpKqMask(c, swaCtx, ubatch, cparams)
+        inp.selfKqMaskSwaCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMaskSwa!!, GGMLType.F16)
+            else inp.selfKqMaskSwa
+
+        // RoPE rotation tensors
+        inp.selfKRot = baseCtx.buildInputKRot(c)
+        inp.selfVRot = baseCtx.buildInputVRot(c)
+        inp.selfKRotSwa = swaCtx.buildInputKRot(c)
+        inp.selfVRotSwa = swaCtx.buildInputVRot(c)
+
+        return r.addInputTyped(inp)
+    }
+
+    /** Build self-attention with V-less (K-only) cache. Port of `build_attn(attn_k)`. */
+    open fun buildAttn(
+        inp: LlmGraphInputAttnK,
+        wo: GGMLTensor?, woB: GGMLTensor?, woS: GGMLTensor?,
+        qCur: GGMLTensor, kCur: GGMLTensor, vCur: GGMLTensor,
+        kqB: GGMLTensor?, sinks: GGMLTensor?, vMla: GGMLTensor?,
+        kqScale: Float, il: Int,
+    ): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val graph = gf ?: error("gf not initialised")
+        // Expand to prevent reordering
+        ggmlBuildForwardExpand(graph, qCur)
+        ggmlBuildForwardExpand(graph, vCur)
+        ggmlBuildForwardExpand(graph, kCur)
+
+        // Store K to cache
+        val kIdxs = inp.getKIdxs()
+        if (kIdxs != null) {
+            val mctxCur = params.mctx as? KVCacheContext
+            if (mctxCur != null) {
+                ggmlBuildForwardExpand(graph, mctxCur.cpyK(c, kCur, kIdxs, il))
+            }
+        }
+
+        val kqMask = inp.getKqMask()
+        val q = qCur
+        val k = (params.mctx as? KVCacheContext)?.getK(c, il) ?: kCur
+        // V-less: derive v from k view
+        val v = ggmlView4d(c, k, vCur.ne[0], k.ne[1], k.ne[2], k.ne[3],
+            k.nb[1], k.nb[2], k.nb[3], 0u)
+
+        var cur = buildAttnMha(q, k, v, kqB, kqMask, sinks, vMla, kqScale, il)
+        cb(cur, "kqv_out", il)
+
+        if (wo != null) {
+            if (arch == LlamaModelArch.GLM4 || arch == LlamaModelArch.GLM4_MOE) {
+                cur = buildLoraMm(wo, cur)
+                ggmlMulMatSetPrec(cur, GGMLPrec.F32)
+                if (woS != null) cur = mul(c, cur, woS)
+            } else {
+                cur = buildLoraMm(wo, cur, woS)
+            }
+        }
+        if (woB != null) {
+            cur = add(c, cur, woB)
+        }
+        return cur
+    }
+
+    /** Build self-attention with ISWA cache. Port of `build_attn(iswa)`. */
+    open fun buildAttn(
+        inp: LlmGraphInputAttnKvIswa,
+        wo: GGMLTensor?, woB: GGMLTensor?, woS: GGMLTensor?,
+        qCur: GGMLTensor, kCur: GGMLTensor?, vCur: GGMLTensor?,
+        kqB: GGMLTensor?, sinks: GGMLTensor?, vMla: GGMLTensor?,
+        kqScale: Float, il: Int,
+    ): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val graph = gf ?: error("gf not initialised")
+        val isSwa = hparams.isSwa(il)
+
+        val kRot = if (isSwa) inp.selfKRotSwa else inp.selfKRot
+        val vRot = if (isSwa) inp.selfVRotSwa else inp.selfVRot
+
+        var qWork = qCur
+        var kWork = kCur
+        var vWork = vCur
+
+        if (kRot != null) {
+            qWork = ggmlMulMatAux(c, qWork, kRot)
+            if (kWork != null) kWork = ggmlMulMatAux(c, kWork, kRot)
+        }
+        if (vRot != null) {
+            if (vWork != null) vWork = ggmlMulMatAux(c, vWork, vRot)
+        }
+
+        ggmlBuildForwardExpand(graph, qWork)
+        kWork?.let { ggmlBuildForwardExpand(graph, it) }
+        vWork?.let { ggmlBuildForwardExpand(graph, it) }
+
+        val mctxIswa = params.mctx as? LlamaKvCacheIswaContext
+            ?: error("mctx must be LlamaKvCacheIswaContext for ISWA attention")
+        val mctxCur = (if (isSwa) mctxIswa.getSwa() else mctxIswa.getBase()) as? KVCacheContext
+            ?: error("ISWA sub-context must be KVCacheContext")
+
+        // Optionally store K to cache
+        if (kWork != null) {
+            val kIdxs = if (isSwa) inp.getKIdxsSwa() else inp.getKIdxs()
+            if (kIdxs != null) {
+                ggmlBuildForwardExpand(graph, mctxCur.cpyK(c, kWork, kIdxs, il))
+            }
+        }
+
+        // Optionally store V to cache
+        if (vWork != null) {
+            val vIdxs = if (isSwa) inp.getVIdxsSwa() else inp.getVIdxs()
+            if (vIdxs != null) {
+                ggmlBuildForwardExpand(graph, mctxCur.cpyV(c, vWork, vIdxs, il))
+            }
+        }
+
+        val kqMask = if (isSwa) inp.getKqMaskSwa() else inp.getKqMask()
+        val q = qWork
+        val k = mctxCur.getK(c, il)
+        val v = mctxCur.getV(c, il)
+
+        var cur = buildAttnMha(q, k, v, kqB, kqMask, sinks, vMla, kqScale, il)
+        cb(cur, "kqv_out", il)
+
+        if (vRot != null) {
+            cur = ggmlMulMatAux(c, cur, vRot)
+        }
+
+        if (wo != null) {
+            cur = buildLoraMm(wo, cur, woS)
+        }
+        if (woB != null) {
+            cur = add(c, cur, woB)
+        }
+        return cur
+    }
+
+    /** Build cross-attention sub-graph. Port of `build_attn(cross)`. */
+    open fun buildAttn(
+        inp: LlmGraphInputAttnCross,
+        wo: GGMLTensor?, woB: GGMLTensor?, woS: GGMLTensor?,
+        qCur: GGMLTensor, kCur: GGMLTensor, vCur: GGMLTensor,
+        kqB: GGMLTensor?, sinks: GGMLTensor?, vMla: GGMLTensor?,
+        kqScale: Float, il: Int,
+    ): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val graph = gf ?: error("gf not initialised")
+        ggmlBuildForwardExpand(graph, qCur)
+        ggmlBuildForwardExpand(graph, kCur)
+        ggmlBuildForwardExpand(graph, vCur)
+
+        val kqMask = inp.getKqMaskCross()
+        var cur = buildAttnMha(qCur, kCur, vCur, kqB, kqMask, sinks, vMla, kqScale, il)
+        cb(cur, "kqv_out", il)
+
+        if (wo != null) {
+            cur = buildLoraMm(wo, cur, woS)
+        }
+        if (woB != null) {
+            cur = add(c, cur, woB)
+        }
+        return cur
+    }
+
+    // -- recurrent-state builders -----------------------------------------------
+
+    /** Build recurrent-state copy input. Port of `build_rs_inp`. */
+    open fun buildRsInp(): LlmGraphInputRs {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val mctxCur = params.mctx as? LlamaMemoryRecurrentContext
+            ?: error("mctx must be LlamaMemoryRecurrentContext for rs_inp")
+        val inp = LlmGraphInputRs(mctx = mctxCur)
+
+        val nRs = mctxCur.getNRs().toLong()
+        val nSeqs = ubatch.nSeqs.toLong()
+
+        inp.sCopy = ggmlNewTensor1d(c, GGMLType.I32, nRs)
+        ggmlSetInput(inp.sCopy!!)
+        inp.sCopyMain = ggmlView1d(c, inp.sCopy!!, nSeqs, 0u)
+        inp.sCopyExtra = ggmlView1d(c, inp.sCopy!!, nRs - nSeqs,
+            (nSeqs * ggmlElementSize(inp.sCopy!!).toLong()).toULong())
+        inp.head = mctxCur.getHead()
+        inp.rsZ = mctxCur.getRsZ()
+
+        return r.addInputTyped(inp)
+    }
+
+    /**
+     * Build recurrent-state (SSM / RWKV) sub-graph (low-level overload).
+     * Port of `build_rs(s, state_copy_main, state_copy_extra, ...)`.
+     */
+    open fun buildRs(
+        s: GGMLTensor,
+        stateCopyMain: GGMLTensor,
+        stateCopyExtra: GGMLTensor,
+        stateSize: Int,
+        nSeqs: Int,
+        nRs: Int,
+        rsHead: Int,
+        rsSize: Int,
+        rsZero: Int,
+        getStateRows: (GGMLContext, GGMLTensor, GGMLTensor) -> GGMLTensor,
+    ): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val graph = gf ?: error("gf not initialised")
+
+        val states = ggmlReshape2d(c, s, stateSize.toLong(), rsSize.toLong())
+
+        // Clear a single state which will be copied to other cleared states
+        val zeroMultiplier = if (rsZero >= 0) 1L else 0L
+        val stateZero = ggmlView1d(c, states,
+            stateSize.toLong() * zeroMultiplier,
+            (rsZero.toLong() * states.nb[1].toLong() * zeroMultiplier).toULong())
+        ggmlBuildForwardExpand(graph, ggmlScaleInplace(c, stateZero, 0.0f))
+
+        // Copy states: {state_size, rs_size} -> {state_size, n_seqs}
+        val outputStates = getStateRows(c, states, stateCopyMain)
+        ggmlBuildForwardExpand(graph, outputStates)
+
+        // Copy extra states (between n_seqs and n_rs)
+        val statesExtra = ggmlGetRows(c, states, stateCopyExtra)
+        ggmlBuildForwardExpand(graph,
+            ggmlCpy(c, statesExtra,
+                ggmlView2d(c, s, stateSize.toLong(), (nRs - nSeqs).toLong(),
+                    s.nb[1], ((rsHead + nSeqs).toLong() * s.nb[1].toLong()).toULong())))
+
+        return outputStates
+    }
+
+    /**
+     * Build recurrent-state sub-graph (high-level overload using input).
+     * Port of `build_rs(inp, s, state_size, n_seqs, get_state_rows)`.
+     */
+    open fun buildRs(
+        inp: LlmGraphInputRs,
+        s: GGMLTensor,
+        stateSize: Int,
+        nSeqs: Int,
+        getStateRows: (GGMLContext, GGMLTensor, GGMLTensor) -> GGMLTensor = ::ggmlGetRows,
+    ): GGMLTensor {
+        val kvState = inp.mctx ?: error("LlmGraphInputRs.mctx not initialised")
+        val sCopyMain = inp.sCopyMain ?: error("sCopyMain not initialised")
+        val sCopyExtra = inp.sCopyExtra ?: error("sCopyExtra not initialised")
+        return buildRs(
+            s, sCopyMain, sCopyExtra,
+            stateSize, nSeqs,
+            kvState.getNRs(), kvState.getHead(), kvState.getSize(), kvState.getRsZ(),
+            getStateRows,
+        )
+    }
+
+    /** Load RWKV token-shift state. Port of `build_rwkv_token_shift_load`. */
+    open fun buildRwkvTokenShiftLoad(
+        inp: LlmGraphInputRs,
+        ubatchArg: LlamaUBatch,
+        il: Int,
+    ): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val mctxCur = params.mctx as? LlamaMemoryRecurrentContext
+            ?: error("mctx must be LlamaMemoryRecurrentContext for rwkv_token_shift_load")
+
+        val tokenShiftCount = hparams.tokenShiftCount
+        val nSeqs = ubatchArg.nSeqs
+
+        val tokenShiftAll = mctxCur.getRL(il) ?: error("missing rL[$il]")
+        var tokenShift = buildRs(inp, tokenShiftAll, hparams.nEmbdR(), nSeqs)
+        tokenShift = ggmlReshape3d(c, tokenShift, hparams.nEmbd.toLong(), tokenShiftCount.toLong(), nSeqs.toLong())
+
+        return tokenShift
+    }
+
+    /** Store RWKV token-shift state. Port of `build_rwkv_token_shift_store`. */
+    open fun buildRwkvTokenShiftStore(
+        tokenShift: GGMLTensor,
+        ubatchArg: LlamaUBatch,
+        il: Int,
+    ): GGMLTensor {
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val mctxCur = params.mctx as? LlamaMemoryRecurrentContext
+            ?: error("mctx must be LlamaMemoryRecurrentContext for rwkv_token_shift_store")
+
+        val tokenShiftCount = hparams.tokenShiftCount
+        val nEmbdVal = hparams.nEmbd
+        val nSeqs = ubatchArg.nSeqs
+        val kvHead = mctxCur.getHead()
+        val rL = mctxCur.getRL(il) ?: error("missing rL[$il]")
+
+        return ggmlCpy(c,
+            ggmlView1d(c, tokenShift, (nEmbdVal * nSeqs * tokenShiftCount).toLong(), 0u),
+            ggmlView1d(c, rL,
+                hparams.nEmbdR().toLong() * nSeqs,
+                (hparams.nEmbdR().toLong() * kvHead * ggmlElementSize(rL).toLong()).toULong()))
+    }
+
+    // -- hybrid memory ----------------------------------------------------------
+
+    /** Build hybrid (KV + recurrent) memory inputs. Port of `build_inp_mem_hybrid`. */
+    open fun buildInpMemHybrid(): LlmGraphInputMemHybrid {
+        val r = res ?: error("res not initialised")
+        val inpRs = buildRsInp()
+        val inpAttn = buildAttnInpKv()
+        val inp = LlmGraphInputMemHybrid(cparams, inpAttn, inpRs)
+        return r.addInputTyped(inp)
+    }
+
+    /** Build hybrid (K-only + recurrent) memory inputs. Port of `build_inp_mem_hybrid_k`. */
+    open fun buildInpMemHybridK(): LlmGraphInputMemHybridK {
+        val r = res ?: error("res not initialised")
+        val inpRs = buildRsInp()
+        val inpAttn = buildAttnInpK()
+        val inp = LlmGraphInputMemHybridK(cparams, inpAttn, inpRs)
+        return r.addInputTyped(inp)
+    }
+
+    /** Build hybrid (ISWA + recurrent) memory inputs. Port of `build_inp_mem_hybrid_iswa`. */
+    open fun buildInpMemHybridIswa(): LlmGraphInputMemHybridIswa {
+        val r = res ?: error("res not initialised")
+        val inpRs = buildRsInp()
+        val inpAttn = buildAttnInpKvIswa()
+        val inp = LlmGraphInputMemHybridIswa(cparams, inpAttn, inpRs)
+        return r.addInputTyped(inp)
+    }
+
+    // -- pooling / sampling / dense-out -----------------------------------------
+
+    /**
+     * Build dense-out (final linear projections after pooling).
+     * Port of `build_dense_out`.
+     */
+    open fun buildDenseOut(
+        dense2: GGMLTensor?, dense2B: GGMLTensor?,
+        dense3: GGMLTensor?,
+    ) {
+        if (!cparams.embeddings || !(dense2 != null || dense2B != null || dense3 != null)) return
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val graph = gf ?: error("gf not initialised")
+        var cur = r.tEmbdPooled ?: r.tEmbd ?: error("missing t_embd_pooled/t_embd")
+
+        if (dense2 != null) {
+            cur = matMul(c, dense2, cur)
+        }
+        if (dense2B != null) {
+            cur = add(c, cur, dense2B)
+        }
+        if (dense3 != null) {
+            cur = matMul(c, dense3, cur)
+        }
+        cb(cur, "result_embd_pooled", -1)
+        r.tEmbdPooled = cur
+        ggmlBuildForwardExpand(graph, cur)
+    }
+
+    /**
+     * Build pooling sub-graph.
+     * Port of `build_pooling`.
+     */
+    open fun buildPooling(
+        cls: GGMLTensor?, clsB: GGMLTensor?,
+        clsOut: GGMLTensor?, clsOutB: GGMLTensor?,
+        clsNorm: GGMLTensor?,
+    ) {
+        if (!cparams.embeddings) return
+        val c = ctx0 ?: error("ctx0 not initialised")
+        val r = res ?: error("res not initialised")
+        val graph = gf ?: error("gf not initialised")
+        val inp = r.tEmbd ?: error("missing result_norm/result_embd tensor")
+
+        var cur: GGMLTensor
+
+        when (poolingType) {
+            LlamaPoolingType.NONE -> {
+                cur = inp
+            }
+            LlamaPoolingType.MEAN -> {
+                val inpMean = buildInpMean()
+                cur = matMul(c, ggmlCont(c, ggmlTranspose(c, inp)), inpMean)
+            }
+            LlamaPoolingType.CLS, LlamaPoolingType.LAST -> {
+                val inpCls = buildInpCls()
+                cur = ggmlGetRows(c, inp, inpCls)
+            }
+            LlamaPoolingType.RANK -> {
+                if (arch == LlamaModelArch.MODERN_BERT) {
+                    val inpMean = buildInpMean()
+                    cur = matMul(c, ggmlCont(c, ggmlTranspose(c, inp)), inpMean)
+                } else {
+                    val inpCls = buildInpCls()
+                    cur = ggmlGetRows(c, inp, inpCls)
+                }
+                // Classification head
+                if (cls != null) {
+                    cur = matMul(c, cls, cur)
+                    if (clsB != null) cur = add(c, cur, clsB)
+                    if (arch == LlamaModelArch.MODERN_BERT) {
+                        cur = gelu(c, cur)
+                    } else {
+                        cur = ggmlTanh(c, cur)
+                    }
+                    if (clsNorm != null) {
+                        cur = buildNorm(cur, clsNorm, null, LlmNormType.NORM, -1)
+                    }
+                }
+                if (clsOut != null) {
+                    cur = matMul(c, clsOut, cur)
+                    if (clsOutB != null) cur = add(c, cur, clsOutB)
+                }
+                // Softmax for Qwen3 reranker
+                if (arch == LlamaModelArch.QWEN3 || arch == LlamaModelArch.QWEN3VL) {
+                    cur = ggmlSoftMax(c, cur)
+                }
+            }
+            else -> error("unknown pooling type: $poolingType")
+        }
+
+        cb(cur, "result_embd_pooled", -1)
+        r.tEmbdPooled = cur
+        ggmlBuildForwardExpand(graph, cur)
+    }
+
+    /** Build backend-sampling sub-graph. Port of `build_sampling`. */
+    open fun buildSampling() {
+        val r = res ?: return
+        val logits = r.tLogits ?: return
+        val c = ctx0 ?: return
+        val graph = gf ?: return
+
+        // Backend sampling builds a sub-graph that applies per-sequence samplers.
+        // The sampler backend infrastructure is not yet ported; once available:
+        //   1. Pad logits with a dummy row (ggmlPad(ctx0, logits, 0, 1, 0, 0))
+        //   2. For each (seqId, sampler) pair, extract logit row and call backendApply
+        //   3. Wire data.sampled/probs/logits/candidates via ggmlBuildForwardSelect
+        // Currently a no-op placeholder.
+    }
+
+    // -- private helpers --------------------------------------------------------
+
+    /**
+     * Placeholder for `ggml_mul_mat_aux` – used for RoPE rotation in ISWA attention.
+     * In C++ this is a specialized matrix multiply; here we approximate with matMul
+     * until the dedicated op is ported.
+     */
+    protected fun ggmlMulMatAux(c: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
+        return matMul(c, b, a)
+    }
+
+    /**
+     * Build KQ mask for a given KV cache context. Placeholder that creates
+     * a 4D mask tensor shaped [nKv, nTokens, 1, 1].
+     */
+    protected fun buildAttnInpKqMask(
+        c: GGMLContext, cacheCtx: KVCacheContext,
+        ubatchArg: LlamaUBatch, cparamsArg: LlamaCParams
+    ): GGMLTensor {
+        val nKv = cacheCtx.getNKv().toLong()
+        val nTok = ubatchArg.nTokens.toLong()
+        val mask = ggmlNewTensor4d(c, GGMLType.F32, nKv, nTok, 1, 1)
+        ggmlSetInput(mask)
+        return mask
+    }
 }
