@@ -2,6 +2,8 @@
 package ai.solace.llamakotlin.model
 
 import ai.solace.llamakotlin.core.*
+import kotlin.math.ln
+import kotlin.math.min
 
 // =============================================================================
 // Additional graph types from llama-graph.h NOT already in InferencePipeline.kt
@@ -271,74 +273,145 @@ class LlmGraphInputSampling(
  * that depend on the additional input types declared in this file.
  *
  * These correspond to the remaining `build_*` methods in the C++ header that
- * are not yet covered by the base [LlmGraphContext] in InferencePipeline.kt.
+ * are not yet covered by the base [LlmGraphContext] in LlmGraphTypes.kt.
  */
 
-/** Build attention-temperature scaling input. */
+/** Build attention-temperature scaling input. Port of `build_inp_attn_scale`. */
 fun LlmGraphContext.buildInpAttnScale(): GGMLTensor {
-    TODO("Port llm_graph_context::build_inp_attn_scale")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputAttnTemp(
+        nAttnTempFloorScale = hparams.nAttnTempFloorScale,
+        fAttnTempScale = hparams.fAttnTempScale,
+        fAttnTempOffset = hparams.fAttnTempOffset,
+    )
+    inp.attnScale = ggmlNewTensor1d(c, GGMLType.F32, nTokens)
+    ggmlSetInput(inp.attnScale!!)
+    r.addInput(inp)
+    return inp.attnScale!!
 }
 
-/** Build mean-pooling input. */
+/** Build mean-pooling input. Port of `build_inp_mean`. */
 fun LlmGraphContext.buildInpMean(): GGMLTensor {
-    TODO("Port llm_graph_context::build_inp_mean")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputMean(cparams)
+    inp.mean = ggmlNewTensor2d(c, GGMLType.F32, nTokens, nTokens)
+    ggmlSetInput(inp.mean!!)
+    r.addInput(inp)
+    return inp.mean!!
 }
 
-/** Build CLS-token selector input. */
+/** Build CLS-token selector input. Port of `build_inp_cls`. */
 fun LlmGraphContext.buildInpCls(): GGMLTensor {
-    TODO("Port llm_graph_context::build_inp_cls")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputCls(cparams, arch)
+    inp.cls = ggmlNewTensor1d(c, GGMLType.I32, nTokens)
+    ggmlSetInput(inp.cls!!)
+    r.addInput(inp)
+    return inp.cls!!
 }
 
-/** Build cross-attention embedding input. */
+/** Build cross-attention embedding input. Port of `build_inp_cross_embd`. */
 fun LlmGraphContext.buildInpCrossEmbd(): GGMLTensor {
-    TODO("Port llm_graph_context::build_inp_cross_embd")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val cr = cross
+    val inp = LlmGraphInputCrossEmbd(cr)
+    val nEnc = cr?.nEnc ?: 0L
+    inp.crossEmbd = ggmlNewTensor2d(c, GGMLType.F32, nEmbd, nEnc)
+    ggmlSetInput(inp.crossEmbd!!)
+    r.addInput(inp)
+    return inp.crossEmbd!!
 }
 
-/** Build encoder-side position-bucket input. */
+/** Build encoder-side position-bucket input. Port of `build_inp_pos_bucket_enc`. */
 fun LlmGraphContext.buildInpPosBucketEnc(): GGMLTensor {
-    TODO("Port llm_graph_context::build_inp_pos_bucket_enc")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputPosBucket(hparams)
+    inp.posBucket = ggmlNewTensor2d(c, GGMLType.I32, nTokens, nTokens)
+    ggmlSetInput(inp.posBucket!!)
+    r.addInput(inp)
+    return inp.posBucket!!
 }
 
-/** Build decoder-side position-bucket input. */
+/** Build decoder-side position-bucket input. Port of `build_inp_pos_bucket_dec`. */
 fun LlmGraphContext.buildInpPosBucketDec(): GGMLTensor {
-    TODO("Port llm_graph_context::build_inp_pos_bucket_dec")
-}
-
-/** Compute position bias from a bucket tensor and rel-attn bias weights. */
-fun LlmGraphContext.buildPosBias(posBucket: GGMLTensor, attnRelB: GGMLTensor): GGMLTensor {
-    TODO("Port llm_graph_context::build_pos_bias")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputPosBucketKv(hparams)
+    // In the decoder case, the bucket relates current tokens to all KV positions.
+    // For now we allocate [nTokens, nTokens] as a placeholder; a real implementation
+    // would use [nKv, nTokens] once KV cache context is available.
+    inp.posBucket = ggmlNewTensor2d(c, GGMLType.I32, nTokens, nTokens)
+    ggmlSetInput(inp.posBucket!!)
+    r.addInput(inp)
+    return inp.posBucket!!
 }
 
 /**
- * Core multi-head attention sub-graph.
+ * Compute position bias from a bucket tensor and relative-attention bias weights.
  *
- * Port of `llm_graph_context::build_attn_mha()`.
+ * Port of `llm_graph_context::build_pos_bias`.
  */
-fun LlmGraphContext.buildAttnMha(
-    q: GGMLTensor,
-    k: GGMLTensor,
-    v: GGMLTensor,
-    kqB: GGMLTensor?,
-    kqMask: GGMLTensor?,
-    sinks: GGMLTensor?,
-    vMla: GGMLTensor?,
-    kqScale: Float,
-    il: Int,
-): GGMLTensor {
-    TODO("Port llm_graph_context::build_attn_mha")
+fun LlmGraphContext.buildPosBias(posBucket: GGMLTensor, attnRelB: GGMLTensor): GGMLTensor {
+    val c = ctx0 ?: error("ctx0 not initialised")
+    var posBias = ggmlGetRows(c, attnRelB, posBucket)
+    // Reshape to [nHead, nQ, nK, 1] pattern used by attention
+    posBias = ggmlPermute(c, posBias, 2, 0, 1, 3)
+    return posBias
 }
 
-/** Build V-less (K-only) attention inputs. */
+/** Build V-less (K-only) attention inputs. Port of `build_attn_inp_k`. */
 fun LlmGraphContext.buildAttnInpK(): LlmGraphInputAttnK {
-    TODO("Port llm_graph_context::build_attn_inp_k")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputAttnK(hparams, cparams)
+    // K-only attention still needs a KQ mask
+    inp.selfKqMask = ggmlNewTensor4d(c, GGMLType.F32, nTokens, nTokens, 1, 1)
+    ggmlSetInput(inp.selfKqMask!!)
+    inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMask!!, GGMLType.F16)
+        else inp.selfKqMask
+    // K indices
+    inp.selfKIdxs = ggmlNewTensor1d(c, GGMLType.I64, nTokens)
+    ggmlSetInput(inp.selfKIdxs!!)
+    return r.addInputTyped(inp)
 }
 
-/** Build ISWA attention inputs. */
+/** Build ISWA attention inputs. Port of `build_attn_inp_kv_iswa`. */
 fun LlmGraphContext.buildAttnInpKvIswa(): LlmGraphInputAttnKvIswa {
-    TODO("Port llm_graph_context::build_attn_inp_kv_iswa")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputAttnKvIswa(hparams, cparams)
+
+    // Full-attention masks
+    inp.selfKqMask = ggmlNewTensor4d(c, GGMLType.F32, nCtx, nTokens, 1, 1)
+    ggmlSetInput(inp.selfKqMask!!)
+    inp.selfKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMask!!, GGMLType.F16)
+        else inp.selfKqMask
+
+    // SWA masks
+    inp.selfKqMaskSwa = ggmlNewTensor4d(c, GGMLType.F32, nCtx, nTokens, 1, 1)
+    ggmlSetInput(inp.selfKqMaskSwa!!)
+    inp.selfKqMaskSwaCnv = if (cparams.flashAttn) ggmlCast(c, inp.selfKqMaskSwa!!, GGMLType.F16)
+        else inp.selfKqMaskSwa
+
+    // Index tensors
+    inp.selfKIdxs = ggmlNewTensor1d(c, GGMLType.I64, nTokens)
+    ggmlSetInput(inp.selfKIdxs!!)
+    inp.selfVIdxs = ggmlNewTensor1d(c, GGMLType.I64, nTokens)
+    ggmlSetInput(inp.selfVIdxs!!)
+    inp.selfKIdxsSwa = ggmlNewTensor1d(c, GGMLType.I64, nTokens)
+    ggmlSetInput(inp.selfKIdxsSwa!!)
+    inp.selfVIdxsSwa = ggmlNewTensor1d(c, GGMLType.I64, nTokens)
+    ggmlSetInput(inp.selfVIdxsSwa!!)
+
+    return r.addInputTyped(inp)
 }
 
-/** Build self-attention with V-less (K-only) cache. */
+/** Build self-attention with V-less (K-only) cache. Port of `build_attn(attn_k)`. */
 fun LlmGraphContext.buildAttn(
     inp: LlmGraphInputAttnK,
     wo: GGMLTensor?, woB: GGMLTensor?, woS: GGMLTensor?,
@@ -346,10 +419,26 @@ fun LlmGraphContext.buildAttn(
     kqB: GGMLTensor?, sinks: GGMLTensor?, vMla: GGMLTensor?,
     kqScale: Float, il: Int,
 ): GGMLTensor {
-    TODO("Port llm_graph_context::build_attn (attn_k)")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val graph = gf ?: error("gf not initialised")
+    ggmlBuildForwardExpand(graph, qCur)
+    ggmlBuildForwardExpand(graph, kCur)
+    ggmlBuildForwardExpand(graph, vCur)
+
+    val kqMask = inp.getKqMask()
+    var cur = buildAttnMha(qCur, kCur, vCur, kqB, kqMask, sinks, vMla, kqScale, il)
+    cb(cur, "kqv_out", il)
+
+    if (wo != null) {
+        cur = buildLoraMm(wo, cur, woS)
+    }
+    if (woB != null) {
+        cur = add(c, cur, woB)
+    }
+    return cur
 }
 
-/** Build self-attention with ISWA cache. */
+/** Build self-attention with ISWA cache. Port of `build_attn(iswa)`. */
 fun LlmGraphContext.buildAttn(
     inp: LlmGraphInputAttnKvIswa,
     wo: GGMLTensor?, woB: GGMLTensor?, woS: GGMLTensor?,
@@ -357,15 +446,47 @@ fun LlmGraphContext.buildAttn(
     kqB: GGMLTensor?, sinks: GGMLTensor?, vMla: GGMLTensor?,
     kqScale: Float, il: Int,
 ): GGMLTensor {
-    TODO("Port llm_graph_context::build_attn (iswa)")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val graph = gf ?: error("gf not initialised")
+    ggmlBuildForwardExpand(graph, qCur)
+    kCur?.let { ggmlBuildForwardExpand(graph, it) }
+    vCur?.let { ggmlBuildForwardExpand(graph, it) }
+
+    // Select appropriate mask depending on layer type
+    val isSwa = hparams.isSwa(il)
+    val kqMask = if (isSwa) inp.getKqMaskSwa() else inp.getKqMask()
+
+    // For ISWA, K and V should be non-null (caller ensures this for the active stream)
+    val k = kCur ?: error("kCur required for ISWA attention at layer $il")
+    val v = vCur ?: error("vCur required for ISWA attention at layer $il")
+
+    var cur = buildAttnMha(qCur, k, v, kqB, kqMask, sinks, vMla, kqScale, il)
+    cb(cur, "kqv_out", il)
+
+    if (wo != null) {
+        cur = buildLoraMm(wo, cur, woS)
+    }
+    if (woB != null) {
+        cur = add(c, cur, woB)
+    }
+    return cur
 }
 
-/** Build cross-attention inputs. */
+/** Build cross-attention inputs. Port of `build_attn_inp_cross`. */
 fun LlmGraphContext.buildAttnInpCross(): LlmGraphInputAttnCross {
-    TODO("Port llm_graph_context::build_attn_inp_cross")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputAttnCross(cross)
+    // Cross-attention mask: [nEnc, nTokens]
+    val nEnc = cross?.nEnc ?: nTokens
+    inp.crossKqMask = ggmlNewTensor2d(c, GGMLType.F32, nEnc, nTokens)
+    ggmlSetInput(inp.crossKqMask!!)
+    inp.crossKqMaskCnv = if (cparams.flashAttn) ggmlCast(c, inp.crossKqMask!!, GGMLType.F16)
+        else inp.crossKqMask
+    return r.addInputTyped(inp)
 }
 
-/** Build cross-attention sub-graph. */
+/** Build cross-attention sub-graph. Port of `build_attn(cross)`. */
 fun LlmGraphContext.buildAttn(
     inp: LlmGraphInputAttnCross,
     wo: GGMLTensor?, woB: GGMLTensor?, woS: GGMLTensor?,
@@ -373,14 +494,36 @@ fun LlmGraphContext.buildAttn(
     kqB: GGMLTensor?, sinks: GGMLTensor?, vMla: GGMLTensor?,
     kqScale: Float, il: Int,
 ): GGMLTensor {
-    TODO("Port llm_graph_context::build_attn (cross)")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val graph = gf ?: error("gf not initialised")
+    ggmlBuildForwardExpand(graph, qCur)
+    ggmlBuildForwardExpand(graph, kCur)
+    ggmlBuildForwardExpand(graph, vCur)
+
+    val kqMask = inp.getKqMaskCross()
+    var cur = buildAttnMha(qCur, kCur, vCur, kqB, kqMask, sinks, vMla, kqScale, il)
+    cb(cur, "kqv_out", il)
+
+    if (wo != null) {
+        cur = buildLoraMm(wo, cur, woS)
+    }
+    if (woB != null) {
+        cur = add(c, cur, woB)
+    }
+    return cur
 }
 
 // -- recurrent-state builders -----------------------------------------------
 
-/** Build recurrent-state copy input. */
+/** Build recurrent-state copy input. Port of `build_rs_inp`. */
 fun LlmGraphContext.buildRsInp(): LlmGraphInputRs {
-    TODO("Port llm_graph_context::build_rs_inp")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val inp = LlmGraphInputRs()
+    // State-copy index tensor
+    inp.sCopy = ggmlNewTensor1d(c, GGMLType.I32, nTokens)
+    ggmlSetInput(inp.sCopy!!)
+    return r.addInputTyped(inp)
 }
 
 /**
@@ -394,77 +537,188 @@ fun LlmGraphContext.buildRs(
     stateSize: Int,
     nSeqs: Int,
 ): GGMLTensor {
-    TODO("Port llm_graph_context::build_rs")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val graph = gf ?: error("gf not initialised")
+    // Gather states: use sCopy to scatter/gather from the state tensor
+    val sIdxs = inp.sCopy ?: error("sCopy not initialised in LlmGraphInputRs")
+    val gathered = ggmlGetRows(c, s, sIdxs)
+    ggmlBuildForwardExpand(graph, gathered)
+    return gathered
 }
 
-/** Load RWKV token-shift state. */
+/** Load RWKV token-shift state. Port of `build_rwkv_token_shift_load`. */
 fun LlmGraphContext.buildRwkvTokenShiftLoad(
     inp: LlmGraphInputRs,
     ubatch: LlamaUBatch,
     il: Int,
 ): GGMLTensor {
-    TODO("Port llm_graph_context::build_rwkv_token_shift_load")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val graph = gf ?: error("gf not initialised")
+    // Create a placeholder view into the recurrent state for RWKV token shifting.
+    // Full implementation requires the recurrent memory context.
+    val sIdxs = inp.sCopy ?: error("sCopy not initialised")
+    val shift = ggmlNewTensor2d(c, GGMLType.F32, nEmbd, nTokens)
+    ggmlSetInput(shift)
+    ggmlBuildForwardExpand(graph, shift)
+    cb(shift, "rwkv_token_shift", il)
+    return shift
 }
 
-/** Store RWKV token-shift state. */
+/** Store RWKV token-shift state. Port of `build_rwkv_token_shift_store`. */
 fun LlmGraphContext.buildRwkvTokenShiftStore(
     tokenShift: GGMLTensor,
     ubatch: LlamaUBatch,
     il: Int,
 ): GGMLTensor {
-    TODO("Port llm_graph_context::build_rwkv_token_shift_store")
+    val graph = gf ?: error("gf not initialised")
+    // Mark the token-shift for output so it persists for the next step
+    ggmlSetOutput(tokenShift)
+    ggmlBuildForwardExpand(graph, tokenShift)
+    cb(tokenShift, "rwkv_token_shift_store", il)
+    return tokenShift
 }
 
 // -- hybrid memory ----------------------------------------------------------
 
-/** Build hybrid (KV + recurrent) memory inputs. */
+/** Build hybrid (KV + recurrent) memory inputs. Port of `build_inp_mem_hybrid`. */
 fun LlmGraphContext.buildInpMemHybrid(): LlmGraphInputMemHybrid {
-    TODO("Port llm_graph_context::build_inp_mem_hybrid")
+    val r = res ?: error("res not initialised")
+    val inpAttn = buildAttnInpKv()
+    val inpRs = buildRsInp()
+    val inp = LlmGraphInputMemHybrid(cparams, inpAttn, inpRs)
+    return r.addInputTyped(inp)
 }
 
-/** Build hybrid (K-only + recurrent) memory inputs. */
+/** Build hybrid (K-only + recurrent) memory inputs. Port of `build_inp_mem_hybrid_k`. */
 fun LlmGraphContext.buildInpMemHybridK(): LlmGraphInputMemHybridK {
-    TODO("Port llm_graph_context::build_inp_mem_hybrid_k")
+    val r = res ?: error("res not initialised")
+    val inpAttn = buildAttnInpK()
+    val inpRs = buildRsInp()
+    val inp = LlmGraphInputMemHybridK(cparams, inpAttn, inpRs)
+    return r.addInputTyped(inp)
 }
 
-/** Build hybrid (ISWA + recurrent) memory inputs. */
+/** Build hybrid (ISWA + recurrent) memory inputs. Port of `build_inp_mem_hybrid_iswa`. */
 fun LlmGraphContext.buildInpMemHybridIswa(): LlmGraphInputMemHybridIswa {
-    TODO("Port llm_graph_context::build_inp_mem_hybrid_iswa")
+    val r = res ?: error("res not initialised")
+    val inpAttn = buildAttnInpKvIswa()
+    val inpRs = buildRsInp()
+    val inp = LlmGraphInputMemHybridIswa(cparams, inpAttn, inpRs)
+    return r.addInputTyped(inp)
 }
 
 // -- pooling / sampling / dense-out -----------------------------------------
 
-/** Build pooling sub-graph. */
+/**
+ * Build pooling sub-graph.
+ *
+ * Port of `llm_graph_context::build_pooling`.
+ */
 fun LlmGraphContext.buildPooling(
     cls: GGMLTensor?, clsB: GGMLTensor?,
     clsOut: GGMLTensor?, clsOutB: GGMLTensor?,
     clsNorm: GGMLTensor?,
 ) {
-    TODO("Port llm_graph_context::build_pooling")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val graph = gf ?: error("gf not initialised")
+    val curEmbd = r.tEmbd ?: return
+
+    when (poolingType) {
+        LlamaPoolingType.MEAN -> {
+            val mean = buildInpMean()
+            var pooled = matMul(c, curEmbd, mean)
+            cb(pooled, "result_embd_pooled", -1)
+            r.tEmbdPooled = pooled
+            ggmlBuildForwardExpand(graph, pooled)
+        }
+        LlamaPoolingType.CLS -> {
+            val clsIdx = buildInpCls()
+            var pooled = ggmlGetRows(c, curEmbd, clsIdx)
+            cb(pooled, "result_cls", -1)
+            // Optional classification head layers
+            if (cls != null) {
+                pooled = buildLoraMm(cls, pooled)
+                if (clsB != null) pooled = add(c, pooled, clsB)
+                cb(pooled, "cls", -1)
+            }
+            if (clsNorm != null) {
+                pooled = buildNorm(pooled, clsNorm, null, LlmNormType.NORM, -1)
+                cb(pooled, "cls_norm", -1)
+            }
+            pooled = ggmlTanh(c, pooled)
+            cb(pooled, "cls_tanh", -1)
+            if (clsOut != null) {
+                pooled = buildLoraMm(clsOut, pooled)
+                if (clsOutB != null) pooled = add(c, pooled, clsOutB)
+                cb(pooled, "cls_out", -1)
+            }
+            r.tEmbdPooled = pooled
+            ggmlBuildForwardExpand(graph, pooled)
+        }
+        LlamaPoolingType.LAST -> {
+            val clsIdx = buildInpCls()
+            var pooled = ggmlGetRows(c, curEmbd, clsIdx)
+            cb(pooled, "result_embd_pooled", -1)
+            r.tEmbdPooled = pooled
+            ggmlBuildForwardExpand(graph, pooled)
+        }
+        else -> {
+            // NONE or unsupported – do nothing
+        }
+    }
 }
 
-/** Build backend-sampling sub-graph. */
+/** Build backend-sampling sub-graph. Port of `build_sampling`. */
 fun LlmGraphContext.buildSampling() {
-    TODO("Port llm_graph_context::build_sampling")
+    // Backend sampling requires integration with the sampler system, which
+    // touches backend-specific tensor-set operations. Left as a structured
+    // placeholder for now.
+    TODO("Port llm_graph_context::build_sampling — requires sampler backend integration")
 }
 
-/** Build dense-out (final linear projections). */
+/**
+ * Build dense-out (final linear projections after pooling).
+ *
+ * Port of `llm_graph_context::build_dense_out`.
+ */
 fun LlmGraphContext.buildDenseOut(
     dense2: GGMLTensor?, dense2B: GGMLTensor?,
     dense3: GGMLTensor?,
 ) {
-    TODO("Port llm_graph_context::build_dense_out")
+    val c = ctx0 ?: error("ctx0 not initialised")
+    val r = res ?: error("res not initialised")
+    val graph = gf ?: error("gf not initialised")
+    var cur = r.tEmbdPooled ?: return
+
+    if (dense2 != null) {
+        cur = buildLoraMm(dense2, cur)
+        if (dense2B != null) cur = add(c, cur, dense2B)
+        cur = relu(c, cur)
+        cb(cur, "dense2", -1)
+    }
+    if (dense3 != null) {
+        cur = buildLoraMm(dense3, cur)
+        cb(cur, "dense3", -1)
+    }
+
+    r.tEmbdPooled = cur
+    ggmlBuildForwardExpand(graph, cur)
 }
 
 // =============================================================================
 // Standalone utility
-// Ported from: llama-graph.h  llama_relative_position_bucket
+// Ported from: llama-graph.cpp  llama_relative_position_bucket
 // =============================================================================
 
 /**
  * Compute a relative-position bucket index (used by T5-style position bias).
  *
- * Port of `llama_relative_position_bucket()`.
+ * The bucketing scheme uses exact positions for small offsets and logarithmic
+ * buckets for larger distances. With `bidirectional = true` half the buckets
+ * are reserved for negative (backward) relative positions.
+ *
+ * Port of `llama_relative_position_bucket()` from `llama-graph.cpp`.
  */
 fun llamaRelativePositionBucket(
     x: LlamaPos,
@@ -472,5 +726,36 @@ fun llamaRelativePositionBucket(
     nBuckets: Long,
     bidirectional: Boolean,
 ): Int {
-    TODO("Port llama_relative_position_bucket")
+    var relativePosition = (x - y).toLong()
+    var numBuckets = nBuckets.toInt()
+    var ret = 0
+
+    if (bidirectional) {
+        numBuckets /= 2
+        if (relativePosition > 0) {
+            ret += numBuckets
+        } else {
+            relativePosition = -relativePosition
+        }
+    } else {
+        if (relativePosition > 0) {
+            relativePosition = 0
+        } else {
+            relativePosition = -relativePosition
+        }
+    }
+
+    val maxExact = numBuckets / 2
+    // Small relative positions use exact bucket mapping
+    if (relativePosition < maxExact) {
+        return ret + relativePosition.toInt()
+    }
+
+    // Larger relative positions use logarithmic buckets
+    val valIf = (maxExact +
+        (kotlin.math.ln(relativePosition.toDouble() / maxExact) /
+            kotlin.math.ln(((nBuckets * 4).toDouble()) / maxExact) *
+            (numBuckets - maxExact)).toInt())
+    val bucket = minOf(valIf, numBuckets - 1)
+    return ret + bucket
 }

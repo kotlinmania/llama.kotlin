@@ -1059,7 +1059,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             var fa = ggmlFlashAttnExt(c, qPerm, kFa, vFa, kqMask, kqScale,
                 hparams.fMaxAlibiBias,
                 if (hparams.attnSoftCap) hparams.fAttnLogitSoftcapping else 0.0f)
-            cb(fa, LLAMA_TENSOR_NAME_FATTN, il)
+            cb(fa, "fattn", il)
             ggmlFlashAttnExtAddSinks(fa, sinks)
             ggmlFlashAttnExtSetPrec(fa, GGMLPrec.F32)
 
