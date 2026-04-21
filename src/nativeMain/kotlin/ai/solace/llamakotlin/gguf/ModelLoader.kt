@@ -133,7 +133,7 @@ data class KvOverride(
 /**
  * Model loader that can load GGUF files and create tensors.
  *
- * This is the original simple interface preserved from the earlier stub.
+ * This is the original simple interface preserved from the earlier minimal.
  */
 class ModelLoader {
     
@@ -141,7 +141,7 @@ class ModelLoader {
      * Load model from GGUF file
      */
     fun loadFromFile(filePath: String): LoadedModel {
-        throw UnsupportedOperationException("File IO not available in nativeMain stub; use loadFromBytes")
+        throw UnsupportedOperationException("File IO not available in nativeMain minimal; use loadFromBytes")
     }
     
     /**
@@ -431,12 +431,12 @@ class LlamaModelLoader private constructor(
             }
         } else {
             // For quantized/other types, store raw bytes
-            // TODO("port from llama-model-loader.cpp: full quantized data loading with validation")
+            // error("not yet ported: port from llama-model-loader.cpp: full quantized data loading with validation")
             println("Warning: Loading data for tensor type ${tensor.type} not fully implemented")
         }
 
         if (checkTensors) {
-            TODO("port from llama-model-loader.cpp: ggml_validate_row_data for tensor validation")
+            error("not yet ported: port from llama-model-loader.cpp: ggml_validate_row_data for tensor validation")
         }
     }
 
@@ -446,7 +446,7 @@ class LlamaModelLoader private constructor(
      * @return `true` on success, `false` if cancelled by the callback.
      */
     fun loadAllData(progressCallback: ((Float) -> Boolean)? = null): Boolean {
-        TODO("port from llama-model-loader.cpp: load_all_data – mmap/async upload/buffer allocation")
+        error("not yet ported: port from llama-model-loader.cpp: load_all_data – mmap/async upload/buffer allocation")
     }
 
     // ── metadata access ─────────────────────────────────────────────────

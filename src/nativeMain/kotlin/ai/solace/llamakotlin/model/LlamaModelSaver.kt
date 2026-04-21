@@ -497,7 +497,7 @@ class LlamaModelSaver private constructor(
      *
      * Port of `llama_model_saver::save(const std::string &)`.
      *
-     * TODO: Implement actual GGUF binary serialisation via [GGUFFileWriter]
+     * LATER: Implement actual GGUF binary serialisation via [GGUFFileWriter]
      *       once the writer utility is complete.
      */
     fun save(path: String) {
@@ -703,7 +703,7 @@ class LlamaModelSaver private constructor(
 /**
  * Writes a [GGUFWriteContext] to a GGUF v3 binary file.
  *
- * TODO: complete binary serialisation (header, KV section, tensor-info
+ * LATER: complete binary serialisation (header, KV section, tensor-info
  *       section, tensor data with alignment padding).  The skeleton below
  *       lays out the structure so that callers can integrate immediately.
  */

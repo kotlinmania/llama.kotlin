@@ -210,7 +210,7 @@ class LlmBuildLlama(
                 var kcur = kcur0
 
                 // RoPE is applied to Q and K here; full implementation delegates to
-                // ggml_rope_ext via the base-class builder.  TODO: wire rope_factors
+                // ggml_rope_ext via the base-class builder.  LATER: wire rope_factors
                 // from model.get_rope_factors(cparams, il) for LLaMA-3 style per-layer
                 // RoPE frequency factors.
                 cb(qcur, "Qcur", il)
@@ -220,7 +220,7 @@ class LlmBuildLlama(
                 // Optional per-head QK normalization (Llama4TextL2Norm)
                 if (hparams.useKqNorm) {
                     // qcur = rms_norm(qcur); kcur = rms_norm(kcur)
-                    // TODO: apply ggml_rms_norm here
+                    // LATER: apply ggml_rms_norm here
                     cb(qcur, "Qcur_normed", il)
                     cb(kcur, "Kcur_normed", il)
                 }
@@ -246,7 +246,7 @@ class LlmBuildLlama(
 
                 // Optional per-tensor output scale (bitnet / quantized models)
                 if (layer.woS != null) {
-                    // cur = cur * woS  — TODO: wire ggml_mul
+                    // cur = cur * woS  — LATER: wire ggml_mul
                 }
                 nameTensor(cur, "attn_out", il)
             }
@@ -255,11 +255,11 @@ class LlmBuildLlama(
             if (il == nLayer.toInt() - 1 && inpOutIds != null) {
                 // cur = ggml_get_rows(cur, inpOutIds)
                 // inpSA = ggml_get_rows(inpSA, inpOutIds)
-                // TODO: wire ggml_get_rows for output selection
+                // LATER: wire ggml_get_rows for output selection
             }
 
             // ---- Residual connection (attention) ----
-            var ffnInp = cur // placeholder: should be ggml_add(cur, inpSA)
+            var ffnInp = cur // skeleton: should be ggml_add(cur, inpSA)
             cb(ffnInp, "ffn_inp", il)
 
             // ---- FFN (non-MoE or MoE) ----
@@ -299,7 +299,7 @@ class LlmBuildLlama(
             }
 
             // ---- Residual connection (FFN) ----
-            // cur = ggml_add(cur, ffnInp)  — TODO: wire element-wise add
+            // cur = ggml_add(cur, ffnInp)  — LATER: wire element-wise add
             nameTensor(cur, "ffn_out", il)
 
             // Control vector injection

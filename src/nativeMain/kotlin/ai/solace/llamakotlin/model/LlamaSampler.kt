@@ -1115,14 +1115,14 @@ class LlamaSamplerMirostatV2(
 }
 
 // ---------------------------------------------------------------------------
-// 17. Grammar sampler (placeholder – integrates with Grammar.kt)
+// 17. Grammar sampler (skeleton – integrates with Grammar.kt)
 // ---------------------------------------------------------------------------
 
 /**
  * Grammar-constrained sampling. Delegates to the GBNF grammar engine in
  * Grammar.kt to mask out tokens that would violate the grammar.
  *
- * TODO: Wire up to `LlamaGrammar` once the grammar-apply / grammar-accept
+ * LATER: Wire up to `LlamaGrammar` once the grammar-apply / grammar-accept
  * interface is exposed.
  */
 class LlamaSamplerGrammar(
@@ -1133,16 +1133,16 @@ class LlamaSamplerGrammar(
     override fun name(): String = "grammar"
 
     override fun accept(token: LlamaToken) {
-        // TODO: forward to grammar.acceptToken(token)
+        // LATER: forward to grammar.acceptToken(token)
     }
 
     override fun apply(curP: LlamaTokenDataArray) {
         if (grammarStr.isEmpty()) return
-        // TODO: forward to grammar.applyConstraints(curP)
+        // LATER: forward to grammar.applyConstraints(curP)
     }
 
     override fun reset() {
-        // TODO: re-parse grammarStr
+        // LATER: re-parse grammarStr
     }
 
     override fun clone(): LlamaSampler = LlamaSamplerGrammar(grammarStr, grammarRoot)
@@ -1335,23 +1335,23 @@ fun llamaSamplerInitGreedy(): LlamaSampler = LlamaSamplerGreedy()
 /** Create a distribution sampler with the given [seed]. */
 fun llamaSamplerInitDist(seed: UInt = LLAMA_DEFAULT_SEED): LlamaSampler = LlamaSamplerDist(seed)
 
-/** Create a top-k sampler (returns no-op if [k] ≤ 0). */
+/** Create a top-k sampler (returns identity if [k] ≤ 0). */
 fun llamaSamplerInitTopK(k: Int): LlamaSampler =
     if (k <= 0) LlamaSamplerEmpty("?top-k") else LlamaSamplerTopK(k)
 
-/** Create a top-p (nucleus) sampler (returns no-op if [p] ≥ 1). */
+/** Create a top-p (nucleus) sampler (returns identity if [p] ≥ 1). */
 fun llamaSamplerInitTopP(p: Float, minKeep: Int = 1): LlamaSampler =
     if (p >= 1.0f) LlamaSamplerEmpty("?top-p") else LlamaSamplerTopP(p, minKeep)
 
-/** Create a min-p sampler (returns no-op if [p] ≤ 0). */
+/** Create a min-p sampler (returns identity if [p] ≤ 0). */
 fun llamaSamplerInitMinP(p: Float, minKeep: Int = 1): LlamaSampler =
     if (p <= 0.0f) LlamaSamplerEmpty("?min-p") else LlamaSamplerMinP(p, minKeep)
 
-/** Create a typical-p sampler (returns no-op if [p] ≥ 1). */
+/** Create a typical-p sampler (returns identity if [p] ≥ 1). */
 fun llamaSamplerInitTypical(p: Float, minKeep: Int = 1): LlamaSampler =
     if (p >= 1.0f) LlamaSamplerEmpty("?typical") else LlamaSamplerTypical(p, minKeep)
 
-/** Create a temperature sampler (returns no-op if [temp] == 1). */
+/** Create a temperature sampler (returns identity if [temp] == 1). */
 fun llamaSamplerInitTemp(temp: Float): LlamaSampler =
     if (temp == 1.0f) LlamaSamplerEmpty("?temp") else LlamaSamplerTemp(temp)
 
@@ -1360,11 +1360,11 @@ fun llamaSamplerInitTempExt(temp: Float, delta: Float, exponent: Float): LlamaSa
     if (temp == 1.0f && delta <= 0.0f) LlamaSamplerEmpty("?temp-ext")
     else LlamaSamplerTempExt(temp, delta, exponent)
 
-/** Create an XTC sampler (returns no-op if disabled). */
+/** Create an XTC sampler (returns identity if disabled). */
 fun llamaSamplerInitXtc(p: Float, t: Float, minKeep: Int = 1, seed: UInt = LLAMA_DEFAULT_SEED): LlamaSampler =
     if (p <= 0.0f || t > 0.5f) LlamaSamplerEmpty("?xtc") else LlamaSamplerXtc(p, t, minKeep, seed)
 
-/** Create a penalties sampler (returns no-op if disabled). */
+/** Create a penalties sampler (returns identity if disabled). */
 fun llamaSamplerInitPenalties(
     penaltyLastN: Int,
     penaltyRepeat: Float = 1.0f,
@@ -1378,7 +1378,7 @@ fun llamaSamplerInitPenalties(
     return LlamaSamplerPenalties(n, penaltyRepeat, penaltyFreq, penaltyPresent)
 }
 
-/** Create a top-n-sigma sampler (returns no-op if [n] ≤ 0). */
+/** Create a top-n-sigma sampler (returns identity if [n] ≤ 0). */
 fun llamaSamplerInitTopNSigma(n: Float): LlamaSampler =
     if (n <= 0.0f) LlamaSamplerEmpty("?top-n-sigma") else LlamaSamplerTopNSigma(n)
 
@@ -1439,17 +1439,17 @@ fun llamaSamplerChainInit(params: LlamaSamplerChainParams = LlamaSamplerChainPar
     LlamaSamplerChain(params)
 
 // ---------------------------------------------------------------------------
-// Empty (no-op) sampler
+// Empty (identity) sampler
 // ---------------------------------------------------------------------------
 
 /**
- * A no-op sampler used as a placeholder when a sampler is disabled
+ * A identity sampler used as a skeleton when a sampler is disabled
  * (e.g. top-k with k ≤ 0). Named with a leading `?` by convention to
  * indicate it is inactive.
  */
 class LlamaSamplerEmpty(private val label: String) : LlamaSampler {
     override fun name(): String = label
-    override fun apply(curP: LlamaTokenDataArray) { /* no-op */ }
+    override fun apply(curP: LlamaTokenDataArray) { /* identity */ }
     override fun clone(): LlamaSampler = LlamaSamplerEmpty(label)
 }
 

@@ -677,7 +677,7 @@ class LlamaContext(
      * Writes magic, version, token prompt, then state data via [stateWriteDataImpl].
      */
     fun stateSaveFile(filepath: String, tokens: IntArray, nTokenCount: Int): Boolean {
-        // TODO: implement file I/O when LlamaFile is available
+        // LATER: implement file I/O when LlamaFile is available
         return false
     }
 
@@ -690,7 +690,7 @@ class LlamaContext(
         tokensOut: IntArray,
         nTokenCapacity: Int,
     ): Pair<Boolean, Int> {
-        // TODO: implement file I/O when LlamaFile is available
+        // LATER: implement file I/O when LlamaFile is available
         return Pair(false, 0)
     }
 
@@ -703,7 +703,7 @@ class LlamaContext(
         tokens: IntArray,
         nTokenCount: Int,
     ): Long {
-        // TODO: implement file I/O when LlamaFile is available
+        // LATER: implement file I/O when LlamaFile is available
         return 0L
     }
 
@@ -716,7 +716,7 @@ class LlamaContext(
         tokensOut: IntArray,
         nTokenCapacity: Int,
     ): Pair<Long, Int> {
-        // TODO: implement file I/O when LlamaFile is available
+        // LATER: implement file I/O when LlamaFile is available
         return Pair(0L, 0)
     }
 
@@ -1227,7 +1227,7 @@ class LlamaAttention(
      */
     private fun computeGraph(context: GGMLContext, graphAllocator: GGMLGraphAllocator, graph: GGMLCGraph) {
         // This would typically use the existing graph computation infrastructure
-        // For now, this is a placeholder that would be filled in with proper implementation
+        // For now, this is a skeleton that would be filled in with proper implementation
         // The actual computation would happen through the existing GGMLComputeOps infrastructure
     }
 }

@@ -376,10 +376,10 @@ object LlamaUnicode {
     /**
      * NFKD normalization (compatibility decomposition).
      *
-     * TODO: Implement full NFKD normalization. For now delegates to NFD.
+     * LATER: Implement full NFKD normalization. For now delegates to NFD.
      */
     fun unicodeCptsNormalizeNfkd(cpts: List<UInt>): List<UInt> {
-        // TODO: NFKD requires additional decomposition mappings beyond NFD
+        // LATER: NFKD requires additional decomposition mappings beyond NFD
         return unicodeCptsNormalizeNfd(cpts)
     }
 

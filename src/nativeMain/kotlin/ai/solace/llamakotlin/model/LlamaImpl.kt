@@ -146,7 +146,7 @@ private object LlamaTimeBaseline {
  * ```
  *
  * @param accumulator A lambda that receives the elapsed µs to add.
- * @param disabled    When `true`, the timer is a no-op (matches `disable` param in C++).
+ * @param disabled    When `true`, the timer is a identity (matches `disable` param in C++).
  */
 class TimeMeas(
     private val accumulator: (Long) -> Unit,

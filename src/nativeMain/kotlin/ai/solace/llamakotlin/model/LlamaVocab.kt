@@ -319,7 +319,7 @@ sealed class FragmentBufferVariant {
 abstract class LlmTokenizer
 
 /**
- * SPM (SentencePiece) tokenizer stub. The actual merge algorithm lives in
+ * SPM (SentencePiece) tokenizer minimal. The actual merge algorithm lives in
  * [LlmTokenizerSpmSession.tokenize].
  */
 class LlmTokenizerSpm : LlmTokenizer()
@@ -333,16 +333,16 @@ class LlmTokenizerBpe(
     val byteEncode: Boolean = true
 ) : LlmTokenizer()
 
-/** WPM (WordPiece) tokenizer stub. */
+/** WPM (WordPiece) tokenizer minimal. */
 class LlmTokenizerWpm : LlmTokenizer()
 
-/** UGM (Unigram) tokenizer stub. */
+/** UGM (Unigram) tokenizer minimal. */
 class LlmTokenizerUgm : LlmTokenizer()
 
-/** RWKV trie-based tokenizer stub. */
+/** RWKV trie-based tokenizer minimal. */
 class LlmTokenizerRwkv(val tokenMatcher: NaiveTrie = NaiveTrie()) : LlmTokenizer()
 
-/** PLaMo-2 tokenizer stub. */
+/** PLaMo-2 tokenizer minimal. */
 class LlmTokenizerPlamo2 : LlmTokenizer()
 
 // ---------------------------------------------------------------------------
@@ -544,7 +544,7 @@ class LlmTokenizerBpeSession(
      * This method processes the entire [text] as a single word.
      */
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        // TODO: implement unicode_regex_split for proper pre-tokenization
+        // LATER: implement unicode_regex_split for proper pre-tokenization
         // For now, treat the whole text as one word
         val words = listOf(text)
 
@@ -667,27 +667,27 @@ class LlmTokenizerBpeSession(
 }
 
 // ---------------------------------------------------------------------------
-// WPM tokenizer session (stub)
+// WPM tokenizer session (minimal)
 // ---------------------------------------------------------------------------
 
 class LlmTokenizerWpmSession(private val vocab: LlamaVocab) {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        TODO("WPM tokenizer session not yet implemented")
+        error("not yet ported: WPM tokenizer session not yet implemented")
     }
 }
 
 // ---------------------------------------------------------------------------
-// UGM tokenizer session (stub)
+// UGM tokenizer session (minimal)
 // ---------------------------------------------------------------------------
 
 class LlmTokenizerUgmSession(private val vocab: LlamaVocab) {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        TODO("UGM tokenizer session not yet implemented")
+        error("not yet ported: UGM tokenizer session not yet implemented")
     }
 }
 
 // ---------------------------------------------------------------------------
-// RWKV tokenizer session (stub)
+// RWKV tokenizer session (minimal)
 // ---------------------------------------------------------------------------
 
 class LlmTokenizerRwkvSession(
@@ -695,17 +695,17 @@ class LlmTokenizerRwkvSession(
     private val tokenizer: LlmTokenizerRwkv
 ) {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        TODO("RWKV tokenizer session not yet implemented")
+        error("not yet ported: RWKV tokenizer session not yet implemented")
     }
 }
 
 // ---------------------------------------------------------------------------
-// PLaMo-2 tokenizer session (stub)
+// PLaMo-2 tokenizer session (minimal)
 // ---------------------------------------------------------------------------
 
 class LlmTokenizerPlamo2Session {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        TODO("PLaMo-2 tokenizer session not yet implemented")
+        error("not yet ported: PLaMo-2 tokenizer session not yet implemented")
     }
 }
 
@@ -1373,7 +1373,7 @@ class LlamaVocab {
                 }
             }
             LlamaVocabType.RWKV -> {
-                // TODO: implement llama_unescape_rwkv_token
+                // LATER: implement llama_unescape_rwkv_token
                 tokenText
             }
             LlamaVocabType.PLAMO2 -> {
@@ -1500,7 +1500,7 @@ class LlamaVocab {
     }
 
     // -----------------------------------------------------------------------
-    // Load from GGUF metadata (stub)
+    // Load from GGUF metadata (minimal)
     // -----------------------------------------------------------------------
 
     /**

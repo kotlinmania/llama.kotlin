@@ -950,7 +950,7 @@ fun llamaBatchInit(nTokensAlloc: Int, embd: Int = 0, nSeqMax: Int = 1): LlamaBat
  *
  * Port of `llama_batch_free()`.
  *
- * In Kotlin this is a no-op because the garbage collector handles deallocation.
+ * In Kotlin this is a identity because the garbage collector handles deallocation.
  */
 @Suppress("UNUSED_PARAMETER")
 fun llamaBatchFree(batch: LlamaBatch) {

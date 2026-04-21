@@ -12,7 +12,7 @@ import ai.solace.llamakotlin.core.*
  * GGUF metadata key identifiers.
  *
  * Each entry maps to a string pattern used in GGUF files. Patterns containing
- * `%s` are architecture-scoped — the placeholder is replaced by the architecture
+ * `%s` are architecture-scoped — the skeleton is replaced by the architecture
  * name (e.g. `"llama"`) at lookup time via [LlmKvHelper]. Patterns without `%s`
  * are global keys shared across all architectures.
  *

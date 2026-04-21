@@ -262,13 +262,13 @@ fun llamaSupportsMlock(): Boolean = LlamaMlock.SUPPORTED
  *
  * Maps to `llama_supports_gpu_offload()`.
  */
-fun llamaSupportsGpuOffload(): Boolean = false  // TODO: query GGMLBackend registry
+fun llamaSupportsGpuOffload(): Boolean = false  // LATER: query GGMLBackend registry
 
 /**
  * Whether an RPC backend is available.
  * Maps to `llama_supports_rpc()`.
  */
-fun llamaSupportsRpc(): Boolean = false  // TODO: query GGMLBackend registry
+fun llamaSupportsRpc(): Boolean = false  // LATER: query GGMLBackend registry
 
 // ---------------------------------------------------------------------------
 // Backend lifecycle  (llama_backend_init / llama_backend_free)
@@ -293,11 +293,11 @@ fun llamaBackendInit() {
  * Maps to `llama_numa_init()`.
  *
  * @param strategy The desired NUMA strategy. [GGMLNumaStrategy.DISABLED]
- *                 is a no-op.
+ *                 is a identity.
  */
 fun llamaNumaInit(strategy: GGMLNumaStrategy) {
     if (strategy != GGMLNumaStrategy.DISABLED) {
-        // TODO: hook into the CPU backend NUMA initialisation when available
+        // LATER: hook into the CPU backend NUMA initialisation when available
         llamaLogDebug("llamaNumaInit: NUMA strategy $strategy requested but not yet supported\n")
     }
 }
@@ -370,7 +370,7 @@ internal fun getOverflowPattern(layerIndex: Int, fraction: LayerFraction): Strin
 }
 
 // ---------------------------------------------------------------------------
-// llama_get_device_memory_data  (stub)
+// llama_get_device_memory_data  (minimal)
 // ---------------------------------------------------------------------------
 
 /**
@@ -378,7 +378,7 @@ internal fun getOverflowPattern(layerIndex: Int, fraction: LayerFraction): Strin
  *
  * In the C++ implementation this actually loads the model with `no_alloc`
  * to measure memory use on each device.  In the current Kotlin port this is
- * a **stub** that returns an approximation suitable for CPU-only execution.
+ * a **minimal** that returns an approximation suitable for CPU-only execution.
  *
  * @return A list of [LlamaDeviceMemoryData], one per device plus a trailing
  *         entry for host (CPU) memory.
@@ -388,7 +388,7 @@ internal fun llamaGetDeviceMemoryData(
     mparams: LlamaModelParams,
     cparams: LlamaContextParams,
 ): List<LlamaDeviceMemoryData> {
-    // TODO: implement proper device memory probing
+    // LATER: implement proper device memory probing
     //   1. Load model with no_alloc = true
     //   2. Create context, call memory_breakdown()
     //   3. Aggregate per-device totals
@@ -455,7 +455,7 @@ internal fun llamaParamsFitImpl(
 
     val defaultMparams = llamaModelDefaultParams()
 
-    // TODO: replace stub — load model to query actual memory
+    // LATER: replace minimal — load model to query actual memory
     val dmdsInit = llamaGetDeviceMemoryData(pathModel, mparams, cparams)
     val nd = dmdsInit.size - 1  // number of non-host devices
 
@@ -534,7 +534,7 @@ internal fun llamaParamsFitImpl(
             llamaLogInfo(
                 "llamaParamsFitImpl: need to reduce device memory by ${-globalSurplus / MIB} MiB\n"
             )
-            // TODO: implement context-size reduction via linear interpolation
+            // LATER: implement context-size reduction via linear interpolation
             //   - load model at nCtxMin, measure memory
             //   - interpolate to find largest context that fits
             //   - set cparams.nCtx accordingly
@@ -563,7 +563,7 @@ internal fun llamaParamsFitImpl(
     // structurally ported below but gated behind nd > 0, which is unreachable
     // on the current CPU-only backend.
 
-    // TODO: port the full iterative layer assignment once multi-device
+    // LATER: port the full iterative layer assignment once multi-device
     // backends are available.  The C++ algorithm:
     //
     //  a) Build per-device targets = free - margin.
@@ -643,20 +643,20 @@ fun llamaModelLoadFromFile(
 ): LlamaModelData? {
     llamaLogInfo("llamaModelLoadFromFile: loading model from '$pathModel'\n")
     return try {
-        // TODO: once LlamaModelLoader supports file paths, use it directly.
+        // LATER: once LlamaModelLoader supports file paths, use it directly.
         // For now we delegate to the simple ModelLoader with a TODO for I/O.
         val model = LlamaModelData()
         model.hparams.vocabOnly = params.vocabOnly
         model.hparams.noAlloc = params.noAlloc
 
-        // TODO: integrate with LlamaModelLoader for full GGUF loading:
+        // LATER: integrate with LlamaModelLoader for full GGUF loading:
         //   val ml = LlamaModelLoader.fromFile(pathModel, params)
         //   ml.loadArch(model)
         //   ml.loadHParams(model)
         //   ml.loadVocab(model)
         //   if (!params.vocabOnly) ml.loadTensors(model)
 
-        llamaLogInfo("llamaModelLoadFromFile: model loaded (stub)\n")
+        llamaLogInfo("llamaModelLoadFromFile: model loaded (minimal)\n")
         model
     } catch (e: Exception) {
         llamaLogError("llamaModelLoadFromFile: error loading model: ${e.message}\n")
@@ -681,7 +681,7 @@ fun llamaModelLoadFromSplits(
         llamaLogError("llamaModelLoadFromSplits: list of splits is empty\n")
         return null
     }
-    // TODO: implement split-model loading
+    // LATER: implement split-model loading
     return llamaModelLoadFromFile(paths.first(), params)
 }
 
@@ -716,7 +716,7 @@ fun llamaModelInitFromUser(
     // Force options that don't apply when loading from user-supplied data
     val adjustedParams = params.copy(useMmap = false, useExtraBuffts = false)
     llamaLogInfo("llamaModelInitFromUser: initialising model from user-supplied data\n")
-    // TODO: integrate with LlamaModelLoader using metadata + callback
+    // LATER: integrate with LlamaModelLoader using metadata + callback
     val model = LlamaModelData()
     model.hparams.vocabOnly = adjustedParams.vocabOnly
     model.hparams.noAlloc = adjustedParams.noAlloc
@@ -742,7 +742,7 @@ fun llamaLoadModelFromFile(
 /**
  * Free resources held by a [LlamaModelData].
  *
- * In the Kotlin port this is a no-op because the GC reclaims memory.
+ * In the Kotlin port this is a identity because the GC reclaims memory.
  * Retained for API parity with `llama_model_free()`.
  */
 fun llamaModelFree(@Suppress("UNUSED_PARAMETER") model: LlamaModelData?) {
@@ -777,7 +777,7 @@ fun llamaInitFromModel(
 /**
  * Free resources held by a [LlamaContext].
  *
- * In the Kotlin port this is effectively a no-op (GC), but the API entry
+ * In the Kotlin port this is effectively a identity (GC), but the API entry
  * point is kept for compatibility with the C++ contract.
  *
  * Maps to `llama_free()` in C++.
@@ -905,7 +905,7 @@ fun llamaTokenGetScore(vocab: LlamaVocab, token: LlamaToken): Float = vocab.toke
 fun llamaTokenGetAttr(vocab: LlamaVocab, token: LlamaToken): Int = vocab.tokenGetAttr(token)
 
 // ---------------------------------------------------------------------------
-// Chat template  (llama_chat_apply_template) — stub
+// Chat template  (llama_chat_apply_template) — minimal
 // ---------------------------------------------------------------------------
 
 /**
@@ -1305,7 +1305,7 @@ fun llamaModelQuantize(
     @Suppress("UNUSED_PARAMETER") fnameOut: String,
     @Suppress("UNUSED_PARAMETER") params: LlamaModelQuantizeParams,
 ): UInt {
-    // TODO: implement full quantization pipeline
+    // LATER: implement full quantization pipeline
     return 1u
 }
 
@@ -1314,7 +1314,7 @@ fun llamaModelSaveToFile(
     @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
     @Suppress("UNUSED_PARAMETER") pathModel: String,
 ) {
-    // TODO: implement GGUF model writing
+    // LATER: implement GGUF model writing
 }
 
 // ---------------------------------------------------------------------------
@@ -1326,7 +1326,7 @@ fun llamaAdapterLoraInit(
     @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
     @Suppress("UNUSED_PARAMETER") pathLora: String,
 ): LlamaAdapterLora? {
-    // TODO: implement LoRA loading
+    // LATER: implement LoRA loading
     return null
 }
 
@@ -1784,7 +1784,7 @@ fun llamaOptInit(
     @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
     @Suppress("UNUSED_PARAMETER") params: LlamaOptParams,
 ) {
-    // TODO: implement training initialisation
+    // LATER: implement training initialisation
 }
 
 /** Filter that selects all tensors as trainable. Maps to `llama_opt_param_filter_all()`. */

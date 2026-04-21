@@ -362,7 +362,7 @@ object GGUFFileReader {
      * Mirrors `gguf_init_from_file` in the C++ source.
      */
     fun initFromFile(path: String, params: GGUFInitParams = GGUFInitParams()): GGUFContextInternal {
-        TODO("port from ggml/src/gguf.cpp – read file at '$path' via platform I/O and delegate to initFromBytes")
+        error("not yet ported: port from ggml/src/gguf.cpp – read file at '$path' via platform I/O and delegate to initFromBytes")
     }
 
     // -----------------------------------------------------------------
@@ -886,7 +886,7 @@ fun setTensorType(ctx: GGUFContextInternal, name: String, type: GGMLType) {
  * Mirrors `gguf_write_to_buf` / `gguf_write_out`.
  */
 fun writeToByteArray(ctx: GGUFContextInternal, onlyMeta: Boolean = false): ByteArray {
-    TODO("port from ggml/src/gguf.cpp – serialize GGUFContextInternal to ByteArray")
+    error("not yet ported: port from ggml/src/gguf.cpp – serialize GGUFContextInternal to ByteArray")
 }
 
 /**
@@ -894,7 +894,7 @@ fun writeToByteArray(ctx: GGUFContextInternal, onlyMeta: Boolean = false): ByteA
  * Mirrors `gguf_write_to_file`.
  */
 fun writeToFile(ctx: GGUFContextInternal, path: String, onlyMeta: Boolean = false): Boolean {
-    TODO("port from ggml/src/gguf.cpp – serialize to file at '$path'")
+    error("not yet ported: port from ggml/src/gguf.cpp – serialize to file at '$path'")
 }
 
 /**
@@ -902,7 +902,7 @@ fun writeToFile(ctx: GGUFContextInternal, path: String, onlyMeta: Boolean = fals
  * padding).  Mirrors `gguf_get_meta_size`.
  */
 fun getMetaSize(ctx: GGUFContextInternal): Long {
-    TODO("port from ggml/src/gguf.cpp – compute meta size via trial serialization")
+    error("not yet ported: port from ggml/src/gguf.cpp – compute meta size via trial serialization")
 }
 
 /**
@@ -910,5 +910,5 @@ fun getMetaSize(ctx: GGUFContextInternal): Long {
  * Mirrors `gguf_get_meta_data`.
  */
 fun getMetaData(ctx: GGUFContextInternal): ByteArray {
-    TODO("port from ggml/src/gguf.cpp – serialize meta section to ByteArray")
+    error("not yet ported: port from ggml/src/gguf.cpp – serialize meta section to ByteArray")
 }

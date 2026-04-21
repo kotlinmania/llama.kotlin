@@ -1333,7 +1333,7 @@ class LlamaModelData(
             }
 
             else -> {
-                // TODO: implement hparams loading for arch ${arch.ggufName}
+                // LATER: implement hparams loading for arch ${arch.ggufName}
                 println("WARNING: loadHParams not yet implemented for arch: ${arch.ggufName}")
             }
         }

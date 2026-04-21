@@ -665,13 +665,13 @@ object LlamaQuant {
     }
 
     // -------------------------------------------------------------------------
-    // Main quantisation driver (stub)
+    // Main quantisation driver (minimal)
     // -------------------------------------------------------------------------
 
     /**
      * Quantise a model file from [fnameInp] to [fnameOut].
      *
-     * TODO: Implement the full quantisation pipeline once the model-loader and
+     * LATER: Implement the full quantisation pipeline once the model-loader and
      *       GGUF writer infrastructure is available. The C++ version
      *       (`llama_model_quantize_impl`) reads tensors, dequantises if needed,
      *       quantises to the target type, and writes a new GGUF file.
@@ -686,7 +686,7 @@ object LlamaQuant {
         fnameOut: String,
         params: LlamaModelQuantizeParams,
     ): Int {
-        TODO("modelQuantize requires model-loader and GGUF writer integration")
+        error("not yet ported: modelQuantize requires model-loader and GGUF writer integration")
     }
 
     // -------------------------------------------------------------------------

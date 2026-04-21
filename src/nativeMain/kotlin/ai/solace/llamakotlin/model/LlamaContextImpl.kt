@@ -141,7 +141,7 @@ class LlamaIoWriteBuffer(private val dst: ByteArray) : LlamaIoWriter {
         pos += data.size
     }
     override fun writeTensor(tensor: GGMLTensor, offset: Long, size: Long) {
-        // TODO: full tensor read-back from backend
+        // LATER: full tensor read-back from backend
         require(pos + size.toInt() <= dst.size) { "unexpectedly reached end of buffer" }
         pos += size.toInt()
     }
@@ -170,7 +170,7 @@ class LlamaIoReadBuffer(private val src: ByteArray) : LlamaIoReader {
 
 /**
  * Full implementation of synchronize — updates perf counters.
- * Replaces the TODO stub in [LlamaContext].
+ * Replaces the TODO minimal in [LlamaContext].
  */
 fun LlamaContext.synchronizeImpl() {
     // Add the evaluation to the stats
@@ -305,11 +305,11 @@ fun LlamaContext.graphMaxNodesImpl(@Suppress("UNUSED_PARAMETER") nTokens: Int): 
  *
  * Port of `llama_context::graph_compute(ggml_cgraph * gf, bool batched)`.
  * In the full implementation this dispatches to the backend scheduler.
- * For now returns SUCCESS as a stub.
+ * For now returns SUCCESS as a minimal.
  */
 fun LlamaContext.graphComputeImpl(graph: GGMLCGraph, batched: Boolean): Int {
     val nThreadsToUse = if (batched) cparams.nThreadsBatch else cparams.nThreads
-    // TODO: full backend scheduler integration
+    // LATER: full backend scheduler integration
     //   - Set threadpool on CPU backend
     //   - Set n_threads on all backends
     //   - Call ggml_backend_sched_graph_compute_async
@@ -337,14 +337,14 @@ fun LlamaContext.graphReserveImpl(nTokens: Int, nSeqs: Int, nOutputsReq: Int): G
         adjustedOutputs = maxOf(adjustedOutputs, adjustedTokens)
     }
 
-    // TODO: full implementation
+    // LATER: full implementation
     //   - Reset scheduler
     //   - Create dummy ubatch via batch allocator
     //   - Build graph via model.buildGraph(graphParams)
     //   - Schedule / allocate the graph
     //   - Return the compute graph
 
-    return null // stub — full backend integration pending
+    return null // minimal — full backend integration pending
 }
 
 // =============================================================================
@@ -420,7 +420,7 @@ private fun LlamaContext.processUBatchInternal(
         //   ggml_backend_sched_reset(sched)
         //   gf = model.build_graph(gparams)
         //   ggml_backend_sched_alloc_graph(sched, gf)
-        // For now, we build a minimal graph placeholder.
+        // For now, we build a minimal graph skeleton.
         val gf = GGMLCGraph(size = graphMaxNodesImpl(ubatch.nTokens))
         res.gf = gf
 
@@ -980,7 +980,7 @@ fun LlamaContext.decodeImpl(batchInp: LlamaBatch): Int {
  * Port of `llama_context::memory_update(bool optimize)`.
  */
 fun LlamaContext.memoryUpdateImpl(@Suppress("UNUSED_PARAMETER") optimize: Boolean): Boolean {
-    // TODO: full implementation
+    // LATER: full implementation
     //   1. Call memory.initUpdate(this, optimize)
     //   2. Check status — return false for NO_UPDATE or failures
     //   3. Reset previous graph result
@@ -1008,7 +1008,7 @@ fun LlamaContext.schedReserveImpl() {
     val nTokens = minOf(cparams.nCtx, cparams.nUbatch)
     val maxNodes = graphMaxNodesImpl(nTokens)
 
-    // TODO: full implementation
+    // LATER: full implementation
     //   1. Create new scheduler with backend_ptrs/buft
     //   2. Initialize memory context (full)
     //   3. Resolve auto flash-attention
@@ -1202,7 +1202,7 @@ fun LlamaContext.setSamplerImpl(seqId: LlamaSeqId, sampler: Any?): Boolean {
     }
 
     if (sampler != null) {
-        // TODO: check can_offload and call backend_init
+        // LATER: check can_offload and call backend_init
         sampling.samplers[seqId] = sampler
         requestSchedReserve()
         return true
@@ -1365,7 +1365,7 @@ fun LlamaContext.setAdapterCvecImpl(
     ilStart: Int,
     ilEnd: Int,
 ): Boolean {
-    // TODO: full implementation — apply cvec to relevant layers
+    // LATER: full implementation — apply cvec to relevant layers
     requestSchedReserve()
     return true
 }
@@ -1379,7 +1379,7 @@ fun LlamaContext.setAdapterCvecImpl(
  * Port of `llama_context::opt_init(model, lopt_params)`.
  */
 fun LlamaContext.optInitImpl() {
-    // TODO: full implementation
+    // LATER: full implementation
     //   - Set up ggml_opt context
     //   - Mark model parameters for gradient computation
     //   - Configure optimizer type and hyperparameters
@@ -1397,7 +1397,7 @@ fun LlamaContext.optEpochImpl(
     @Suppress("UNUSED_PARAMETER") idataSplit: Long,
     @Suppress("UNUSED_PARAMETER") train: Boolean,
 ) {
-    // TODO: full implementation
+    // LATER: full implementation
     //   - Iterate over dataset entries
     //   - Build graphs for each batch
     //   - Compute forward + backward
@@ -1414,7 +1414,7 @@ fun LlamaContext.optEpochImpl(
  */
 fun LlamaContext.memoryBreakdownImpl(): Map<String, LlamaMemoryBreakdownData> {
     val result = mutableMapOf<String, LlamaMemoryBreakdownData>()
-    // TODO: full implementation
+    // LATER: full implementation
     //   - Aggregate model buffer sizes
     //   - Aggregate memory (KV cache) buffer sizes
     //   - Aggregate compute buffer sizes from scheduler

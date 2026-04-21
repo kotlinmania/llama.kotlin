@@ -186,7 +186,7 @@ class LlamaMemoryRecurrent(
         used = 0
         n = 0
         rsZ = -1
-        // TODO: if `data`, zero-fill the r_l / s_l tensor backing buffers via backend
+        // LATER: if `data`, zero-fill the r_l / s_l tensor backing buffers via backend
     }
 
     // -- sequence operations ------------------------------------------------

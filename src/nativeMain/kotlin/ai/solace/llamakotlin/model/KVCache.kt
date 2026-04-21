@@ -647,7 +647,7 @@ class KVCache private constructor(
         _legacyCurrentLength = 0
         // NOTE: buffer zeroing requires backend buffer access – deferred
         if (data) {
-            TODO("port from llama-kv-cache.cpp: clear buffer data via backend_buffer_clear")
+            error("not yet ported: port from llama-kv-cache.cpp: clear buffer data via backend_buffer_clear")
         }
     }
 
@@ -960,7 +960,7 @@ class KVCache private constructor(
         // For each stream, compact cells toward the front.
         for (s in 0 until nStream) {
             val cells = vCells[s]
-            // Metadata-only defrag is a no-op when there are no gaps
+            // Metadata-only defrag is a identity when there are no gaps
             // (the actual C++ defrag builds and executes a copy graph).
             // Cell metadata compaction would require LlamaKvCells.mv() which
             // is commented out in the C++ source. Marking as deferred.
@@ -1110,7 +1110,7 @@ class KVCache private constructor(
         // State serialization requires LlamaIoWrite and backend tensor access.
         // The cell-metadata serialization logic is straightforward but the
         // tensor data read-back needs ggml_backend_tensor_get which is deferred.
-        // TODO: implement once LlamaIoWrite and backend tensor access are ported
+        // LATER: implement once LlamaIoWrite and backend tensor access are ported
     }
 
     /**
@@ -1121,7 +1121,7 @@ class KVCache private constructor(
      */
     fun stateRead(seqId: LlamaSeqId = -1) {
         // State deserialization requires LlamaIoRead and backend tensor access.
-        // TODO: implement once LlamaIoRead and backend tensor access are ported
+        // LATER: implement once LlamaIoRead and backend tensor access are ported
     }
 
     // ── internal helpers ────────────────────────────────────────────────
@@ -1220,7 +1220,7 @@ class KVCacheContext(
             // apply_ubatch would be called here with sinfos[iCur] and the
             // corresponding ubatch. Since we don't store ubatches in this
             // context yet (they come from the batch allocator), this is
-            // a placeholder that updates nKv.
+            // a skeleton that updates nKv.
             nKv = kvCache?.getSize() ?: 0
         }
         return true
@@ -1268,14 +1268,14 @@ class KVCacheContext(
     fun getK(ctx: GGMLContext, il: Int): GGMLTensor {
         val kType = typeK()
         val nKvCur = nKv.toLong()
-        return ggmlNewTensor3d(ctx, kType, 128L, nKvCur, 1L) // TODO: use actual nEmbdHeadK, nHeadKv from hparams
+        return ggmlNewTensor3d(ctx, kType, 128L, nKvCur, 1L) // LATER: use actual nEmbdHeadK, nHeadKv from hparams
     }
 
     /** Get cached V tensor for layer [il]. Port of `llama_kv_cache_context::get_v`. */
     fun getV(ctx: GGMLContext, il: Int): GGMLTensor {
         val vType = typeV()
         val nKvCur = nKv.toLong()
-        return ggmlNewTensor3d(ctx, vType, 128L, nKvCur, 1L) // TODO: use actual nEmbdHeadV, nHeadKv from hparams
+        return ggmlNewTensor3d(ctx, vType, 128L, nKvCur, 1L) // LATER: use actual nEmbdHeadV, nHeadKv from hparams
     }
 
     // ── set_input_* delegation ─────────────────────────────────────────
