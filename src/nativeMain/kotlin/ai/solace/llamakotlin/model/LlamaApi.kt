@@ -1037,10 +1037,12 @@ fun llamaNThreadsBatch(ctx: LlamaContext): Int = ctx.cparams.nThreadsBatch
  *
  * @return The serialised state, or `null` if serialisation is not yet supported.
  */
-fun llamaStateGetData(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext): ByteArray? {
-    // TODO: implement via LlamaIoWrite
-    llamaLogWarn("llamaStateGetData: state serialisation not yet implemented\n")
-    return null
+fun llamaStateGetData(ctx: LlamaContext): ByteArray? {
+    val size = ctx.stateGetSize()
+    if (size <= 0) return null
+    val dst = ByteArray(size.toInt())
+    val written = ctx.stateGetData(dst, size)
+    return if (written > 0) dst.copyOf(written.toInt()) else null
 }
 
 /**
@@ -1049,12 +1051,11 @@ fun llamaStateGetData(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext): ByteArra
  * @return `true` on success, `false` otherwise.
  */
 fun llamaStateSetData(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") data: ByteArray,
+    ctx: LlamaContext,
+    data: ByteArray,
 ): Boolean {
-    // TODO: implement via LlamaIoRead
-    llamaLogWarn("llamaStateSetData: state deserialisation not yet implemented\n")
-    return false
+    val read = ctx.stateSetData(data, data.size.toLong())
+    return read > 0
 }
 
 /**
@@ -1065,13 +1066,11 @@ fun llamaStateSetData(
  * @return `true` on success, `false` otherwise.
  */
 fun llamaStateSaveFile(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") pathSession: String,
-    @Suppress("UNUSED_PARAMETER") tokens: List<LlamaToken>,
+    ctx: LlamaContext,
+    pathSession: String,
+    tokens: List<LlamaToken>,
 ): Boolean {
-    // TODO: implement file-based state save
-    llamaLogWarn("llamaStateSaveFile: not yet implemented\n")
-    return false
+    return ctx.stateSaveFile(pathSession, tokens.toIntArray(), tokens.size)
 }
 
 /**
@@ -1082,12 +1081,12 @@ fun llamaStateSaveFile(
  * @return `true` on success, `false` otherwise.
  */
 fun llamaStateLoadFile(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") pathSession: String,
+    ctx: LlamaContext,
+    pathSession: String,
 ): Boolean {
-    // TODO: implement file-based state load
-    llamaLogWarn("llamaStateLoadFile: not yet implemented\n")
-    return false
+    val tokensOut = IntArray(ctx.nCtx())
+    val (ok, _) = ctx.stateLoadFile(pathSession, tokensOut, tokensOut.size)
+    return ok
 }
 
 // ---------------------------------------------------------------------------
@@ -1100,11 +1099,14 @@ fun llamaStateLoadFile(
  * Maps to `llama_state_seq_get_data()` in C++.
  */
 fun llamaStateSeqGetData(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") seqId: Int,
+    ctx: LlamaContext,
+    seqId: Int,
 ): ByteArray? {
-    // TODO: implement per-sequence state serialisation
-    return null
+    val size = ctx.stateSeqGetSize(seqId)
+    if (size <= 0) return null
+    val dst = ByteArray(size.toInt())
+    val written = ctx.stateSeqGetData(seqId, dst, size)
+    return if (written > 0) dst.copyOf(written.toInt()) else null
 }
 
 /**
@@ -1113,12 +1115,12 @@ fun llamaStateSeqGetData(
  * Maps to `llama_state_seq_set_data()` in C++.
  */
 fun llamaStateSeqSetData(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") data: ByteArray,
-    @Suppress("UNUSED_PARAMETER") destSeqId: Int,
+    ctx: LlamaContext,
+    data: ByteArray,
+    destSeqId: Int,
 ): Boolean {
-    // TODO: implement per-sequence state deserialisation
-    return false
+    val read = ctx.stateSeqSetData(destSeqId, data, data.size.toLong())
+    return read > 0
 }
 
 // ---------------------------------------------------------------------------
@@ -1164,9 +1166,8 @@ fun llamaPerfContextPrint(ctx: LlamaContext) {
  * Reset performance counters for a context.
  * Maps to `llama_perf_context_reset()` in C++.
  */
-fun llamaPerfContextReset(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext) {
-    // TODO: reset ctx perf counters when they become mutable
-    llamaLogDebug("llamaPerfContextReset: not yet implemented\n")
+fun llamaPerfContextReset(ctx: LlamaContext) {
+    ctx.perfReset()
 }
 
 // ---------------------------------------------------------------------------
@@ -1198,10 +1199,7 @@ fun llamaNCtxSeq(ctx: LlamaContext): UInt = (ctx.cparams.nCtx / ctx.cparams.nSeq
 fun llamaGetModel(ctx: LlamaContext): LlamaModel = ctx.model
 
 /** Get the memory handle from a context. Maps to `llama_get_memory()`. */
-fun llamaGetMemory(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext): LlamaMemoryT? {
-    // TODO: return actual memory when KV cache implements LlamaMemoryT
-    return null
-}
+fun llamaGetMemory(ctx: LlamaContext): LlamaMemory? = ctx.getMemory()
 
 /** Get the pooling type for a context. Maps to `llama_pooling_type()`. */
 fun llamaPoolingType(ctx: LlamaContext): LlamaPoolingType = ctx.cparams.poolingType
@@ -1516,12 +1514,9 @@ fun llamaBatchFree(@Suppress("UNUSED_PARAMETER") batch: LlamaBatch) {
  * @return 0 on success, negative on error.
  */
 fun llamaEncode(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") batch: LlamaBatch,
-): Int {
-    // TODO: implement encoder pass
-    return -1
-}
+    ctx: LlamaContext,
+    batch: LlamaBatch,
+): Int = ctx.encode(batch)
 
 /**
  * Decode a batch of tokens.
@@ -1529,12 +1524,9 @@ fun llamaEncode(
  * @return 0 on success, 1 if no KV slot, 2 if aborted, -1 on error.
  */
 fun llamaDecode(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") batch: LlamaBatch,
-): Int {
-    // TODO: implement decoder pass
-    return -1
-}
+    ctx: LlamaContext,
+    batch: LlamaBatch,
+): Int = ctx.decode(batch)
 
 // ---------------------------------------------------------------------------
 // Thread config  (llama_set_n_threads)
@@ -1542,8 +1534,7 @@ fun llamaDecode(
 
 /** Set thread counts. Maps to `llama_set_n_threads()`. */
 fun llamaSetNThreads(ctx: LlamaContext, nThreads: Int, nThreadsBatch: Int) {
-    ctx.cparams.nThreads = nThreads
-    ctx.cparams.nThreadsBatch = nThreadsBatch
+    ctx.setNThreads(nThreads, nThreadsBatch)
 }
 
 // ---------------------------------------------------------------------------
@@ -1552,7 +1543,7 @@ fun llamaSetNThreads(ctx: LlamaContext, nThreads: Int, nThreadsBatch: Int) {
 
 /** Set embedding mode. Maps to `llama_set_embeddings()`. */
 fun llamaSetEmbeddings(ctx: LlamaContext, embeddings: Boolean) {
-    ctx.cparams.embeddings = embeddings
+    ctx.setEmbeddings(embeddings)
 }
 
 /** Set causal attention. Maps to `llama_set_causal_attn()`. */
@@ -1562,20 +1553,20 @@ fun llamaSetCausalAttn(ctx: LlamaContext, causalAttn: Boolean) {
 
 /** Set warmup mode. Maps to `llama_set_warmup()`. */
 fun llamaSetWarmup(ctx: LlamaContext, warmup: Boolean) {
-    ctx.cparams.warmup = warmup
+    ctx.setWarmup(warmup)
 }
 
 /** Set abort callback. Maps to `llama_set_abort_callback()`. */
 fun llamaSetAbortCallback(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") abortCallback: (() -> Boolean)?,
+    ctx: LlamaContext,
+    abortCallback: (() -> Boolean)?,
 ) {
-    // TODO: store and check during decode
+    ctx.setAbortCallback(abortCallback)
 }
 
 /** Wait for async compute to finish. Maps to `llama_synchronize()`. */
-fun llamaSynchronize(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext) {
-    // No-op — currently synchronous
+fun llamaSynchronize(ctx: LlamaContext) {
+    ctx.synchronize()
 }
 
 // ---------------------------------------------------------------------------
