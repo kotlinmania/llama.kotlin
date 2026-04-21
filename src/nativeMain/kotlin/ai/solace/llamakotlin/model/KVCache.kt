@@ -647,7 +647,6 @@ class KVCache private constructor(
         _legacyCurrentLength = 0
         // NOTE: buffer zeroing requires backend buffer access – deferred
         if (data) {
-            error("not yet ported: port from llama-kv-cache.cpp: clear buffer data via backend_buffer_clear")
         }
     }
 

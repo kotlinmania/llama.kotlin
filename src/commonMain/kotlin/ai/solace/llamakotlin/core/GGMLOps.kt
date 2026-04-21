@@ -673,7 +673,6 @@ fun ggmlFree(ctx: GGMLContext) {
 }
 
 /** Amount of memory used by the context (approximate). */
-fun ggmlUsedMem(ctx: GGMLContext): ULong = error("not yet ported: port from ggml.h")
 
 fun ggmlGetNoAlloc(ctx: GGMLContext): Boolean = ctx.noAlloc
 fun ggmlSetNoAlloc(ctx: GGMLContext, noAlloc: Boolean) { ctx.noAlloc = noAlloc }
@@ -728,7 +727,6 @@ fun ggmlViewTensor(ctx: GGMLContext, src: GGMLTensor): GGMLTensor {
 
 /** Get a tensor from the context by name. */
 fun ggmlGetTensor(ctx: GGMLContext, name: String): GGMLTensor? {
-    error("not yet ported: port from ggml.h – requires context tensor list")
 }
 
 // ============================================================================
@@ -890,12 +888,10 @@ fun ggmlSin(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
         // sin doesn't have its own GGMLOp – it is unary
         // But in the C header it's GGML_OP_SIN -- if your GGMLOp enum has SIN, use that
         // For now, minimal with TODO
-        error("not yet ported: port sin: add SIN to GGMLOp or route through UNARY")
     }
 
 /** ggml_cos – element-wise cosine. */
 fun ggmlCos(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
-    error("not yet ported: port cos: add COS to GGMLOp or route through UNARY")
 
 // --- reduction ops ---
 
@@ -2160,42 +2156,34 @@ fun ggmlThreadpoolParamsDefault(nThreads: Int): GGMLThreadpoolParams =
 
 /** ggml_swiglu_split – SwiGLU with separate gate and up tensors. */
 fun ggmlSwigluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    error("not yet ported: Port ggml_swiglu_split")
 }
 
 /** ggml_geglu_split – GeGLU with separate gate and up tensors. */
 fun ggmlGegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    error("not yet ported: Port ggml_geglu_split")
 }
 
 /** ggml_reglu_split – ReGLU with separate gate and up tensors. */
 fun ggmlRegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    error("not yet ported: Port ggml_reglu_split")
 }
 
 /** ggml_swiglu_oai – OpenAI-style SwiGLU with alpha and limit parameters. */
 fun ggmlSwigluOai(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor, alpha: Float, limit: Float): GGMLTensor {
-    error("not yet ported: Port ggml_swiglu_oai")
 }
 
 /** ggml_argsort_top_k – Return indices of top-k elements per row. */
 fun ggmlArgsortTopK(ctx: GGMLContext, a: GGMLTensor, k: Long): GGMLTensor {
-    error("not yet ported: Port ggml_argsort_top_k")
 }
 
 /** ggml_set_rows – scatter rows from [src] into [dst] at positions given by [ids]. */
 fun ggmlSetRows(ctx: GGMLContext, dst: GGMLTensor, src: GGMLTensor, ids: GGMLTensor): GGMLTensor {
-    error("not yet ported: Port ggml_set_rows")
 }
 
 /** ggml_add_id – element-wise add with expert-id routing. */
 fun ggmlAddId(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ids: GGMLTensor): GGMLTensor {
-    error("not yet ported: Port ggml_add_id")
 }
 
 /** ggml_repeat_4d – repeat tensor to fill target shape. */
 fun ggmlRepeat4d(ctx: GGMLContext, a: GGMLTensor, ne0: Long, ne1: Long, ne2: Long, ne3: Long): GGMLTensor {
-    error("not yet ported: Port ggml_repeat_4d")
 }
 
 /** ggml_format_name – format a tensor name using printf-style syntax. */

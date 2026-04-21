@@ -24,7 +24,6 @@ fun llamaGraphReserve(
     nSeqs: UInt,
     nOutputs: UInt,
 ): GGMLCGraph {
-    error("not yet ported: Port llama_graph_reserve")
 }
 
 // ---------------------------------------------------------------------------

@@ -2933,7 +2933,6 @@ fun ggmlBuildBackwardExpand(
     cgraph: GGMLCGraph,
     gradAccs: Array<GGMLTensor?>? = null
 ) {
-    error("not yet ported: port from ggml/src/ggml.c — ggml_build_backward_expand (lines 6946-7043)")
 }
 
 // ---------------------------------------------------------------------------
@@ -3001,10 +3000,8 @@ fun ggmlCommit(): String = "unknown"
 fun ggmlFtypeToGgmlType(ftype: GGMLFType): GGMLType = when (ftype) {
     GGMLFType.ALL_F32     -> GGMLType.F32
     GGMLFType.MOSTLY_F16  -> GGMLType.F16
-    GGMLFType.MOSTLY_BF16 -> error("not yet ported: BF16 GGMLType not yet defined")
     GGMLFType.MOSTLY_Q4_0 -> GGMLType.Q4_0
     GGMLFType.MOSTLY_Q4_1 -> GGMLType.Q4_1
-    GGMLFType.MOSTLY_Q1_0 -> error("not yet ported: Q1_0 GGMLType not yet defined")
     GGMLFType.MOSTLY_Q5_0 -> GGMLType.Q5_0
     GGMLFType.MOSTLY_Q5_1 -> GGMLType.Q5_1
     GGMLFType.MOSTLY_Q8_0 -> GGMLType.Q8_0

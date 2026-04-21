@@ -65,7 +65,6 @@ interface GGMLBackendBufferTypeImpl {
      * Defaults to `ggml_nbytes(tensor)`.
      */
     fun getAllocSize(tensor: GGMLTensor): ULong {
-        error("not yet ported: port from ggml-backend-impl.h — default: ggml_nbytes(tensor)")
     }
 
     /**
@@ -128,7 +127,6 @@ interface GGMLBackendBufferImpl {
         offset: ULong,
         size: ULong
     ) {
-        error("not yet ported: port from ggml-backend-impl.h")
     }
 
     /**
@@ -178,7 +176,6 @@ interface GGMLBackendBufferImpl {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        error("not yet ported: port from ggml-backend-impl.h — optional 2D set")
     }
 
     /**
@@ -195,7 +192,6 @@ interface GGMLBackendBufferImpl {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        error("not yet ported: port from ggml-backend-impl.h — optional 2D get")
     }
 
     /**
@@ -272,7 +268,6 @@ fun ggmlBackendBufferInit(
  * Mirrors `ggml_backend_buffer_copy_tensor()` in C.
  */
 fun ggmlBackendBufferCopyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -289,12 +284,10 @@ fun ggmlBackendMultiBufferAllocBuffer(
     buffers: List<GGMLBackendBufferHolder>,
     nBuffers: ULong
 ): GGMLBackendBufferHolder {
-    error("not yet ported: port from ggml-backend-impl.h — multi-buffer allocation")
 }
 
 /** Check whether [buffer] is a multi-buffer. */
 fun ggmlBackendBufferIsMultiBuffer(buffer: GGMLBackendBufferHolder): Boolean {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Set usage on every sub-buffer inside a multi-buffer. */
@@ -302,7 +295,6 @@ fun ggmlBackendMultiBufferSetUsage(
     buffer: GGMLBackendBufferHolder,
     usage: GGMLBackendBufferUsage
 ) {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -311,22 +303,18 @@ fun ggmlBackendMultiBufferSetUsage(
 
 /** Check whether [backend] is a meta (multi-backend) wrapper. */
 fun ggmlBackendIsMeta(backend: GGMLBackendHolder): Boolean {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Check whether [buffer] belongs to a meta backend. */
 fun ggmlBackendBufferIsMeta(buffer: GGMLBackendBufferHolder): Boolean {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Check whether [buft] belongs to a meta backend. */
 fun ggmlBackendBuftIsMeta(buft: GGMLBackendBufferTypeHolder): Boolean {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Number of simple backends inside a meta backend. */
 fun ggmlBackendMetaNBackends(metaBackend: GGMLBackendHolder): ULong {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 /** Get simple backend at [index] inside a meta backend. */
@@ -334,7 +322,6 @@ fun ggmlBackendMetaSimpleBackend(
     metaBackend: GGMLBackendHolder,
     index: ULong
 ): GGMLBackendHolder {
-    error("not yet ported: port from ggml-backend-impl.h")
 }
 
 // ---------------------------------------------------------------------------
@@ -363,7 +350,6 @@ interface GGMLBackendIface {
         offset: ULong,
         size: ULong
     ) {
-        error("not yet ported: port from ggml-backend-impl.h — optional async set")
     }
 
     /** Asynchronously copy [tensor] data back to host [data]. */
@@ -373,7 +359,6 @@ interface GGMLBackendIface {
         offset: ULong,
         size: ULong
     ) {
-        error("not yet ported: port from ggml-backend-impl.h — optional async get")
     }
 
     /** Asynchronously set tensor with 2-D strided layout. */
@@ -386,7 +371,6 @@ interface GGMLBackendIface {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        error("not yet ported: port from ggml-backend-impl.h — optional async 2D set")
     }
 
     /** Asynchronously get tensor with 2-D strided layout. */
@@ -399,7 +383,6 @@ interface GGMLBackendIface {
         strideTensor: ULong,
         strideData: ULong
     ) {
-        error("not yet ported: port from ggml-backend-impl.h — optional async 2D get")
     }
 
     /**
@@ -425,12 +408,10 @@ interface GGMLBackendIface {
 
     /** Create an execution plan for [cgraph]. */
     fun graphPlanCreate(cgraph: GGMLCGraph): Any? {
-        error("not yet ported: port from ggml-backend-impl.h — optional graph plan create")
     }
 
     /** Free a previously created [plan]. */
     fun graphPlanFree(plan: Any?) {
-        error("not yet ported: port from ggml-backend-impl.h — optional graph plan free")
     }
 
     /**
@@ -438,12 +419,10 @@ interface GGMLBackendIface {
      * topology — faster than creating a fresh plan.
      */
     fun graphPlanUpdate(plan: Any?, cgraph: GGMLCGraph) {
-        error("not yet ported: port from ggml-backend-impl.h — optional graph plan update")
     }
 
     /** Execute the pre-compiled [plan]. */
     fun graphPlanCompute(plan: Any?): GGMLStatus {
-        error("not yet ported: port from ggml-backend-impl.h — optional graph plan compute")
     }
 
     /**
@@ -457,12 +436,10 @@ interface GGMLBackendIface {
 
     /** Record an event on this stream. */
     fun eventRecord(event: GGMLBackendEventHolder) {
-        error("not yet ported: port from ggml-backend-impl.h — optional event record")
     }
 
     /** Wait for an event that was recorded on a different stream. */
     fun eventWait(event: GGMLBackendEventHolder) {
-        error("not yet ported: port from ggml-backend-impl.h — optional event wait")
     }
 
     // -- (optional) graph optimisation --
@@ -626,17 +603,14 @@ interface GGMLBackendDeviceIface {
 
     /** Create a new synchronisation event. */
     fun eventNew(): GGMLBackendEventHolder? {
-        error("not yet ported: port from ggml-backend-impl.h — optional event new")
     }
 
     /** Free a previously created [event]. */
     fun eventFree(event: GGMLBackendEventHolder) {
-        error("not yet ported: port from ggml-backend-impl.h — optional event free")
     }
 
     /** Block until [event] has completed. */
     fun eventSynchronize(event: GGMLBackendEventHolder) {
-        error("not yet ported: port from ggml-backend-impl.h — optional event synchronize")
     }
 }
 

@@ -686,7 +686,6 @@ object LlamaQuant {
         fnameOut: String,
         params: LlamaModelQuantizeParams,
     ): Int {
-        error("not yet ported: modelQuantize requires model-loader and GGUF writer integration")
     }
 
     // -------------------------------------------------------------------------

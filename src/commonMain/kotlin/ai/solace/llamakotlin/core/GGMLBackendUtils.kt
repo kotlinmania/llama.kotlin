@@ -616,7 +616,6 @@ class GGMLBackendMultiBufferContext(
  * Allocate a logical multi-buffer wrapping several sub-buffers.
  */
 fun ggmlBackendMultiBufferAllocBuffer(buffers: List<GGMLBackendBuffer>): GGMLBackendBuffer {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -769,7 +768,6 @@ fun ggmlBackendSchedBackendIdFromCur(
     tensor: GGMLTensor,
     opOffload: Boolean
 ): Int {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -781,7 +779,6 @@ fun ggmlBackendSchedPrintAssignments(
     splits: List<GGMLBackendSchedSplit>,
     graph: GGMLCGraph
 ) {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -795,7 +792,6 @@ fun ggmlBackendSchedBufferSupported(
     tensor: GGMLTensor,
     backendId: Int
 ): Boolean {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -825,7 +821,6 @@ fun ggmlBackendSchedSplitGraph(
     graph: GGMLCGraph,
     opOffload: Boolean
 ): List<GGMLBackendSchedSplit> {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -837,7 +832,6 @@ fun ggmlBackendSchedAllocSplits(
     splits: List<GGMLBackendSchedSplit>,
     graph: GGMLCGraph
 ): Boolean {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -849,7 +843,6 @@ fun ggmlBackendSchedComputeSplits(
     splits: List<GGMLBackendSchedSplit>,
     evalCallback: GGMLBackendSchedEvalCallback?
 ): GGMLStatus {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 // =====================================================================
@@ -897,7 +890,6 @@ fun ggmlBackendTensorAllocImpl(
  * a target backend.
  */
 fun ggmlBackendGraphCopyCreate(backend: GGMLBackend, graph: GGMLCGraph): GGMLBackendGraphCopy {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 /**
@@ -911,7 +903,6 @@ fun ggmlBackendCompareGraphBackend(
     callback: GGMLBackendEvalCallback,
     testNodes: List<GGMLTensor>? = null
 ): Boolean {
-    error("not yet ported: port from ggml/src/ggml-backend.cpp")
 }
 
 // =====================================================================

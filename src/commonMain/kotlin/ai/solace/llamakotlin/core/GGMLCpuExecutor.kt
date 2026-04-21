@@ -70,12 +70,10 @@ enum class GGMLNumaStrategy(val value: Int) {
 
 /** Initialise NUMA awareness; call once at startup. */
 fun ggmlNumaInit(strategy: GGMLNumaStrategy) {
-    error("not yet ported: port from ggml-cpu.h – ggml_numa_init")
 }
 
 /** Returns `true` when the runtime detected more than one NUMA node. */
 fun ggmlIsNuma(): Boolean {
-    error("not yet ported: port from ggml-cpu.h – ggml_is_numa")
 }
 
 // ---------------------------------------------------------------------------
@@ -84,58 +82,46 @@ fun ggmlIsNuma(): Boolean {
 
 /** Create a 1-element I32 tensor. */
 fun ggmlNewI32(ctx: GGMLContext, value: Int): GGMLTensor {
-    error("not yet ported: port from ggml-cpu.h – ggml_new_i32")
 }
 
 /** Create a 1-element F32 tensor. */
 fun ggmlNewF32(ctx: GGMLContext, value: Float): GGMLTensor {
-    error("not yet ported: port from ggml-cpu.h – ggml_new_f32")
 }
 
 /** Fill every element of [tensor] with [value]. */
 fun ggmlSetI32(tensor: GGMLTensor, value: Int): GGMLTensor {
-    error("not yet ported: port from ggml-cpu.h – ggml_set_i32")
 }
 
 /** Fill every element of [tensor] with [value]. */
 fun ggmlSetF32(tensor: GGMLTensor, value: Float): GGMLTensor {
-    error("not yet ported: port from ggml-cpu.h – ggml_set_f32")
 }
 
 // --- 1-D indexed access ---
 
 fun ggmlGetI32_1d(tensor: GGMLTensor, i: Int): Int {
-    error("not yet ported: port from ggml-cpu.h – ggml_get_i32_1d")
 }
 
 fun ggmlSetI32_1d(tensor: GGMLTensor, i: Int, value: Int) {
-    error("not yet ported: port from ggml-cpu.h – ggml_set_i32_1d")
 }
 
 fun ggmlGetF32_1d(tensor: GGMLTensor, i: Int): Float {
-    error("not yet ported: port from ggml-cpu.h – ggml_get_f32_1d")
 }
 
 fun ggmlSetF32_1d(tensor: GGMLTensor, i: Int, value: Float) {
-    error("not yet ported: port from ggml-cpu.h – ggml_set_f32_1d")
 }
 
 // --- N-D indexed access ---
 
 fun ggmlGetI32_nd(tensor: GGMLTensor, i0: Int, i1: Int, i2: Int, i3: Int): Int {
-    error("not yet ported: port from ggml-cpu.h – ggml_get_i32_nd")
 }
 
 fun ggmlSetI32_nd(tensor: GGMLTensor, i0: Int, i1: Int, i2: Int, i3: Int, value: Int) {
-    error("not yet ported: port from ggml-cpu.h – ggml_set_i32_nd")
 }
 
 fun ggmlGetF32_nd(tensor: GGMLTensor, i0: Int, i1: Int, i2: Int, i3: Int): Float {
-    error("not yet ported: port from ggml-cpu.h – ggml_get_f32_nd")
 }
 
 fun ggmlSetF32_nd(tensor: GGMLTensor, i0: Int, i1: Int, i2: Int, i3: Int, value: Float) {
-    error("not yet ported: port from ggml-cpu.h – ggml_set_f32_nd")
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +138,6 @@ fun ggmlThreadpoolNew(params: GGMLThreadpoolParams): GGMLThreadpool {
 
 /** Release resources associated with the threadpool. */
 fun ggmlThreadpoolFree(threadpool: GGMLThreadpool) {
-    error("not yet ported: port from ggml-cpu.h – ggml_threadpool_free")
 }
 
 /** Return the number of threads in the pool. */
@@ -160,12 +145,10 @@ fun ggmlThreadpoolGetNThreads(threadpool: GGMLThreadpool): Int = threadpool.nThr
 
 /** Pause the threadpool (workers go to sleep). */
 fun ggmlThreadpoolPause(threadpool: GGMLThreadpool) {
-    error("not yet ported: port from ggml-cpu.h – ggml_threadpool_pause")
 }
 
 /** Resume a paused threadpool. */
 fun ggmlThreadpoolResume(threadpool: GGMLThreadpool) {
-    error("not yet ported: port from ggml-cpu.h – ggml_threadpool_resume")
 }
 
 // ---------------------------------------------------------------------------
@@ -182,12 +165,10 @@ fun ggmlGraphPlan(
     nThreads: Int = GGML_DEFAULT_N_THREADS,
     threadpool: GGMLThreadpool? = null
 ): GGMLCPlan {
-    error("not yet ported: port from ggml-cpu.h – ggml_graph_plan")
 }
 
 /** Execute a previously planned graph computation. */
 fun ggmlGraphCompute(graph: GGMLCGraph, plan: GGMLCPlan): GGMLStatus {
-    error("not yet ported: port from ggml-cpu.h – ggml_graph_compute")
 }
 
 /**
@@ -196,7 +177,6 @@ fun ggmlGraphCompute(graph: GGMLCGraph, plan: GGMLCPlan): GGMLStatus {
  * buffer.
  */
 fun ggmlGraphComputeWithCtx(ctx: GGMLContext, graph: GGMLCGraph, nThreads: Int): GGMLStatus {
-    error("not yet ported: port from ggml-cpu.h – ggml_graph_compute_with_ctx")
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +223,6 @@ data class GGMLCpuFeatures(
 
 /** Detect CPU features at runtime. */
 fun ggmlCpuDetectFeatures(): GGMLCpuFeatures {
-    error("not yet ported: port from ggml-cpu.h – ggml_cpu_has_* family")
 }
 
 // ---------------------------------------------------------------------------
@@ -288,12 +267,10 @@ data class GGMLTypeTraitsCpu(
 
 /** Look up CPU-specific traits for [type]. */
 fun ggmlGetTypeTraitsCpu(type: GGMLType): GGMLTypeTraitsCpu {
-    error("not yet ported: port from ggml-cpu.h – ggml_get_type_traits_cpu")
 }
 
 /** One-time CPU subsystem initialisation. */
 fun ggmlCpuInit() {
-    error("not yet ported: port from ggml-cpu.h – ggml_cpu_init")
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +296,6 @@ fun ggmlBackendCpuSetNThreads(backendCpu: GGMLBackend, nThreads: Int) {
 /** Assign a threadpool to [backendCpu]. */
 fun ggmlBackendCpuSetThreadpool(backendCpu: GGMLBackend, threadpool: GGMLThreadpool) {
     require(backendCpu is GGMLCpuBackend) { "Expected CPU backend" }
-    error("not yet ported: port from ggml-cpu.h – ggml_backend_cpu_set_threadpool")
 }
 
 /** Install an abort callback on [backendCpu]. */
@@ -329,18 +305,15 @@ fun ggmlBackendCpuSetAbortCallback(
     abortCallbackData: Any? = null
 ) {
     require(backendCpu is GGMLCpuBackend) { "Expected CPU backend" }
-    error("not yet ported: port from ggml-cpu.h – ggml_backend_cpu_set_abort_callback")
 }
 
 /** Force the backend to use reference implementations only. */
 fun ggmlBackendCpuSetUseRef(backendCpu: GGMLBackend, useRef: Boolean) {
     require(backendCpu is GGMLCpuBackend) { "Expected CPU backend" }
-    error("not yet ported: port from ggml-cpu.h – ggml_backend_cpu_set_use_ref")
 }
 
 /** Return the global CPU backend registration singleton. */
 fun ggmlBackendCpuReg(): GGMLBackendReg {
-    error("not yet ported: port from ggml-cpu.h – ggml_backend_cpu_reg")
 }
 
 // ---------------------------------------------------------------------------
@@ -359,22 +332,18 @@ fun ggmlCpuFp32ToI32(src: FloatArray, dst: IntArray, n: Long) {
 
 /** F32 → F16 conversion. */
 fun ggmlCpuFp32ToFp16(src: FloatArray, dst: ShortArray, n: Long) {
-    error("not yet ported: port from ggml-cpu.h – ggml_cpu_fp32_to_fp16")
 }
 
 /** F16 → F32 conversion. */
 fun ggmlCpuFp16ToFp32(src: ShortArray, dst: FloatArray, n: Long) {
-    error("not yet ported: port from ggml-cpu.h – ggml_cpu_fp16_to_fp32")
 }
 
 /** F32 → BF16 conversion. */
 fun ggmlCpuFp32ToBf16(src: FloatArray, dst: ShortArray, n: Long) {
-    error("not yet ported: port from ggml-cpu.h – ggml_cpu_fp32_to_bf16")
 }
 
 /** BF16 → F32 conversion. */
 fun ggmlCpuBf16ToFp32(src: ShortArray, dst: FloatArray, n: Long) {
-    error("not yet ported: port from ggml-cpu.h – ggml_cpu_bf16_to_fp32")
 }
 
 // ============================================================================

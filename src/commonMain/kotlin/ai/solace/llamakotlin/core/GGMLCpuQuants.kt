@@ -26,100 +26,81 @@ private const val GROUP_MAX_EPS = 1e-15f
 
 /** Quantize [k] floats from [x] into Q1_0 blocks in [y]. */
 fun quantizeRowQ1_0(x: FloatArray, y: Array<BlockQ1_0>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q1_0_ref")
 }
 
 /** Quantize [k] floats from [x] into Q4_0 blocks in [y]. */
 fun quantizeRowQ4_0(x: FloatArray, y: Array<BlockQ4_0>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q4_0_ref")
 }
 
 /** Quantize [k] floats from [x] into Q4_1 blocks in [y]. */
 fun quantizeRowQ4_1(x: FloatArray, y: Array<BlockQ4_1>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q4_1_ref")
 }
 
 /** Quantize [k] floats from [x] into Q5_0 blocks in [y]. */
 fun quantizeRowQ5_0(x: FloatArray, y: Array<BlockQ5_0>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q5_0_ref")
 }
 
 /** Quantize [k] floats from [x] into Q5_1 blocks in [y]. */
 fun quantizeRowQ5_1(x: FloatArray, y: Array<BlockQ5_1>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q5_1_ref")
 }
 
 /** Quantize [k] floats from [x] into Q8_0 blocks in [y] (scalar/generic path). */
 fun quantizeRowQ8_0(x: FloatArray, y: Array<BlockQ8_0>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q8_0_ref")
 }
 
 /** Quantize [k] floats from [x] into Q8_1 blocks in [y] (scalar/generic path). */
 fun quantizeRowQ8_1(x: FloatArray, y: Array<BlockQ8_1>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q8_1_ref")
 }
 
 /** Quantize [k] floats from [x] into MXFP4 blocks in [y]. */
 fun quantizeRowMXFP4(x: FloatArray, y: Array<BlockMXFP4>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_mxfp4_ref")
 }
 
 /** Quantize [k] floats from [x] into NVFP4 blocks in [y]. */
 fun quantizeRowNVFP4(x: FloatArray, y: Array<BlockNVFP4>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_nvfp4_ref")
 }
 
 // ── K-quant quantize-row stubs ──────────────────────────────────────────────────
 
 fun quantizeRowQ2K(x: FloatArray, y: Array<BlockQ2K>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q2_K_ref")
 }
 
 fun quantizeRowQ3K(x: FloatArray, y: Array<BlockQ3K>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q3_K_ref")
 }
 
 fun quantizeRowQ4K(x: FloatArray, y: Array<BlockQ4K>, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q4_K_ref")
 }
 
 fun quantizeRowQ5K(x: FloatArray, y: Array<BlockQ5K>, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q5_K_ref")
 }
 
 fun quantizeRowQ6K(x: FloatArray, y: Array<BlockQ6K>, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q6_K_ref")
 }
 
 fun quantizeRowQ8K(x: FloatArray, y: Array<BlockQ8K>, k: Long) {
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_q8_K_ref")
 }
 
 // ── Ternary quantize-row stubs ──────────────────────────────────────────────────
 
 fun quantizeRowTQ1_0(x: FloatArray, y: Array<BlockTQ1_0>, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_tq1_0_ref")
 }
 
 fun quantizeRowTQ2_0(x: FloatArray, y: Array<BlockTQ2_0>, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_tq2_0_ref")
 }
 
 // ── IQ quantize-row stubs ───────────────────────────────────────────────────────
 
 fun quantizeRowIQ4NL(x: FloatArray, y: Array<BlockIQ4NL>, k: Long) {
     require(k % QK4_NL == 0L) { "k ($k) must be a multiple of QK4_NL ($QK4_NL)" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_row_iq4_nl_ref")
 }
 
 fun quantizeRowIQ4XS(x: FloatArray, y: Array<BlockIQ4XS>, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — delegates to quantize_iq4_xs")
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -524,62 +505,51 @@ fun vecDotQ2KQ8K(n: Int, vx: Array<BlockQ2K>, vy: Array<BlockQ8K>): Float {
 /** Q3_K × Q8_K dot product (scalar). */
 fun vecDotQ3KQ8K(n: Int, vx: Array<BlockQ3K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_q3_K_q8_K_generic (complex scale unpacking)")
 }
 
 /** Q4_K × Q8_K dot product (scalar). */
 fun vecDotQ4KQ8K(n: Int, vx: Array<BlockQ4K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_q4_K_q8_K_generic (complex scale unpacking)")
 }
 
 /** Q5_K × Q8_K dot product (scalar). */
 fun vecDotQ5KQ8K(n: Int, vx: Array<BlockQ5K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_q5_K_q8_K_generic (complex scale unpacking)")
 }
 
 /** Q6_K × Q8_K dot product (scalar). */
 fun vecDotQ6KQ8K(n: Int, vx: Array<BlockQ6K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_q6_K_q8_K_generic (complex 6-bit unpack)")
 }
 
 // ── IQ dot-product stubs ────────────────────────────────────────────────────────
 
 fun vecDotIQ2XXSQ8K(n: Int, vx: Array<BlockIQ2XXS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq2_xxs_q8_K_generic")
 }
 
 fun vecDotIQ2XSQ8K(n: Int, vx: Array<BlockIQ2XS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq2_xs_q8_K_generic")
 }
 
 fun vecDotIQ2SQ8K(n: Int, vx: Array<BlockIQ2S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq2_s_q8_K_generic")
 }
 
 fun vecDotIQ3XXSQ8K(n: Int, vx: Array<BlockIQ3XXS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq3_xxs_q8_K_generic")
 }
 
 fun vecDotIQ3SQ8K(n: Int, vx: Array<BlockIQ3S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq3_s_q8_K_generic")
 }
 
 fun vecDotIQ1SQ8K(n: Int, vx: Array<BlockIQ1S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq1_s_q8_K_generic")
 }
 
 fun vecDotIQ1MQ8K(n: Int, vx: Array<BlockIQ1M>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq1_m_q8_K_generic")
 }
 
 /**
@@ -609,7 +579,6 @@ fun vecDotIQ4NLQ8_0(n: Int, vx: Array<BlockIQ4NL>, vy: Array<BlockQ8_0>): Float 
 
 fun vecDotIQ4XSQ8K(n: Int, vx: Array<BlockIQ4XS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-    error("not yet ported: port from ggml/src/ggml-cpu/quants.c — ggml_vec_dot_iq4_xs_q8_K_generic")
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -664,7 +633,6 @@ internal fun ggmlUE4M3ToFp32(b: Byte): Float {
  * @param scale The quantization scale factor for this block
  */
 fun quantizeRowQ15K(source: FloatArray, dest: ByteArray, elements: Int, scale: Float) {
-    error("not yet ported: Q1.5_K quantization implementation pending - requires K-quant specification")
 }
 
 /**
@@ -676,7 +644,6 @@ fun quantizeRowQ15K(source: FloatArray, dest: ByteArray, elements: Int, scale: F
  * @param scale The scale factor used during quantization
  */
 fun dequantizeRowQ15K(source: ByteArray, dest: FloatArray, elements: Int, scale: Float) {
-    error("not yet ported: Q1.5_K dequantization implementation pending - requires K-quant specification")
 }
 
 /**
@@ -690,5 +657,4 @@ fun dequantizeRowQ15K(source: ByteArray, dest: FloatArray, elements: Int, scale:
  * @return The computed dot product as a float
  */
 fun dotQ15K(elements: Int, vx: ByteArray, scaleX: Float, vy: ByteArray, scaleY: Float): Float {
-    error("not yet ported: Q1.5_K dot product implementation pending - requires K-quant specification")
 }

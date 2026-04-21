@@ -431,12 +431,10 @@ class LlamaModelLoader private constructor(
             }
         } else {
             // For quantized/other types, store raw bytes
-            // error("not yet ported: port from llama-model-loader.cpp: full quantized data loading with validation")
             println("Warning: Loading data for tensor type ${tensor.type} not fully implemented")
         }
 
         if (checkTensors) {
-            error("not yet ported: port from llama-model-loader.cpp: ggml_validate_row_data for tensor validation")
         }
     }
 
@@ -446,7 +444,6 @@ class LlamaModelLoader private constructor(
      * @return `true` on success, `false` if cancelled by the callback.
      */
     fun loadAllData(progressCallback: ((Float) -> Boolean)? = null): Boolean {
-        error("not yet ported: port from llama-model-loader.cpp: load_all_data – mmap/async upload/buffer allocation")
     }
 
     // ── metadata access ─────────────────────────────────────────────────

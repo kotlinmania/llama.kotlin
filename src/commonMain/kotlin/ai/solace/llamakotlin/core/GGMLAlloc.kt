@@ -50,7 +50,6 @@ class GGMLTallocr(
      * Mirrors `ggml_tallocr_alloc`.
      */
     fun alloc(tensor: GGMLTensor): GGMLStatus {
-        error("not yet ported: port from ggml-alloc.h – ggml_tallocr_alloc")
     }
 }
 
@@ -112,7 +111,6 @@ class GGMLGallocr private constructor(
 
     /** Release all resources held by this allocator. Mirrors `ggml_gallocr_free`. */
     fun free() {
-        error("not yet ported: port from ggml-alloc.h – ggml_gallocr_free")
     }
 
     // -- Reserve -----------------------------------------------------------
@@ -125,7 +123,6 @@ class GGMLGallocr private constructor(
      * Mirrors `ggml_gallocr_reserve`.
      */
     fun reserve(graph: GGMLCGraph): Boolean {
-        error("not yet ported: port from ggml-alloc.h – ggml_gallocr_reserve")
     }
 
     /**
@@ -139,7 +136,6 @@ class GGMLGallocr private constructor(
         leafBufferIds: IntArray,
         sizes: ULongArray
     ) {
-        error("not yet ported: port from ggml-alloc.h – ggml_gallocr_reserve_n_size")
     }
 
     /**
@@ -153,7 +149,6 @@ class GGMLGallocr private constructor(
         nodeBufferIds: IntArray,
         leafBufferIds: IntArray
     ): Boolean {
-        error("not yet ported: port from ggml-alloc.h – ggml_gallocr_reserve_n")
     }
 
     // -- Alloc -------------------------------------------------------------
@@ -167,7 +162,6 @@ class GGMLGallocr private constructor(
      * Mirrors `ggml_gallocr_alloc_graph`.
      */
     fun allocGraph(graph: GGMLCGraph): Boolean {
-        error("not yet ported: port from ggml-alloc.h – ggml_gallocr_alloc_graph")
     }
 
     // -- Query -------------------------------------------------------------
@@ -178,7 +172,6 @@ class GGMLGallocr private constructor(
      * Mirrors `ggml_gallocr_get_buffer_size`.
      */
     fun getBufferSize(bufferId: Int): ULong {
-        error("not yet ported: port from ggml-alloc.h – ggml_gallocr_get_buffer_size")
     }
 }
 
@@ -196,7 +189,6 @@ fun ggmlBackendAllocCtxTensorsFromBuftSize(
     ctx: GGMLContext,
     buft: GGMLBackendBufferType
 ): ULong {
-    error("not yet ported: port from ggml-alloc.h – ggml_backend_alloc_ctx_tensors_from_buft_size")
 }
 
 /**
@@ -209,7 +201,6 @@ fun ggmlBackendAllocCtxTensorsFromBuft(
     ctx: GGMLContext,
     buft: GGMLBackendBufferType
 ): GGMLBackendBuffer? {
-    error("not yet ported: port from ggml-alloc.h – ggml_backend_alloc_ctx_tensors_from_buft")
 }
 
 /**

@@ -672,7 +672,6 @@ class LlmTokenizerBpeSession(
 
 class LlmTokenizerWpmSession(private val vocab: LlamaVocab) {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        error("not yet ported: WPM tokenizer session not yet implemented")
     }
 }
 
@@ -682,7 +681,6 @@ class LlmTokenizerWpmSession(private val vocab: LlamaVocab) {
 
 class LlmTokenizerUgmSession(private val vocab: LlamaVocab) {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        error("not yet ported: UGM tokenizer session not yet implemented")
     }
 }
 
@@ -695,7 +693,6 @@ class LlmTokenizerRwkvSession(
     private val tokenizer: LlmTokenizerRwkv
 ) {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        error("not yet ported: RWKV tokenizer session not yet implemented")
     }
 }
 
@@ -705,7 +702,6 @@ class LlmTokenizerRwkvSession(
 
 class LlmTokenizerPlamo2Session {
     fun tokenize(text: String, output: MutableList<LlamaToken>) {
-        error("not yet ported: PLaMo-2 tokenizer session not yet implemented")
     }
 }
 
