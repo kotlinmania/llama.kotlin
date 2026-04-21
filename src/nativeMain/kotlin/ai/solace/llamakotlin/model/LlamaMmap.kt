@@ -112,10 +112,21 @@ class LlamaFile private constructor(val path: String, private var fd: Int) {
     }
 
     /** Alignment used for direct-I/O reads, or 1 for normal I/O. */
+    // port-lint: source llama.cpp/src/llama-mmap.cpp llama_file::read_alignment
     fun readAlignment(): Long = 1L  // No O_DIRECT on macOS
 
     /** Whether this file was opened with direct I/O (O_DIRECT). */
+    // port-lint: source llama.cpp/src/llama-mmap.cpp llama_file::has_direct_io
     fun hasDirectIo(): Boolean = false
+
+    // port-lint: source llama.cpp/src/llama-mmap.cpp llama_file::read_raw_unsafe
+    /**
+     * Read without error checking — in C++ this skips validation.
+     * In Kotlin/Native we delegate to [readRaw] since safety is always on.
+     */
+    fun readRawUnsafe(dst: ByteArray, len: Int, dstOffset: Int = 0) {
+        readRaw(dst, len, dstOffset)
+    }
 
     /** Close the file descriptor. */
     fun close() {

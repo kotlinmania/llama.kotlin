@@ -332,12 +332,13 @@ sealed class GGUFValue {
     data class ArrayVal(val type: GGUFType, val values: List<GGUFValue>) : GGUFValue()
 }
 
+// port-lint: source llama.cpp/src/llama-impl.cpp gguf_data_to_str
 /**
  * Convert a single [GGUFValue] to its string representation.
  *
  * Port of `gguf_data_to_str()` in `llama-impl.cpp`.
  */
-fun ggufValueToStr(value: GGUFValue): String = when (value) {
+fun ggufDataToStr(value: GGUFValue): String = when (value) {
     is GGUFValue.UInt8Val   -> value.value.toString()
     is GGUFValue.Int8Val    -> value.value.toString()
     is GGUFValue.UInt16Val  -> value.value.toString()
@@ -355,7 +356,7 @@ fun ggufValueToStr(value: GGUFValue): String = when (value) {
             val escaped = v.value.replace("\\", "\\\\").replace("\"", "\\\"")
             "\"$escaped\""
         } else {
-            ggufValueToStr(v)
+            ggufDataToStr(v)
         }
     }
 }
@@ -369,8 +370,8 @@ fun ggufValueToStr(value: GGUFValue): String = when (value) {
  */
 fun ggufKvToStr(value: GGUFValue): String = when (value) {
     is GGUFValue.StringVal -> value.value
-    is GGUFValue.ArrayVal  -> ggufValueToStr(value)
-    else                   -> ggufValueToStr(value)
+    is GGUFValue.ArrayVal  -> ggufDataToStr(value)
+    else                   -> ggufDataToStr(value)
 }
 
 // =============================================================================

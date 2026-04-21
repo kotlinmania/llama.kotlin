@@ -19,10 +19,10 @@ Based on AST analysis, here are the concrete next steps.
 - **Action:** Deep review - likely missing major functionality
 
 ### 2. llama-impl
-- **Similarity:** 0.13 (needs 72% improvement)
+- **Similarity:** 0.16 (needs 69% improvement)
 - **Dependencies:** 19
-- **Priority Score:** 204.9
-- **Symbol Deficit:** 12 (functions: 9, types: 3)
+- **Priority Score:** 188.6
+- **Symbol Deficit:** 11 (functions: 8, types: 3)
 - **Action:** Deep review - likely missing major functionality
 
 ### 3. models.models

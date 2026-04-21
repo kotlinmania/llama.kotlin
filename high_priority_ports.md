@@ -10,8 +10,8 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 2 | `llama-graph` | `model.LlamaGraph` | 0.34 | 7 | 48 | 686.4 |
 | 3 | `llama-hparams` | `model.LlamaHparams` | 0.30 | 4 | 50 | 666.6 |
 | 4 | `llama-memory` | `model.LlamaMemory` | 0.07 | 7 | 26 | 377.8 |
-| 5 | `llama-mmap` | `model.LlamaMmap` | 0.18 | 5 | 19 | 265.5 |
-| 6 | `llama-impl` | `model.LlamaImpl` | 0.13 | 19 | 12 | 204.9 |
+| 5 | `llama-mmap` | `model.LlamaMmap` | 0.19 | 5 | 18 | 251.7 |
+| 6 | `llama-impl` | `model.LlamaImpl` | 0.16 | 19 | 11 | 188.6 |
 | 7 | `llama-arch` | `model.LlamaArch` | 0.09 | 5 | 8 | 116.8 |
 | 8 | `llama-model-saver` | `model.LlamaModelSaver` | 0.28 | 1 | 9 | 105.0 |
 | 9 | `llama-batch` | `model.LlamaBatch` | 0.56 | 7 | 5 | 75.4 |
@@ -49,12 +49,12 @@ These files need immediate attention:
   - Dependencies: 7
 
 - **llama-mmap** → `model.LlamaMmap`
-  - Similarity: 0.18
+  - Similarity: 0.19
   - Dependencies: 5
   - Lint issues: 2
 
 - **llama-impl** → `model.LlamaImpl`
-  - Similarity: 0.13
+  - Similarity: 0.16
   - Dependencies: 19
 
 - **llama-arch** → `model.LlamaArch`
