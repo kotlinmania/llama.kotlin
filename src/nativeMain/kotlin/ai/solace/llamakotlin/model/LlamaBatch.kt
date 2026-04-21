@@ -327,6 +327,149 @@ class LlamaBatchAllocr(
             }
         }
 
+        // -- debug logging of the input batch --
+        if (debug > 0) {
+            llamaLogDebug("init: input batch info:\n")
+
+            val debugUbatch = LlamaUBatchInternal(
+                equalSeqs = false,
+                nTokens = batch.nTokens,
+                nSeqTokens = 1,
+                nSeqs = batch.nTokens,
+                nSeqsUnq = this.seqIdUnq.size,
+                nPos = nPosPerEmbd,
+                token = batch.tokens,
+                embd = batch.embeddings,
+                pos = batch.pos,
+                nSeqId = batch.nSeqId,
+                seqId = batch.seqId,
+                seqIdUnq = this.seqIdUnq.toIntArray(),
+                seqIdx = this.seqIdx.copyOf(),
+                output = batch.logits?.let { l -> ByteArray(l.size) { if (l[it]) 1.toByte() else 0.toByte() } },
+            )
+
+            ubatchPrint(debugUbatch, debug)
+
+            llamaLogDebug("init:   seq       = [\n")
+            for (s0 in seqPos.indices) {
+                if (seqPos[s0].isEmpty()) continue
+
+                val cplStr = buildString {
+                    for (s1 in seqCpl[s0].indices) {
+                        if (seqCpl[s0][s1]) {
+                            append("$s1 ")
+                        }
+                    }
+                }
+
+                llamaLogDebug("init:  ${s0.toString().padStart(4)}: pos = [${seqPosMin(s0).toString().padStart(4)}, ${seqPosMax(s0).toString().padStart(4)}], cpl = ${if (cplStr.isEmpty()) "-" else cplStr}\n")
+            }
+            llamaLogDebug("init:   ]\n")
+        }
+
+        // -- consistency checks --
+
+        if (nPosPerEmbd > 1) {
+            // M-RoPE case: allow position to "jump" forward only (non-continuous positions are allowed)
+            for (s in 0 until nSeqMax) {
+                if (seqPos[s].isEmpty()) continue
+
+                val p0 = if (memory != null) memory.seqPosMax(s) else -1
+
+                if (batch.tokens != null) {
+                    if (p0 >= 0 && p0 >= seqPosMin(s)) {
+                        llamaLogError(
+                            "init: the tokens of sequence $s in the input batch have inconsistent sequence positions:\n" +
+                            " - the last position stored in the memory module of the context (i.e. the KV cache) for sequence $s is X = $p0\n" +
+                            " - the tokens for sequence $s in the input batch have a starting position of Y = ${seqPosMin(s)}\n" +
+                            " for M-RoPE, it is required that the position satisfies: X < Y\n"
+                        )
+                        return false
+                    }
+                } else {
+                    // embedding inputs can have overlapping positions
+                    if (p0 >= 0 && p0 > seqPosMin(s)) {
+                        llamaLogError(
+                            "init: the tokens of sequence $s in the input batch have inconsistent sequence positions:\n" +
+                            " - the last position stored in the memory module of the context (i.e. the KV cache) for sequence $s is X = $p0\n" +
+                            " - the tokens for sequence $s in the input batch have a starting position of Y = ${seqPosMin(s)}\n" +
+                            " for M-RoPE, it is required that the position satisfies: X <= Y\n"
+                        )
+                        return false
+                    }
+                }
+            }
+        } else {
+            for (s in 0 until nSeqMax) {
+                if (seqPos[s].isEmpty()) continue
+
+                val p0 = if (memory != null) memory.seqPosMax(s) else -1
+
+                if (p0 >= 0) {
+                    var ok = true
+
+                    if (seqPosMin(s) != p0 + 1) {
+                        ok = false
+                    }
+
+                    if (!ok) {
+                        llamaLogError(
+                            "init: the tokens of sequence $s in the input batch have inconsistent sequence positions:\n" +
+                            " - the last position stored in the memory module of the context (i.e. the KV cache) for sequence $s is X = $p0\n" +
+                            " - the tokens for sequence $s in the input batch have a starting position of Y = ${seqPosMin(s)}\n" +
+                            " it is required that the sequence positions remain consecutive: Y = X + 1\n"
+                        )
+                        return false
+                    }
+                }
+
+                if (seqPosMax(s) - seqPosMin(s) + 1 > seqPos[s].size) {
+                    llamaLogError("init: sequence $s positions are not continuous\n")
+                    return false
+                }
+            }
+        }
+
+        if (memory != null) {
+            for (s0 in 0 until nSeqMax) {
+                for (s1 in 0 until nSeqMax) {
+                    if (seqCpl[s0][s1]) {
+                        if (memory.seqPosMin(s0) != memory.seqPosMin(s1) ||
+                            memory.seqPosMax(s0) != memory.seqPosMax(s1)) {
+                            llamaLogError("init: sequence $s0 is coupled to $s1 in the input batch, but have diverged\n")
+                            return false
+                        }
+                    }
+                }
+            }
+        }
+
+        // disallow partial sequence sub-sets and decreasing sequence positions
+        run {
+            val curSeqSetArr = LongArray(nSeqMax) { -1L } // all bits set
+            val curSeqPosArr = IntArray(nSeqMax) { -1 }
+
+            for (i in 0 until batch.nTokens) {
+                val posI = batchPos[i]
+
+                for (s in 0 until batchNSeqId[i]) {
+                    val sid = batchSeqId[i][s]
+
+                    curSeqSetArr[sid] = curSeqSetArr[sid] and seqSet[i]
+
+                    if (curSeqSetArr[sid] == 0L) {
+                        llamaLogError("init: sequence $sid belongs to incompatible sequence sets (not allowed)\n")
+                        return false
+                    }
+
+                    if (posI < curSeqPosArr[sid]) {
+                        llamaLogError("init: sequence $sid positions are decreasing (not allowed)\n")
+                        return false
+                    }
+                }
+            }
+        }
+
         splitReset()
         return true
     }
@@ -627,7 +770,7 @@ class LlamaBatchAllocr(
             }
         }
 
-        return LlamaUBatchInternal(
+        val res = LlamaUBatchInternal(
             equalSeqs = equalSeqs,
             nTokens = nTokens,
             nSeqTokens = nTokens / nSeqs,
@@ -644,6 +787,13 @@ class LlamaBatchAllocr(
             output = udata.output.toByteArray(),
             data = udata,
         )
+
+        if (debug > 0) {
+            llamaLogDebug("ubatchAdd: added ubatch to split:\n")
+            ubatchPrint(res, debug)
+        }
+
+        return res
     }
 
     // =========================================================================
@@ -739,4 +889,70 @@ class LlamaBatchAllocr(
 internal fun getEnvVar(name: String): String? {
     val ptr = platform.posix.getenv(name) ?: return null
     return ptr.toKString()
+}
+
+// =============================================================================
+// Free functions – interface implementation
+// Ported from: llama-batch.cpp  llama_batch_get_one / llama_batch_init / llama_batch_free
+// =============================================================================
+
+/**
+ * Create a [LlamaBatch] view over an existing token array.
+ *
+ * Port of `llama_batch_get_one()`.
+ *
+ * The returned batch has `pos`, `nSeqId`, `seqId`, and `logits` set to `null`
+ * so that the [LlamaBatchAllocr] will auto-generate them during [LlamaBatchAllocr.init].
+ *
+ * @param tokens  Token ids to include.
+ * @param nTokens Number of tokens (defaults to `tokens.size`).
+ */
+fun llamaBatchGetOne(tokens: IntArray, nTokens: Int = tokens.size): LlamaBatch = LlamaBatch(
+    nTokens = nTokens,
+    tokens = tokens,
+)
+
+/**
+ * Allocate a [LlamaBatch] that can hold up to [nTokensAlloc] tokens.
+ *
+ * Port of `llama_batch_init()`.
+ *
+ * @param nTokensAlloc Maximum number of tokens the batch can hold.
+ * @param embd         When non-zero, allocate an embedding array of this width
+ *                     instead of a token array.
+ * @param nSeqMax      Maximum number of sequence ids per token.
+ */
+fun llamaBatchInit(nTokensAlloc: Int, embd: Int = 0, nSeqMax: Int = 1): LlamaBatch {
+    return if (embd != 0) {
+        LlamaBatch(
+            nTokens = 0,
+            embeddings = FloatArray(nTokensAlloc * embd),
+            nEmbeddings = embd,
+            pos = IntArray(nTokensAlloc),
+            nSeqId = IntArray(nTokensAlloc),
+            seqId = Array(nTokensAlloc) { IntArray(nSeqMax) },
+            logits = BooleanArray(nTokensAlloc),
+        )
+    } else {
+        LlamaBatch(
+            nTokens = 0,
+            tokens = IntArray(nTokensAlloc),
+            pos = IntArray(nTokensAlloc),
+            nSeqId = IntArray(nTokensAlloc),
+            seqId = Array(nTokensAlloc) { IntArray(nSeqMax) },
+            logits = BooleanArray(nTokensAlloc),
+        )
+    }
+}
+
+/**
+ * Free a [LlamaBatch].
+ *
+ * Port of `llama_batch_free()`.
+ *
+ * In Kotlin this is a no-op because the garbage collector handles deallocation.
+ */
+@Suppress("UNUSED_PARAMETER")
+fun llamaBatchFree(batch: LlamaBatch) {
+    // No-op — Kotlin GC handles cleanup
 }
