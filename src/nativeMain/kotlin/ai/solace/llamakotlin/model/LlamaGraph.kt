@@ -173,16 +173,18 @@ class LlmGraphInputCrossEmbd(
  * Holds KV-index tensors and the causal mask used during self-attention with
  * cached keys/values.  Ports `llm_graph_input_attn_kv` from `llama-graph.h`.
  */
+// port-lint: source llama.cpp/src/llama-graph.h  llm_graph_input_attn_kv
 class LlmGraphInputAttnKv(
     val hparams: LlamaHparams,
     val cparams: LlamaCParams,
+    var mctx: KVCacheContext? = null,
 ) : LlmGraphInput {
     var selfKIdxs: GGMLTensor? = null       // I64 [nBatch]
     var selfVIdxs: GGMLTensor? = null       // I64 [nBatch] or [nBatch*nEmbdVGqa]
     var selfKqMask: GGMLTensor? = null      // F32 [nKv, nBatch/nStream, 1, nStream]
     var selfKqMaskCnv: GGMLTensor? = null
 
-    // Optional rotation matrices (for k-shift)
+    // note: assumes v_rot^2 == I
     var selfKRot: GGMLTensor? = null
     var selfVRot: GGMLTensor? = null
 
@@ -190,13 +192,28 @@ class LlmGraphInputAttnKv(
     fun getVIdxs(): GGMLTensor? = selfVIdxs
     fun getKqMask(): GGMLTensor? = selfKqMaskCnv
 
+    // port-lint: source llama.cpp/src/llama-graph.cpp  llm_graph_input_attn_kv::set_input
     override fun setInput(ubatch: LlamaUBatch) {
-        // not yet ported: llm_graph_input_attn_kv::set_input
+        val m = mctx ?: return
+        selfKIdxs?.let { m.setInputKIdxs(it, ubatch) }
+        selfVIdxs?.let { m.setInputVIdxs(it, ubatch) }
+        selfKqMask?.let { m.setInputKqMask(it, ubatch, cparams.causalAttn) }
+        selfKRot?.let { m.setInputKRot(it) }
+        selfVRot?.let { m.setInputVRot(it) }
     }
 
+    // port-lint: source llama.cpp/src/llama-graph.cpp  llm_graph_input_attn_kv::can_reuse
     override fun canReuse(params: LlmGraphParams): Boolean {
-        // not yet ported: llm_graph_input_attn_kv::can_reuse
-        return false
+        val m = params.mctx as? KVCacheContext ?: return false
+        this.mctx = m
+
+        var res = true
+        res = res && (selfKIdxs?.ne?.get(0) == params.ubatch.nTokens.toLong())
+        // res &= self_v_idxs->ne[0] == params.ubatch.n_tokens; // need to move to unified cache
+        selfKqMask?.let { mask ->
+            res = res && canReuseKqMask(mask, m, params.ubatch, params.cparams)
+        }
+        return res
     }
 }
 
@@ -205,9 +222,11 @@ class LlmGraphInputAttnKv(
  *
  * Port of `llm_graph_input_attn_k`.
  */
+// port-lint: source llama.cpp/src/llama-graph.h  llm_graph_input_attn_k
 class LlmGraphInputAttnK(
     val hparams: LlamaHparams,
     val cparams: LlamaCParams,
+    var mctx: KVCacheContext? = null,
 ) : LlmGraphInput {
     var selfKIdxs: GGMLTensor? = null       // I64 [n_batch]
     var selfKqMask: GGMLTensor? = null      // F32 [n_kv, n_batch/n_stream, 1, n_stream]
@@ -216,29 +235,23 @@ class LlmGraphInputAttnK(
     fun getKIdxs(): GGMLTensor? = selfKIdxs
     fun getKqMask(): GGMLTensor? = selfKqMaskCnv
 
+    // port-lint: source llama.cpp/src/llama-graph.cpp  llm_graph_input_attn_k::set_input
     override fun setInput(ubatch: LlamaUBatch) {
-        // In C++, delegates to:
-        //   mctx->set_input_k_idxs(self_k_idxs, ubatch)
-        //   mctx->set_input_kq_mask(self_kq_mask, ubatch, cparams.causal_attn)
-        // Requires LlamaKvCacheContext integration for index and mask computation.
+        val m = mctx ?: return
+        selfKIdxs?.let { m.setInputKIdxs(it, ubatch) }
+        selfKqMask?.let { m.setInputKqMask(it, ubatch, cparams.causalAttn) }
     }
 
+    // port-lint: source llama.cpp/src/llama-graph.cpp  llm_graph_input_attn_k::can_reuse
     override fun canReuse(params: LlmGraphParams): Boolean {
-        val kIdxs = selfKIdxs ?: return false
-        val kqMask = selfKqMask ?: return false
+        val m = params.mctx as? KVCacheContext ?: return false
+        this.mctx = m
 
         var res = true
-        // K indices must match the number of tokens in the new ubatch
-        res = res && (kIdxs.ne[0] == params.ubatch.nTokens.toLong())
-
-        // KQ mask dimensions: [n_kv, n_tokens/n_stream, 1, n_stream]
-        // Full validation requires mctx.getNKv() which isn't available yet,
-        // so we check what we can: the token dimension
-        val nStream = if (params.cparams.kvUnified) 1L else params.ubatch.nSeqsUnq.toLong()
-        res = res && (kqMask.ne[1] == params.ubatch.nTokens.toLong() / nStream)
-        res = res && (kqMask.ne[2] == 1L)
-        res = res && (kqMask.ne[3] == nStream)
-
+        res = res && (selfKIdxs?.ne?.get(0) == params.ubatch.nTokens.toLong())
+        selfKqMask?.let { mask ->
+            res = res && canReuseKqMask(mask, m, params.ubatch, params.cparams)
+        }
         return res
     }
 }
@@ -484,6 +497,40 @@ fun llamaRelativePositionBucket(
 // ---------------------------------------------------------------------------
 // Static helpers (mirror C++ file-scope statics in llama-graph.cpp)
 // ---------------------------------------------------------------------------
+
+// port-lint: source llama.cpp/src/llama-graph.cpp  ggml_mul_mat_aux
+/** Reshape, multiply by rotation matrix, reshape back. Used for Hadamard rotations. */
+internal fun ggmlMulMatAux(
+    ctx: GGMLContext,
+    cur: GGMLTensor,
+    rot: GGMLTensor
+): GGMLTensor {
+    val n = rot.ne[0]
+    var res = ggmlReshape2d(ctx, cur, n, ggmlNelements(cur) / n)
+    res = matMul(ctx, rot, res)
+    res = ggmlReshape4d(ctx, res, cur.ne[0], cur.ne[1], cur.ne[2], cur.ne[3])
+    return res
+}
+
+// port-lint: source llama.cpp/src/llama-graph.cpp  can_reuse_kq_mask
+/** Check if a previously-built KQ mask can be reused for the new params. */
+internal fun canReuseKqMask(
+    kqMask: GGMLTensor,
+    mctx: KVCacheContext,
+    ubatch: LlamaUBatch,
+    cparams: LlamaCParams
+): Boolean {
+    val nKv = mctx.getNKv().toLong()
+    val nTokens = ubatch.nTokens.toLong()
+    val nStream = if (cparams.kvUnified) 1L else ubatch.nSeqsUnq.toLong()
+
+    var res = true
+    res = res && (kqMask.ne[0] == nKv)
+    res = res && (kqMask.ne[1] == nTokens / nStream)
+    res = res && (kqMask.ne[2] == 1L)
+    res = res && (kqMask.ne[3] == nStream)
+    return res
+}
 
 // port-lint: source llama.cpp/src/llama-graph.cpp  build_attn_inp_kq_mask
 /** Build the KQ attention mask tensor. Port of `build_attn_inp_kq_mask`. */
