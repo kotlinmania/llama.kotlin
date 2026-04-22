@@ -1,6 +1,9 @@
 // port-lint: source tmp/llama.cpp/ggml/src/ggml-cpu/ggml-cpu-impl.h
 package ai.solace.llamakotlin.core
 
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+
 /**
  * Kotlin port of ggml-cpu-impl.h — CPU backend implementation internals.
  *
@@ -21,12 +24,26 @@ package ai.solace.llamakotlin.core
 
 /**
  * Opaque threadpool handle.
- * The actual implementation lives in the CPU backend; this is just the type
- * so other files can reference it.
+ * Port of `struct ggml_threadpool` internals from ggml-cpu.c.
  */
+@OptIn(ExperimentalAtomicApi::class)
 class GGMLThreadpool {
     var nThreads: Int = 1
-    // Implementation details will be filled during CPU backend port
+
+    /** Atomic chunk counter for work-stealing. Port of `tp->current_chunk`. */
+    private val currentChunk = AtomicInt(0)
+
+    /** Atomic barrier counter. Port of `tp->n_barrier_passed`. */
+    private val nBarrierPassed = AtomicInt(0)
+
+    /** Fetch current chunk value. */
+    fun chunkGet(): Int = currentChunk.load()
+
+    /** Set chunk counter. Port of `ggml_threadpool_chunk_set`. */
+    fun chunkSet(value: Int) { currentChunk.store(value) }
+
+    /** Fetch-and-add on chunk counter. Port of `ggml_threadpool_chunk_add`. */
+    fun chunkAdd(value: Int): Int = currentChunk.fetchAndAdd(value)
 }
 
 // ============================================================================
@@ -76,24 +93,31 @@ data class GGMLComputeParams(
 
 /**
  * Full barrier across all threads in [tp].
+ * Port of `ggml_barrier` from ggml-cpu.c.
  *
  * Every thread must call this before any of them may proceed past it.
+ * Single-threaded case returns immediately.
  */
 fun ggmlBarrier(tp: GGMLThreadpool) {
+    if (tp.nThreads == 1) return
+    // TODO: implement multi-threaded spin barrier when threading is added
 }
 
 /**
  * Atomically set the threadpool's shared chunk counter to [value].
+ * Port of `ggml_threadpool_chunk_set` from ggml-cpu.c.
  */
 fun ggmlThreadpoolChunkSet(tp: GGMLThreadpool, value: Int) {
+    tp.chunkSet(value)
 }
 
 /**
  * Atomically add [value] to the threadpool's shared chunk counter and
  * return the *previous* value (fetch-and-add semantics).
+ * Port of `ggml_threadpool_chunk_add` from ggml-cpu.c.
  */
 fun ggmlThreadpoolChunkAdd(tp: GGMLThreadpool, value: Int): Int {
-    error("ggmlThreadpoolChunkAdd not yet ported")
+    return tp.chunkAdd(value)
 }
 
 // ============================================================================
