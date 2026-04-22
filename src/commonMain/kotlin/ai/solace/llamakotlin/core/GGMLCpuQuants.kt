@@ -103,7 +103,7 @@ fun quantizeRowIq4Nl(x: FloatArray, y: ByteArray, k: Long) {
 
 fun quantizeRowIq4Xs(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
-    quantize_row_iq4_xs_ref(x, 0, y, 0, k)
+    quantize_iq4_xs(x, y, 1L, k, null)
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1219,15 +1219,18 @@ fun ggmlVecDotIq4XsQ8KGeneric(n: Int, vx: Array<BlockIQ4XS>, vy: Array<BlockQ8K>
 /**
  * Convert an E8M0 exponent byte to a half-precision scale (returned as Float).
  *
- * E8M0 encodes a power-of-two exponent with an 8-bit biased value (bias = 127).
- * The result is `2^(e - 127)`, but we halve it (multiply by 0.5) to match the
- * `GGML_E8M0_TO_FP32_HALF` macro in the C source.
+ * For x < 2 the result is a subnormal float (IEEE 754 denormalized).
+ * For x >= 2 the result is `2^(x - 128)`.
+ * Mirrors `ggml_e8m0_to_fp32_half` from the C source.
  */
 internal fun ggmlE8M0ToFp32Half(e: Byte): Float {
-    val exp = e.toInt() and 0xFF
-    if (exp == 0xFF) return Float.NaN
-    // 2^(exp - 127) * 0.5 = 2^(exp - 128)
-    return Float.fromBits((exp - 128 + 127) shl 23)
+    val x = e.toInt() and 0xFF
+    val bits = if (x < 2) {
+        0x00200000 shl x
+    } else {
+        (x - 1) shl 23
+    }
+    return Float.fromBits(bits)
 }
 
 /**
@@ -1236,14 +1239,14 @@ internal fun ggmlE8M0ToFp32Half(e: Byte): Float {
  * Mirrors `ggml_ue4m3_to_fp32` from the C source.
  */
 internal fun ggmlUE4M3ToFp32(b: Byte): Float {
-    val v = b.toInt() and 0xFF
-    val mantissa = v and 0x7
-    val exponent = v ushr 3
-    return if (exponent == 0) {
-        // Subnormal: mantissa * 2^(-9)
-        mantissa * (1.0f / 512.0f)
+    val x = b.toInt() and 0xFF
+    if (x == 0 || x == 0x7F) return 0.0f
+    val exp = (x ushr 3) and 0xF
+    val man = x and 0x7
+    val raw = if (exp == 0) {
+        man.toFloat() * (1.0f / 512.0f)
     } else {
-        // Normal: (8 + mantissa) * 2^(exponent - 8)
-        (8 + mantissa).toFloat() * Float.fromBits((exponent - 8 + 127) shl 23)
+        (1.0f + man.toFloat() / 8.0f) * Float.fromBits((exp - 7 + 127) shl 23)
     }
+    return raw * 0.5f
 }
