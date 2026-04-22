@@ -59,7 +59,6 @@ class GGMLMatMulVerificationTest {
     }
 }
 
-@Suppress("unused")
 fun runMatMulVerification() {
     val verifier = GGMLMatMulVerificationTest()
     val success = verifier.runVerification()

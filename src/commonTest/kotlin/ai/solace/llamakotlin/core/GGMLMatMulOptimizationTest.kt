@@ -30,11 +30,11 @@ class GGMLMatMulOptimizationTest {
         val tensorQ40 = GGMLTestUtils.createQuantizedMatrix(graphAllocator, "q40_b", GGMLType.Q4_0, K, N) { (it % 15).toFloat() - 7.0f }
 
         val optimized = GGMLTestUtils.allocateMatMulResult(graphAllocator, "optimized_q40", M, N)
-        computeMatMul(graphAllocator, context, tensorF32, tensorQ40, optimized)
+        computeMatMul(graphAllocator, tensorF32, tensorQ40, optimized)
 
         val tensorQ40F32 = dequantizeTensor(graphAllocator, tensorQ40)
         val fallback = GGMLTestUtils.allocateMatMulResult(graphAllocator, "fallback_q40", M, N)
-        computeMatMul(graphAllocator, context, tensorF32, tensorQ40F32, fallback)
+        computeMatMul(graphAllocator, tensorF32, tensorQ40F32, fallback)
 
         val optimizedData = GGMLTestUtils.extractFloatData(optimized, graphAllocator)
         val fallbackData = GGMLTestUtils.extractFloatData(fallback, graphAllocator)
@@ -55,11 +55,11 @@ class GGMLMatMulOptimizationTest {
         val tensorQ80 = GGMLTestUtils.createQuantizedMatrix(graphAllocator, "q80_b", GGMLType.Q8_0, K, N) { (it % 127).toFloat() - 63.0f }
 
         val optimized = GGMLTestUtils.allocateMatMulResult(graphAllocator, "optimized_q80", M, N)
-        computeMatMul(graphAllocator, context, tensorF32, tensorQ80, optimized)
+        computeMatMul(graphAllocator, tensorF32, tensorQ80, optimized)
 
         val tensorQ80F32 = dequantizeTensor(graphAllocator, tensorQ80)
         val fallback = GGMLTestUtils.allocateMatMulResult(graphAllocator, "fallback_q80", M, N)
-        computeMatMul(graphAllocator, context, tensorF32, tensorQ80F32, fallback)
+        computeMatMul(graphAllocator, tensorF32, tensorQ80F32, fallback)
 
         val optimizedData = GGMLTestUtils.extractFloatData(optimized, graphAllocator)
         val fallbackData = GGMLTestUtils.extractFloatData(fallback, graphAllocator)
@@ -81,12 +81,12 @@ class GGMLMatMulOptimizationTest {
         val tensorQ80B = GGMLTestUtils.createQuantizedMatrix(graphAllocator, "q80_b", GGMLType.Q8_0, K, N) { ((it * 3) % 127).toFloat() - 63.0f }
 
         val optimized = GGMLTestUtils.allocateMatMulResult(graphAllocator, "optimized_q80xq80", M, N)
-        computeMatMul(graphAllocator, context, tensorQ80A, tensorQ80B, optimized)
+        computeMatMul(graphAllocator, tensorQ80A, tensorQ80B, optimized)
 
         val tensorQ80AF32 = dequantizeTensor(graphAllocator, tensorQ80A)
         val tensorQ80BF32 = dequantizeTensor(graphAllocator, tensorQ80B)
         val fallback = GGMLTestUtils.allocateMatMulResult(graphAllocator, "fallback_q80xq80", M, N)
-        computeMatMul(graphAllocator, context, tensorQ80AF32, tensorQ80BF32, fallback)
+        computeMatMul(graphAllocator, tensorQ80AF32, tensorQ80BF32, fallback)
 
         val optimizedData = GGMLTestUtils.extractFloatData(optimized, graphAllocator)
         val fallbackData = GGMLTestUtils.extractFloatData(fallback, graphAllocator)
@@ -108,7 +108,7 @@ class GGMLMatMulOptimizationTest {
         val tensorQ40B = GGMLTestUtils.createQuantizedMatrix(graphAllocator, "q40_b", GGMLType.Q4_0, K, N) { ((it * 5) % 15).toFloat() - 7.0f }
 
         val resultOptimized = GGMLTestUtils.allocateMatMulResult(graphAllocator, "optimized_q40xq40", M, N)
-        computeMatMul(graphAllocator, context, tensorQ40A, tensorQ40B, resultOptimized)
+        computeMatMul(graphAllocator, tensorQ40A, tensorQ40B, resultOptimized)
 
         assertEquals(GGMLType.F32, resultOptimized.type)
         assertEquals(resultOptimized.ne[0], N.toLong())
@@ -129,7 +129,7 @@ class GGMLMatMulOptimizationTest {
         val tensorQ40 = GGMLTestUtils.createQuantizedMatrix(graphAllocator, "q40_b", GGMLType.Q4_0, K, N) { ((it * 7) % 15).toFloat() - 7.0f }
 
         val resultOptimized = GGMLTestUtils.allocateMatMulResult(graphAllocator, "optimized_q80xq40", M, N)
-        computeMatMul(graphAllocator, context, tensorQ80, tensorQ40, resultOptimized)
+        computeMatMul(graphAllocator, tensorQ80, tensorQ40, resultOptimized)
 
         assertEquals(GGMLType.F32, resultOptimized.type)
         assertEquals(resultOptimized.ne[0], N.toLong())
@@ -155,24 +155,24 @@ class GGMLMatMulOptimizationTest {
 
         val optimizedResult = GGMLTestUtils.allocateMatMulResult(graphAllocator, "perf_opt", M, N)
         repeat(5) {
-            computeMatMul(graphAllocator, context, tensorF32, tensorQ80, optimizedResult)
+            computeMatMul(graphAllocator, tensorF32, tensorQ80, optimizedResult)
         }
 
         val optimizedMark = TimeSource.Monotonic.markNow()
         repeat(10) {
-            computeMatMul(graphAllocator, context, tensorF32, tensorQ80, optimizedResult)
+            computeMatMul(graphAllocator, tensorF32, tensorQ80, optimizedResult)
         }
         val timeOptimized = optimizedMark.elapsedNow().inWholeNanoseconds
 
         val tensorQ80F32 = dequantizeTensor(graphAllocator, tensorQ80)
         val fallbackResult = GGMLTestUtils.allocateMatMulResult(graphAllocator, "perf_fallback", M, N)
         repeat(5) {
-            computeMatMul(graphAllocator, context, tensorF32, tensorQ80F32, fallbackResult)
+            computeMatMul(graphAllocator, tensorF32, tensorQ80F32, fallbackResult)
         }
 
         val fallbackMark = TimeSource.Monotonic.markNow()
         repeat(10) {
-            computeMatMul(graphAllocator, context, tensorF32, tensorQ80F32, fallbackResult)
+            computeMatMul(graphAllocator, tensorF32, tensorQ80F32, fallbackResult)
         }
         val timeFallback = fallbackMark.elapsedNow().inWholeNanoseconds
 

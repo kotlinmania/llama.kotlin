@@ -151,7 +151,7 @@ class GGMLComputeOpsDestinationTest {
         
         val dst = createAndInitTensor("relu_dst", GGMLType.F32, dims, currentOffset)
 
-        computeRelu(graphAllocator, context, src, dst)
+        computeRelu(graphAllocator, src, dst)
 
         for (i in testValues.indices) {
             val expected = if (testValues[i] > 0.0f) testValues[i] else 0.0f
@@ -176,7 +176,7 @@ class GGMLComputeOpsDestinationTest {
 
         val dst = createAndInitTensor("softmax_dst", GGMLType.F32, dims, currentOffset)
 
-        computeSoftMax(graphAllocator, context, src, dst)
+        computeSoftMax(graphAllocator, src, dst)
 
         val max = testValues.maxOrNull()!!
         val expVals = testValues.map { exp(it - max) }
@@ -201,7 +201,7 @@ class GGMLComputeOpsDestinationTest {
         currentOffset += size
         val dst = createAndInitTensor("sub_dst", GGMLType.I32, dims, currentOffset)
 
-        computeSub(graphAllocator, context, src0, src1, dst)
+        computeSub(graphAllocator, src0, src1, dst)
 
         for (i in 0 until dims[0].toInt()) {
             val expected = src0.getInt(graphAllocator, i) - src1.getInt(graphAllocator, i)
@@ -248,7 +248,7 @@ class GGMLComputeOpsDestinationTest {
         val dst = createAndInitTensor("matmul_dst", GGMLType.F32, dstDims, currentOffset)
 
         // Perform matrix multiplication
-        computeMatMul(graphAllocator, context, srcA, srcB, dst)
+        computeMatMul(graphAllocator, srcA, srcB, dst)
 
         // Expected result: 2x2 = [[58, 64], [139, 154]]
         val expected = floatArrayOf(58f, 64f, 139f, 154f)

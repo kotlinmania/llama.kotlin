@@ -470,7 +470,6 @@ fun transpose(context: GGMLContext, a: GGMLTensor, ax0: Int, ax1: Int): GGMLTens
  * @param type The tensor data type
  * @return The new tensor
  */
-@Suppress("unused")
 fun createTensor(context: GGMLContext, type: GGMLType): GGMLTensor {
     val tensor = GGMLTensor(type = type)
 
@@ -501,7 +500,6 @@ fun createTensor(context: GGMLContext, type: GGMLType): GGMLTensor {
  * @param ne0 The number of elements in the first dimension
  * @return The new tensor
  */
-@Suppress("unused")
 fun createTensor1D(context: GGMLContext, type: GGMLType, ne0: Int): GGMLTensor {
     val tensor = GGMLTensor(type = type)
 
@@ -727,6 +725,7 @@ fun ggmlViewTensor(ctx: GGMLContext, src: GGMLTensor): GGMLTensor {
 
 /** Get a tensor from the context by name. */
 fun ggmlGetTensor(ctx: GGMLContext, name: String): GGMLTensor? {
+    error("ggmlGetTensor not yet ported")
 }
 
 // ============================================================================
@@ -891,7 +890,9 @@ fun ggmlSin(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
     }
 
 /** ggml_cos – element-wise cosine. */
-fun ggmlCos(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
+fun ggmlCos(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    error("ggmlCos not yet ported")
+}
 
 // --- reduction ops ---
 
@@ -2156,34 +2157,42 @@ fun ggmlThreadpoolParamsDefault(nThreads: Int): GGMLThreadpoolParams =
 
 /** ggml_swiglu_split – SwiGLU with separate gate and up tensors. */
 fun ggmlSwigluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
+    error("ggmlSwigluSplit not yet ported")
 }
 
 /** ggml_geglu_split – GeGLU with separate gate and up tensors. */
 fun ggmlGegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
+    error("ggmlGegluSplit not yet ported")
 }
 
 /** ggml_reglu_split – ReGLU with separate gate and up tensors. */
 fun ggmlRegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
+    error("ggmlRegluSplit not yet ported")
 }
 
 /** ggml_swiglu_oai – OpenAI-style SwiGLU with alpha and limit parameters. */
 fun ggmlSwigluOai(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor, alpha: Float, limit: Float): GGMLTensor {
+    error("ggmlSwigluOai not yet ported")
 }
 
 /** ggml_argsort_top_k – Return indices of top-k elements per row. */
 fun ggmlArgsortTopK(ctx: GGMLContext, a: GGMLTensor, k: Long): GGMLTensor {
+    error("ggmlArgsortTopK not yet ported")
 }
 
 /** ggml_set_rows – scatter rows from [src] into [dst] at positions given by [ids]. */
 fun ggmlSetRows(ctx: GGMLContext, dst: GGMLTensor, src: GGMLTensor, ids: GGMLTensor): GGMLTensor {
+    error("ggmlSetRows not yet ported")
 }
 
 /** ggml_add_id – element-wise add with expert-id routing. */
 fun ggmlAddId(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ids: GGMLTensor): GGMLTensor {
+    error("ggmlAddId not yet ported")
 }
 
 /** ggml_repeat_4d – repeat tensor to fill target shape. */
 fun ggmlRepeat4d(ctx: GGMLContext, a: GGMLTensor, ne0: Long, ne1: Long, ne2: Long, ne3: Long): GGMLTensor {
+    error("ggmlRepeat4d not yet ported")
 }
 
 /** ggml_format_name – format a tensor name using printf-style syntax. */

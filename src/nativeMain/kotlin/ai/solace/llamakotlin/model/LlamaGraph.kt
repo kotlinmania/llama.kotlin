@@ -187,7 +187,6 @@ class LlmGraphInputPosBucketKv(
         // The KV cache memory context computes relative-position buckets between
         // query positions (from ubatch) and cached key positions (from the KV store).
         // Requires LlamaKvCacheContext.setInputPosBucket() integration.
-        @Suppress("UNUSED_VARIABLE")
         val bucket = posBucket ?: return
     }
 }
@@ -203,7 +202,6 @@ class LlmGraphInputCrossEmbd(
     var crossEmbd: GGMLTensor? = null  // F32 [n_embd, n_outputs_enc]
 
     override fun setInput(ubatch: LlamaUBatch) {
-        @Suppress("UNUSED_PARAMETER", "UNUSED_VARIABLE")
         val unused = ubatch // ubatch is unused in C++ implementation
 
         val embd = crossEmbd ?: return
@@ -482,7 +480,6 @@ class LlmGraphInputSampling(
         for (seqId in activeSamplers) {
             val sampler = samplers[seqId] ?: continue
             // sampler.iface.backendSetInput(sampler) — requires sampler interface port
-            @Suppress("UNUSED_VARIABLE")
             val unused = sampler // sampler.iface.backendSetInput(sampler) — requires sampler interface port
         }
     }
@@ -1200,7 +1197,6 @@ class LlmGraphResult(val maxNodes: Long = 8192) {
         return input
     }
 
-    @Suppress("UNCHECKED_CAST")
     fun <T : LlmGraphInput> addInputTyped(input: T): T {
         inputs.add(input)
         return input

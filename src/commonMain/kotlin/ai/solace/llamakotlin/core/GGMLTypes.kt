@@ -112,7 +112,6 @@ internal const val K_SCALE_SIZE: Int = 12
  * @param description Human-readable description of the data type
  * @param byteSize Size of one element in bytes (0 for variable-size types)
  */
-@Suppress("UNUSED_PARAMETER") // For description parameter used in documentation
 enum class GGMLType(val description: String, val byteSize: ULong) {
     /** 32-bit IEEE 754 floating-point type. */
     F32("float32", 4uL),

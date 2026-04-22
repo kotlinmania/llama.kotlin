@@ -362,6 +362,7 @@ object GGUFFileReader {
      * Mirrors `gguf_init_from_file` in the C++ source.
      */
     fun initFromFile(path: String, params: GGUFInitParams = GGUFInitParams()): GGUFContextInternal {
+        error("initFromFile not yet ported")
     }
 
     // -----------------------------------------------------------------
@@ -885,6 +886,7 @@ fun setTensorType(ctx: GGUFContextInternal, name: String, type: GGMLType) {
  * Mirrors `gguf_write_to_buf` / `gguf_write_out`.
  */
 fun writeToByteArray(ctx: GGUFContextInternal, onlyMeta: Boolean = false): ByteArray {
+    error("writeToByteArray not yet ported")
 }
 
 /**
@@ -892,6 +894,7 @@ fun writeToByteArray(ctx: GGUFContextInternal, onlyMeta: Boolean = false): ByteA
  * Mirrors `gguf_write_to_file`.
  */
 fun writeToFile(ctx: GGUFContextInternal, path: String, onlyMeta: Boolean = false): Boolean {
+    error("writeToFile not yet ported")
 }
 
 /**
@@ -899,6 +902,7 @@ fun writeToFile(ctx: GGUFContextInternal, path: String, onlyMeta: Boolean = fals
  * padding).  Mirrors `gguf_get_meta_size`.
  */
 fun getMetaSize(ctx: GGUFContextInternal): Long {
+    error("getMetaSize not yet ported")
 }
 
 /**
@@ -906,4 +910,5 @@ fun getMetaSize(ctx: GGUFContextInternal): Long {
  * Mirrors `gguf_get_meta_data`.
  */
 fun getMetaData(ctx: GGUFContextInternal): ByteArray {
+    error("getMetaData not yet ported")
 }

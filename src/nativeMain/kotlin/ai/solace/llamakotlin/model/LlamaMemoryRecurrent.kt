@@ -161,7 +161,6 @@ class LlamaMemoryRecurrent(
      *
      * Port of `llama_memory_recurrent::init_update()`.
      */
-    @Suppress("UNUSED_PARAMETER")
     fun initUpdate(
         lctx: LlamaContext,
         optimize: Boolean,
@@ -266,7 +265,6 @@ class LlamaMemoryRecurrent(
      *
      * Port of `llama_memory_recurrent::seq_cp()`.
      */
-    @Suppress("UNUSED_PARAMETER")
     fun seqCp(seqIdSrc: LlamaSeqId, seqIdDst: LlamaSeqId, p0: LlamaPos, p1: LlamaPos) {
         if (seqIdSrc == seqIdDst) return
 
@@ -716,7 +714,6 @@ class LlamaMemoryRecurrent(
     // -- private helpers ---------------------------------------------------
 
     /** Total bytes consumed by r + s state tensors. */
-    @Suppress("unused")
     private fun totalSize(): Long = sizeRBytes() + sizeSBytes()
 
     /** Total bytes of all "r" state tensors. */

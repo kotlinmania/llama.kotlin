@@ -686,6 +686,7 @@ object LlamaQuant {
         fnameOut: String,
         params: LlamaModelQuantizeParams,
     ): Int {
+        error("quantizeImpl not yet ported")
     }
 
     // -------------------------------------------------------------------------

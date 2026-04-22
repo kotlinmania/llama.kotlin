@@ -253,7 +253,7 @@ interface LlamaSamplerI : LlamaSampler {
     fun backendApply(data: LlamaSamplerData) {}
 
     /** Called before graph execution to set inputs for the current micro-batch. */
-    fun backendSetInput() {}
+    override fun backendSetInput() {}
 }
 
 // ---------------------------------------------------------------------------

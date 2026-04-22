@@ -445,7 +445,6 @@ internal fun llamaParamsFitImpl(
     cparams: LlamaContextParams,
     margins: LongArray,
     nCtxMin: Int = 0,
-    @Suppress("UNUSED_PARAMETER") logLevel: LlamaLogLevel = LlamaLogLevel.INFO,
 ) {
     if (mparams.splitMode == LlamaSplitMode.TENSOR) {
         throw LlamaParamsFitException(
@@ -709,8 +708,6 @@ typealias LlamaModelSetTensorDataCallback = (tensorName: String, data: ByteArray
  * @return The loaded [LlamaModelData], or `null` on failure.
  */
 fun llamaModelInitFromUser(
-    @Suppress("UNUSED_PARAMETER") metadata: Any, // GGUFContextInternal when integrated
-    @Suppress("UNUSED_PARAMETER") setTensorData: LlamaModelSetTensorDataCallback?,
     params: LlamaModelParams = llamaModelDefaultParams(),
 ): LlamaModelData? {
     // Force options that don't apply when loading from user-supplied data
@@ -745,7 +742,7 @@ fun llamaLoadModelFromFile(
  * In the Kotlin port this is a identity because the GC reclaims memory.
  * Retained for API parity with `llama_model_free()`.
  */
-fun llamaModelFree(@Suppress("UNUSED_PARAMETER") model: LlamaModelData?) {
+fun llamaModelFree(model: LlamaModelData?) {
     // No-op — Kotlin GC handles cleanup.
 }
 
@@ -782,7 +779,7 @@ fun llamaInitFromModel(
  *
  * Maps to `llama_free()` in C++.
  */
-fun llamaFree(@Suppress("UNUSED_PARAMETER") ctx: LlamaContext?) {
+fun llamaFree(ctx: LlamaContext?) {
     // No-op — Kotlin GC handles cleanup.
 }
 
@@ -1288,7 +1285,7 @@ fun llamaModelHasDecoder(model: LlamaModelData): Boolean = when (model.arch) {
 }
 
 /** Decoder start token for enc-dec models. Maps to `llama_model_decoder_start_token()`. */
-fun llamaModelDecoderStartToken(@Suppress("UNUSED_PARAMETER") model: LlamaModelData): LlamaToken = LLAMA_TOKEN_NULL
+fun llamaModelDecoderStartToken(model: LlamaModelData): LlamaToken = LLAMA_TOKEN_NULL
 
 /** Whether the model is recurrent. Maps to `llama_model_is_recurrent()`. */
 fun llamaModelIsRecurrent(model: LlamaModelData): Boolean = llmArchIsRecurrent(model.arch)
@@ -1301,9 +1298,6 @@ fun llamaModelIsDiffusion(model: LlamaModelData): Boolean = llmArchIsDiffusion(m
 
 /** Quantize a model file. Maps to `llama_model_quantize()`. */
 fun llamaModelQuantize(
-    @Suppress("UNUSED_PARAMETER") fnameInp: String,
-    @Suppress("UNUSED_PARAMETER") fnameOut: String,
-    @Suppress("UNUSED_PARAMETER") params: LlamaModelQuantizeParams,
 ): UInt {
     // LATER: implement full quantization pipeline
     return 1u
@@ -1311,8 +1305,6 @@ fun llamaModelQuantize(
 
 /** Save model to file. Maps to `llama_model_save_to_file()`. */
 fun llamaModelSaveToFile(
-    @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
-    @Suppress("UNUSED_PARAMETER") pathModel: String,
 ) {
     // LATER: implement GGUF model writing
 }
@@ -1323,15 +1315,13 @@ fun llamaModelSaveToFile(
 
 /** Load a LoRA adapter. Maps to `llama_adapter_lora_init()`. */
 fun llamaAdapterLoraInit(
-    @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
-    @Suppress("UNUSED_PARAMETER") pathLora: String,
 ): LlamaAdapterLora? {
     // LATER: implement LoRA loading
     return null
 }
 
 /** Free a LoRA adapter. Maps to `llama_adapter_lora_free()`. */
-fun llamaAdapterLoraFree(@Suppress("UNUSED_PARAMETER") adapter: LlamaAdapterLora?) {
+fun llamaAdapterLoraFree(adapter: LlamaAdapterLora?) {
     // No-op — Kotlin GC handles cleanup
 }
 
@@ -1645,12 +1635,12 @@ fun llamaSamplerReset(smpl: LlamaSampler) = smpl.reset()
 fun llamaSamplerClone(smpl: LlamaSampler): LlamaSampler = smpl.clone()
 
 /** Free sampler. No-op in Kotlin. Maps to `llama_sampler_free()`. */
-fun llamaSamplerFree(@Suppress("UNUSED_PARAMETER") smpl: LlamaSampler?) {
+fun llamaSamplerFree(smpl: LlamaSampler?) {
     // No-op — Kotlin GC handles cleanup
 }
 
 /** Get seed from sampler. Maps to `llama_sampler_get_seed()`. */
-fun llamaSamplerGetSeed(@Suppress("UNUSED_PARAMETER") smpl: LlamaSampler): UInt = LLAMA_DEFAULT_SEED
+fun llamaSamplerGetSeed(smpl: LlamaSampler): UInt = LLAMA_DEFAULT_SEED
 
 // ---------------------------------------------------------------------------
 // Sampler chain wrappers  (llama_sampler_chain_*)
@@ -1780,14 +1770,10 @@ fun llamaLogSet(callback: LlamaLogCallback?) {
 
 /** Initialise training optimiser. Maps to `llama_opt_init()`. */
 fun llamaOptInit(
-    @Suppress("UNUSED_PARAMETER") ctx: LlamaContext,
-    @Suppress("UNUSED_PARAMETER") model: LlamaModelData,
-    @Suppress("UNUSED_PARAMETER") params: LlamaOptParams,
 ) {
     // LATER: implement training initialisation
 }
 
 /** Filter that selects all tensors as trainable. Maps to `llama_opt_param_filter_all()`. */
 fun llamaOptParamFilterAll(
-    @Suppress("UNUSED_PARAMETER") tensor: GGMLTensor,
 ): Boolean = true

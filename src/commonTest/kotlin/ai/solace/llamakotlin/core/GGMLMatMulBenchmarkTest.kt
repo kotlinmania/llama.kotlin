@@ -59,12 +59,12 @@ class GGMLMatMulBenchmarkTest {
         )
 
         repeat(warmupRuns) {
-            computeMatMul(graphAllocator, context, tensorA, tensorB, dst)
+            computeMatMul(graphAllocator, tensorA, tensorB, dst)
         }
 
         val start = TimeSource.Monotonic.markNow()
         repeat(benchmarkRuns) {
-            computeMatMul(graphAllocator, context, tensorA, tensorB, dst)
+            computeMatMul(graphAllocator, tensorA, tensorB, dst)
         }
         val totalTime = start.elapsedNow().inWholeNanoseconds
         val avgTime = totalTime / benchmarkRuns

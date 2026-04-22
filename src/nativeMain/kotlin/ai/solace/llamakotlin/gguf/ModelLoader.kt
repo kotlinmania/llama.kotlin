@@ -444,6 +444,7 @@ class LlamaModelLoader private constructor(
      * @return `true` on success, `false` if cancelled by the callback.
      */
     fun loadAllData(progressCallback: ((Float) -> Boolean)? = null): Boolean {
+        error("loadAllData not yet ported")
     }
 
     // ── metadata access ─────────────────────────────────────────────────
@@ -498,7 +499,6 @@ class LlamaModelLoader private constructor(
             if (required) throw IllegalStateException("Array key '$key' not found in model")
             return null
         }
-        @Suppress("UNCHECKED_CAST")
         return value as? List<Any>
     }
 

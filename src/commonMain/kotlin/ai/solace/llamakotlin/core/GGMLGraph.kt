@@ -2582,7 +2582,7 @@ fun executeGraph(context: GGMLContext, cgraph: GGMLCGraph) {
  * @param context The GGML context
  * @param cgraph The computation graph to execute
  */
-private fun executeBackward(@Suppress("unused") context: GGMLContext, cgraph: GGMLCGraph) {
+private fun executeBackward(context: GGMLContext, cgraph: GGMLCGraph) {
     // Legacy path replaced: ensure allocation and compute via backend/CPU
     computeGraphWithBackend(cgraph)
 }
@@ -2593,7 +2593,7 @@ private fun executeBackward(@Suppress("unused") context: GGMLContext, cgraph: GG
  * @param context The GGML context
  * @param cgraph The computation graph to execute
  */
-private fun executeForward(@Suppress("unused") context: GGMLContext, cgraph: GGMLCGraph) {
+private fun executeForward(context: GGMLContext, cgraph: GGMLCGraph) {
     // Legacy path replaced: ensure allocation and compute via backend/CPU
     computeGraphWithBackend(cgraph)
 }
@@ -2604,7 +2604,7 @@ private fun executeForward(@Suppress("unused") context: GGMLContext, cgraph: GGM
  * @param context The GGML context
  * @param node The node to execute
  */
-private fun executeNode(@Suppress("unused") context: GGMLContext, node: GGMLTensor) {
+private fun executeNode(context: GGMLContext, node: GGMLTensor) {
     // Legacy per-node execution replaced by backend/CPU graph compute.
     // Build a temporary single-node graph and compute it via unified path.
     val tempGraph = createGraph(1)

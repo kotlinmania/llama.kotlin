@@ -127,7 +127,7 @@ class LlamaAttention(
             src[0] = maskedScores
             graphAllocator.allocateTensor(this)
         }
-        computeSoftMax(graphAllocator, context, maskedScores, attentionWeights)
+        computeSoftMax(graphAllocator, maskedScores, attentionWeights)
         
         // Apply attention to values: attention_weights @ V
         val output = matmul(context, graphAllocator, attentionWeights, finalValue)
@@ -156,7 +156,7 @@ class LlamaAttention(
             graphAllocator.allocateTensor(this)
         }
 
-        computeTranspose(graphAllocator, context, tensor, result)
+        computeTranspose(graphAllocator, tensor, result)
         return result
     }
 
@@ -189,7 +189,7 @@ class LlamaAttention(
         graphAllocator.allocateTensor(result)
         
         // Use existing matrix multiplication implementation
-        computeMatMul(graphAllocator, context, a, b, result)
+        computeMatMul(graphAllocator, a, b, result)
         
         return result
     }
@@ -250,7 +250,7 @@ class LlamaAttention(
         graphAllocator.allocateTensor(result)
         
         // Use existing ADD operation from GGMLComputeOps
-        computeAdd(graphAllocator, context, a, b, result)
+        computeAdd(graphAllocator, a, b, result)
         
         return result
     }

@@ -430,7 +430,7 @@ class LlamaContext(
      *
      * Port of `llama_context::memory_update(bool optimize)`.
      */
-    fun memoryUpdate(@Suppress("UNUSED_PARAMETER") optimize: Boolean): Boolean {
+    fun memoryUpdate(optimize: Boolean): Boolean {
         // LATER: full implementation
         //   1. Call memory.initUpdate(this, optimize)
         //   2. Check status — return false for NO_UPDATE or failures
@@ -466,8 +466,6 @@ class LlamaContext(
         //   3. Resolve auto flash-attention
         //   4. Reserve pp and tg graphs
         //   5. Log buffer sizes and graph info
-        @Suppress("UNUSED_VARIABLE") val unused2 = nSeqs
-        @Suppress("UNUSED_VARIABLE") val unused3 = maxNodes
     }
 
     /**
@@ -518,7 +516,7 @@ class LlamaContext(
     fun processUBatch(
         ubatch: LlamaUBatch,
         gtype: LlmGraphType,
-        @Suppress("UNUSED_PARAMETER") memoryContext: LlamaMemoryContext? = null,
+        memoryContext: LlamaMemoryContext? = null,
     ): Pair<GGMLCGraph?, Int> {
         val (res, status) = processUBatchInternal(ubatch, gtype, memoryContext)
         return (res?.getGf()) to status
@@ -1129,7 +1127,7 @@ class LlamaContext(
      *
      * Port of `llama_context::graph_max_nodes(uint32_t n_tokens)`.
      */
-    fun graphMaxNodes(@Suppress("UNUSED_PARAMETER") nTokens: Int): Int {
+    fun graphMaxNodes(nTokens: Int): Int {
         // Conservative estimate: 8× number of model tensors, minimum 1024
         val nTensors = model.config.numHiddenLayers * 16L
         return maxOf(1024, (8L * nTensors).toInt())
@@ -1150,7 +1148,6 @@ class LlamaContext(
         //   - Set threadpool on CPU backend
         //   - Set n_threads on all backends
         //   - Call ggml_backend_sched_graph_compute_async
-        @Suppress("UNUSED_VARIABLE") val unused1 = nThreadsToUse
         return GGMLStatus.SUCCESS
     }
 
@@ -1589,8 +1586,6 @@ class LlamaContext(
      * Port of `llama_context::opt_epoch(...)`.
      */
     fun optEpoch(
-        @Suppress("UNUSED_PARAMETER") idataSplit: Long,
-        @Suppress("UNUSED_PARAMETER") train: Boolean,
     ) {
         // LATER: full implementation
         //   - Iterate over dataset entries

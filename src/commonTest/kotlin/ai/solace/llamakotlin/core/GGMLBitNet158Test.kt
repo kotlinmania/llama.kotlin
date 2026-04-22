@@ -357,7 +357,7 @@ class GGMLBitNet158Test {
         
         // Perform matrix multiplication using the existing computeMatMul infrastructure
         val context = GGMLContext()
-        computeMatMul(graphAllocator, context, bitNetTensor, f32Tensor, resultTensor)
+        computeMatMul(graphAllocator, bitNetTensor, f32Tensor, resultTensor)
         
         // Verify result dimensions
         assertEquals(N.toLong(), resultTensor.ne[0])

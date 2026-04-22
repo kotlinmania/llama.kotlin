@@ -1711,7 +1711,7 @@ internal fun computeLinear(
     graphAllocator.allocateTensor(result)
     
     // Execute the actual computation
-    computeMatMul(graphAllocator, context, weight, input, result)
+    computeMatMul(graphAllocator, weight, input, result)
     return result
 }
 
@@ -1733,7 +1733,7 @@ internal fun computeElementAdd(
     graphAllocator.allocateTensor(result)
     
     // Execute the actual computation
-    computeAdd(graphAllocator, context, a, b, result)
+    computeAdd(graphAllocator, a, b, result)
     return result
 }
 
@@ -1755,7 +1755,7 @@ internal fun computeElementMul(
     graphAllocator.allocateTensor(result)
     
     // Execute the actual computation  
-    computeMul(graphAllocator, context, a, b, result)
+    computeMul(graphAllocator, a, b, result)
     return result
 }
 
@@ -1774,7 +1774,7 @@ internal fun computeSilu(
     graphAllocator.allocateTensor(result)
     
     // Use existing SILU implementation
-    computeSilu(graphAllocator, graphAllocator.context, input, result)
+    computeSilu(graphAllocator, input, result)
     return result
 }
 
@@ -1833,7 +1833,7 @@ class RMSNorm(
             src[0] = input
             graphAllocator.allocateTensor(this)
         }
-        computeRMSNorm(graphAllocator, context, input, eps, result)
+        computeRMSNorm(graphAllocator, input, eps, result)
         return result
     }
 }
@@ -1905,7 +1905,7 @@ class LlamaMLP(
         graphAllocator.allocateTensor(result)
         
         // Use existing SILU implementation
-        computeSilu(graphAllocator, context, input, result)
+        computeSilu(graphAllocator, input, result)
         return result
     }
     
@@ -1919,7 +1919,7 @@ class LlamaMLP(
         graphAllocator.allocateTensor(result)
         
         // Use existing MUL implementation
-        computeMul(graphAllocator, context, a, b, result)
+        computeMul(graphAllocator, a, b, result)
         return result
     }
 }

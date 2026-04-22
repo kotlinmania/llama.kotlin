@@ -130,10 +130,10 @@ class GGMLPerformanceBenchmarkTest {
                 computeMul(graphAllocator, context, tensorA, tensorB, mulDst)
             }
             results += benchmarkOperation("SUB_F32", size) {
-                computeSub(graphAllocator, context, tensorA, tensorB, subDst)
+                computeSub(graphAllocator, tensorA, tensorB, subDst)
             }
             results += benchmarkOperation("DIV_F32", size) {
-                computeDiv(graphAllocator, context, tensorA, tensorB, divDst)
+                computeDiv(graphAllocator, tensorA, tensorB, divDst)
             }
         }
 
@@ -160,11 +160,11 @@ class GGMLPerformanceBenchmarkTest {
         val geluDst = allocateDestination(source, "gelu_dst")
 
         val operations = listOf(
-            Triple("NEG_F32", negDst) { dst: GGMLTensor -> computeNeg(graphAllocator, context, source, dst) },
-            Triple("SQR_F32", sqrDst) { dst: GGMLTensor -> computeSqr(graphAllocator, context, source, dst) },
-            Triple("SQRT_F32", sqrtDst) { dst: GGMLTensor -> computeSqrt(graphAllocator, context, source, dst) },
-            Triple("RELU_F32", reluDst) { dst: GGMLTensor -> computeRelu(graphAllocator, context, source, dst) },
-            Triple("GELU_F32", geluDst) { dst: GGMLTensor -> computeGelu(graphAllocator, context, source, dst) }
+            Triple("NEG_F32", negDst) { dst: GGMLTensor -> computeNeg(graphAllocator, source, dst) },
+            Triple("SQR_F32", sqrDst) { dst: GGMLTensor -> computeSqr(graphAllocator, source, dst) },
+            Triple("SQRT_F32", sqrtDst) { dst: GGMLTensor -> computeSqrt(graphAllocator, source, dst) },
+            Triple("RELU_F32", reluDst) { dst: GGMLTensor -> computeRelu(graphAllocator, source, dst) },
+            Triple("GELU_F32", geluDst) { dst: GGMLTensor -> computeGelu(graphAllocator, source, dst) }
         )
 
         val results = operations.map { (name, dst, op) ->
@@ -191,7 +191,7 @@ class GGMLPerformanceBenchmarkTest {
 
             val elements = n * n
             results += benchmarkOperation("MATMUL_${n}x$n", elements, warmupRuns = 1, measureRuns = 3) {
-                computeMatMul(graphAllocator, context, matrixA, matrixB, dst)
+                computeMatMul(graphAllocator, matrixA, matrixB, dst)
             }
         }
 
@@ -283,9 +283,9 @@ class GGMLPerformanceBenchmarkTest {
         val operations = mapOf<String, (GGMLTensor) -> Unit>(
             "ADD" to { computeAdd(graphAllocator, context, tensorA, tensorB, dst) },
             "MUL" to { computeMul(graphAllocator, context, tensorA, tensorB, dst) },
-            "SUB" to { computeSub(graphAllocator, context, tensorA, tensorB, dst) },
-            "DIV" to { computeDiv(graphAllocator, context, tensorA, tensorB, dst) },
-            "NEG" to { computeNeg(graphAllocator, context, tensorA, dst) }
+            "SUB" to { computeSub(graphAllocator, tensorA, tensorB, dst) },
+            "DIV" to { computeDiv(graphAllocator, tensorA, tensorB, dst) },
+            "NEG" to { computeNeg(graphAllocator, tensorA, dst) }
         )
 
         println("\n${"=".repeat(60)}")

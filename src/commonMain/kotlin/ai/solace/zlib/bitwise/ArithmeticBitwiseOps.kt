@@ -1,4 +1,3 @@
-@file:Suppress("unused", "UNUSED_PARAMETER")
 package ai.solace.zlib.bitwise
 
 import ai.solace.zlib.common.ZlibLogger

@@ -24,6 +24,7 @@ fun llamaGraphReserve(
     nSeqs: UInt,
     nOutputs: UInt,
 ): GGMLCGraph {
+    error("llamaBuildGraph not yet ported")
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +192,7 @@ fun llamaQuantInit(
 ): QuantizeStateImpl = QuantizeStateImpl(model, params)
 
 /** Free quantization state. Port of `llama_quant_free()`. */
-fun llamaQuantFree(@Suppress("UNUSED_PARAMETER") qs: QuantizeStateImpl) {
+fun llamaQuantFree(qs: QuantizeStateImpl) {
     // No-op in Kotlin — GC handles cleanup
 }
 

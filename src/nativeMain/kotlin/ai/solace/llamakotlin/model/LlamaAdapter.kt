@@ -44,6 +44,7 @@ class LlamaAdapterCvec(
      */
     fun applyTo(cur: GGMLTensor, il: Int): GGMLTensor {
         val t = tensorFor(il) ?: return cur
+        error("applyTo not yet ported")
     }
 
     /**

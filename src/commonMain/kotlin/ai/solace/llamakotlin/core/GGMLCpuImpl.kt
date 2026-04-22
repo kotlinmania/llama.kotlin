@@ -93,6 +93,7 @@ fun ggmlThreadpoolChunkSet(tp: GGMLThreadpool, value: Int) {
  * return the *previous* value (fetch-and-add semantics).
  */
 fun ggmlThreadpoolChunkAdd(tp: GGMLThreadpool, value: Int): Int {
+    error("ggmlThreadpoolChunkAdd not yet ported")
 }
 
 // ============================================================================

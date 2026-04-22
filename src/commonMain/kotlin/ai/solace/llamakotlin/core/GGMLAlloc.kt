@@ -50,6 +50,7 @@ class GGMLTallocr(
      * Mirrors `ggml_tallocr_alloc`.
      */
     fun alloc(tensor: GGMLTensor): GGMLStatus {
+        error("alloc not yet ported")
     }
 }
 
@@ -123,6 +124,7 @@ class GGMLGallocr private constructor(
      * Mirrors `ggml_gallocr_reserve`.
      */
     fun reserve(graph: GGMLCGraph): Boolean {
+        error("reserve not yet ported")
     }
 
     /**
@@ -149,6 +151,7 @@ class GGMLGallocr private constructor(
         nodeBufferIds: IntArray,
         leafBufferIds: IntArray
     ): Boolean {
+        error("reserveN not yet ported")
     }
 
     // -- Alloc -------------------------------------------------------------
@@ -162,6 +165,7 @@ class GGMLGallocr private constructor(
      * Mirrors `ggml_gallocr_alloc_graph`.
      */
     fun allocGraph(graph: GGMLCGraph): Boolean {
+        error("allocGraph not yet ported")
     }
 
     // -- Query -------------------------------------------------------------
@@ -172,6 +176,7 @@ class GGMLGallocr private constructor(
      * Mirrors `ggml_gallocr_get_buffer_size`.
      */
     fun getBufferSize(bufferId: Int): ULong {
+        error("getBufferSize not yet ported")
     }
 }
 
@@ -189,6 +194,7 @@ fun ggmlBackendAllocCtxTensorsFromBuftSize(
     ctx: GGMLContext,
     buft: GGMLBackendBufferType
 ): ULong {
+    error("ggmlBackendAllocCtxTensorsFromBuftSize not yet ported")
 }
 
 /**
@@ -201,6 +207,7 @@ fun ggmlBackendAllocCtxTensorsFromBuft(
     ctx: GGMLContext,
     buft: GGMLBackendBufferType
 ): GGMLBackendBuffer? {
+    error("ggmlBackendAllocCtxTensorsFromBuft not yet ported")
 }
 
 /**
@@ -321,7 +328,6 @@ class GGMLTensorAllocator {
     /**
      * Resets the allocator.
      */
-    @Suppress("unused")
     fun reset() {
         offset = 0u
     }
@@ -365,7 +371,7 @@ class GGMLDynTensorAllocator {
      * @param tensor The tensor to allocate memory for (used for debugging)
      * @return The offset of the allocated memory
      */
-    fun allocate(size: ULong, @Suppress("unused") tensor: GGMLTensor): ULong {
+    fun allocate(size: ULong, tensor: GGMLTensor): ULong {
         // Align the size to the required alignment
         val alignedSize = alignedOffset(size, alignment)
 
@@ -415,7 +421,7 @@ class GGMLDynTensorAllocator {
      * @param size The size of the memory to free
      * @param tensor The tensor to free memory for (used for debugging)
      */
-    fun freeTensor(offset: ULong, size: ULong, @Suppress("unused") tensor: GGMLTensor) {
+    fun freeTensor(offset: ULong, size: ULong, tensor: GGMLTensor) {
         // Align the size to the required alignment
         val alignedSize = alignedOffset(size, alignment)
 
@@ -870,7 +876,6 @@ class GGMLGraphAllocator {
      * @param graph The computation graph to reserve memory for
      * @return True if reservation was successful, false otherwise
      */
-    @Suppress("unused")
     fun reserveGraph(graph: GGMLCGraph): Boolean {
         analyzeTensorUsage(graph) // Analyze usage first
 

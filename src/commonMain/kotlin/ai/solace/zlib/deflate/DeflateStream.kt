@@ -1,4 +1,3 @@
-@file:Suppress("EmptyElseBlock")
 
 package ai.solace.zlib.deflate
 

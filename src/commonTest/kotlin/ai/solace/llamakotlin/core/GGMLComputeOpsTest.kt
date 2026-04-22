@@ -362,7 +362,7 @@ class GGMLComputeOpsTest {
         }
 
         val resultTensor = allocateTensor("matmul_f32_dst", GGMLType.F32, longArrayOf(N1.toLong(), M0.toLong()))
-        computeMatMul(graphAllocator, context, src0, src1, resultTensor)
+        computeMatMul(graphAllocator, src0, src1, resultTensor)
 
         assertEquals(GGMLType.F32, resultTensor.type, "Result type should be F32")
         // Result is M0 x N1 (2x2). ne = [cols, rows] -> ne = [2, 2]
@@ -447,7 +447,7 @@ class GGMLComputeOpsTest {
         assertTrue(maxAbsSrc1 < 10f, "Unexpectedly large F32 RHS magnitude $maxAbsSrc1")
 
         val resultTensor = allocateTensor("matmul_q8_f32_dst", GGMLType.F32, longArrayOf(N1.toLong(), M0.toLong()))
-        computeMatMul(graphAllocator, context, q8Src0, src1F32, resultTensor)
+        computeMatMul(graphAllocator, q8Src0, src1F32, resultTensor)
 
         assertEquals(GGMLType.F32, resultTensor.type, "Result type should be F32 for Q8_0 x F32")
         assertEquals(N1.toLong(), resultTensor.ne[0], "Result cols (ne[0]) mismatch")

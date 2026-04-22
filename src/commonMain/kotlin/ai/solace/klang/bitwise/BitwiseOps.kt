@@ -1,4 +1,3 @@
-@file:Suppress("unused", "UNUSED_PARAMETER", "ktlint:standard:indent")
 
 package ai.solace.klangnative.bitwise
 
@@ -21,10 +20,8 @@ object BitwiseOps {
         // Default engines use global mode
         private val defaultEngine32 get() = BitShiftEngine(BitShiftConfig.defaultMode, 32)
 
-        @Suppress("unused")
         private val defaultEngine16 get() = BitShiftEngine(BitShiftConfig.defaultMode, 16)
 
-        @Suppress("unused")
         private val defaultEngine8 get() = BitShiftEngine(BitShiftConfig.defaultMode, 8)
 
         private val defaultEngine64 get() = BitShiftEngine(BitShiftConfig.defaultMode, 64)

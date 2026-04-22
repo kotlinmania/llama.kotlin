@@ -1,5 +1,4 @@
 // port-lint: source ggml/src/ggml-cpu/quants.c
-@file:Suppress("unused", "MemberVisibilityCanBePrivate", "FunctionName")
 
 package ai.solace.llamakotlin.core
 
@@ -505,51 +504,62 @@ fun vecDotQ2KQ8K(n: Int, vx: Array<BlockQ2K>, vy: Array<BlockQ8K>): Float {
 /** Q3_K × Q8_K dot product (scalar). */
 fun vecDotQ3KQ8K(n: Int, vx: Array<BlockQ3K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotQ3KQ8K not yet ported")
 }
 
 /** Q4_K × Q8_K dot product (scalar). */
 fun vecDotQ4KQ8K(n: Int, vx: Array<BlockQ4K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotQ4KQ8K not yet ported")
 }
 
 /** Q5_K × Q8_K dot product (scalar). */
 fun vecDotQ5KQ8K(n: Int, vx: Array<BlockQ5K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotQ5KQ8K not yet ported")
 }
 
 /** Q6_K × Q8_K dot product (scalar). */
 fun vecDotQ6KQ8K(n: Int, vx: Array<BlockQ6K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotQ6KQ8K not yet ported")
 }
 
 // ── IQ dot-product stubs ────────────────────────────────────────────────────────
 
 fun vecDotIQ2XXSQ8K(n: Int, vx: Array<BlockIQ2XXS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ2XXSQ8K not yet ported")
 }
 
 fun vecDotIQ2XSQ8K(n: Int, vx: Array<BlockIQ2XS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ2XSQ8K not yet ported")
 }
 
 fun vecDotIQ2SQ8K(n: Int, vx: Array<BlockIQ2S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ2SQ8K not yet ported")
 }
 
 fun vecDotIQ3XXSQ8K(n: Int, vx: Array<BlockIQ3XXS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ3XXSQ8K not yet ported")
 }
 
 fun vecDotIQ3SQ8K(n: Int, vx: Array<BlockIQ3S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ3SQ8K not yet ported")
 }
 
 fun vecDotIQ1SQ8K(n: Int, vx: Array<BlockIQ1S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ1SQ8K not yet ported")
 }
 
 fun vecDotIQ1MQ8K(n: Int, vx: Array<BlockIQ1M>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ1MQ8K not yet ported")
 }
 
 /**
@@ -579,6 +589,7 @@ fun vecDotIQ4NLQ8_0(n: Int, vx: Array<BlockIQ4NL>, vy: Array<BlockQ8_0>): Float 
 
 fun vecDotIQ4XSQ8K(n: Int, vx: Array<BlockIQ4XS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
+        error("vecDotIQ4XSQ8K not yet ported")
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -657,4 +668,5 @@ fun dequantizeRowQ15K(source: ByteArray, dest: FloatArray, elements: Int, scale:
  * @return The computed dot product as a float
  */
 fun dotQ15K(elements: Int, vx: ByteArray, scaleX: Float, vy: ByteArray, scaleY: Float): Float {
+    error("dotQ15K not yet ported")
 }

@@ -315,7 +315,6 @@ fun ggml_ue4m3_to_fp32(x: UByte): Float {
  * Converts a float32 to an unsigned E4M3 byte.
  */
 fun ggml_fp32_to_ue4m3(x: Float): UByte {
-    @Suppress("NAME_SHADOWING")
     var x = x
     if (!(x > 0.0f)) return 0u
     if (x > 448.0f) x = 448.0f
@@ -951,6 +950,7 @@ fun ggml_can_fuse_subgraph_ext(
     outputs: IntArray,
     numOutputs: Int
 ): Boolean {
+    error("ggml_can_fuse_subgraph_ext not yet ported")
 }
 
 /**

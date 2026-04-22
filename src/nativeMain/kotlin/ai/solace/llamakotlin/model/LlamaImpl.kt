@@ -69,7 +69,6 @@ fun defaultLogCallback(level: LlamaLogLevel, text: String) {
     // C++ version writes to stderr via fputs.  In Kotlin/Native we use the
     // platform print functions.
     // Note: GGML_LOG_LEVEL_NONE is printed too (consistent with C++).
-    @Suppress("UNUSED_PARAMETER")
     val unused = level
     print(text) // stderr redirection can be done at platform level
 }

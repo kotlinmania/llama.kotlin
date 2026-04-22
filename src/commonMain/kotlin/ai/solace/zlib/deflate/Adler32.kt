@@ -31,7 +31,6 @@ class Adler32 {
      * @param len Number of bytes to process
      * @return Updated Adler-32 checksum
      */
-    @Suppress("MemberNameEqualsClassName")
     fun adler32(
         adler: Long,
         buf: ByteArray?,

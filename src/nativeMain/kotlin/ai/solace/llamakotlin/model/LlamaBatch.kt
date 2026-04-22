@@ -1071,7 +1071,6 @@ fun llamaBatchInit(nTokensAlloc: Int, embd: Int = 0, nSeqMax: Int = 1): LlamaBat
  *
  * In Kotlin this is a identity because the garbage collector handles deallocation.
  */
-@Suppress("UNUSED_PARAMETER")
 fun llamaBatchFree(batch: LlamaBatch) {
     // No-op — Kotlin GC handles cleanup
 }

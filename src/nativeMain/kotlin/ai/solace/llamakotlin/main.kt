@@ -282,7 +282,7 @@ fun demonstrateLlamaModelArchitecture() {
             nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
         allocator.allocateTensor(transposed)
-        computeTranspose(allocator, context, matrix, transposed)
+        computeTranspose(allocator, matrix, transposed)
         kotlin.io.println("   ✓ Matrix transposed from (3x2) to (2x3)")
         
         // Verify transpose worked correctly
@@ -311,7 +311,7 @@ fun demonstrateLlamaModelArchitecture() {
             nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
         allocator.allocateTensor(normalized)
-        computeRMSNorm(allocator, context, inputTensor, 1e-6f, normalized)
+        computeRMSNorm(allocator, inputTensor, 1e-6f, normalized)
         
         // Verify normalization
         var sumSquared = 0.0f
@@ -340,7 +340,7 @@ fun demonstrateLlamaModelArchitecture() {
             nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
         allocator.allocateTensor(siluResult)
-        computeSilu(allocator, context, activationInput, siluResult)
+        computeSilu(allocator, activationInput, siluResult)
         
         val siluZero = siluResult.getFloat(allocator, 3, 0) // SiLU(0)
         val siluPositive = siluResult.getFloat(allocator, 4, 0) // SiLU(0.5)
@@ -378,7 +378,7 @@ fun demonstrateLlamaModelArchitecture() {
             nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
         allocator.allocateTensor(matmulResult)
-        computeMatMul(allocator, context, weightMatrix, transformerInput, matmulResult)
+        computeMatMul(allocator, weightMatrix, transformerInput, matmulResult)
         
         kotlin.io.println("   ✓ Linear transformation: ($inputDim × $seqLen) × ($inputDim × $outputDim) → ($outputDim × $seqLen)")
         
@@ -400,7 +400,7 @@ fun demonstrateLlamaModelArchitecture() {
             nb = calculateContiguousStrides(ne, type, GGML_MAX_DIMS)
         }
         allocator.allocateTensor(softmaxResult)
-        computeSoftMax(allocator, context, logitsInput, softmaxResult)
+        computeSoftMax(allocator, logitsInput, softmaxResult)
         
         // Verify softmax properties
         var sum = 0.0f

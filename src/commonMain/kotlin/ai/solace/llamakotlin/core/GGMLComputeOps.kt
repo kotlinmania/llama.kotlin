@@ -1043,7 +1043,6 @@ internal fun applyNDIter(tensor: GGMLTensor, totalSize: Int, actionPerElement: (
  */
 fun computeAdd(
     graphAllocator: GGMLGraphAllocator,
-    @Suppress("unused") context: GGMLContext,
     a: GGMLTensor,
     b: GGMLTensor,
     dst: GGMLTensor
@@ -1108,7 +1107,7 @@ fun computeAdd(
             val aF32 = dequantizeTensor(graphAllocator, a)
             val bF32 = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
-            computeAdd(graphAllocator, context, aF32, bF32, tempF32)
+            computeAdd(graphAllocator, aF32, bF32, tempF32)
             val quantizedResult = quantizeTensor(graphAllocator, tempF32, dst.type)
             // Copy quantized data to destination
             dst.data = quantizedResult.data
@@ -1119,7 +1118,6 @@ fun computeAdd(
 
 fun computeMul(
     graphAllocator: GGMLGraphAllocator,
-    @Suppress("unused") context: GGMLContext,
     a: GGMLTensor,
     b: GGMLTensor,
     dst: GGMLTensor
@@ -1181,7 +1179,7 @@ fun computeMul(
             val aF32 = dequantizeTensor(graphAllocator, a)
             val bF32 = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
-            computeMul(graphAllocator, context, aF32, bF32, tempF32)
+            computeMul(graphAllocator, aF32, bF32, tempF32)
             val quantizedResult = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = quantizedResult.data
         }
@@ -1191,7 +1189,6 @@ fun computeMul(
 
 fun computeRepeatBack(
     graphAllocator: GGMLGraphAllocator,
-    @Suppress("unused") context: GGMLContext,
     src: GGMLTensor,
     dst: GGMLTensor
 ) {
@@ -1759,7 +1756,7 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
     return result
 }
 
-fun computeMatMul(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, b: GGMLTensor, dst: GGMLTensor) {
+fun computeMatMul(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor, dst: GGMLTensor) {
     val M = a.ne[1].toInt()
     val K_a = a.ne[0].toInt()
     val N = b.ne[0].toInt()
@@ -1907,14 +1904,14 @@ fun computeMatMul(graphAllocator: GGMLGraphAllocator, @Suppress("unused") contex
         GGMLType.Q4_0,GGMLType.Q4_1,GGMLType.Q5_0,GGMLType.Q5_1,GGMLType.Q8_0,GGMLType.Q8_1,GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K,GGMLType.BITNET_1_58 -> {
             val aF32=dequantizeTensor(graphAllocator,a); val bF32=dequantizeTensor(graphAllocator,b)
             val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
-            computeMatMul(graphAllocator,context,aF32,bF32,tempF32)
+            computeMatMul(graphAllocator,aF32,bF32,tempF32)
             val qRes=quantizeTensor(graphAllocator,tempF32,dst.type); dst.data=qRes.data
         }
         else -> throw NotImplementedError("computeMatMul not implemented for input type ${a.type}")
     }
 }
 
-fun computeRelu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeRelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
     }
@@ -1928,7 +1925,7 @@ fun computeRelu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context:
     }
 }
 
-fun computeGelu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeGelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
     }
@@ -1943,7 +1940,7 @@ fun computeGelu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context:
     }
 }
 
-fun computeSilu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeSilu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
     }
@@ -1964,7 +1961,7 @@ fun computeSilu(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context:
     }
 }
 
-fun computeSoftMax(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeSoftMax(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
     }
@@ -2038,7 +2035,7 @@ fun computeSoftMax(graphAllocator: GGMLGraphAllocator, @Suppress("unused") conte
     }
 }
 
-fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, eps: Float, dst: GGMLTensor) {
+fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, eps: Float, dst: GGMLTensor) {
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
     }
@@ -2081,7 +2078,7 @@ fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, @Suppress("unused") conte
     }
 }
 
-fun computeSub(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, b: GGMLTensor, dst: GGMLTensor) {
+fun computeSub(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor, dst: GGMLTensor) {
     for(i in 0 until GGML_MAX_DIMS){if(a.ne[i]!=b.ne[i])throw IllegalArgumentException("Dims mismatch")}
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
@@ -2127,7 +2124,7 @@ fun computeSub(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
             val tempF32 = GGMLTensor(type = GGMLType.F32)
             tempF32.ne = dst.ne.copyOf()
             tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
-            computeSub(graphAllocator, context, af, bf, tempF32)
+            computeSub(graphAllocator, af, bf, tempF32)
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
         }
@@ -2135,7 +2132,7 @@ fun computeSub(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
     }
 }
 
-fun computeNeg(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeNeg(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
     }
@@ -2150,7 +2147,7 @@ fun computeNeg(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
             val af = dequantizeTensor(graphAllocator, a)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
             tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
-            computeNeg(graphAllocator, context, af, tempF32)
+            computeNeg(graphAllocator, af, tempF32)
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
         }
@@ -2158,7 +2155,7 @@ fun computeNeg(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
     }
 }
 
-fun computeDiv(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, b: GGMLTensor, dst: GGMLTensor) {
+fun computeDiv(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor, dst: GGMLTensor) {
     for(i in 0 until GGML_MAX_DIMS){if(a.ne[i]!=b.ne[i])throw IllegalArgumentException("Dims mismatch")}
     for (i in 0 until GGML_MAX_DIMS) {
         if (a.ne[i] != dst.ne[i]) throw IllegalArgumentException("Result tensor dimensions must match input dimensions")
@@ -2211,7 +2208,7 @@ fun computeDiv(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: 
             val af = dequantizeTensor(graphAllocator, a); val bf = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
             tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
-            computeDiv(graphAllocator, context, af, bf, tempF32)
+            computeDiv(graphAllocator, af, bf, tempF32)
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
         }
@@ -3238,7 +3235,7 @@ private fun dequantizeQ8_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
 /**
  * Compute element-wise square (SQR) into destination tensor (dst-arg only).
  */
-fun computeSqr(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeSqr(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     dst.type = a.type
     a.ne.copyInto(dst.ne); a.nb.copyInto(dst.nb)
     val ts = a.numElements().toInt()
@@ -3299,7 +3296,7 @@ fun computeSqr(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGML
         GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K -> {
             val af = dequantizeTensor(graphAllocator, a)
             val tmp = GGMLTensor(af.type).also { it.ne = a.ne.copyOf(); it.nb = a.nb.copyOf() }
-            computeSqr(graphAllocator, context, af, tmp)
+            computeSqr(graphAllocator, af, tmp)
             val qr = quantizeTensor(graphAllocator, tmp, a.type)
             dst.data = qr.data
         }
@@ -3310,7 +3307,7 @@ fun computeSqr(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGML
 /**
  * Compute element-wise square root (SQRT) into destination tensor (dst-arg only).
  */
-fun computeSqrt(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeSqrt(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     dst.type = a.type
     a.ne.copyInto(dst.ne); a.nb.copyInto(dst.nb)
     val ts = a.numElements().toInt()
@@ -3363,7 +3360,7 @@ fun computeSqrt(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGM
         GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K -> {
             val af = dequantizeTensor(graphAllocator, a)
             val tmp = GGMLTensor(af.type).also { it.ne = a.ne.copyOf(); it.nb = a.nb.copyOf() }
-            computeSqrt(graphAllocator, context, af, tmp)
+            computeSqrt(graphAllocator, af, tmp)
             val qr = quantizeTensor(graphAllocator, tmp, a.type)
             dst.data = qr.data
         }
@@ -3376,7 +3373,7 @@ fun computeSqrt(graphAllocator: GGMLGraphAllocator, context: GGMLContext, a: GGM
  * Swaps the last two dimensions of a tensor (for 2D case, transposes rows and columns).
  * For higher-dimensional tensors, transposes the last two dimensions while preserving others.
  */
-fun computeTranspose(graphAllocator: GGMLGraphAllocator, @Suppress("unused") context: GGMLContext, a: GGMLTensor, dst: GGMLTensor) {
+fun computeTranspose(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTensor) {
     // Validate dimensions - dst should have swapped last two dimensions compared to src
     require(a.ne[0] == dst.ne[1] && a.ne[1] == dst.ne[0]) {
         "Transpose dimensions mismatch: src(${a.ne[0]}, ${a.ne[1]}) vs dst(${dst.ne[0]}, ${dst.ne[1]})"
@@ -3497,7 +3494,7 @@ private fun calculateStrideFactor(tensor: GGMLTensor, dim: Int): Int {
  *
  * Ported from `ggml_compute_forward_concat_f32` and the generic path.
  */
-fun computeConcat(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeConcat(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("CONCAT requires src0")
     val src1 = dst.src[1] ?: error("CONCAT requires src1")
 
@@ -3547,7 +3544,7 @@ fun computeConcat(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params
  *
  * Ported from `ggml_compute_forward_sum_rows_f32`.
  */
-fun computeSumRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeSumRows(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("SUM_ROWS requires src0")
 
     require(src0.type == GGMLType.F32) { "SUM_ROWS only supports F32, got ${src0.type}" }
@@ -3579,7 +3576,7 @@ fun computeSumRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
  *
  * Ported from `ggml_compute_forward_cumsum_f32`.
  */
-fun computeCumsum(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCumsum(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("CUMSUM requires src0")
 
     require(src0.type == GGMLType.F32) { "CUMSUM only supports F32, got ${src0.type}" }
@@ -3612,7 +3609,7 @@ fun computeCumsum(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params
  *
  * Ported from `ggml_compute_forward_argmax_f32`.
  */
-fun computeArgmax(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeArgmax(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("ARGMAX requires src0")
 
     require(src0.type == GGMLType.F32) { "ARGMAX only supports F32, got ${src0.type}" }
@@ -3641,7 +3638,7 @@ fun computeArgmax(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params
  *
  * Ported from `ggml_compute_forward_count_equal_i32` (single-thread path).
  */
-fun computeCountEqual(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCountEqual(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("COUNT_EQUAL requires src0")
     val src1 = dst.src[1] ?: error("COUNT_EQUAL requires src1")
 
@@ -3679,7 +3676,7 @@ fun computeCountEqual(graphAllocator: GGMLGraphAllocator, @Suppress("unused") pa
  *
  * Ported from `ggml_compute_forward_get_rows_f32` / `_f16` (scalar paths).
  */
-fun computeGetRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeGetRows(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("GET_ROWS requires src0")
     val src1 = dst.src[1] ?: error("GET_ROWS requires src1 (indices)")
 
@@ -3731,7 +3728,7 @@ fun computeGetRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
  *
  * Ported from `ggml_compute_forward_get_rows_back_f32`.
  */
-fun computeGetRowsBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeGetRowsBack(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("GET_ROWS_BACK requires src0")
     val src1 = dst.src[1] ?: error("GET_ROWS_BACK requires src1 (indices)")
 
@@ -3779,7 +3776,7 @@ fun computeGetRowsBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") p
  *
  * Ported from `ggml_compute_forward_set_rows_f32` (scalar, I32 indices).
  */
-fun computeSetRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeSetRows(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("SET_ROWS requires src0")
     val src1 = dst.src[1] ?: error("SET_ROWS requires src1 (indices)")
 
@@ -3823,7 +3820,7 @@ fun computeSetRows(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
  *
  * Ported from `ggml_compute_forward_diag_f32`.
  */
-fun computeDiag(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeDiag(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("DIAG requires src0")
 
     require(src0.type == GGMLType.F32) { "DIAG only supports F32, got ${src0.type}" }
@@ -3857,7 +3854,7 @@ fun computeDiag(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: 
  *
  * @param maskValue The value written into masked positions.
  */
-fun computeDiagMask(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor, maskValue: Float) {
+fun computeDiagMask(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor, maskValue: Float) {
     val src0 = dst.src[0] ?: error("DIAG_MASK requires src0")
 
     require(src0.type == GGMLType.F32) { "DIAG_MASK only supports F32, got ${src0.type}" }
@@ -3888,11 +3885,11 @@ fun computeDiagMask(graphAllocator: GGMLGraphAllocator, @Suppress("unused") para
 }
 
 /** Convenience: applies causal mask with `-Infinity`. */
-fun computeDiagMaskInf(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) =
+fun computeDiagMaskInf(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) =
     computeDiagMask(graphAllocator, params, dst, Float.NEGATIVE_INFINITY)
 
 /** Convenience: applies causal mask with `0`. */
-fun computeDiagMaskZero(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) =
+fun computeDiagMaskZero(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) =
     computeDiagMask(graphAllocator, params, dst, 0.0f)
 
 // ---------------------------------------------------------------------------
@@ -3970,7 +3967,7 @@ private fun ropeCacheInit(
  *
  * Ported from `ggml_compute_forward_rope_flt<float>` (scalar path).
  */
-fun computeRope(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor, forward: Boolean = true) {
+fun computeRope(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor, forward: Boolean = true) {
     val src0 = dst.src[0] ?: error("ROPE requires src0")
     val src1 = dst.src[1] ?: error("ROPE requires src1 (positions)")
     val src2 = dst.src.getOrNull(2)  // optional freq_factors
@@ -4086,7 +4083,7 @@ fun computeRope(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: 
 }
 
 /** Backward pass for RoPE — identical computation with inverted sin sign. */
-fun computeRopeBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) =
+fun computeRopeBack(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) =
     computeRope(graphAllocator, params, dst, forward = false)
 
 // ---------------------------------------------------------------------------
@@ -4101,7 +4098,7 @@ fun computeRopeBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") para
  *
  * Ported from `ggml_compute_forward_pad_f32`.
  */
-fun computePad(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computePad(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("PAD requires src0")
 
     require(src0.type == GGMLType.F32) { "PAD only supports F32, got ${src0.type}" }
@@ -4162,7 +4159,7 @@ private fun wrapAround(coord: Int, size: Int): Int = ((coord % size) + size) % s
  *
  * Ported from `ggml_compute_forward_pad_reflect_1d`.
  */
-fun computePadReflect1D(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computePadReflect1D(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("PAD_REFLECT requires src0")
 
     require(src0.type == GGMLType.F32) { "PAD_REFLECT only supports F32, got ${src0.type}" }
@@ -4216,7 +4213,7 @@ fun computePadReflect1D(graphAllocator: GGMLGraphAllocator, @Suppress("unused") 
  *
  * Ported from `ggml_compute_forward_roll_f32`.
  */
-fun computeRoll(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeRoll(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("ROLL requires src0")
 
     require(src0.type == GGMLType.F32) { "ROLL only supports F32, got ${src0.type}" }
@@ -4264,7 +4261,7 @@ private fun wrapIndex(i: Int, ne: Int): Int {
  *
  * Ported from `ggml_compute_forward_arange_f32`.
  */
-fun computeArange(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeArange(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
 
     require(dst.type == GGMLType.F32) { "ARANGE only supports F32, got ${dst.type}" }
 
@@ -4290,7 +4287,7 @@ fun computeArange(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params
  *
  * Ported from `ggml_compute_forward_timestep_embedding_f32`.
  */
-fun computeTimestepEmbedding(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeTimestepEmbedding(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("TIMESTEP_EMBEDDING requires src0")
 
     require(src0.type == GGMLType.F32) { "TIMESTEP_EMBEDDING only supports F32" }
@@ -4329,7 +4326,7 @@ internal const val GGML_SORT_ORDER_DESC = 1
  *
  * Ported from `ggml_compute_forward_argsort_f32`.
  */
-fun computeArgsort(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeArgsort(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("ARGSORT requires src0")
 
     require(src0.type == GGMLType.F32) { "ARGSORT only supports F32, got ${src0.type}" }
@@ -4373,7 +4370,7 @@ fun computeArgsort(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
  *
  * Ported from `ggml_compute_forward_top_k_f32`.
  */
-fun computeTopK(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeTopK(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("TOP_K requires src0")
 
     require(src0.type == GGMLType.F32) { "TOP_K only supports F32, got ${src0.type}" }
@@ -4420,7 +4417,7 @@ internal const val GGML_SCALE_FLAG_ALIGN_CORNERS = 0x100
  *
  * Ported from `ggml_compute_forward_upscale_f32` (nearest + bilinear paths).
  */
-fun computeUpscale(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeUpscale(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("UPSCALE requires src0")
 
     require(src0.type == GGMLType.F32) { "UPSCALE only supports F32, got ${src0.type}" }
@@ -4513,7 +4510,7 @@ fun computeUpscale(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
  *
  * Ported from `ggml_compute_forward_out_prod_f32`.
  */
-fun computeOutProd(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeOutProd(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("OUT_PROD requires src0")
     val src1 = dst.src[1] ?: error("OUT_PROD requires src1")
 
@@ -4567,7 +4564,7 @@ fun computeOutProd(graphAllocator: GGMLGraphAllocator, @Suppress("unused") param
  *
  * Ported from `ggml_compute_forward_cross_entropy_loss_f32` (single-thread).
  */
-fun computeCrossEntropyLoss(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCrossEntropyLoss(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val src0 = dst.src[0] ?: error("CROSS_ENTROPY_LOSS requires src0")
     val src1 = dst.src[1] ?: error("CROSS_ENTROPY_LOSS requires src1")
 
@@ -4622,7 +4619,7 @@ fun computeCrossEntropyLoss(graphAllocator: GGMLGraphAllocator, @Suppress("unuse
  *
  * Ported from `ggml_compute_forward_cross_entropy_loss_back_f32`.
  */
-fun computeCrossEntropyLossBack(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeCrossEntropyLossBack(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val grad  = dst.src[0] ?: error("CE_LOSS_BACK requires src0 (grad)")
     val src0f = dst.src[1] ?: error("CE_LOSS_BACK requires src1 (logits)")
     val src1f = dst.src[2] ?: error("CE_LOSS_BACK requires src2 (labels)")
@@ -4673,7 +4670,7 @@ fun computeCrossEntropyLossBack(graphAllocator: GGMLGraphAllocator, @Suppress("u
  *
  * Ported from `ggml_compute_forward_opt_step_adamw_f32`.
  */
-fun computeOptStepAdamw(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeOptStepAdamw(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val w     = dst.src[0] ?: error("ADAMW requires src0 (weights)")
     val g     = dst.src[1] ?: error("ADAMW requires src1 (grad)")
     val m     = dst.src[2] ?: error("ADAMW requires src2 (m)")
@@ -4723,7 +4720,7 @@ fun computeOptStepAdamw(graphAllocator: GGMLGraphAllocator, @Suppress("unused") 
  *
  * Ported from `ggml_compute_forward_opt_step_sgd_f32`.
  */
-fun computeOptStepSgd(graphAllocator: GGMLGraphAllocator, @Suppress("unused") params: GGMLComputeParams, dst: GGMLTensor) {
+fun computeOptStepSgd(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams, dst: GGMLTensor) {
     val w     = dst.src[0] ?: error("SGD requires src0 (weights)")
     val g     = dst.src[1] ?: error("SGD requires src1 (grad)")
     val sp    = dst.src[2] ?: error("SGD requires src2 (params)")
@@ -4852,7 +4849,6 @@ object GGMLComputeOps {
     
     private fun computeDup(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("DUP operation requires source tensor")
-        val context = graphAllocator.context
         // Simple dup: copy element-wise based on type
         node.type = src.type
         node.ne = src.ne.copyOf(); node.nb = calculateContiguousStrides(node.ne, node.type, node.ne.size)
@@ -4874,90 +4870,76 @@ object GGMLComputeOps {
     private fun computeAdd(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src0 = node.src[0] ?: throw IllegalArgumentException("ADD operation requires first source tensor")
         val src1 = node.src[1] ?: throw IllegalArgumentException("ADD operation requires second source tensor")
-    val context = graphAllocator.context
-    computeAdd(graphAllocator, context, src0, src1, node)
+    computeAdd(graphAllocator, src0, src1, node)
     }
     
     private fun computeSub(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src0 = node.src[0] ?: throw IllegalArgumentException("SUB operation requires first source tensor")
         val src1 = node.src[1] ?: throw IllegalArgumentException("SUB operation requires second source tensor")
-    val context = graphAllocator.context
-    computeSub(graphAllocator, context, src0, src1, node)
+    computeSub(graphAllocator, src0, src1, node)
     }
     
     private fun computeMul(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src0 = node.src[0] ?: throw IllegalArgumentException("MUL operation requires first source tensor")
         val src1 = node.src[1] ?: throw IllegalArgumentException("MUL operation requires second source tensor")
-    val context = graphAllocator.context
-    computeMul(graphAllocator, context, src0, src1, node)
+    computeMul(graphAllocator, src0, src1, node)
     }
     
     private fun computeDiv(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src0 = node.src[0] ?: throw IllegalArgumentException("DIV operation requires first source tensor")
         val src1 = node.src[1] ?: throw IllegalArgumentException("DIV operation requires second source tensor")
-    val context = graphAllocator.context
-    computeDiv(graphAllocator, context, src0, src1, node)
+    computeDiv(graphAllocator, src0, src1, node)
     }
     
     internal fun computeSqr(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SQR operation requires source tensor")
-    val context = graphAllocator.context
-    computeSqr(graphAllocator, context, src, node)
+    computeSqr(graphAllocator, src, node)
     }
     
     internal fun computeSqrt(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SQRT operation requires source tensor")
-    val context = graphAllocator.context
-    computeSqrt(graphAllocator, context, src, node)
+    computeSqrt(graphAllocator, src, node)
     }
     
     private fun computeNeg(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("NEG operation requires source tensor")
-    val context = graphAllocator.context
-    computeNeg(graphAllocator, context, src, node)
+    computeNeg(graphAllocator, src, node)
     }
     
     private fun computeRelu(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("RELU operation requires source tensor")
-    val context = graphAllocator.context
-    computeRelu(graphAllocator, context, src, node)
+    computeRelu(graphAllocator, src, node)
     }
     
     private fun computeGelu(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("GELU operation requires source tensor")
-    val context = graphAllocator.context
-    computeGelu(graphAllocator, context, src, node)
+    computeGelu(graphAllocator, src, node)
     }
 
     private fun computeSilu(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SILU operation requires source tensor")
-    val context = graphAllocator.context
-    computeSilu(graphAllocator, context, src, node)
+    computeSilu(graphAllocator, src, node)
     }
 
     private fun computeSoftMax(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SOFT_MAX operation requires source tensor")
-    val context = graphAllocator.context
-    computeSoftMax(graphAllocator, context, src, node)
+    computeSoftMax(graphAllocator, src, node)
     }
 
     private fun computeRmsNorm(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("RMS_NORM operation requires source tensor")
-    val context = graphAllocator.context
     val eps = Float.fromBits(node.opParams[0])
-    computeRMSNorm(graphAllocator, context, src, eps, node)
+    computeRMSNorm(graphAllocator, src, eps, node)
     }
     
     private fun computeMulMat(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src0 = node.src[0] ?: throw IllegalArgumentException("MUL_MAT operation requires first source tensor")
         val src1 = node.src[1] ?: throw IllegalArgumentException("MUL_MAT operation requires second source tensor")
-    val context = graphAllocator.context
-    computeMatMul(graphAllocator, context, src0, src1, node)
+    computeMatMul(graphAllocator, src0, src1, node)
     }
     
     private fun computeSum(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("SUM operation requires source tensor")
-        val context = graphAllocator.context
         // Simple sum over all elements into a scalar at [0,0]
         node.ne[0] = 1; node.ne[1] = 1; node.type = src.type
         var accF = 0.0f; var accI = 0L
@@ -4973,7 +4955,6 @@ object GGMLComputeOps {
     
     private fun computeMean(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("MEAN operation requires source tensor")
-        val context = graphAllocator.context
         // Mean using sum / N
         val n = src.numElements().toInt().coerceAtLeast(1)
         node.ne[0] = 1; node.ne[1] = 1; node.type = src.type
@@ -4988,7 +4969,6 @@ object GGMLComputeOps {
 
     private fun computeRepeat(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("REPEAT operation requires source tensor")
-        val context = graphAllocator.context
         // Basic repeat assumes node.ne is set to desired output shape and src.ne divides node.ne
         for (d in 0 until GGML_MAX_DIMS) require(src.ne[d] == 0L || node.ne[d] % src.ne[d] == 0L) { "REPEAT shape mismatch" }
         val total = node.numElements().toInt()
@@ -5007,14 +4987,12 @@ object GGMLComputeOps {
 
     private fun computeRepeatBack(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("REPEAT_BACK operation requires source tensor")
-        val context = graphAllocator.context
-        computeRepeatBack(graphAllocator, context, src, node)
+        computeRepeatBack(graphAllocator, src, node)
     }
 
     private fun computeTranspose(graphAllocator: GGMLGraphAllocator, node: GGMLTensor) {
         val src = node.src[0] ?: throw IllegalArgumentException("TRANSPOSE operation requires source tensor")
-        val context = graphAllocator.context
-        computeTranspose(graphAllocator, context, src, node)
+        computeTranspose(graphAllocator, src, node)
     }
 
     // ---------------------------------------------------------------
@@ -5820,17 +5798,17 @@ object GGMLComputeOps {
         dst: GGMLTensor
     ) {
         val src = dst.src[0] ?: error("unary op requires source tensor")
-        val context = graphAllocator.context
         val unaryOp = GGMLUnaryOp.entries[dst.opParams[0]]
         when (unaryOp) {
             GGMLUnaryOp.ABS    -> computeAbs(graphAllocator, dst)
-            GGMLUnaryOp.NEG    -> computeNeg(graphAllocator, context, src, dst)
-            GGMLUnaryOp.RELU   -> computeRelu(graphAllocator, context, src, dst)
-            GGMLUnaryOp.GELU   -> computeGelu(graphAllocator, context, src, dst)
-            GGMLUnaryOp.SILU   -> computeSilu(graphAllocator, context, src, dst)
+            GGMLUnaryOp.NEG    -> computeNeg(graphAllocator, src, dst)
+            GGMLUnaryOp.RELU   -> computeRelu(graphAllocator, src, dst)
+            GGMLUnaryOp.GELU   -> computeGelu(graphAllocator, src, dst)
+            GGMLUnaryOp.SILU   -> computeSilu(graphAllocator, src, dst)
             GGMLUnaryOp.EXP    -> computeExp(graphAllocator, dst)
             GGMLUnaryOp.TANH   -> computeTanh(graphAllocator, dst)
             GGMLUnaryOp.SIGMOID -> computeSigmoid(graphAllocator, dst)
+            else -> error("unary op $unaryOp not yet ported")
         }
     }
 

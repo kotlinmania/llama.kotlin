@@ -1,5 +1,4 @@
 // port-lint: source ggml/src/ggml-common.h
-@file:Suppress("unused", "MemberVisibilityCanBePrivate")
 
 package ai.solace.llamakotlin.core
 
@@ -862,7 +861,6 @@ data class BlockIQ1M(
  *
  * @property bits  the raw 16-bit value; interpret as fp16 via [NumericConversions].
  */
-@Suppress("NOTHING_TO_INLINE")
 data class IQ1MScale(val bits: Short) {
     /** Interpret the raw bits as an IEEE 754 half-precision float. */
     val f16: Short get() = bits
@@ -942,7 +940,6 @@ object GGMLCommonTables {
     )
 
     /** Sign table for IQ2_XS (128 entries). */
-    @Suppress("LongLine")
     val ksignsIQ2XS: ByteArray = byteArrayOf(
           0, -127, -126,    3, -124,    5,    6, -121, -120,    9,   10, -117,   12, -115, -114,   15,
        -112,   17,   18, -109,   20, -107, -106,   23,   24, -103, -102,   27, -100,   29,   30, -97,
