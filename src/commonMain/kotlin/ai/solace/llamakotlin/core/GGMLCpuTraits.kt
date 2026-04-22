@@ -43,3 +43,11 @@ fun ggmlCpuExtraWorkSize(nThreads: Int, op: GGMLTensor, size: LongArray): Boolea
     }
     return false
 }
+
+/**
+ * Port of `ggml_backend_cpu_get_extra_buffer_types` from ggml-cpu.cpp.
+ * Returns the registered extra buffer types for the CPU backend.
+ */
+fun ggmlBackendCpuGetExtraBufferTypes(): MutableList<GGMLBackendBufferType> {
+    return mutableListOf()
+}

@@ -302,3 +302,54 @@ fun ggml_vec_geglu_quick_f16(n: Int, y: ShortArray, x: ShortArray, g: ShortArray
 fun ggml_vec_reglu_f16(n: Int, y: ShortArray, x: ShortArray, g: ShortArray) {
     for (i in 0 until n) { val v = GGML_FP16_TO_FP32(x[i]); y[i] = GGML_FP32_TO_FP16((if (v > 0f) v else 0f) * GGML_FP16_TO_FP32(g[i])) }
 }
+
+// ---------------------------------------------------------------------------
+// Scalar helper: silu backward (vec.h line 1403)
+// ---------------------------------------------------------------------------
+
+fun ggmlSiluBackwardF32(x: Float, dy: Float): Float {
+    val s = 1.0f / (1.0f + kotlin.math.exp(-x))
+    return dy * s * (1.0f + x * (1.0f - s))
+}
+
+// ---------------------------------------------------------------------------
+// Centered variance (vec.cpp line 471 — scalar fallback)
+// ---------------------------------------------------------------------------
+
+fun ggmlVecCvarF32(n: Int, y: FloatArray, x: FloatArray, mean: Float): Double {
+    var sum = 0.0
+    for (i in 0 until n) {
+        val v = x[i] - mean
+        y[i] = v
+        sum += (v * v).toDouble()
+    }
+    return sum
+}
+
+// ---------------------------------------------------------------------------
+// Softmax (vec.cpp line 547 — scalar fallback)
+// ---------------------------------------------------------------------------
+
+fun ggmlVecSoftMaxF32(n: Int, y: FloatArray, x: FloatArray, max: Float): Double {
+    var sum = 0.0
+    for (i in 0 until n) {
+        val v = kotlin.math.exp(x[i] - max)
+        sum += v.toDouble()
+        y[i] = v
+    }
+    return sum
+}
+
+// ---------------------------------------------------------------------------
+// Log-softmax (vec.cpp line 618 — scalar fallback)
+// ---------------------------------------------------------------------------
+
+fun ggmlVecLogSoftMaxF32(n: Int, y: FloatArray, x: FloatArray, max: Float): Double {
+    var sum = 0.0
+    for (i in 0 until n) {
+        val v = x[i] - max
+        y[i] = v
+        sum += kotlin.math.exp(v.toDouble())
+    }
+    return kotlin.math.ln(sum)
+}
