@@ -2,7 +2,19 @@ package ai.solace.llamakotlin.core.simd
 
 import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
+import ai.solace.llamakotlin.core.GGML_FP16_TO_FP32
+import ai.solace.llamakotlin.core.GGML_FP32_TO_FP16
 import ai.solace.llamakotlin.core.halfToFloat
+
+// port-lint: source ggml/src/ggml-cpu/simd-mappings.h
+// The C header defines SIMD macros per-architecture (ARM NEON, AVX, SVE, etc.).
+// In Kotlin/Native we only have the scalar fallback path.
+
+/** Scalar fallback for GGML_CPU_FP16_TO_FP32 — on x86 this is a lookup table, here we just convert. */
+inline fun GGML_CPU_FP16_TO_FP32(x: Short): Float = GGML_FP16_TO_FP32(x)
+
+/** Scalar fallback for GGML_CPU_FP32_TO_FP16. */
+inline fun GGML_CPU_FP32_TO_FP16(x: Float): Short = GGML_FP32_TO_FP16(x)
 
 internal object GGMLSimd {
 

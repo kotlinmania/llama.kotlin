@@ -685,8 +685,48 @@ fun ggmlBackendMetaSimpleBackend(metaBackend: GGMLBackend, index: Int): GGMLBack
     require(ggmlBackendIsMeta(metaBackend)) { "Not a meta backend" }
     val ctx = metaBackend.context
     if (ctx is List<*>) {
-        @Suppress("UNCHECKED_CAST")
-        return (ctx as List<GGMLBackend>)[index]
+        return ctx[index] as GGMLBackend
     }
     error("Meta backend context not properly initialized")
+}
+
+/**
+ * Port of `ggml_backend_meta_alloc_ctx_tensors_from_buft` from ggml-backend-meta.cpp.
+ * Allocates tensors from a context into a meta-buffer backed by per-simple-backend sub-buffers.
+ */
+fun ggmlBackendMetaAllocCtxTensorsFromBuft(
+    ctx: GGMLContext,
+    buft: GGMLBackendBufferType
+): GGMLBackendBuffer {
+    require(ggmlBackendBuftIsMeta(buft)) { "buft must be a meta buffer type" }
+
+    // Determine how many simple buffer types the meta buft wraps
+    val nSimpleBufts = if (buft.context is List<*>) (buft.context as List<*>).size else 1
+
+    // Create per-simple-buft sub-contexts for tensor cloning
+    data class BufConfig(val subCtx: GGMLContext, var buf: GGMLBackendBuffer?)
+    val bufConfigs = MutableList(nSimpleBufts) { BufConfig(GGMLContext(), null) }
+
+    // Create meta buffer wrapping all configs
+    val metaBufCtx = bufConfigs
+    val metaBuf = ggmlBackendBufferInit(buft, metaBufCtx, 0L)
+
+    // Assign all tensors in ctx to the meta buffer
+    var t = ctx.objectsBegin?.tensor
+    while (t != null) {
+        t.buffer = metaBuf
+        // Advance to next tensor in context
+        val obj = t.parentObject?.next
+        t = obj?.tensor
+    }
+
+    // Allocate each sub-buffer from its simple buffer type
+    for (i in 0 until nSimpleBufts) {
+        val simpleBuft = if (buft.context is List<*>) (buft.context as List<*>)[i] as GGMLBackendBufferType else buft
+        bufConfigs[i].buf = ggmlBackendAllocCtxTensorsFromBuft(bufConfigs[i].subCtx, simpleBuft)
+        val subSize = bufConfigs[i].buf?.size ?: 0L
+        if (subSize > metaBuf.size) metaBuf.size = subSize
+    }
+
+    return metaBuf
 }

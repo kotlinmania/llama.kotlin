@@ -16,7 +16,7 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.06
+**Average Similarity:** 0.08
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -32,30 +32,29 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
-- `ggml-cpu.vec` → `fp.VectorOps` (0.00, 1 deps)
 - `gguf` → `gguf.GGUFParser` (0.01, 1 deps)
-- `ggml-cpu.quants` → `core.GGMLQuants` (0.00, 4 deps)
+- `ggml-cpu.quants` → `core.GGMLCpuQuants` (0.07, 4 deps)
+- `ggml-sycl.common` → `common.StatOps` (0.00)
 - `ggml-opt` → `core.GGMLOptimizationSchedulerTest` (0.00)
-- `ggml-sycl.common` → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` (0.00)
-- `ggml-backend-impl` → `core.GGMLBackendImpl` (0.00, 47 deps)
 - `ggml-cann.common` → `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` (0.00)
 - `kleidiai.kernels` → `bench.ShiftKernels` (0.00, 1 deps)
-- `ggml-sycl.fattn-common` → `common.Constants` (0.00, 3 deps)
+- `ggml-sycl.fattn-common` → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` (0.00, 3 deps)
+- `ggml-backend-impl` → `core.GGMLBackendImpl` (0.36, 47 deps)
 - `ggml-cpu.simd-mappings` → `simd.GGMLSimd` (0.00, 10 deps)
-- `ggml-metal.ggml-metal-common` → `common.StatOps` (0.00, 1 deps)
+- `ggml-metal.ggml-metal-common` → `common.Constants` (0.00, 1 deps)
 - `ggml-openvino.utils` → `checksum.Adler32Utils` (0.00)
-- `ggml-impl` → `core.NumericConversions` (0.53, 58 deps)
 - `openvino.utils` → `core.GGMLTestUtils` (0.00)
+- `ggml-impl` → `core.NumericConversions` (0.54, 58 deps)
+- `ggml-cpu.vec` → `fp.VectorOps` (0.21, 1 deps)
 - `ggml-zdnn.utils` → `util.BitUtils` (0.00, 23 deps)
 - `ggml-sycl.set_rows` → `core.GGMLTensorUtils` (0.00, 2 deps)
-- `openvino.input_model` → `model.Sampling` (0.00, 3 deps)
+- `openvino.input_model` → `model.IntegrationTest` (0.00, 3 deps)
 - `backend.backend-dispatched-buffer` → `buffer.LimbBuffer` (0.00)
 - `backend.backend` → `core.GGMLBackendTest` (0.00)
 - `ggml-virtgpu.ggml-backend` → `core.GGMLBackend` (0.00)
 - `amx.common` → `common.ZlibLoggerNative` (0.00)
 - `backend.backend-dispatched-buffer-type` → `buffer.MemoryOps` (0.00)
 - `ggml-sycl.type` → `gguf.GGUFTypes` (0.00, 2 deps)
-- `ggml-sycl.quants` → `core.GGMLCpuQuants` (0.00)
 - `ggml-common` → `core.GGMLCommon` (0.00, 16 deps)
 - `ggml-cpu.common` → `core.GGMLCpuCommon` (0.56, 47 deps)
 - `ggml-zdnn.common` → `common.ZlibLogger` (0.11)
@@ -64,8 +63,9 @@ These files need significant work:
 - `ggml-cpu.ggml-cpu-impl` → `core.GGMLCpuImpl` (0.00, 11 deps)
 - `op.cont` → `gguf.GGUFContext` (0.00)
 - `ggml-sycl.backend` → `core.GGMLBackendIntegrationTest` (0.04, 2 deps)
-- `ggml-cann.aclnn_ops` → `lnn.LNNCore` (0.00, 1 deps)
+- `ggml-cann.aclnn_ops` → `lnn.LNNActors` (0.00, 1 deps)
 - `ggml-threading` → `core.GGMLScheduler` (0.10, 1 deps)
+- `ggml-sycl.quants` → `core.GGMLQuants` (0.00)
 - `ggml-cpu.ops` → `core.GGMLComputeOps` (0.00)
 
 ## Incorrect Ports (Missing Types)
@@ -77,18 +77,17 @@ present in the Rust source file.
 |--------|--------|---------------|----------|
 | `gguf` | `gguf.GGUFParser` | 14/14 | `type_to_gguf_type`, `gguf_type`, `gguf_kv` … |
 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 13/13 | `ggml_opt_dataset`, `ggml_context`, `ggml_tensor` … |
-| `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 10/10 | `ggml_cann_device_info`, `cann_device_info`, `ggml_cann_pool` … |
 | `kleidiai.kernels` | `bench.ShiftKernels` | 5/5 | `cpu_feature`, `kernel_info`, `lhs_packing_info` … |
+| `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
 | `ggml-backend` | `core.GGMLBackendUtils` | 14/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
-| `ggml-metal.ggml-metal-common` | `common.StatOps` | 4/4 | `ggml_tensor`, `ggml_cgraph`, `ggml_mem_range_type` … |
+| `ggml-metal.ggml-metal-common` | `common.Constants` | 4/4 | `ggml_tensor`, `ggml_cgraph`, `ggml_mem_range_type` … |
 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 5/5 | `graph_key`, `graph_key_hash`, `ov_runtime_context` … |
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
-| `openvino.input_model` | `model.Sampling` | 3/3 | `FrontEnd`, `GgmlDecoder`, `InputModel` |
+| `openvino.input_model` | `model.IntegrationTest` | 3/3 | `FrontEnd`, `GgmlDecoder`, `InputModel` |
 | `backend.backend` | `core.GGMLBackendTest` | 2/2 | `ggml_log_level`, `virgl_apir_callbacks` |
 | `amx.common` | `common.ZlibLoggerNative` | 1/1 | `ggml_type` |
 | `ggml-sycl.type` | `gguf.GGUFTypes` | 1/1 | `__nv_fp8_e4m3` |
-| `ggml-sycl.quants` | `core.GGMLCpuQuants` | 2/2 | `block_q_t`, `traits` |
 | `ggml-cpu.common` | `core.GGMLCpuCommon` | 2/4 | `ggml_compute_params`, `ggml_tensor` |
 | `ggml-zdnn.common` | `common.ZlibLogger` | 4/4 | `ggml_backend_zdnn_device_context`, `ggml_backend_zdnn_context`, `ggml_backend_zdnn_buffer` … |
 
@@ -121,10 +120,10 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4095 / 1661 lines (247%)
+**Documentation coverage:** 4142 / 1661 lines (249%)
 
 Top documentation gaps (>20%):
 
-- `ggml-cann.aclnn_ops` - 93% gap (1413 → 92 lines)
+- `ggml-cann.aclnn_ops` - 89% gap (1413 → 157 lines)
 - `ggml-cann.common` - 100% gap (192 → 0 lines)
 

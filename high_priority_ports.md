@@ -6,24 +6,24 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
-| 1 | `ggml-cpu.vec` | `fp.VectorOps` | 0.00 | 1 | 106 | 1210.4 |
-| 2 | `gguf` | `gguf.GGUFParser` | 0.01 | 1 | 97 | 1107.9 |
-| 3 | `ggml-cpu.quants` | `core.GGMLQuants` | 0.00 | 4 | 70 | 933.4 |
+| 1 | `gguf` | `gguf.GGUFParser` | 0.01 | 1 | 97 | 1107.9 |
+| 2 | `ggml-cpu.quants` | `core.GGMLCpuQuants` | 0.07 | 4 | 51 | 681.7 |
+| 3 | `ggml-sycl.common` | `common.StatOps` | 0.00 | 0 | 57 | 570.0 |
 | 4 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 0.00 | 0 | 57 | 570.0 |
-| 5 | `ggml-sycl.common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 0 | 57 | 570.0 |
-| 6 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.00 | 47 | 24 | 445.2 |
-| 7 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
-| 8 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
-| 9 | `ggml-sycl.fattn-common` | `common.Constants` | 0.00 | 3 | 27 | 351.8 |
-| 10 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
-| 11 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 20 | 18 | 293.9 |
-| 12 | `ggml-metal.ggml-metal-common` | `common.StatOps` | 0.00 | 1 | 24 | 276.7 |
-| 13 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
-| 14 | `ggml-impl` | `core.NumericConversions` | 0.53 | 58 | 9 | 173.0 |
-| 15 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
+| 5 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
+| 6 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
+| 7 | `ggml-sycl.fattn-common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 3 | 27 | 351.8 |
+| 8 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.36 | 47 | 19 | 349.4 |
+| 9 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
+| 10 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 20 | 18 | 293.9 |
+| 11 | `ggml-metal.ggml-metal-common` | `common.Constants` | 0.00 | 1 | 24 | 276.7 |
+| 12 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
+| 13 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
+| 14 | `ggml-impl` | `core.NumericConversions` | 0.54 | 58 | 8 | 154.6 |
+| 15 | `ggml-cpu.vec` | `fp.VectorOps` | 0.21 | 1 | 11 | 128.0 |
 | 16 | `ggml-zdnn.utils` | `util.BitUtils` | 0.00 | 23 | 4 | 81.3 |
 | 17 | `ggml-sycl.set_rows` | `core.GGMLTensorUtils` | 0.00 | 2 | 6 | 78.7 |
-| 18 | `openvino.input_model` | `model.Sampling` | 0.00 | 3 | 5 | 70.8 |
+| 18 | `openvino.input_model` | `model.IntegrationTest` | 0.00 | 3 | 5 | 70.8 |
 | 19 | `backend.backend-dispatched-buffer` | `buffer.LimbBuffer` | 0.00 | 0 | 7 | 70.0 |
 | 20 | `backend.backend` | `core.GGMLBackendTest` | 0.00 | 0 | 6 | 60.0 |
 
@@ -31,44 +31,46 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 These files need immediate attention:
 
-- **ggml-cpu.vec** → `fp.VectorOps`
-  - Similarity: 0.00
-  - Dependencies: 1
-
 - **gguf** → `gguf.GGUFParser`
   - Similarity: 0.01
   - Dependencies: 1
   - Lint issues: 8
 
-- **ggml-cpu.quants** → `core.GGMLQuants`
-  - Similarity: 0.00
+- **ggml-cpu.quants** → `core.GGMLCpuQuants`
+  - Similarity: 0.07
   - Dependencies: 4
-
-- **ggml-backend-impl** → `core.GGMLBackendImpl`
-  - Similarity: 0.00
-  - Dependencies: 47
-  - Lint issues: 49
+  - Lint issues: 87
 
 - **kleidiai.kernels** → `bench.ShiftKernels`
   - Similarity: 0.00
   - Dependencies: 1
 
-- **ggml-sycl.fattn-common** → `common.Constants`
+- **ggml-sycl.fattn-common** → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger`
   - Similarity: 0.00
   - Dependencies: 3
+
+- **ggml-backend-impl** → `core.GGMLBackendImpl`
+  - Similarity: 0.36
+  - Dependencies: 47
+  - Lint issues: 49
 
 - **ggml-cpu.simd-mappings** → `simd.GGMLSimd`
   - Similarity: 0.00
   - Dependencies: 10
 
-- **ggml-metal.ggml-metal-common** → `common.StatOps`
+- **ggml-metal.ggml-metal-common** → `common.Constants`
   - Similarity: 0.00
   - Dependencies: 1
 
 - **ggml-impl** → `core.NumericConversions`
-  - Similarity: 0.53
+  - Similarity: 0.54
   - Dependencies: 58
   - Lint issues: 10
+
+- **ggml-cpu.vec** → `fp.VectorOps`
+  - Similarity: 0.21
+  - Dependencies: 1
+  - Lint issues: 9
 
 - **ggml-zdnn.utils** → `util.BitUtils`
   - Similarity: 0.00
@@ -78,7 +80,7 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 2
 
-- **openvino.input_model** → `model.Sampling`
+- **openvino.input_model** → `model.IntegrationTest`
   - Similarity: 0.00
   - Dependencies: 3
 
@@ -113,11 +115,11 @@ These files need immediate attention:
   - Similarity: 0.04
   - Dependencies: 2
 
-- **ggml-cann.aclnn_ops** → `lnn.LNNCore`
+- **ggml-cann.aclnn_ops** → `lnn.LNNActors`
   - Similarity: 0.00
   - Dependencies: 1
-  - TODOs: 5
-  - Lint issues: 2
+  - TODOs: 9
+  - Lint issues: 3
 
 - **ggml-threading** → `core.GGMLScheduler`
   - Similarity: 0.10
