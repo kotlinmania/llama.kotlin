@@ -290,9 +290,6 @@ class GGMLCpuBackend : GGMLBackend {
     internal val cpuCtx = GGMLCpuBackendContext()
 
     private val bufferType = GGMLCpuBufferType()
-    private val runtimeConfig = GGMLCpuRuntimeConfig()
-    private val executor = GGMLCpuExecutor()
-
     // -- GGMLBackend interface ------------------------------------------------
 
     override fun getGuid(): String = BACKEND_GUID
@@ -459,7 +456,6 @@ class GGMLCpuBackend : GGMLBackend {
      */
     fun setThreadCount(threadCount: Int) {
         cpuCtx.nThreads = threadCount
-        runtimeConfig.threadCount = threadCount
     }
 
     fun getThreadCount(): Int = cpuCtx.nThreads
@@ -500,18 +496,6 @@ class GGMLCpuBackend : GGMLBackend {
     }
 
     fun getUseRef(): Boolean = cpuCtx.useRef
-
-    fun setSchedulingStrategy(strategy: GGMLSchedulingStrategy) {
-        runtimeConfig.schedulingStrategy = strategy
-    }
-
-    fun getSchedulingStrategy(): GGMLSchedulingStrategy = runtimeConfig.schedulingStrategy
-
-    fun setUseDedicatedDispatcher(use: Boolean) {
-        runtimeConfig.useDedicatedDispatcher = use
-    }
-
-    fun isUsingDedicatedDispatcher(): Boolean = runtimeConfig.useDedicatedDispatcher
 }
 
 // ============================================================================
@@ -574,13 +558,9 @@ class GGMLCpuDevice(
      * returns a best-effort estimate via [Runtime] or defaults.
      */
     override fun getMemory(): Pair<ULong, ULong> {
-        // Best-effort: report available JVM/native max as both free and total
-        // (mirrors the POSIX path that reports total == free).
-        val totalBytes = try {
-        } catch (_: NotImplementedError) {
-            // Fallback: 8 GB skeleton so callers get something reasonable
-            8uL * 1024uL * 1024uL * 1024uL
-        }
+        // Best-effort: 8 GB skeleton so callers get something reasonable.
+        // A nativeMain actual can call sysconf(_SC_PHYS_PAGES) for real values.
+        val totalBytes = 8uL * 1024uL * 1024uL * 1024uL
         return Pair(totalBytes, totalBytes)
     }
 
