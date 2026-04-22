@@ -14,7 +14,7 @@ package ai.solace.llamakotlin.core
  * `*_generic` (scalar) path in the C source. Block type definitions live in
  * [GGMLCommon.kt]; fp16↔fp32 helpers live in [NumericConversions.kt].
  *
- * Legacy Q1.5_K stubs that pre-date this port are preserved at the bottom of the file.
+ * Numeric helpers (E8M0, UE4M3 conversions) are at the bottom of the file.
  */
 
 private const val GROUP_MAX_EPS = 1e-15f
@@ -785,7 +785,7 @@ fun ggmlVecDotQ6KQ8KGeneric(n: Int, vx: Array<BlockQ6K>, vy: Array<BlockQ8K>): F
     return sumf
 }
 
-// ── IQ dot-product stubs ────────────────────────────────────────────────────────
+// ── IQ dot products ─────────────────────────────────────────────────────────────
 
 fun ggmlVecDotIq2XxsQ8KGeneric(n: Int, vx: Array<BlockIQ2XXS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
@@ -811,7 +811,7 @@ fun ggmlVecDotIq2XxsQ8KGeneric(n: Int, vx: Array<BlockIQ2XXS>, vy: Array<BlockQ8
                 val gridVal = GGMLCommonTables.iq2xxsGrid[aux8val]
                 val signs = GGMLCommonTables.ksignsIQ2XS[((a32_1 ushr (7 * l)) and 127).toByte().toInt() and 0xFF]
                 for (j in 0 until 8) {
-                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFFL).toInt()
                     val sign = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
                     sumi += gridByte * vy[i].qs[q8Off + j].toInt() * sign
                 }
@@ -844,7 +844,7 @@ fun ggmlVecDotIq2XsQ8KGeneric(n: Int, vx: Array<BlockIQ2XS>, vy: Array<BlockQ8K>
                 val gridVal = GGMLCommonTables.iq2xsGrid[q2val and 511]
                 val signs = GGMLCommonTables.ksignsIQ2XS[(q2val ushr 9) and 0xFF]
                 for (j in 0 until 8) {
-                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFFL).toInt()
                     val sign = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
                     sumi += gridByte * vy[i].qs[q8Off + j].toInt() * sign
                 }
@@ -857,7 +857,7 @@ fun ggmlVecDotIq2XsQ8KGeneric(n: Int, vx: Array<BlockIQ2XS>, vy: Array<BlockQ8K>
                 val gridVal = GGMLCommonTables.iq2xsGrid[q2val and 511]
                 val signs = GGMLCommonTables.ksignsIQ2XS[(q2val ushr 9) and 0xFF]
                 for (j in 0 until 8) {
-                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFFL).toInt()
                     val sign = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
                     sumi += gridByte * vy[i].qs[q8Off + j].toInt() * sign
                 }
@@ -897,7 +897,7 @@ fun ggmlVecDotIq2SQ8KGeneric(n: Int, vx: Array<BlockIQ2S>, vy: Array<BlockQ8K>):
                 val gridVal = GGMLCommonTables.iq2sGrid[gridIdx]
                 val signsVal = vx[i].qs[signsBase + signsOff + l].toInt() and 0xFF
                 for (j in 0 until 8) {
-                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFFL).toInt()
                     val sign = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
                     sumi1 += vy[i].qs[q8Off + j].toInt() * gridByte * sign
                 }
@@ -910,7 +910,7 @@ fun ggmlVecDotIq2SQ8KGeneric(n: Int, vx: Array<BlockIQ2S>, vy: Array<BlockQ8K>):
                 val gridVal = GGMLCommonTables.iq2sGrid[gridIdx]
                 val signsVal = vx[i].qs[signsBase + signsOff + l].toInt() and 0xFF
                 for (j in 0 until 8) {
-                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFFL).toInt()
                     val sign = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
                     sumi2 += vy[i].qs[q8Off + j].toInt() * gridByte * sign
                 }
@@ -1057,7 +1057,7 @@ fun ggmlVecDotIq1SQ8KGeneric(n: Int, vx: Array<BlockIQ1S>, vy: Array<BlockQ8K>):
                 val gridIdx = (vx[i].qs[qsOff + l].toInt() and 0xFF) or (((qhVal ushr (3 * l)) and 7) shl 8)
                 val gridVal = GGMLCommonTables.iq1sGrid[gridIdx]
                 for (j in 0 until 8) {
-                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toByte().toInt()
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFFL).toByte().toInt()
                     lsum += vy[i].qs[q8Off + j].toInt() * gridByte
                 }
                 q8Off += 8
@@ -1118,7 +1118,7 @@ fun ggmlVecDotIq1MQ8KGeneric(n: Int, vx: Array<BlockIQ1M>, vy: Array<BlockQ8K>):
                 var lsum1 = 0
                 var lsum2 = 0
                 for (j in 0 until 8) {
-                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toByte().toInt()
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFFL).toByte().toInt()
                     lsum1 += vy[i].qs[q8Off + j].toInt() * gridByte
                     lsum2 += vy[i].qs[q8Off + j].toInt()
                 }
