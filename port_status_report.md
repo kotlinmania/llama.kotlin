@@ -123,7 +123,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4363 / 1661 lines (263%)
+**Documentation coverage:** 4364 / 1661 lines (263%)
 
 Top documentation gaps (>20%):
 
