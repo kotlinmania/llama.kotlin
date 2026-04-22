@@ -20,8 +20,10 @@ import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
+import kotlinx.cinterop.toLong
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.get
+import kotlinx.cinterop.value
 import platform.posix.EINVAL
 import platform.posix.ENOMEM
 import platform.posix.free
