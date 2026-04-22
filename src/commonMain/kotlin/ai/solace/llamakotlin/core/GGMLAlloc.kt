@@ -527,12 +527,11 @@ class GGMLGraphAllocator {
                 buffers.add(backendBuffer.getBase())
             } else {
                 // Fallback to regular ByteArray
-                buffers.add(ByteArray(defaultBufferSize))
+                buffers.add(ggml_aligned_malloc(defaultBufferSize.toLong()))
                 backendBuffers.add(null)
             }
         } else {
-            // Fallback to regular ByteArray
-            buffers.add(ByteArray(defaultBufferSize))
+            buffers.add(ggml_aligned_malloc(defaultBufferSize.toLong()))
             backendBuffers.add(null)
         }
         

@@ -2912,7 +2912,7 @@ data class GGMLComputePlan(
     /** Size of the required work buffer in bytes. */
     val workSize: ULong = 0u,
     /** Work buffer (allocated by caller if workSize > 0). */
-    var workData: ByteArray? = null,
+    var workData: Any? = null,
     /** Number of threads to use. */
     var nThreads: Int = 1,
     /** Optional threadpool handle. */

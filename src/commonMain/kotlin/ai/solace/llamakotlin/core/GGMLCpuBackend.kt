@@ -234,7 +234,7 @@ class GGMLCpuBuffer(
 class GGMLCpuBackendContext(
     var nThreads: Int = GGML_DEFAULT_N_THREADS,
     var threadpool: GGMLThreadpool? = null,
-    var workData: ByteArray? = null,
+    var workData: Any? = null,
     var workSize: ULong = 0uL,
     var abortCallback: ((data: Any?) -> Boolean)? = null,
     var abortCallbackData: Any? = null,
@@ -314,7 +314,7 @@ class GGMLCpuBackend : GGMLBackend {
         val cplan = ggmlGraphPlan(graph, cpuCtx.nThreads, cpuCtx.threadpool)
 
         if (cplan.workSize > 0uL) {
-            cplan.workData = ByteArray(cplan.workSize.toInt())
+            cplan.workData = ggml_aligned_malloc(cplan.workSize.toLong())
         }
 
         cplan.abortCallback = cpuCtx.abortCallback
@@ -331,6 +331,7 @@ class GGMLCpuBackend : GGMLBackend {
      */
     override fun graphPlanFree(plan: Any?) {
         if (plan is GGMLCpuGraphPlan) {
+            ggml_aligned_free(plan.cplan.workData, plan.cplan.workSize.toLong())
             plan.cplan.workData = null
         }
     }
@@ -356,12 +357,15 @@ class GGMLCpuBackend : GGMLBackend {
 
         // Grow the work buffer if necessary
         if (cpuCtx.workSize < cplan.workSize) {
-            cpuCtx.workData = try {
-                ByteArray(cplan.workSize.toInt())
-            } catch (_: Throwable) {
+            // Free old work buffer if it was native-allocated
+            ggml_aligned_free(cpuCtx.workData, cpuCtx.workSize.toLong())
+            val newBuf = ggml_aligned_malloc(cplan.workSize.toLong())
+            if (newBuf == null) {
                 cpuCtx.workSize = 0uL
+                cpuCtx.workData = null
                 return GGMLStatus.ALLOC_FAILED
             }
+            cpuCtx.workData = newBuf
             cpuCtx.workSize = cplan.workSize
         }
         cplan.workData = cpuCtx.workData

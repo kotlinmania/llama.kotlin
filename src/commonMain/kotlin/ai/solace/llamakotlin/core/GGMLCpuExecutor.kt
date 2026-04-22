@@ -29,7 +29,7 @@ data class GGMLCPlan(
     /** Size of the work buffer in bytes, calculated by [ggmlGraphPlan]. */
     var workSize: ULong = 0uL,
     /** Work buffer supplied by the caller before [ggmlGraphCompute]. */
-    var workData: ByteArray? = null,
+    var workData: Any? = null,
 
     /** Number of threads to use during compute. */
     var nThreads: Int = GGML_DEFAULT_N_THREADS,
@@ -505,7 +505,7 @@ fun ggmlGraphCompute(graph: GGMLCGraph, plan: GGMLCPlan): GGMLStatus {
 fun ggmlGraphComputeWithCtx(ctx: GGMLContext, graph: GGMLCGraph, nThreads: Int): GGMLStatus {
     val plan = ggmlGraphPlan(graph, nThreads)
     if (plan.workSize > 0uL) {
-        plan.workData = ByteArray(plan.workSize.toInt())
+        plan.workData = ggml_aligned_malloc(plan.workSize.toLong())
     }
     return ggmlGraphCompute(graph, plan)
 }

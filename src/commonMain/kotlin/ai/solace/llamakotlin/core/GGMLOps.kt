@@ -650,7 +650,7 @@ fun ggmlInit(params: GGMLInitParams): GGMLContext {
         ctx.memBuffer = params.memBuffer
         ctx.memBufferOwned = false
     } else if (params.memSize > 0uL) {
-        ctx.memBuffer = ByteArray(params.memSize.toInt())
+        ctx.memBuffer = ggml_aligned_malloc(params.memSize.toLong())
         ctx.memBufferOwned = true
     }
     return ctx
@@ -666,6 +666,7 @@ fun ggmlReset(ctx: GGMLContext) {
 /** Free the context and optionally its owned memory buffer. */
 fun ggmlFree(ctx: GGMLContext) {
     if (ctx.memBufferOwned) {
+        ggml_aligned_free(ctx.memBuffer, ctx.memSize.toLong())
         ctx.memBuffer = null
     }
 }
