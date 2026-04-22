@@ -4,10 +4,10 @@ Based on AST analysis, here are the concrete next steps.
 
 ## Summary
 
-- **Current Progress:** 14.5% (159/256 files)
-- **Matched Files:** 37
-- **Average Similarity:** 0.08
-- **Critical Issues:** 36 files with <0.60 similarity
+- **Current Progress:** 14.8% (160/256 files)
+- **Matched Files:** 38
+- **Average Similarity:** 0.07
+- **Critical Issues:** 37 files with <0.60 similarity
 
 ## Priority 1: Fix Incomplete High-Dependency Files
 
@@ -100,12 +100,12 @@ Critical missing files (>10 dependencies):
    - Path: `ggml-sycl/convert.hpp`
    - Essential for 17 other files
 
-5. **ggml-sycl.fattn-tile** (11 deps)
-   - Path: `ggml-sycl/fattn-tile.hpp`
+5. **htp.hvx-base** (11 deps)
+   - Path: `ggml-hexagon/htp/hvx-base.h`
    - Essential for 11 other files
 
-6. **htp.hvx-base** (11 deps)
-   - Path: `ggml-hexagon/htp/hvx-base.h`
+6. **ggml-sycl.fattn-tile** (11 deps)
+   - Path: `ggml-sycl/fattn-tile.hpp`
    - Essential for 11 other files
 
 ## Success Criteria

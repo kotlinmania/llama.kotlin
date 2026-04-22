@@ -16,8 +16,8 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 8 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.36 | 47 | 19 | 349.4 |
 | 9 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
 | 10 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 20 | 18 | 293.9 |
-| 11 | `ggml-metal.ggml-metal-common` | `common.Constants` | 0.00 | 1 | 24 | 276.7 |
-| 12 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
+| 11 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
+| 12 | `ggml-metal.ggml-metal-common` | `common.ZlibLogger` | 0.01 | 1 | 23 | 265.3 |
 | 13 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
 | 14 | `ggml-impl` | `core.NumericConversions` | 0.54 | 58 | 8 | 154.6 |
 | 15 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.19 | 9 | 9 | 140.8 |
@@ -58,8 +58,8 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 10
 
-- **ggml-metal.ggml-metal-common** → `common.Constants`
-  - Similarity: 0.00
+- **ggml-metal.ggml-metal-common** → `common.ZlibLogger`
+  - Similarity: 0.01
   - Dependencies: 1
 
 - **ggml-impl** → `core.NumericConversions`
@@ -88,7 +88,7 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 3
 
-- **ggml-sycl.type** → `gguf.GGUFTypes`
+- **ggml-sycl.type** → `core.GGMLTypes`
   - Similarity: 0.00
   - Dependencies: 2
 
@@ -115,6 +115,11 @@ These files need immediate attention:
   - Dependencies: 11
   - TODOs: 1
 
+- **ggml-quants** → `core.GGMLQuantsRef`
+  - Similarity: 0.00
+  - Dependencies: 6
+  - Lint issues: 234
+
 - **ggml-sycl.backend** → `core.GGMLBackendIntegrationTest`
   - Similarity: 0.04
   - Dependencies: 2
@@ -138,22 +143,22 @@ These files need immediate attention:
 | 2 | `openvino.node_context` | 19 | `ggml-openvino/openvino/node_context.h` |
 | 3 | `openvino.op_table` | 18 | `ggml-openvino/openvino/op_table.h` |
 | 4 | `ggml-sycl.convert` | 17 | `ggml-sycl/convert.hpp` |
-| 5 | `ggml-sycl.fattn-tile` | 11 | `ggml-sycl/fattn-tile.hpp` |
-| 6 | `htp.hvx-base` | 11 | `ggml-hexagon/htp/hvx-base.h` |
-| 7 | `dpct.helper` | 9 | `ggml-sycl/dpct/helper.hpp` |
-| 8 | `op.reshape` | 9 | `ggml-openvino/openvino/op/reshape.cpp` |
-| 9 | `ggml-sycl.concat` | 9 | `ggml-sycl/concat.hpp` |
-| 10 | `htp.hex-utils` | 8 | `ggml-hexagon/htp/hex-utils.h` |
+| 5 | `htp.hvx-base` | 11 | `ggml-hexagon/htp/hvx-base.h` |
+| 6 | `ggml-sycl.fattn-tile` | 11 | `ggml-sycl/fattn-tile.hpp` |
+| 7 | `op.reshape` | 9 | `ggml-openvino/openvino/op/reshape.cpp` |
+| 8 | `ggml-sycl.concat` | 9 | `ggml-sycl/concat.hpp` |
+| 9 | `dpct.helper` | 9 | `ggml-sycl/dpct/helper.hpp` |
+| 10 | `ggml-sycl.presets` | 8 | `ggml-sycl/presets.hpp` |
 | 11 | `ggml-virtgpu.ggml-remoting` | 8 | `ggml-virtgpu/ggml-remoting.h` |
-| 12 | `ggml-sycl.presets` | 8 | `ggml-sycl/presets.hpp` |
+| 12 | `htp.hex-utils` | 8 | `ggml-hexagon/htp/hex-utils.h` |
 | 13 | `op.transpose` | 7 | `ggml-openvino/openvino/op/transpose.cpp` |
 | 14 | `shared.apir_backend` | 6 | `ggml-virtgpu/backend/shared/apir_backend.h` |
 | 15 | `backend.backend-virgl-apir` | 6 | `ggml-virtgpu/backend/backend-virgl-apir.h` |
-| 16 | `ggml-quants` | 6 | `ggml-quants.h` |
-| 17 | `ggml-sycl.set` | 6 | `ggml-sycl/set.hpp` |
-| 18 | `backend.backend-dispatched` | 5 | `ggml-virtgpu/backend/backend-dispatched.h` |
-| 19 | `ggml-sycl.dequantize` | 5 | `ggml-sycl/dequantize.hpp` |
-| 20 | `shared.apir_cs` | 4 | `ggml-virtgpu/backend/shared/apir_cs.h` |
+| 16 | `ggml-sycl.set` | 6 | `ggml-sycl/set.hpp` |
+| 17 | `backend.backend-dispatched` | 5 | `ggml-virtgpu/backend/backend-dispatched.h` |
+| 18 | `ggml-sycl.dequantize` | 5 | `ggml-sycl/dequantize.hpp` |
+| 19 | `ggml-openvino.ggml-openvino-extra` | 4 | `ggml-openvino/ggml-openvino-extra.h` |
+| 20 | `ggml-virtgpu.virtgpu-forward-impl` | 4 | `ggml-virtgpu/virtgpu-forward-impl.h` |
 
-... and 199 more missing files.
+... and 198 more missing files.
 
