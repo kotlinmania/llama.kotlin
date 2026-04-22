@@ -45,8 +45,8 @@ These files need significant work:
 - `ggml-metal.ggml-metal-common` → `common.ZlibLogger` (0.01, 1 deps)
 - `openvino.utils` → `core.GGMLTestUtils` (0.00)
 - `ggml-impl` → `core.NumericConversions` (0.54, 58 deps)
-- `ggml-cpu.traits` → `core.GGMLCpuTraits` (0.19, 9 deps)
-- `ggml-cpu.vec` → `fp.VectorOps` (0.21, 1 deps)
+- `ggml-cpu.traits` → `core.GGMLCpuTraits` (0.29, 9 deps)
+- `ggml-cpu.vec` → `fp.VectorOps` (0.22, 1 deps)
 - `ggml-zdnn.utils` → `util.BitUtils` (0.00, 23 deps)
 - `ggml-sycl.set_rows` → `core.GGMLTensorUtils` (0.00, 2 deps)
 - `openvino.input_model` → `model.IntegrationTest` (0.00, 3 deps)
@@ -123,7 +123,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4394 / 1661 lines (265%)
+**Documentation coverage:** 4398 / 1661 lines (265%)
 
 Top documentation gaps (>20%):
 

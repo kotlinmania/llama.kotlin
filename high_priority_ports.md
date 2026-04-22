@@ -20,8 +20,8 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 12 | `ggml-backend` | `core.GGMLBackendUtils` | 0.74 | 20 | 14 | 229.2 |
 | 13 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
 | 14 | `ggml-impl` | `core.NumericConversions` | 0.54 | 58 | 8 | 154.7 |
-| 15 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.19 | 9 | 9 | 140.8 |
-| 16 | `ggml-cpu.vec` | `fp.VectorOps` | 0.21 | 1 | 11 | 128.0 |
+| 15 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.29 | 9 | 8 | 125.0 |
+| 16 | `ggml-cpu.vec` | `fp.VectorOps` | 0.22 | 1 | 7 | 82.4 |
 | 17 | `ggml-zdnn.utils` | `util.BitUtils` | 0.00 | 23 | 4 | 81.3 |
 | 18 | `ggml-sycl.set_rows` | `core.GGMLTensorUtils` | 0.00 | 2 | 6 | 78.7 |
 | 19 | `openvino.input_model` | `model.IntegrationTest` | 0.00 | 3 | 5 | 70.8 |
@@ -68,11 +68,11 @@ These files need immediate attention:
   - Lint issues: 10
 
 - **ggml-cpu.traits** → `core.GGMLCpuTraits`
-  - Similarity: 0.19
+  - Similarity: 0.29
   - Dependencies: 9
 
 - **ggml-cpu.vec** → `fp.VectorOps`
-  - Similarity: 0.21
+  - Similarity: 0.22
   - Dependencies: 1
   - Lint issues: 9
 
