@@ -20,12 +20,12 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 12 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
 | 13 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
 | 14 | `ggml-impl` | `core.NumericConversions` | 0.54 | 58 | 8 | 154.6 |
-| 15 | `ggml-cpu.vec` | `fp.VectorOps` | 0.21 | 1 | 11 | 128.0 |
-| 16 | `ggml-zdnn.utils` | `util.BitUtils` | 0.00 | 23 | 4 | 81.3 |
-| 17 | `ggml-sycl.set_rows` | `core.GGMLTensorUtils` | 0.00 | 2 | 6 | 78.7 |
-| 18 | `openvino.input_model` | `model.IntegrationTest` | 0.00 | 3 | 5 | 70.8 |
-| 19 | `backend.backend-dispatched-buffer` | `buffer.LimbBuffer` | 0.00 | 0 | 7 | 70.0 |
-| 20 | `backend.backend` | `core.GGMLBackendTest` | 0.00 | 0 | 6 | 60.0 |
+| 15 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.19 | 9 | 9 | 140.8 |
+| 16 | `ggml-cpu.vec` | `fp.VectorOps` | 0.21 | 1 | 11 | 128.0 |
+| 17 | `ggml-zdnn.utils` | `util.BitUtils` | 0.00 | 23 | 4 | 81.3 |
+| 18 | `ggml-sycl.set_rows` | `core.GGMLTensorUtils` | 0.00 | 2 | 6 | 78.7 |
+| 19 | `openvino.input_model` | `model.IntegrationTest` | 0.00 | 3 | 5 | 70.8 |
+| 20 | `backend.backend-dispatched-buffer` | `buffer.LimbBuffer` | 0.00 | 0 | 7 | 70.0 |
 
 ## Critical Issues (Similarity < 0.60 with Dependencies)
 
@@ -66,6 +66,10 @@ These files need immediate attention:
   - Similarity: 0.54
   - Dependencies: 58
   - Lint issues: 10
+
+- **ggml-cpu.traits** → `core.GGMLCpuTraits`
+  - Similarity: 0.19
+  - Dependencies: 9
 
 - **ggml-cpu.vec** → `fp.VectorOps`
   - Similarity: 0.21
@@ -136,20 +140,20 @@ These files need immediate attention:
 | 4 | `ggml-sycl.convert` | 17 | `ggml-sycl/convert.hpp` |
 | 5 | `ggml-sycl.fattn-tile` | 11 | `ggml-sycl/fattn-tile.hpp` |
 | 6 | `htp.hvx-base` | 11 | `ggml-hexagon/htp/hvx-base.h` |
-| 7 | `op.reshape` | 9 | `ggml-openvino/openvino/op/reshape.cpp` |
-| 8 | `ggml-sycl.concat` | 9 | `ggml-sycl/concat.hpp` |
-| 9 | `dpct.helper` | 9 | `ggml-sycl/dpct/helper.hpp` |
-| 10 | `ggml-cpu.traits` | 9 | `ggml-cpu/traits.h` |
+| 7 | `dpct.helper` | 9 | `ggml-sycl/dpct/helper.hpp` |
+| 8 | `op.reshape` | 9 | `ggml-openvino/openvino/op/reshape.cpp` |
+| 9 | `ggml-sycl.concat` | 9 | `ggml-sycl/concat.hpp` |
+| 10 | `htp.hex-utils` | 8 | `ggml-hexagon/htp/hex-utils.h` |
 | 11 | `ggml-virtgpu.ggml-remoting` | 8 | `ggml-virtgpu/ggml-remoting.h` |
-| 12 | `htp.hex-utils` | 8 | `ggml-hexagon/htp/hex-utils.h` |
-| 13 | `ggml-sycl.presets` | 8 | `ggml-sycl/presets.hpp` |
-| 14 | `op.transpose` | 7 | `ggml-openvino/openvino/op/transpose.cpp` |
-| 15 | `ggml-sycl.set` | 6 | `ggml-sycl/set.hpp` |
+| 12 | `ggml-sycl.presets` | 8 | `ggml-sycl/presets.hpp` |
+| 13 | `op.transpose` | 7 | `ggml-openvino/openvino/op/transpose.cpp` |
+| 14 | `shared.apir_backend` | 6 | `ggml-virtgpu/backend/shared/apir_backend.h` |
+| 15 | `backend.backend-virgl-apir` | 6 | `ggml-virtgpu/backend/backend-virgl-apir.h` |
 | 16 | `ggml-quants` | 6 | `ggml-quants.h` |
-| 17 | `shared.apir_backend` | 6 | `ggml-virtgpu/backend/shared/apir_backend.h` |
-| 18 | `backend.backend-virgl-apir` | 6 | `ggml-virtgpu/backend/backend-virgl-apir.h` |
+| 17 | `ggml-sycl.set` | 6 | `ggml-sycl/set.hpp` |
+| 18 | `backend.backend-dispatched` | 5 | `ggml-virtgpu/backend/backend-dispatched.h` |
 | 19 | `ggml-sycl.dequantize` | 5 | `ggml-sycl/dequantize.hpp` |
-| 20 | `backend.backend-dispatched` | 5 | `ggml-virtgpu/backend/backend-dispatched.h` |
+| 20 | `shared.apir_cs` | 4 | `ggml-virtgpu/backend/shared/apir_cs.h` |
 
-... and 200 more missing files.
+... and 199 more missing files.
 

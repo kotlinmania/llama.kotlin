@@ -9,10 +9,10 @@
 | Metric | Count | Percentage |
 |--------|-------|------------|
 | Total source files | 256 | 100% |
-| Target units (paired) | 158 | - |
-| Target files (total) | 158 | - |
-| Porting progress | 36 | 14.1% (matched) |
-| Missing files | 220 | 85.9% |
+| Target units (paired) | 159 | - |
+| Target files (total) | 159 | - |
+| Porting progress | 37 | 14.5% (matched) |
+| Missing files | 219 | 85.5% |
 
 ## Port Quality Analysis
 
@@ -20,8 +20,8 @@
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
-- Good (0.60-0.84): 1 files (2.8% of matched)
-- Critical (<0.60): 35 files (97.2% of matched)
+- Good (0.60-0.84): 1 files (2.7% of matched)
+- Critical (<0.60): 36 files (97.3% of matched)
 
 ### Excellent Ports (Similarity ≥ 0.85)
 
@@ -45,14 +45,15 @@ These files need significant work:
 - `ggml-openvino.utils` → `checksum.Adler32Utils` (0.00)
 - `openvino.utils` → `core.GGMLTestUtils` (0.00)
 - `ggml-impl` → `core.NumericConversions` (0.54, 58 deps)
+- `ggml-cpu.traits` → `core.GGMLCpuTraits` (0.19, 9 deps)
 - `ggml-cpu.vec` → `fp.VectorOps` (0.21, 1 deps)
 - `ggml-zdnn.utils` → `util.BitUtils` (0.00, 23 deps)
 - `ggml-sycl.set_rows` → `core.GGMLTensorUtils` (0.00, 2 deps)
 - `openvino.input_model` → `model.IntegrationTest` (0.00, 3 deps)
 - `backend.backend-dispatched-buffer` → `buffer.LimbBuffer` (0.00)
 - `backend.backend` → `core.GGMLBackendTest` (0.00)
-- `ggml-virtgpu.ggml-backend` → `core.GGMLBackend` (0.00)
 - `amx.common` → `common.ZlibLoggerNative` (0.00)
+- `ggml-virtgpu.ggml-backend` → `core.GGMLBackend` (0.00)
 - `backend.backend-dispatched-buffer-type` → `buffer.MemoryOps` (0.00)
 - `ggml-sycl.type` → `gguf.GGUFTypes` (0.00, 2 deps)
 - `ggml-common` → `core.GGMLCommon` (0.00, 16 deps)
@@ -84,6 +85,7 @@ present in the Rust source file.
 | `ggml-metal.ggml-metal-common` | `common.Constants` | 4/4 | `ggml_tensor`, `ggml_cgraph`, `ggml_mem_range_type` … |
 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 5/5 | `graph_key`, `graph_key_hash`, `ov_runtime_context` … |
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
+| `ggml-cpu.traits` | `core.GGMLCpuTraits` | 4/4 | `ggml_compute_params`, `ggml_tensor`, `tensor_traits` … |
 | `openvino.input_model` | `model.IntegrationTest` | 3/3 | `FrontEnd`, `GgmlDecoder`, `InputModel` |
 | `backend.backend` | `core.GGMLBackendTest` | 2/2 | `ggml_log_level`, `virgl_apir_callbacks` |
 | `amx.common` | `common.ZlibLoggerNative` | 1/1 | `ggml_type` |
@@ -101,26 +103,26 @@ present in the Rust source file.
 | 4 | `ggml-sycl.convert` | 17 | `ggml-sycl/convert.hpp` |
 | 5 | `ggml-sycl.fattn-tile` | 11 | `ggml-sycl/fattn-tile.hpp` |
 | 6 | `htp.hvx-base` | 11 | `ggml-hexagon/htp/hvx-base.h` |
-| 7 | `op.reshape` | 9 | `ggml-openvino/openvino/op/reshape.cpp` |
-| 8 | `ggml-sycl.concat` | 9 | `ggml-sycl/concat.hpp` |
-| 9 | `dpct.helper` | 9 | `ggml-sycl/dpct/helper.hpp` |
-| 10 | `ggml-cpu.traits` | 9 | `ggml-cpu/traits.h` |
+| 7 | `dpct.helper` | 9 | `ggml-sycl/dpct/helper.hpp` |
+| 8 | `op.reshape` | 9 | `ggml-openvino/openvino/op/reshape.cpp` |
+| 9 | `ggml-sycl.concat` | 9 | `ggml-sycl/concat.hpp` |
+| 10 | `htp.hex-utils` | 8 | `ggml-hexagon/htp/hex-utils.h` |
 | 11 | `ggml-virtgpu.ggml-remoting` | 8 | `ggml-virtgpu/ggml-remoting.h` |
-| 12 | `htp.hex-utils` | 8 | `ggml-hexagon/htp/hex-utils.h` |
-| 13 | `ggml-sycl.presets` | 8 | `ggml-sycl/presets.hpp` |
-| 14 | `op.transpose` | 7 | `ggml-openvino/openvino/op/transpose.cpp` |
-| 15 | `ggml-sycl.set` | 6 | `ggml-sycl/set.hpp` |
+| 12 | `ggml-sycl.presets` | 8 | `ggml-sycl/presets.hpp` |
+| 13 | `op.transpose` | 7 | `ggml-openvino/openvino/op/transpose.cpp` |
+| 14 | `shared.apir_backend` | 6 | `ggml-virtgpu/backend/shared/apir_backend.h` |
+| 15 | `backend.backend-virgl-apir` | 6 | `ggml-virtgpu/backend/backend-virgl-apir.h` |
 | 16 | `ggml-quants` | 6 | `ggml-quants.h` |
-| 17 | `shared.apir_backend` | 6 | `ggml-virtgpu/backend/shared/apir_backend.h` |
-| 18 | `backend.backend-virgl-apir` | 6 | `ggml-virtgpu/backend/backend-virgl-apir.h` |
+| 17 | `ggml-sycl.set` | 6 | `ggml-sycl/set.hpp` |
+| 18 | `backend.backend-dispatched` | 5 | `ggml-virtgpu/backend/backend-dispatched.h` |
 | 19 | `ggml-sycl.dequantize` | 5 | `ggml-sycl/dequantize.hpp` |
-| 20 | `backend.backend-dispatched` | 5 | `ggml-virtgpu/backend/backend-dispatched.h` |
+| 20 | `shared.apir_cs` | 4 | `ggml-virtgpu/backend/shared/apir_cs.h` |
 
-... and 200 more missing files.
+... and 199 more missing files.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4142 / 1661 lines (249%)
+**Documentation coverage:** 4158 / 1661 lines (250%)
 
 Top documentation gaps (>20%):
 
