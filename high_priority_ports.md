@@ -7,10 +7,10 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
 | 1 | `gguf` | `gguf.GGUFParser` | 0.01 | 1 | 97 | 1107.9 |
-| 2 | `ggml-cpu.quants` | `core.GGMLCpuQuants` | 0.07 | 4 | 51 | 681.7 |
-| 3 | `ggml-sycl.common` | `common.StatOps` | 0.00 | 0 | 57 | 570.0 |
-| 4 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 0.00 | 0 | 57 | 570.0 |
-| 5 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
+| 2 | `ggml-sycl.common` | `common.StatOps` | 0.00 | 0 | 57 | 570.0 |
+| 3 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 0.00 | 0 | 57 | 570.0 |
+| 4 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
+| 5 | `ggml-cpu.quants` | `core.GGMLCpuQuants` | 0.10 | 4 | 27 | 364.2 |
 | 6 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
 | 7 | `ggml-sycl.fattn-common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 3 | 27 | 351.8 |
 | 8 | `ggml-backend` | `core.GGMLBackendUtils` | 0.70 | 20 | 21 | 342.4 |
@@ -37,9 +37,8 @@ These files need immediate attention:
   - Lint issues: 8
 
 - **ggml-cpu.quants** → `core.GGMLCpuQuants`
-  - Similarity: 0.07
+  - Similarity: 0.10
   - Dependencies: 4
-  - Lint issues: 87
 
 - **kleidiai.kernels** → `bench.ShiftKernels`
   - Similarity: 0.00

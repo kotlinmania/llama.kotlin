@@ -33,10 +33,10 @@ These files are well-ported and likely complete:
 These files need significant work:
 
 - `gguf` → `gguf.GGUFParser` (0.01, 1 deps)
-- `ggml-cpu.quants` → `core.GGMLCpuQuants` (0.07, 4 deps)
 - `ggml-sycl.common` → `common.StatOps` (0.00)
 - `ggml-opt` → `core.GGMLOptimizationSchedulerTest` (0.00)
 - `ggml-cann.common` → `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` (0.00)
+- `ggml-cpu.quants` → `core.GGMLCpuQuants` (0.10, 4 deps)
 - `kleidiai.kernels` → `bench.ShiftKernels` (0.00, 1 deps)
 - `ggml-sycl.fattn-common` → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` (0.00, 3 deps)
 - `ggml-cpu.simd-mappings` → `simd.GGMLSimd` (0.00, 10 deps)
@@ -123,7 +123,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4398 / 1661 lines (265%)
+**Documentation coverage:** 4360 / 1661 lines (262%)
 
 Top documentation gaps (>20%):
 
