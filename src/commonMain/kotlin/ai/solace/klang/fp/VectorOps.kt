@@ -210,6 +210,7 @@ fun ggml_vec_hardswish_f32(n: Int, y: FloatArray, x: FloatArray) {
 }
 
 private fun ggml_silu_f32(x: Float): Float = x / (1f + exp(-x))
+private fun ggml_silu_f16(x: Short): Short = GGML_FP32_TO_FP16(ggml_silu_f32(GGML_FP16_TO_FP32(x)))
 fun ggml_vec_silu_f32(n: Int, y: FloatArray, x: FloatArray) { for (i in 0 until n) y[i] = ggml_silu_f32(x[i]) }
 fun ggml_vec_silu_backward_f32(n: Int, dx: FloatArray, x: FloatArray, dy: FloatArray) {
     for (i in 0 until n) {
@@ -304,12 +305,18 @@ fun ggml_vec_reglu_f16(n: Int, y: ShortArray, x: ShortArray, g: ShortArray) {
 }
 
 // ---------------------------------------------------------------------------
-// Scalar helper: silu backward (vec.h line 1403)
+// Scalar helpers: silu backward (vec.h lines 1403-1412)
 // ---------------------------------------------------------------------------
 
-fun ggmlSiluBackwardF32(x: Float, dy: Float): Float {
+fun ggml_silu_backward_f32(x: Float, dy: Float): Float {
     val s = 1.0f / (1.0f + kotlin.math.exp(-x))
     return dy * s * (1.0f + x * (1.0f - s))
+}
+
+fun ggml_silu_backward_f16(x: Short, dy: Short): Short {
+    val v = GGML_FP16_TO_FP32(x)
+    val s = 1.0f / (1.0f + kotlin.math.exp(-v))
+    return GGML_FP32_TO_FP16(GGML_FP16_TO_FP32(dy) * s * (1.0f + v * (1.0f - s)))
 }
 
 // ---------------------------------------------------------------------------
