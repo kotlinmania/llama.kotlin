@@ -655,11 +655,6 @@ fun ggmlBackendCpuInit(): GGMLBackend {
     return GGMLCpuBackend()
 }
 
-/** `ggml_backend_is_cpu` — C: ggml-cpu.cpp lines 249-251. */
-fun ggmlBackendIsCpu(backend: GGMLBackend): Boolean {
-    return backend is GGMLCpuBackend
-}
-
 /** `ggml_backend_cpu_set_n_threads` — C: ggml-cpu.cpp lines 253-258. */
 fun ggmlBackendCpuSetNThreads(backendCpu: GGMLBackend, nThreads: Int) {
     require(backendCpu is GGMLCpuBackend) { "Expected CPU backend" }

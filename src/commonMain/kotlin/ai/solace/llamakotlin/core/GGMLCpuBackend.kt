@@ -502,7 +502,10 @@ class GGMLCpuBackend : GGMLBackend {
 // Free-standing backend identity helpers
 // ============================================================================
 
-// ggmlBackendIsCpu() is defined in GGMLCpuExecutor.kt to avoid duplication.
+/** `ggml_backend_is_cpu` — C: ggml-cpu.cpp lines 249-251. */
+fun ggmlBackendIsCpu(backend: GGMLBackend): Boolean {
+    return backend is GGMLCpuBackend
+}
 
 // ============================================================================
 // CPU device context  (ggml_backend_cpu_device_context)
