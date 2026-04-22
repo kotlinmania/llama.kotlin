@@ -2743,8 +2743,8 @@ fun ggmlQuantizeRequiresImatrix(type: GGMLType): Boolean = when (type) {
 /** Port of `ggml_guid_matches` from ggml.h — compare two GUIDs. */
 fun ggmlGuidMatches(a: ByteArray, b: ByteArray): Boolean = a.contentEquals(b)
 
-/** Port of `ggml_new_buffer` from ggml.c. */
-fun ggmlNewBuffer(ctx: GGMLContext, size: ULong): ByteArray = ByteArray(size.toInt())
+/** Port of `ggml_new_buffer` from ggml.c. Returns aligned memory on native, ByteArray on jvm/js. */
+fun ggmlNewBuffer(ctx: GGMLContext, size: ULong): Any? = ggml_aligned_malloc(size.toLong())
 
 /** Port of `ggml_fopen` from ggml.c — Kotlin doesn't have C file I/O in common. */
 fun ggmlFopen(path: String, mode: String): Any? {
