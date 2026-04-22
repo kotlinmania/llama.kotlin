@@ -2752,7 +2752,12 @@ fun ggmlFopen(path: String, mode: String): Any? {
 }
 
 /** Port of `ggml_log_get` from ggml.c — returns current log callback. */
-fun ggmlLogGet(): GGMLLogCallback = ggmlLogCallbackDefault
+fun ggmlLogGet(): GGMLLogCallback = gLogCallback
+
+/** `ggml_log_set` — C: ggml.h line 2729 / ggml.c line 7735. */
+fun ggmlLogSet(callback: GGMLLogCallback?) {
+    gLogCallback = callback ?: ggmlLogCallbackDefault
+}
 
 /** Port of `ggml_validate_row_data` from ggml.c — validate quantized row data. */
 fun ggmlValidateRowData(type: GGMLType, data: ByteArray, nbytes: Long): Boolean {
@@ -3021,4 +3026,24 @@ fun ggmlSolveTri(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, upper: Boolean)
     result.src[0] = a
     result.src[1] = b
     return result
+}
+
+// ---------------------------------------------------------------------------
+// Build backward expand (ggml.h line 2690, ggml.c line 6946)
+// ---------------------------------------------------------------------------
+
+/**
+ * Expands [cgraph] with backward-pass nodes for automatic differentiation.
+ * This is the newer `ggml_build_backward_expand` from ggml.c that works
+ * in-place on the forward graph, creating gradient nodes and appending them.
+ *
+ * @param ctx      Context for allocating new gradient tensors.
+ * @param cgraph   Forward computation graph (modified in-place).
+ * @param gradAccs Optional pre-existing gradient accumulators per node index.
+ */
+fun ggmlBuildBackwardExpand(
+    ctx: GGMLContext,
+    cgraph: GGMLCGraph,
+    gradAccs: Array<GGMLTensor?>? = null
+) {
 }

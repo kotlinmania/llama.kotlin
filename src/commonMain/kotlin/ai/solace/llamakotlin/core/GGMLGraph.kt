@@ -2709,25 +2709,8 @@ fun ggmlStatusToString(status: GGMLStatus): String = when (status) {
 // Logging (ported from ggml_log_internal / ggml_log_set / ggml_log_callback_default)
 // ---------------------------------------------------------------------------
 
-// GGMLLogLevel is defined in NumericConversions.kt (NONE, INFO, WARN, ERROR).
-
-/** Callback signature for logging. */
-typealias GGMLLogCallback = (level: GGMLLogLevel, message: String) -> Unit
-
-/** Default callback: prints to stderr. */
-val ggmlLogCallbackDefault: GGMLLogCallback = { _, msg -> print(msg) }
-
-private var gLogCallback: GGMLLogCallback = ggmlLogCallbackDefault
-
-/** Internal log helper used across the Kotlin GGML port. */
-fun ggmlLogInternal(level: GGMLLogLevel, message: String) {
-    gLogCallback(level, message)
-}
-
-/** Replaces the global log callback. Pass `null` to restore the default. */
-fun ggmlLogSet(callback: GGMLLogCallback?) {
-    gLogCallback = callback ?: ggmlLogCallbackDefault
-}
+// Logging functions (ggmlLogInternal, ggmlLogSet, GGMLLogCallback, ggmlLogCallbackDefault)
+// moved to NumericConversions.kt (ggml-impl.h)
 
 // ---------------------------------------------------------------------------
 // Tensor shape predicates (supplements already in GGMLOps.kt)
@@ -2915,25 +2898,7 @@ fun ggmlGraphFind(cgraph: GGMLCGraph?, node: GGMLTensor): Boolean {
     return false
 }
 
-// ---------------------------------------------------------------------------
-// Build backward expand (new-style, ported from ggml.c:6946)
-// ---------------------------------------------------------------------------
-
-/**
- * Expands [cgraph] with backward-pass nodes for automatic differentiation.
- * This is the newer `ggml_build_backward_expand` from ggml.c that works
- * in-place on the forward graph, creating gradient nodes and appending them.
- *
- * @param ctx      Context for allocating new gradient tensors.
- * @param cgraph   Forward computation graph (modified in-place).
- * @param gradAccs Optional pre-existing gradient accumulators per node index.
- */
-fun ggmlBuildBackwardExpand(
-    ctx: GGMLContext,
-    cgraph: GGMLCGraph,
-    gradAccs: Array<GGMLTensor?>? = null
-) {
-}
+// ggmlBuildBackwardExpand moved to GGMLOps.kt (ggml.h)
 
 // ---------------------------------------------------------------------------
 // Graph compute plan (minimal — actual scheduling is backend-specific)

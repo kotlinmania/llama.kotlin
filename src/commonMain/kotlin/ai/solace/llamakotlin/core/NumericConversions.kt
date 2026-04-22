@@ -1063,29 +1063,41 @@ fun ggml_op_can_inplace(op: GGMLOp): Boolean {
 }
 
 // ============================================================================
-// Logging — C-named wrappers around existing logging in GGMLGraph.kt
-// ggml_log_internal / ggml_log_callback_default from ggml.c
+// Logging (ggml-impl.h lines 115-123, ggml.c lines 296-308)
 // ============================================================================
+
+/** Callback signature for logging. Mirrors `ggml_log_callback`. */
+typealias GGMLLogCallback = (level: GGMLLogLevel, message: String) -> Unit
+
+/** Default callback: prints to stdout. Port of `ggml_log_callback_default`. */
+val ggmlLogCallbackDefault: GGMLLogCallback = { _, msg -> print(msg) }
+
+internal var gLogCallback: GGMLLogCallback = ggmlLogCallbackDefault
+
+/** `ggml_log_internal` — C: ggml-impl.h line 115 / ggml.c line 301. */
+fun ggmlLogInternal(level: GGMLLogLevel, message: String) {
+    gLogCallback(level, message)
+}
+
+// ggmlLogSet moved to GGMLOps.kt (ggml.h line 2729)
 
 /**
  * Port of `ggml_log_callback_default` from ggml.c line 308.
- * Delegates to the existing ggmlLogCallbackDefault in GGMLGraph.kt.
  */
 fun ggml_log_callback_default(level: GGMLLogLevel, text: String, userData: Any? = null) {
     ggmlLogCallbackDefault(level, text)
 }
 
 /**
- * Port of `ggml_log_internal` from ggml.c line 301.
- * In C this is a varargs printf-style function; in Kotlin we accept a pre-formatted string.
+ * Port of `ggml_log_internal` from ggml.c line 301 (snake_case alias).
  */
 fun ggml_log_internal(level: GGMLLogLevel, text: String) {
-    ggmlLogCallbackDefault(level, text)
+    ggmlLogInternal(level, text)
 }
 
-/** Set the global log callback. Port of `ggml_log_set` from ggml.c line 7735. */
+/** Set the global log callback (snake_case alias). */
 fun ggml_log_set(callback: GGMLLogCallback?, userData: Any? = null) {
-    ggmlLogSet(callback)
+    gLogCallback = callback ?: ggmlLogCallbackDefault
 }
 
 // ============================================================================
