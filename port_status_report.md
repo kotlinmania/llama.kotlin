@@ -16,7 +16,7 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.05
+**Average Similarity:** 0.06
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -37,24 +37,23 @@ These files need significant work:
 - `ggml-cpu.quants` → `core.GGMLQuants` (0.00, 4 deps)
 - `ggml-opt` → `core.GGMLOptimizationSchedulerTest` (0.00)
 - `ggml-sycl.common` → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` (0.00)
-- `ggml-cpu.ggml-cpu-impl` → `core.GGMLCpuImpl` (0.02, 11 deps)
 - `ggml-backend-impl` → `core.GGMLBackendImpl` (0.00, 47 deps)
-- `ggml-impl` → `core.NumericConversions` (0.39, 58 deps)
 - `ggml-cann.common` → `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` (0.00)
 - `kleidiai.kernels` → `bench.ShiftKernels` (0.00, 1 deps)
 - `ggml-sycl.fattn-common` → `common.Constants` (0.00, 3 deps)
 - `ggml-cpu.simd-mappings` → `simd.GGMLSimd` (0.00, 10 deps)
 - `ggml-metal.ggml-metal-common` → `common.StatOps` (0.00, 1 deps)
 - `ggml-openvino.utils` → `checksum.Adler32Utils` (0.00)
+- `ggml-impl` → `core.NumericConversions` (0.53, 58 deps)
 - `openvino.utils` → `core.GGMLTestUtils` (0.00)
 - `ggml-zdnn.utils` → `util.BitUtils` (0.00, 23 deps)
 - `ggml-sycl.set_rows` → `core.GGMLTensorUtils` (0.00, 2 deps)
 - `openvino.input_model` → `model.Sampling` (0.00, 3 deps)
 - `backend.backend-dispatched-buffer` → `buffer.LimbBuffer` (0.00)
-- `ggml-virtgpu.ggml-backend` → `core.GGMLBackend` (0.00)
 - `backend.backend` → `core.GGMLBackendTest` (0.00)
-- `backend.backend-dispatched-buffer-type` → `buffer.MemoryOps` (0.00)
+- `ggml-virtgpu.ggml-backend` → `core.GGMLBackend` (0.00)
 - `amx.common` → `common.ZlibLoggerNative` (0.00)
+- `backend.backend-dispatched-buffer-type` → `buffer.MemoryOps` (0.00)
 - `ggml-sycl.type` → `gguf.GGUFTypes` (0.00, 2 deps)
 - `ggml-sycl.quants` → `core.GGMLCpuQuants` (0.00)
 - `ggml-common` → `core.GGMLCommon` (0.00, 16 deps)
@@ -62,6 +61,7 @@ These files need significant work:
 - `ggml-zdnn.common` → `common.ZlibLogger` (0.11)
 - `ggml` → `core.GGMLOps` (0.00, 50 deps)
 - `ggml-cpu.ggml-cpu` → `core.GGMLCpuBackend` (0.00, 12 deps)
+- `ggml-cpu.ggml-cpu-impl` → `core.GGMLCpuImpl` (0.00, 11 deps)
 - `op.cont` → `gguf.GGUFContext` (0.00)
 - `ggml-sycl.backend` → `core.GGMLBackendIntegrationTest` (0.04, 2 deps)
 - `ggml-cann.aclnn_ops` → `lnn.LNNCore` (0.00, 1 deps)
@@ -77,14 +77,13 @@ present in the Rust source file.
 |--------|--------|---------------|----------|
 | `gguf` | `gguf.GGUFParser` | 14/14 | `type_to_gguf_type`, `gguf_type`, `gguf_kv` … |
 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 13/13 | `ggml_opt_dataset`, `ggml_context`, `ggml_tensor` … |
-| `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 5/7 | `ggml_int16x8x2_t`, `ggml_uint8x16x2_t`, `ggml_uint8x16x4_t` … |
 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
-| `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 10/10 | `ggml_cann_device_info`, `cann_device_info`, `ggml_cann_pool` … |
 | `kleidiai.kernels` | `bench.ShiftKernels` | 5/5 | `cpu_feature`, `kernel_info`, `lhs_packing_info` … |
 | `ggml-backend` | `core.GGMLBackendUtils` | 14/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
 | `ggml-metal.ggml-metal-common` | `common.StatOps` | 4/4 | `ggml_tensor`, `ggml_cgraph`, `ggml_mem_range_type` … |
 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 5/5 | `graph_key`, `graph_key_hash`, `ov_runtime_context` … |
+| `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
 | `openvino.input_model` | `model.Sampling` | 3/3 | `FrontEnd`, `GgmlDecoder`, `InputModel` |
 | `backend.backend` | `core.GGMLBackendTest` | 2/2 | `ggml_log_level`, `virgl_apir_callbacks` |
 | `amx.common` | `common.ZlibLoggerNative` | 1/1 | `ggml_type` |
@@ -122,7 +121,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 3995 / 1661 lines (241%)
+**Documentation coverage:** 4095 / 1661 lines (247%)
 
 Top documentation gaps (>20%):
 

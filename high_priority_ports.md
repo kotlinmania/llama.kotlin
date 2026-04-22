@@ -11,21 +11,21 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 3 | `ggml-cpu.quants` | `core.GGMLQuants` | 0.00 | 4 | 70 | 933.4 |
 | 4 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 0.00 | 0 | 57 | 570.0 |
 | 5 | `ggml-sycl.common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 0 | 57 | 570.0 |
-| 6 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 0.02 | 11 | 34 | 521.2 |
-| 7 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.00 | 47 | 24 | 445.2 |
-| 8 | `ggml-impl` | `core.NumericConversions` | 0.39 | 58 | 21 | 393.6 |
-| 9 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
-| 10 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
-| 11 | `ggml-sycl.fattn-common` | `common.Constants` | 0.00 | 3 | 27 | 351.8 |
-| 12 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
-| 13 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 20 | 18 | 293.9 |
-| 14 | `ggml-metal.ggml-metal-common` | `common.StatOps` | 0.00 | 1 | 24 | 276.7 |
-| 15 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
-| 16 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
-| 17 | `ggml-zdnn.utils` | `util.BitUtils` | 0.00 | 23 | 4 | 81.3 |
-| 18 | `ggml-sycl.set_rows` | `core.GGMLTensorUtils` | 0.00 | 2 | 6 | 78.7 |
-| 19 | `openvino.input_model` | `model.Sampling` | 0.00 | 3 | 5 | 70.8 |
-| 20 | `backend.backend-dispatched-buffer` | `buffer.LimbBuffer` | 0.00 | 0 | 7 | 70.0 |
+| 6 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.00 | 47 | 24 | 445.2 |
+| 7 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
+| 8 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
+| 9 | `ggml-sycl.fattn-common` | `common.Constants` | 0.00 | 3 | 27 | 351.8 |
+| 10 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
+| 11 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 20 | 18 | 293.9 |
+| 12 | `ggml-metal.ggml-metal-common` | `common.StatOps` | 0.00 | 1 | 24 | 276.7 |
+| 13 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
+| 14 | `ggml-impl` | `core.NumericConversions` | 0.53 | 58 | 9 | 173.0 |
+| 15 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
+| 16 | `ggml-zdnn.utils` | `util.BitUtils` | 0.00 | 23 | 4 | 81.3 |
+| 17 | `ggml-sycl.set_rows` | `core.GGMLTensorUtils` | 0.00 | 2 | 6 | 78.7 |
+| 18 | `openvino.input_model` | `model.Sampling` | 0.00 | 3 | 5 | 70.8 |
+| 19 | `backend.backend-dispatched-buffer` | `buffer.LimbBuffer` | 0.00 | 0 | 7 | 70.0 |
+| 20 | `backend.backend` | `core.GGMLBackendTest` | 0.00 | 0 | 6 | 60.0 |
 
 ## Critical Issues (Similarity < 0.60 with Dependencies)
 
@@ -44,20 +44,10 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 4
 
-- **ggml-cpu.ggml-cpu-impl** → `core.GGMLCpuImpl`
-  - Similarity: 0.02
-  - Dependencies: 11
-  - Lint issues: 5
-
 - **ggml-backend-impl** → `core.GGMLBackendImpl`
   - Similarity: 0.00
   - Dependencies: 47
   - Lint issues: 49
-
-- **ggml-impl** → `core.NumericConversions`
-  - Similarity: 0.39
-  - Dependencies: 58
-  - Lint issues: 6
 
 - **kleidiai.kernels** → `bench.ShiftKernels`
   - Similarity: 0.00
@@ -74,6 +64,11 @@ These files need immediate attention:
 - **ggml-metal.ggml-metal-common** → `common.StatOps`
   - Similarity: 0.00
   - Dependencies: 1
+
+- **ggml-impl** → `core.NumericConversions`
+  - Similarity: 0.53
+  - Dependencies: 58
+  - Lint issues: 10
 
 - **ggml-zdnn.utils** → `util.BitUtils`
   - Similarity: 0.00
@@ -102,12 +97,17 @@ These files need immediate attention:
 - **ggml** → `core.GGMLOps`
   - Similarity: 0.00
   - Dependencies: 50
-  - Lint issues: 116
+  - Lint issues: 123
 
 - **ggml-cpu.ggml-cpu** → `core.GGMLCpuBackend`
   - Similarity: 0.00
   - Dependencies: 12
   - Lint issues: 2
+
+- **ggml-cpu.ggml-cpu-impl** → `core.GGMLCpuImpl`
+  - Similarity: 0.00
+  - Dependencies: 11
+  - TODOs: 1
 
 - **ggml-sycl.backend** → `core.GGMLBackendIntegrationTest`
   - Similarity: 0.04
