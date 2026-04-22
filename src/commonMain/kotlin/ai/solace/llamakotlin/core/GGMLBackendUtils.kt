@@ -1832,6 +1832,108 @@ fun ggmlBackendCpuBufferFromPtr(ptr: ByteArray, size: ULong): GGMLBackendBuffer 
 fun ggmlBackendCpuBufferType(): GGMLBackendBufferType = GGMLCpuBufferType()
 
 // ---------------------------------------------------------------------------
+// Multi-buffer  (ggml-backend.cpp lines 637-735)
+// ---------------------------------------------------------------------------
+
+/**
+ * `ggml_backend_buffer_copy_tensor` — copy src tensor data using the
+ * destination buffer's copyTensor hook.
+ * C: ggml-backend.cpp line 205.
+ */
+fun ggmlBackendBufferCopyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
+    val dstBuf = dst.viewSrc?.buffer ?: dst.buffer ?: return false
+    return dstBuf.copyTensor(src, dst)
+}
+
+/**
+ * Context for a multi-buffer (logical buffer wrapping several sub-buffers).
+ * Mirrors `ggml_backend_multi_buffer_context` in C.
+ */
+class GGMLBackendMultiBufferContext(
+    val buffers: MutableList<GGMLBackendBuffer> = mutableListOf()
+)
+
+/**
+ * `ggml_backend_multi_buffer_alloc_buffer`
+ * Allocate a logical multi-buffer wrapping several sub-buffers.
+ * C: ggml-backend.cpp line 707.
+ */
+fun ggmlBackendMultiBufferAllocBuffer(buffers: List<GGMLBackendBuffer>): GGMLBackendBuffer {
+    require(buffers.isNotEmpty()) { "multi-buffer requires at least one sub-buffer" }
+    val ctx = GGMLBackendMultiBufferContext(buffers.toMutableList())
+    var totalSize = 0UL
+    for (buf in buffers) {
+        totalSize += buf.getSize()
+    }
+    return GGMLBackendMultiBufferWrapper(ctx, buffers[0].getType(), totalSize)
+}
+
+/**
+ * `ggml_backend_buffer_is_multi_buffer`
+ * Returns true if [buffer] is a multi-buffer wrapper.
+ * C: ggml-backend.cpp line 723.
+ */
+fun ggmlBackendBufferIsMultiBuffer(buffer: GGMLBackendBuffer): Boolean {
+    return buffer is GGMLBackendMultiBufferWrapper
+}
+
+/** Marker wrapper class for multi-buffer detection. C: ggml-backend.cpp lines 637-663. */
+class GGMLBackendMultiBufferWrapper(
+    private val ctx: GGMLBackendMultiBufferContext,
+    private val buft: GGMLBackendBufferType,
+    private val totalSize: ULong
+) : GGMLBackendBuffer {
+    override fun getType(): GGMLBackendBufferType = buft
+    override fun getName(): String = buft.getName()
+    override fun getBase(): Any? = null
+    override fun getSize(): ULong = totalSize
+    override fun free() {
+        ctx.buffers.forEach { it.free() }
+        ctx.buffers.clear()
+    }
+    override fun setTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+        error("multi-buffer does not support direct tensor set")
+    }
+    override fun getTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+        error("multi-buffer does not support direct tensor get")
+    }
+    override fun copyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean = false
+    override fun clear(value: UByte) {
+        ctx.buffers.forEach { it.clear(value) }
+    }
+    override fun setUsage(usage: GGMLBackendBufferUsage) {
+        ctx.buffers.forEach { it.setUsage(usage) }
+    }
+}
+
+/**
+ * `ggml_backend_multi_buffer_set_usage`
+ * Set usage flag on every sub-buffer inside a multi-buffer.
+ * C: ggml-backend.cpp line 728.
+ */
+fun ggmlBackendMultiBufferSetUsage(buffer: GGMLBackendBuffer, usage: GGMLBackendBufferUsage) {
+    buffer.setUsage(usage)
+}
+
+/**
+ * `ggml_backend_multi_buffer_free_buffer` — static vtable entry in C.
+ * Frees all sub-buffers in a multi-buffer wrapper.
+ * C: ggml-backend.cpp line 674.
+ */
+fun ggmlBackendMultiBufferFreeBuffer(buffer: GGMLBackendBuffer) {
+    buffer.free()
+}
+
+/**
+ * `ggml_backend_multi_buffer_clear` — static vtable entry in C.
+ * Clears all sub-buffers in a multi-buffer.
+ * C: ggml-backend.cpp line 685.
+ */
+fun ggmlBackendMultiBufferClear(buffer: GGMLBackendBuffer, value: UByte) {
+    buffer.clear(value)
+}
+
+// ---------------------------------------------------------------------------
 // Scheduler public API  (ggml-backend.cpp lines 1727-1976)
 // Top-level functions matching C naming, delegating to GGMLBackendSched class.
 // ---------------------------------------------------------------------------
