@@ -75,6 +75,9 @@ enum class GGUFType(
     }
 }
 
+/** Port of `gguf_type_size` from gguf.cpp line 126. Returns 0 for STRING/ARRAY. */
+fun gguf_type_size(type: GGUFType): Int = type.typeSize
+
 // ---------------------------------------------------------------------------
 // GGUFKv – internal key-value entry (mirrors C++ struct gguf_kv)
 // ---------------------------------------------------------------------------

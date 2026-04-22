@@ -218,6 +218,7 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     NONE,
     DUP,
     ADD(true),
+    ADD_ID(true),
     ADD1(true),
     SUB(true),
     MUL(true), // Element-wise multiplication
@@ -252,6 +253,7 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     GET_ROWS,
     DIAG_MASK_INF(true),
     SOFT_MAX(true), // Can be made inplace
+    SOFT_MAX_BACK(true),
     ROPE(true),
     IM2COL,       // Image-to-column for convolution
     SSM_CONV,     // State-space model convolution
@@ -301,6 +303,7 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     TIMESTEP_EMBEDDING,
     ARGSORT,
     TOP_K,
+    FILL(true),
     UPSCALE,
     OUT_PROD,
     CROSS_ENTROPY_LOSS,

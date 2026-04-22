@@ -999,6 +999,119 @@ fun ggml_check_edges(cgraph: GGMLCGraph, startIdx: Int, edges: List<Triple<Int, 
     return true
 }
 
+// ============================================================================
+// Standalone bitset functions — match C signatures from ggml-impl.h
+// ============================================================================
+
+/** Port of `ggml_bitset_get(bitset, i)` from ggml-impl.h line 209. */
+inline fun ggml_bitset_get(bitset: GGMLBitset, i: Int): Boolean = bitset.get(i)
+
+/** Port of `ggml_bitset_set(bitset, i)` from ggml-impl.h line 213. */
+inline fun ggml_bitset_set(bitset: GGMLBitset, i: Int) = bitset.set(i)
+
+/** Port of `ggml_bitset_clear(bitset, i)` from ggml-impl.h line 217. */
+inline fun ggml_bitset_clear(bitset: GGMLBitset, i: Int) = bitset.clear(i)
+
+// ============================================================================
+// Standalone hash set functions — match C signatures from ggml-impl.h
+// ============================================================================
+
+/** Port of `ggml_hash_set_new(size)` from ggml-impl.h line 232. */
+fun ggml_hash_set_new(size: Int): GGMLHashSet = GGMLHashSet.new(size)
+
+/** Port of `ggml_hash_set_free(hash_set)` from ggml-impl.h line 233. */
+fun ggml_hash_set_free(hashSet: GGMLHashSet) {
+    // In Kotlin, GC handles deallocation. Reset to release tensor references.
+    hashSet.reset()
+}
+
+/** Port of `ggml_hash_set_reset(hash_set)` from ggml-impl.h line 239. */
+fun ggml_hash_set_reset(hashSet: GGMLHashSet) = hashSet.reset()
+
+// ============================================================================
+// ggml_op_can_inplace — port from ggml-alloc.c (declared in ggml-impl.h line 355)
+// ============================================================================
+
+fun ggml_op_can_inplace(op: GGMLOp): Boolean {
+    return when (op) {
+        GGMLOp.FILL,
+        GGMLOp.SCALE,
+        GGMLOp.DIAG_MASK_ZERO,
+        GGMLOp.DIAG_MASK_INF,
+        GGMLOp.ADD,
+        GGMLOp.ADD_ID,
+        GGMLOp.ADD1,
+        GGMLOp.SUB,
+        GGMLOp.MUL,
+        GGMLOp.DIV,
+        GGMLOp.SQR,
+        GGMLOp.SQRT,
+        GGMLOp.LOG,
+        GGMLOp.UNARY,
+        GGMLOp.ROPE,
+        GGMLOp.ROPE_BACK,
+        GGMLOp.SILU_BACK,
+        GGMLOp.RMS_NORM,
+        GGMLOp.RMS_NORM_BACK,
+        GGMLOp.SOFT_MAX,
+        GGMLOp.SOFT_MAX_BACK -> true
+        else -> false
+    }
+}
+
+// ============================================================================
+// Logging — C-named wrappers around existing logging in GGMLGraph.kt
+// ggml_log_internal / ggml_log_callback_default from ggml.c
+// ============================================================================
+
+/**
+ * Port of `ggml_log_callback_default` from ggml.c line 308.
+ * Delegates to the existing ggmlLogCallbackDefault in GGMLGraph.kt.
+ */
+fun ggml_log_callback_default(level: GGMLLogLevel, text: String, userData: Any? = null) {
+    ggmlLogCallbackDefault(level, text)
+}
+
+/**
+ * Port of `ggml_log_internal` from ggml.c line 301.
+ * In C this is a varargs printf-style function; in Kotlin we accept a pre-formatted string.
+ */
+fun ggml_log_internal(level: GGMLLogLevel, text: String) {
+    ggmlLogCallbackDefault(level, text)
+}
+
+/** Set the global log callback. Port of `ggml_log_set` from ggml.c line 7735. */
+fun ggml_log_set(callback: GGMLLogCallback?, userData: Any? = null) {
+    ggmlLogSet(callback)
+}
+
+// ============================================================================
+// ggml_print_backtrace — port from ggml.c line 152
+// ============================================================================
+
+fun ggml_print_backtrace() {
+    val trace = Throwable("backtrace").stackTraceToString()
+    print(trace)
+}
+
+// ============================================================================
+// ggml_aligned_malloc / ggml_aligned_free — ggml-impl.h line 360-361
+// In Kotlin/Native, ByteArray allocation is managed by the GC.
+// These are provided for API parity.
+// ============================================================================
+
+fun ggml_aligned_malloc(size: Long): ByteArray = ByteArray(size.toInt())
+
+fun ggml_aligned_free(ptr: ByteArray, size: Long) {
+    // No-op: Kotlin GC handles deallocation
+}
+
+// ============================================================================
+// ggml_up64 — commented out in ggml-impl.h line 64-66, but included for parity
+// ============================================================================
+
+inline fun ggml_up64(n: Int): Int = (n + 63) and 63.inv()
+
 // ---- Utility extensions (not from ggml-impl.h, part of original Kotlin port) ----
 
 fun arraysEqualWithinTolerance(a: FloatArray, b: FloatArray, tolerance: Float = 1e-6f): Boolean {
