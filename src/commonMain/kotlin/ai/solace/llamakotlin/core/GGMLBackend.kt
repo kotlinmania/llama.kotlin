@@ -70,6 +70,11 @@ interface GGMLBackendBufferType {
     fun getDevice(): GGMLBackendDevice? {
         return null
     }
+
+    /** C field: `void * context` — opaque pointer for extra buffer type data. */
+    fun getContext(): Any? {
+        return null
+    }
 }
 
 // ---------------------------------------------------------------------------

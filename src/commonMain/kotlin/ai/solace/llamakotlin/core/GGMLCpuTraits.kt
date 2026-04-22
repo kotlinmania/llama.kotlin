@@ -1,6 +1,6 @@
 package ai.solace.llamakotlin.core
 
-// port-lint: source ggml/src/ggml-cpu/traits.h
+// port-lint: source ggml/src/ggml-cpu/traits.h + traits.cpp
 
 /**
  * Port of `ggml::cpu::tensor_traits` — interface registered in tensor->extra
@@ -22,24 +22,36 @@ interface GGMLCpuExtraBufferType {
 
 /**
  * Port of `ggml_cpu_extra_compute_forward` from traits.cpp.
- * Returns true if the op was handled by an extra accelerator.
+ * Iterates over all registered extra buffer types and delegates to the
+ * first one whose tensor_traits can handle the op.
  */
 fun ggmlCpuExtraComputeForward(params: GGMLComputeParams, op: GGMLTensor): Boolean {
-    val extra = op.extra
-    if (extra is GGMLCpuTensorTraits) {
-        return extra.computeForward(params, op)
+    for (extra in ggmlBackendCpuGetExtraBufferTypes()) {
+        val context = extra.getContext()
+        if (context is GGMLCpuExtraBufferType) {
+            val tensorTraits = context.getTensorTraits(op)
+            if (tensorTraits != null && tensorTraits.computeForward(params, op)) {
+                return true
+            }
+        }
     }
     return false
 }
 
 /**
  * Port of `ggml_cpu_extra_work_size` from traits.cpp.
- * If the tensor has extra traits, queries them for required work buffer size.
+ * Iterates over all registered extra buffer types and queries each for
+ * the required work buffer size.
  */
 fun ggmlCpuExtraWorkSize(nThreads: Int, op: GGMLTensor, size: LongArray): Boolean {
-    val extra = op.extra
-    if (extra is GGMLCpuTensorTraits) {
-        return extra.workSize(nThreads, op, size)
+    for (extra in ggmlBackendCpuGetExtraBufferTypes()) {
+        val context = extra.getContext()
+        if (context is GGMLCpuExtraBufferType) {
+            val tensorTraits = context.getTensorTraits(op)
+            if (tensorTraits != null && tensorTraits.workSize(nThreads, op, size)) {
+                return true
+            }
+        }
     }
     return false
 }
@@ -48,6 +60,6 @@ fun ggmlCpuExtraWorkSize(nThreads: Int, op: GGMLTensor, size: LongArray): Boolea
  * Port of `ggml_backend_cpu_get_extra_buffer_types` from ggml-cpu.cpp.
  * Returns the registered extra buffer types for the CPU backend.
  */
-fun ggmlBackendCpuGetExtraBufferTypes(): MutableList<GGMLBackendBufferType> {
-    return mutableListOf()
+fun ggmlBackendCpuGetExtraBufferTypes(): List<GGMLBackendBufferType> {
+    return emptyList()
 }
