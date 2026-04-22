@@ -23,83 +23,87 @@ private const val GROUP_MAX_EPS = 1e-15f
 //  Quantize-row stubs (delegate to _ref once those are ported in GGMLQuantsRef.kt)
 // ════════════════════════════════════════════════════════════════════════════════
 
-/** Quantize [k] floats from [x] into Q1_0 blocks in [y]. */
-fun quantizeRowQ1_0(x: FloatArray, y: Array<BlockQ1_0>, k: Long) {
+fun quantizeRowQ10(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q1_0_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into Q4_0 blocks in [y]. */
-fun quantizeRowQ4_0(x: FloatArray, y: Array<BlockQ4_0>, k: Long) {
+fun quantizeRowQ40(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q4_0_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into Q4_1 blocks in [y]. */
-fun quantizeRowQ4_1(x: FloatArray, y: Array<BlockQ4_1>, k: Long) {
+fun quantizeRowQ41(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q4_1_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into Q5_0 blocks in [y]. */
-fun quantizeRowQ5_0(x: FloatArray, y: Array<BlockQ5_0>, k: Long) {
+fun quantizeRowQ50(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q5_0_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into Q5_1 blocks in [y]. */
-fun quantizeRowQ5_1(x: FloatArray, y: Array<BlockQ5_1>, k: Long) {
+fun quantizeRowQ51(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q5_1_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into Q8_0 blocks in [y] (scalar/generic path). */
-fun quantizeRowQ8_0(x: FloatArray, y: Array<BlockQ8_0>, k: Long) {
+fun quantizeRowQ80Generic(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q8_0_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into Q8_1 blocks in [y] (scalar/generic path). */
-fun quantizeRowQ8_1(x: FloatArray, y: Array<BlockQ8_1>, k: Long) {
+fun quantizeRowQ81Generic(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q8_1_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into MXFP4 blocks in [y]. */
-fun quantizeRowMXFP4(x: FloatArray, y: Array<BlockMXFP4>, k: Long) {
+fun quantizeRowMxfp4(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_mxfp4_ref(x, 0, y, 0, k)
 }
 
-/** Quantize [k] floats from [x] into NVFP4 blocks in [y]. */
-fun quantizeRowNVFP4(x: FloatArray, y: Array<BlockNVFP4>, k: Long) {
+fun quantizeRowNvfp4(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_nvfp4_ref(x, 0, y, 0, k)
 }
 
-// ── K-quant quantize-row stubs ──────────────────────────────────────────────────
-
-fun quantizeRowQ2K(x: FloatArray, y: Array<BlockQ2K>, k: Long) {
+fun quantizeRowQ2K(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q2_K_ref(x, 0, y, 0, k)
 }
 
-fun quantizeRowQ3K(x: FloatArray, y: Array<BlockQ3K>, k: Long) {
+fun quantizeRowQ3K(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q3_K_ref(x, 0, y, 0, k)
 }
 
-fun quantizeRowQ4K(x: FloatArray, y: Array<BlockQ4K>, k: Long) {
+fun quantizeRowQ4K(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
+    quantize_row_q4_K_ref(x, 0, y, 0, k)
 }
 
-fun quantizeRowQ5K(x: FloatArray, y: Array<BlockQ5K>, k: Long) {
+fun quantizeRowQ5K(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
+    quantize_row_q5_K_ref(x, 0, y, 0, k)
 }
 
-fun quantizeRowQ6K(x: FloatArray, y: Array<BlockQ6K>, k: Long) {
+fun quantizeRowQ6K(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
+    quantize_row_q6_K_ref(x, 0, y, 0, k)
 }
 
-fun quantizeRowQ8K(x: FloatArray, y: Array<BlockQ8K>, k: Long) {
+fun quantizeRowQ8KGeneric(x: FloatArray, y: ByteArray, k: Long) {
+    quantize_row_q8_K_ref(x, 0, y, 0, k)
 }
 
-// ── Ternary quantize-row stubs ──────────────────────────────────────────────────
-
-fun quantizeRowTQ1_0(x: FloatArray, y: Array<BlockTQ1_0>, k: Long) {
+fun quantizeRowTq10(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
+    quantize_row_tq1_0_ref(x, 0, y, 0, k)
 }
 
-fun quantizeRowTQ2_0(x: FloatArray, y: Array<BlockTQ2_0>, k: Long) {
+fun quantizeRowTq20(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
+    quantize_row_tq2_0_ref(x, 0, y, 0, k)
 }
 
-// ── IQ quantize-row stubs ───────────────────────────────────────────────────────
-
-fun quantizeRowIQ4NL(x: FloatArray, y: Array<BlockIQ4NL>, k: Long) {
+fun quantizeRowIq4Nl(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK4_NL == 0L) { "k ($k) must be a multiple of QK4_NL ($QK4_NL)" }
+    quantize_row_iq4_nl_ref(x, 0, y, 0, k)
 }
 
-fun quantizeRowIQ4XS(x: FloatArray, y: Array<BlockIQ4XS>, k: Long) {
+fun quantizeRowIq4Xs(x: FloatArray, y: ByteArray, k: Long) {
     require(k % QK_K == 0L) { "k ($k) must be a multiple of QK_K ($QK_K)" }
+    quantize_row_iq4_xs_ref(x, 0, y, 0, k)
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -117,7 +121,7 @@ fun quantizeRowIQ4XS(x: FloatArray, y: Array<BlockIQ4XS>, k: Long) {
  * @param vy  Q8_0 blocks (4× as many as vx)
  * @return    the dot product
  */
-fun vecDotQ1_0Q8_0(n: Int, vx: Array<BlockQ1_0>, vy: Array<BlockQ8_0>): Float {
+fun ggmlVecDotQ10Q80Generic(n: Int, vx: Array<BlockQ1_0>, vy: Array<BlockQ8_0>): Float {
     val qk = QK1_0
     val nb = n / qk
     require(n % qk == 0) { "n ($n) must be divisible by $qk" }
@@ -157,7 +161,7 @@ fun vecDotQ1_0Q8_0(n: Int, vx: Array<BlockQ1_0>, vy: Array<BlockQ8_0>): Float {
  * @param vy  Q8_0 blocks
  * @return    the dot product
  */
-fun vecDotQ4_0Q8_0(n: Int, vx: Array<BlockQ4_0>, vy: Array<BlockQ8_0>): Float {
+fun ggmlVecDotQ40Q80Generic(n: Int, vx: Array<BlockQ4_0>, vy: Array<BlockQ8_0>): Float {
     val qk = QK8_0
     val nb = n / qk
     require(n % qk == 0) { "n ($n) must be divisible by $qk" }
@@ -185,7 +189,7 @@ fun vecDotQ4_0Q8_0(n: Int, vx: Array<BlockQ4_0>, vy: Array<BlockQ8_0>): Float {
  * Like Q4_0 but with an additional minimum (`m`) and sum (`s`) per block.
  * Nibbles are unsigned (no −8 offset).
  */
-fun vecDotQ4_1Q8_1(n: Int, vx: Array<BlockQ4_1>, vy: Array<BlockQ8_1>): Float {
+fun ggmlVecDotQ41Q81Generic(n: Int, vx: Array<BlockQ4_1>, vy: Array<BlockQ8_1>): Float {
     val qk = QK8_1
     val nb = n / qk
     require(n % qk == 0) { "n ($n) must be divisible by $qk" }
@@ -213,7 +217,7 @@ fun vecDotQ4_1Q8_1(n: Int, vx: Array<BlockQ4_1>, vy: Array<BlockQ8_1>): Float {
  *
  * Q5_0 uses 4 low bits in `qs` and a 5th (high) bit in `qh` (packed as a uint32).
  */
-fun vecDotQ5_0Q8_0(n: Int, vx: Array<BlockQ5_0>, vy: Array<BlockQ8_0>): Float {
+fun ggmlVecDotQ50Q80Generic(n: Int, vx: Array<BlockQ5_0>, vy: Array<BlockQ8_0>): Float {
     val qk = QK8_0
     val nb = n / qk
     require(n % qk == 0) { "n ($n) must be divisible by $qk" }
@@ -249,7 +253,7 @@ fun vecDotQ5_0Q8_0(n: Int, vx: Array<BlockQ5_0>, vy: Array<BlockQ8_0>): Float {
  *
  * Like Q5_0 but with separate min/sum fields and unsigned nibbles.
  */
-fun vecDotQ5_1Q8_1(n: Int, vx: Array<BlockQ5_1>, vy: Array<BlockQ8_1>): Float {
+fun ggmlVecDotQ51Q81Generic(n: Int, vx: Array<BlockQ5_1>, vy: Array<BlockQ8_1>): Float {
     val qk = QK8_1
     val nb = n / qk
     require(n % qk == 0) { "n ($n) must be divisible by $qk" }
@@ -286,7 +290,7 @@ fun vecDotQ5_1Q8_1(n: Int, vx: Array<BlockQ5_1>, vy: Array<BlockQ8_1>): Float {
  * Straightforward: multiply corresponding 8-bit quants and accumulate,
  * then scale by the product of both block deltas.
  */
-fun vecDotQ8_0Q8_0(n: Int, vx: Array<BlockQ8_0>, vy: Array<BlockQ8_0>): Float {
+fun ggmlVecDotQ80Q80Generic(n: Int, vx: Array<BlockQ8_0>, vy: Array<BlockQ8_0>): Float {
     val qk = QK8_0
     val nb = n / qk
     require(n % qk == 0) { "n ($n) must be divisible by $qk" }
@@ -307,7 +311,7 @@ fun vecDotQ8_0Q8_0(n: Int, vx: Array<BlockQ8_0>, vy: Array<BlockQ8_0>): Float {
  *
  * Uses the [GGMLCommonTables.kvaluesMXFP4] lookup to dequantize 4-bit mantissa values.
  */
-fun vecDotMXFP4Q8_0(n: Int, vx: Array<BlockMXFP4>, vy: Array<BlockQ8_0>): Float {
+fun ggmlVecDotMxfp4Q80Generic(n: Int, vx: Array<BlockMXFP4>, vy: Array<BlockQ8_0>): Float {
     require(n % QK_MXFP4 == 0) { "n ($n) must be divisible by $QK_MXFP4" }
     val nb = n / QK_MXFP4
 
@@ -332,7 +336,7 @@ fun vecDotMXFP4Q8_0(n: Int, vx: Array<BlockMXFP4>, vy: Array<BlockQ8_0>): Float 
  *
  * NVFP4 super-blocks have 64 elements = 4 sub-blocks of 16, spanning 2 Q8_0 blocks.
  */
-fun vecDotNVFP4Q8_0(n: Int, vx: Array<BlockNVFP4>, vy: Array<BlockQ8_0>): Float {
+fun ggmlVecDotNvfp4Q80Generic(n: Int, vx: Array<BlockNVFP4>, vy: Array<BlockQ8_0>): Float {
     require(n % QK_NVFP4 == 0) { "n ($n) must be divisible by $QK_NVFP4" }
     val nb = n / QK_NVFP4
 
@@ -367,7 +371,7 @@ fun vecDotNVFP4Q8_0(n: Int, vx: Array<BlockNVFP4>, vy: Array<BlockQ8_0>): Float 
  * Ternary base-3 packed quants. 5 ternary values per byte in `qs`,
  * 4 values per byte in `qh`.
  */
-fun vecDotTQ1_0Q8K(n: Int, vx: Array<BlockTQ1_0>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotTq10Q8KGeneric(n: Int, vx: Array<BlockTQ1_0>, vy: Array<BlockQ8K>): Float {
     val nb = n / QK_K
     val pow3 = intArrayOf(1, 3, 9, 27, 81, 243)
 
@@ -421,7 +425,7 @@ fun vecDotTQ1_0Q8K(n: Int, vx: Array<BlockTQ1_0>, vy: Array<BlockQ8K>): Float {
  *
  * 2-bit ternary packed: each byte holds 4 ternary values in 2-bit pairs.
  */
-fun vecDotTQ2_0Q8K(n: Int, vx: Array<BlockTQ2_0>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotTq20Q8KGeneric(n: Int, vx: Array<BlockTQ2_0>, vy: Array<BlockQ8K>): Float {
     val nb = n / QK_K
     var sumf = 0.0f
 
@@ -454,7 +458,7 @@ fun vecDotTQ2_0Q8K(n: Int, vx: Array<BlockTQ2_0>, vy: Array<BlockQ8K>): Float {
  *
  * Super-block with 4-bit scales/mins in `scales`, 2-bit quants in `qs`.
  */
-fun vecDotQ2KQ8K(n: Int, vx: Array<BlockQ2K>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotQ2KQ8KGeneric(n: Int, vx: Array<BlockQ2K>, vy: Array<BlockQ8K>): Float {
     val nb = n / QK_K
     var sumf = 0.0f
 
@@ -502,64 +506,640 @@ fun vecDotQ2KQ8K(n: Int, vx: Array<BlockQ2K>, vy: Array<BlockQ8K>): Float {
 }
 
 /** Q3_K × Q8_K dot product (scalar). */
-fun vecDotQ3KQ8K(n: Int, vx: Array<BlockQ3K>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotQ3KQ8KGeneric(n: Int, vx: Array<BlockQ3K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotQ3KQ8K not yet ported")
+
+    val kmask1 = 0x03030303
+    val kmask2 = 0x0f0f0f0f
+
+    val nb = n / QK_K
+
+    val aux8 = IntArray(QK_K)
+    val aux16 = IntArray(8)
+    val sums = FloatArray(8)
+    val aux32 = IntArray(8)
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        var q3Off = 0
+        var q8Off = 0
+        for (l in 0 until 8) aux32[l] = 0
+        var aOff = 0
+        var m = 1
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) aux8[aOff + l] = (vx[i].qs[q3Off + l].toInt() and 0xFF) and 3
+            for (l in 0 until 32) aux8[aOff + l] -= if ((vx[i].hmask[l].toInt() and 0xFF) and m != 0) 0 else 4
+            aOff += 32; m = m shl 1
+            for (l in 0 until 32) aux8[aOff + l] = ((vx[i].qs[q3Off + l].toInt() and 0xFF) ushr 2) and 3
+            for (l in 0 until 32) aux8[aOff + l] -= if ((vx[i].hmask[l].toInt() and 0xFF) and m != 0) 0 else 4
+            aOff += 32; m = m shl 1
+            for (l in 0 until 32) aux8[aOff + l] = ((vx[i].qs[q3Off + l].toInt() and 0xFF) ushr 4) and 3
+            for (l in 0 until 32) aux8[aOff + l] -= if ((vx[i].hmask[l].toInt() and 0xFF) and m != 0) 0 else 4
+            aOff += 32; m = m shl 1
+            for (l in 0 until 32) aux8[aOff + l] = ((vx[i].qs[q3Off + l].toInt() and 0xFF) ushr 6) and 3
+            for (l in 0 until 32) aux8[aOff + l] -= if ((vx[i].hmask[l].toInt() and 0xFF) and m != 0) 0 else 4
+            aOff += 32; m = m shl 1
+            q3Off += 32
+        }
+        aOff = 0
+
+        // memcpy(auxs, x[i].scales, 12) → assemble 3 uint32s from 12 bytes
+        val sc = vx[i].scales
+        var auxs0 = (sc[0].toInt() and 0xFF) or ((sc[1].toInt() and 0xFF) shl 8) or
+                ((sc[2].toInt() and 0xFF) shl 16) or ((sc[3].toInt() and 0xFF) shl 24)
+        var auxs1 = (sc[4].toInt() and 0xFF) or ((sc[5].toInt() and 0xFF) shl 8) or
+                ((sc[6].toInt() and 0xFF) shl 16) or ((sc[7].toInt() and 0xFF) shl 24)
+        val tmp = (sc[8].toInt() and 0xFF) or ((sc[9].toInt() and 0xFF) shl 8) or
+                ((sc[10].toInt() and 0xFF) shl 16) or ((sc[11].toInt() and 0xFF) shl 24)
+        var auxs2 = ((auxs0 ushr 4) and kmask2) or ((((tmp ushr 4) and kmask1)) shl 4)
+        var auxs3 = ((auxs1 ushr 4) and kmask2) or ((((tmp ushr 6) and kmask1)) shl 4)
+        auxs0 = (auxs0 and kmask2) or ((((tmp ushr 0) and kmask1)) shl 4)
+        auxs1 = (auxs1 and kmask2) or ((((tmp ushr 2) and kmask1)) shl 4)
+        val auxsArr = intArrayOf(auxs0, auxs1, auxs2, auxs3)
+
+        for (j in 0 until QK_K / 16) {
+            // scales[j] = (int8_t) from auxs reinterpreted as bytes
+            val scaleVal = (auxsArr[j / 4] ushr ((j % 4) * 8)).toByte().toInt()
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += (scaleVal - 32) * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += (scaleVal - 32) * aux16[l]
+            q8Off += 8; aOff += 8
+        }
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        for (l in 0 until 8) sums[l] += d * aux32[l]
+    }
+    for (l in 0 until 8) sumf += sums[l]
+    return sumf
 }
 
 /** Q4_K × Q8_K dot product (scalar). */
-fun vecDotQ4KQ8K(n: Int, vx: Array<BlockQ4K>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotQ4KQ8KGeneric(n: Int, vx: Array<BlockQ4K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotQ4KQ8K not yet ported")
+
+    val kmask1 = 0x3f3f3f3f
+    val kmask2 = 0x0f0f0f0f
+    val kmask3 = 0x03030303
+
+    val nb = n / QK_K
+
+    val aux8 = IntArray(QK_K)
+    val aux16 = IntArray(8)
+    val sums = FloatArray(8)
+    val aux32 = IntArray(8)
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        var q4Off = 0
+        var q8Off = 0
+        for (l in 0 until 8) aux32[l] = 0
+        var aOff = 0
+        for (j in 0 until QK_K / 64) {
+            for (l in 0 until 32) aux8[aOff + l] = ((vx[i].qs[q4Off + l].toInt() and 0xFF) and 0xF).toByte().toInt()
+            aOff += 32
+            for (l in 0 until 32) aux8[aOff + l] = ((vx[i].qs[q4Off + l].toInt() and 0xFF) ushr 4).toByte().toInt()
+            aOff += 32; q4Off += 32
+        }
+
+        // memcpy(utmp, x[i].scales, 12) → assemble 3 uint32s
+        val sc = vx[i].scales
+        var utmp0 = (sc[0].toInt() and 0xFF) or ((sc[1].toInt() and 0xFF) shl 8) or
+                ((sc[2].toInt() and 0xFF) shl 16) or ((sc[3].toInt() and 0xFF) shl 24)
+        var utmp1 = (sc[4].toInt() and 0xFF) or ((sc[5].toInt() and 0xFF) shl 8) or
+                ((sc[6].toInt() and 0xFF) shl 16) or ((sc[7].toInt() and 0xFF) shl 24)
+        var utmp2 = (sc[8].toInt() and 0xFF) or ((sc[9].toInt() and 0xFF) shl 8) or
+                ((sc[10].toInt() and 0xFF) shl 16) or ((sc[11].toInt() and 0xFF) shl 24)
+        var utmp3 = ((utmp2 ushr 4) and kmask2) or (((utmp1 ushr 6) and kmask3) shl 4)
+        val uaux = utmp1 and kmask1
+        utmp1 = (utmp2 and kmask2) or (((utmp0 ushr 6) and kmask3) shl 4)
+        utmp2 = uaux
+        utmp0 = utmp0 and kmask1
+        val utmpArr = intArrayOf(utmp0, utmp1, utmp2, utmp3)
+
+        var sumi = 0
+        for (j in 0 until QK_K / 16) {
+            // mins[j/2] = byte from utmp[2 + (j/2)/4] at position (j/2)%4
+            val minsIdx = j / 2
+            val minsVal = (utmpArr[2 + minsIdx / 4] ushr ((minsIdx % 4) * 8)) and 0xFF
+            sumi += vy[i].bsums[j].toInt() * minsVal
+        }
+
+        aOff = 0
+        var isIdx = 0
+        for (j in 0 until QK_K / 32) {
+            // scales[is] = byte from utmp[isIdx/4] at position isIdx%4
+            val scale = (utmpArr[isIdx / 4] ushr ((isIdx % 4) * 8)) and 0xFF
+            isIdx++
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+        }
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        for (l in 0 until 8) sums[l] += d * aux32[l]
+        val dmin = halfToFloat(vx[i].dmin) * vy[i].d
+        sumf -= dmin * sumi
+    }
+    for (l in 0 until 8) sumf += sums[l]
+    return sumf
 }
 
 /** Q5_K × Q8_K dot product (scalar). */
-fun vecDotQ5KQ8K(n: Int, vx: Array<BlockQ5K>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotQ5KQ8KGeneric(n: Int, vx: Array<BlockQ5K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotQ5KQ8K not yet ported")
+
+    val kmask1 = 0x3f3f3f3f
+    val kmask2 = 0x0f0f0f0f
+    val kmask3 = 0x03030303
+
+    val nb = n / QK_K
+
+    val aux8 = IntArray(QK_K)
+    val aux16 = IntArray(8)
+    val sums = FloatArray(8)
+    val aux32 = IntArray(8)
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        var q4Off = 0
+        var q8Off = 0
+        for (l in 0 until 8) aux32[l] = 0
+        var aOff = 0
+        var m = 1
+        for (j in 0 until QK_K / 64) {
+            for (l in 0 until 32) aux8[aOff + l] = ((vx[i].qs[q4Off + l].toInt() and 0xFF) and 0xF).toByte().toInt()
+            for (l in 0 until 32) aux8[aOff + l] += if ((vx[i].qh[l].toInt() and 0xFF) and m != 0) 16 else 0
+            aOff += 32; m = m shl 1
+            for (l in 0 until 32) aux8[aOff + l] = ((vx[i].qs[q4Off + l].toInt() and 0xFF) ushr 4).toByte().toInt()
+            for (l in 0 until 32) aux8[aOff + l] += if ((vx[i].qh[l].toInt() and 0xFF) and m != 0) 16 else 0
+            aOff += 32; m = m shl 1
+            q4Off += 32
+        }
+
+        // memcpy(utmp, x[i].scales, 12)
+        val sc = vx[i].scales
+        var utmp0 = (sc[0].toInt() and 0xFF) or ((sc[1].toInt() and 0xFF) shl 8) or
+                ((sc[2].toInt() and 0xFF) shl 16) or ((sc[3].toInt() and 0xFF) shl 24)
+        var utmp1 = (sc[4].toInt() and 0xFF) or ((sc[5].toInt() and 0xFF) shl 8) or
+                ((sc[6].toInt() and 0xFF) shl 16) or ((sc[7].toInt() and 0xFF) shl 24)
+        var utmp2 = (sc[8].toInt() and 0xFF) or ((sc[9].toInt() and 0xFF) shl 8) or
+                ((sc[10].toInt() and 0xFF) shl 16) or ((sc[11].toInt() and 0xFF) shl 24)
+        var utmp3 = ((utmp2 ushr 4) and kmask2) or (((utmp1 ushr 6) and kmask3) shl 4)
+        val uaux = utmp1 and kmask1
+        utmp1 = (utmp2 and kmask2) or (((utmp0 ushr 6) and kmask3) shl 4)
+        utmp2 = uaux
+        utmp0 = utmp0 and kmask1
+        val utmpArr = intArrayOf(utmp0, utmp1, utmp2, utmp3)
+
+        var sumi = 0
+        for (j in 0 until QK_K / 16) {
+            val minsIdx = j / 2
+            val minsVal = (utmpArr[2 + minsIdx / 4] ushr ((minsIdx % 4) * 8)) and 0xFF
+            sumi += vy[i].bsums[j].toInt() * minsVal
+        }
+
+        aOff = 0
+        var isIdx = 0
+        for (j in 0 until QK_K / 32) {
+            val scale = (utmpArr[isIdx / 4] ushr ((isIdx % 4) * 8)) and 0xFF
+            isIdx++
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+        }
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        for (l in 0 until 8) sums[l] += d * aux32[l]
+        val dmin = halfToFloat(vx[i].dmin) * vy[i].d
+        sumf -= dmin * sumi
+    }
+    for (l in 0 until 8) sumf += sums[l]
+    return sumf
 }
 
 /** Q6_K × Q8_K dot product (scalar). */
-fun vecDotQ6KQ8K(n: Int, vx: Array<BlockQ6K>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotQ6KQ8KGeneric(n: Int, vx: Array<BlockQ6K>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotQ6KQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    val aux8 = IntArray(QK_K)
+    val aux16 = IntArray(8)
+    val sums = FloatArray(8)
+    val aux32 = IntArray(8)
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        var q4Off = 0
+        var qhOff = 0
+        var q8Off = 0
+        for (l in 0 until 8) aux32[l] = 0
+        var aOff = 0
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) {
+                aux8[aOff + l + 0] = (((vx[i].ql[q4Off + l + 0].toInt() and 0xFF) and 0xF) or
+                        ((((vx[i].qh[qhOff + l].toInt() and 0xFF) ushr 0) and 3) shl 4)).toByte().toInt() - 32
+                aux8[aOff + l + 32] = (((vx[i].ql[q4Off + l + 32].toInt() and 0xFF) and 0xF) or
+                        ((((vx[i].qh[qhOff + l].toInt() and 0xFF) ushr 2) and 3) shl 4)).toByte().toInt() - 32
+                aux8[aOff + l + 64] = (((vx[i].ql[q4Off + l + 0].toInt() and 0xFF) ushr 4) or
+                        ((((vx[i].qh[qhOff + l].toInt() and 0xFF) ushr 4) and 3) shl 4)).toByte().toInt() - 32
+                aux8[aOff + l + 96] = (((vx[i].ql[q4Off + l + 32].toInt() and 0xFF) ushr 4) or
+                        ((((vx[i].qh[qhOff + l].toInt() and 0xFF) ushr 6) and 3) shl 4)).toByte().toInt() - 32
+            }
+            aOff += 128
+            q4Off += 64
+            qhOff += 32
+        }
+        aOff = 0
+        var isIdx = 0
+        for (j in 0 until QK_K / 16) {
+            val scale = vx[i].scales[isIdx++].toInt()
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+            for (l in 0 until 8) aux16[l] = vy[i].qs[q8Off + l].toInt() * aux8[aOff + l]
+            for (l in 0 until 8) aux32[l] += scale * aux16[l]
+            q8Off += 8; aOff += 8
+        }
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        for (l in 0 until 8) sums[l] += d * aux32[l]
+    }
+    for (l in 0 until 8) sumf += sums[l]
+    return sumf
 }
 
 // ── IQ dot-product stubs ────────────────────────────────────────────────────────
 
-fun vecDotIQ2XXSQ8K(n: Int, vx: Array<BlockIQ2XXS>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq2XxsQ8KGeneric(n: Int, vx: Array<BlockIQ2XXS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ2XXSQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        var q2Off = 0
+        var q8Off = 0
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32) {
+            // memcpy(aux32, q2, 2*sizeof(uint32_t)) — 4 uint16s → 2 uint32s (little-endian)
+            val a32_0 = (vx[i].qs[q2Off + 0].toInt() and 0xFFFF) or ((vx[i].qs[q2Off + 1].toInt() and 0xFFFF) shl 16)
+            val a32_1 = (vx[i].qs[q2Off + 2].toInt() and 0xFFFF) or ((vx[i].qs[q2Off + 3].toInt() and 0xFFFF) shl 16)
+            q2Off += 4
+            val ls = 2 * ((a32_1 ushr 28) and 0xF) + 1
+            var sumi = 0
+            // aux8 = bytes of a32_0/a32_1: aux8[0..3] from a32_0, aux8[4..7] from a32_1
+            for (l in 0 until 4) {
+                val aux8val = (a32_0 ushr (l * 8)) and 0xFF
+                val gridVal = GGMLCommonTables.iq2xxsGrid[aux8val]
+                val signs = GGMLCommonTables.ksignsIQ2XS[((a32_1 ushr (7 * l)) and 127).toByte().toInt() and 0xFF]
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val sign = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
+                    sumi += gridByte * vy[i].qs[q8Off + j].toInt() * sign
+                }
+                q8Off += 8
+            }
+            bsum += sumi * ls
+        }
+        sumf += d * bsum
+    }
+    return 0.125f * sumf
 }
 
-fun vecDotIQ2XSQ8K(n: Int, vx: Array<BlockIQ2XS>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq2XsQ8KGeneric(n: Int, vx: Array<BlockIQ2XS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ2XSQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        var q8Off = 0
+        var bsum = 0
+        var q2Off = 0
+        for (ib32 in 0 until QK_K / 32) {
+            val ls1 = 2 * (vx[i].scales[ib32].toInt() and 0xF) + 1
+            val ls2 = 2 * ((vx[i].scales[ib32].toInt() and 0xFF) ushr 4) + 1
+            var sumi = 0
+            for (l in 0 until 2) {
+                val q2val = vx[i].qs[q2Off + l].toInt() and 0xFFFF
+                val gridVal = GGMLCommonTables.iq2xsGrid[q2val and 511]
+                val signs = GGMLCommonTables.ksignsIQ2XS[(q2val ushr 9) and 0xFF]
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val sign = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
+                    sumi += gridByte * vy[i].qs[q8Off + j].toInt() * sign
+                }
+                q8Off += 8
+            }
+            bsum += sumi * ls1
+            sumi = 0
+            for (l in 2 until 4) {
+                val q2val = vx[i].qs[q2Off + l].toInt() and 0xFFFF
+                val gridVal = GGMLCommonTables.iq2xsGrid[q2val and 511]
+                val signs = GGMLCommonTables.ksignsIQ2XS[(q2val ushr 9) and 0xFF]
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val sign = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
+                    sumi += gridByte * vy[i].qs[q8Off + j].toInt() * sign
+                }
+                q8Off += 8
+            }
+            bsum += sumi * ls2
+            q2Off += 4
+        }
+        sumf += d * bsum
+    }
+    return 0.125f * sumf
 }
 
-fun vecDotIQ2SQ8K(n: Int, vx: Array<BlockIQ2S>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq2SQ8KGeneric(n: Int, vx: Array<BlockIQ2S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ2SQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        var q8Off = 0
+        var qsOff = 0
+        val signsBase = QK_K / 8
+        var signsOff = 0
+
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32) {
+            val ls1 = 1 + 2 * (vx[i].scales[ib32].toInt() and 0xF)
+            val ls2 = 1 + 2 * ((vx[i].scales[ib32].toInt() and 0xFF) ushr 4)
+            var sumi1 = 0
+            var sumi2 = 0
+            for (l in 0 until 2) {
+                val qsVal = vx[i].qs[qsOff + l].toInt() and 0xFF
+                val qhVal = vx[i].qh[ib32].toInt() and 0xFF
+                val gridIdx = qsVal or ((qhVal shl (8 - 2 * l)) and 0x300)
+                val gridVal = GGMLCommonTables.iq2sGrid[gridIdx]
+                val signsVal = vx[i].qs[signsBase + signsOff + l].toInt() and 0xFF
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val sign = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
+                    sumi1 += vy[i].qs[q8Off + j].toInt() * gridByte * sign
+                }
+                q8Off += 8
+            }
+            for (l in 2 until 4) {
+                val qsVal = vx[i].qs[qsOff + l].toInt() and 0xFF
+                val qhVal = vx[i].qh[ib32].toInt() and 0xFF
+                val gridIdx = qsVal or ((qhVal shl (8 - 2 * l)) and 0x300)
+                val gridVal = GGMLCommonTables.iq2sGrid[gridIdx]
+                val signsVal = vx[i].qs[signsBase + signsOff + l].toInt() and 0xFF
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toInt()
+                    val sign = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j].toInt() and 0xFF) != 0) -1 else 1
+                    sumi2 += vy[i].qs[q8Off + j].toInt() * gridByte * sign
+                }
+                q8Off += 8
+            }
+            bsum += ls1 * sumi1 + ls2 * sumi2
+            qsOff += 4
+            signsOff += 4
+        }
+
+        sumf += d * bsum
+    }
+
+    return 0.125f * sumf
 }
 
-fun vecDotIQ3XXSQ8K(n: Int, vx: Array<BlockIQ3XXS>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq3XxsQ8KGeneric(n: Int, vx: Array<BlockIQ3XXS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ3XXSQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        var q3Off = 0
+        var gasOff = QK_K / 4
+        var q8Off = 0
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32) {
+            // memcpy(&aux32, gas, sizeof(uint32_t))
+            val aux32 = (vx[i].qs[gasOff + 0].toInt() and 0xFF) or
+                    ((vx[i].qs[gasOff + 1].toInt() and 0xFF) shl 8) or
+                    ((vx[i].qs[gasOff + 2].toInt() and 0xFF) shl 16) or
+                    ((vx[i].qs[gasOff + 3].toInt() and 0xFF) shl 24)
+            gasOff += 4
+            val ls = 2 * ((aux32 ushr 28) and 0xF) + 1
+            var sumi = 0
+            for (l in 0 until 4) {
+                val grid1Val = GGMLCommonTables.iq3xxsGrid[vx[i].qs[q3Off + 2 * l + 0].toInt() and 0xFF]
+                val grid2Val = GGMLCommonTables.iq3xxsGrid[vx[i].qs[q3Off + 2 * l + 1].toInt() and 0xFF]
+                val signs = GGMLCommonTables.ksignsIQ2XS[((aux32 ushr (7 * l)) and 127).toByte().toInt() and 0xFF]
+                for (j in 0 until 4) {
+                    val g1byte = ((grid1Val ushr (j * 8)) and 0xFF)
+                    val g2byte = ((grid2Val ushr (j * 8)) and 0xFF)
+                    val sign1 = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j + 0].toInt() and 0xFF) != 0) -1 else 1
+                    val sign2 = if ((signs.toInt() and 0xFF) and (GGMLCommonTables.kmaskIQ2XS[j + 4].toInt() and 0xFF) != 0) -1 else 1
+                    sumi += g1byte * vy[i].qs[q8Off + j + 0].toInt() * sign1
+                    sumi += g2byte * vy[i].qs[q8Off + j + 4].toInt() * sign2
+                }
+                q8Off += 8
+            }
+            q3Off += 8
+            bsum += sumi * ls
+        }
+        sumf += d * bsum
+    }
+    return 0.25f * sumf
 }
 
-fun vecDotIQ3SQ8K(n: Int, vx: Array<BlockIQ3S>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq3SQ8KGeneric(n: Int, vx: Array<BlockIQ3S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ3SQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val d = halfToFloat(vx[i].d) * vy[i].d
+        var qsOff = 0
+        var q8Off = 0
+        var signsOff = 0
+        var bsum = 0
+        var ib32 = 0
+        while (ib32 < QK_K / 32) {
+            val ls1 = 2 * (vx[i].scales[ib32 / 2].toInt() and 0xF) + 1
+            val ls2 = 2 * ((vx[i].scales[ib32 / 2].toInt() and 0xFF) ushr 4) + 1
+            var sumi = 0
+            for (l in 0 until 4) {
+                val qhVal0 = vx[i].qh[ib32 + 0].toInt() and 0xFF
+                val grid1Idx = (vx[i].qs[qsOff + 2 * l + 0].toInt() and 0xFF) or (((qhVal0 shl (8 - 2 * l)) and 256))
+                val grid2Idx = (vx[i].qs[qsOff + 2 * l + 1].toInt() and 0xFF) or (((qhVal0 shl (7 - 2 * l)) and 256))
+                val grid1Val = GGMLCommonTables.iq3sGrid[grid1Idx]
+                val grid2Val = GGMLCommonTables.iq3sGrid[grid2Idx]
+                val signsVal = vx[i].signs[signsOff + l].toInt() and 0xFF
+                for (j in 0 until 4) {
+                    val g1byte = ((grid1Val ushr (j * 8)) and 0xFF)
+                    val g2byte = ((grid2Val ushr (j * 8)) and 0xFF)
+                    val sign1 = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j + 0].toInt() and 0xFF) != 0) -1 else 1
+                    val sign2 = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j + 4].toInt() and 0xFF) != 0) -1 else 1
+                    sumi += g1byte * vy[i].qs[q8Off + j + 0].toInt() * sign1
+                    sumi += g2byte * vy[i].qs[q8Off + j + 4].toInt() * sign2
+                }
+                q8Off += 8
+            }
+            qsOff += 8
+            signsOff += 4
+            bsum += sumi * ls1
+            sumi = 0
+            for (l in 0 until 4) {
+                val qhVal1 = vx[i].qh[ib32 + 1].toInt() and 0xFF
+                val grid1Idx = (vx[i].qs[qsOff + 2 * l + 0].toInt() and 0xFF) or (((qhVal1 shl (8 - 2 * l)) and 256))
+                val grid2Idx = (vx[i].qs[qsOff + 2 * l + 1].toInt() and 0xFF) or (((qhVal1 shl (7 - 2 * l)) and 256))
+                val grid1Val = GGMLCommonTables.iq3sGrid[grid1Idx]
+                val grid2Val = GGMLCommonTables.iq3sGrid[grid2Idx]
+                val signsVal = vx[i].signs[signsOff + l].toInt() and 0xFF
+                for (j in 0 until 4) {
+                    val g1byte = ((grid1Val ushr (j * 8)) and 0xFF)
+                    val g2byte = ((grid2Val ushr (j * 8)) and 0xFF)
+                    val sign1 = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j + 0].toInt() and 0xFF) != 0) -1 else 1
+                    val sign2 = if (signsVal and (GGMLCommonTables.kmaskIQ2XS[j + 4].toInt() and 0xFF) != 0) -1 else 1
+                    sumi += g1byte * vy[i].qs[q8Off + j + 0].toInt() * sign1
+                    sumi += g2byte * vy[i].qs[q8Off + j + 4].toInt() * sign2
+                }
+                q8Off += 8
+            }
+            qsOff += 8
+            signsOff += 4
+            bsum += sumi * ls2
+            ib32 += 2
+        }
+        sumf += d * bsum
+    }
+    return sumf
 }
 
-fun vecDotIQ1SQ8K(n: Int, vx: Array<BlockIQ1S>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq1SQ8KGeneric(n: Int, vx: Array<BlockIQ1S>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ1SQ8K not yet ported")
+
+    val nb = n / QK_K
+    val IQ1S_DELTA = 0.125f
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        var q8Off = 0
+        var qsOff = 0
+
+        var sumi = 0
+        var sumi1 = 0
+        for (ib in 0 until QK_K / 32) {
+            val qhVal = vx[i].qh[ib].toInt() and 0xFFFF
+            val ls = 2 * ((qhVal ushr 12) and 7) + 1
+            val delta = if (qhVal and 0x8000 != 0) -1 else 1
+            var lsum = 0
+            for (l in 0 until 4) {
+                val gridIdx = (vx[i].qs[qsOff + l].toInt() and 0xFF) or (((qhVal ushr (3 * l)) and 7) shl 8)
+                val gridVal = GGMLCommonTables.iq1sGrid[gridIdx]
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toByte().toInt()
+                    lsum += vy[i].qs[q8Off + j].toInt() * gridByte
+                }
+                q8Off += 8
+            }
+            sumi += ls * lsum
+            sumi1 += ls * delta * (vy[i].bsums[2 * ib + 0].toInt() + vy[i].bsums[2 * ib + 1].toInt())
+            qsOff += 4
+        }
+
+        sumf += halfToFloat(vx[i].d) * vy[i].d * (sumi + IQ1S_DELTA * sumi1)
+    }
+
+    return sumf
 }
 
-fun vecDotIQ1MQ8K(n: Int, vx: Array<BlockIQ1M>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq1MQ8KGeneric(n: Int, vx: Array<BlockIQ1M>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ1MQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    val sum1 = IntArray(2)
+    val sum2 = IntArray(2)
+    val delta = IntArray(4)
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        var q8Off = 0
+        var qsOff = 0
+        var qhOff = 0
+
+        // sc = (uint16_t*)x[i].scales — reinterpret scales bytes as uint16 little-endian
+        val scBytes = vx[i].scales
+        val sc = IntArray(scBytes.size / 2) { idx ->
+            (scBytes[idx * 2].toInt() and 0xFF) or ((scBytes[idx * 2 + 1].toInt() and 0xFF) shl 8)
+        }
+
+        val scaleBits = ((sc[0] ushr 12) and 0xF) or
+                (((sc[1] ushr 8) and 0x00F0)) or
+                (((sc[2] ushr 4) and 0x0F00)) or
+                ((sc[3] and 0xF000))
+        val scale = IQ1MScale(scaleBits.toShort())
+
+        var sumi1 = 0
+        var sumi2 = 0
+        for (ib in 0 until QK_K / 32) {
+            val qh0 = vx[i].qh[qhOff + 0].toInt() and 0xFF
+            val qh1 = vx[i].qh[qhOff + 1].toInt() and 0xFF
+            delta[0] = if (qh0 and 0x08 != 0) -1 else 1
+            delta[1] = if (qh0 and 0x80 != 0) -1 else 1
+            delta[2] = if (qh1 and 0x08 != 0) -1 else 1
+            delta[3] = if (qh1 and 0x80 != 0) -1 else 1
+            sum1[0] = 0; sum1[1] = 0; sum2[0] = 0; sum2[1] = 0
+            for (l in 0 until 4) {
+                val qhByte = vx[i].qh[qhOff + l / 2].toInt() and 0xFF
+                val gridIdx = (vx[i].qs[qsOff + l].toInt() and 0xFF) or
+                        (((qhByte shl (8 - 4 * (l % 2))) and 0x700))
+                val gridVal = GGMLCommonTables.iq1sGrid[gridIdx]
+                var lsum1 = 0
+                var lsum2 = 0
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal ushr (j * 8)) and 0xFF).toByte().toInt()
+                    lsum1 += vy[i].qs[q8Off + j].toInt() * gridByte
+                    lsum2 += vy[i].qs[q8Off + j].toInt()
+                }
+                q8Off += 8
+                sum1[l / 2] += lsum1
+                sum2[l / 2] += lsum2 * delta[l]
+            }
+
+            val ls1 = 2 * ((sc[ib / 2] ushr (6 * (ib % 2) + 0)) and 0x7) + 1
+            val ls2 = 2 * ((sc[ib / 2] ushr (6 * (ib % 2) + 3)) and 0x7) + 1
+
+            sumi1 += sum1[0] * ls1 + sum1[1] * ls2
+            sumi2 += sum2[0] * ls1 + sum2[1] * ls2
+            qsOff += 4
+            qhOff += 2
+        }
+
+        sumf += halfToFloat(scale.f16) * vy[i].d * (sumi1 + IQ1M_DELTA * sumi2)
+    }
+
+    return sumf
 }
 
 /**
@@ -567,7 +1147,7 @@ fun vecDotIQ1MQ8K(n: Int, vx: Array<BlockIQ1M>, vy: Array<BlockQ8K>): Float {
  *
  * Non-linear 4-bit quants use [GGMLCommonTables.kvaluesIQ4NL] for dequantization.
  */
-fun vecDotIQ4NLQ8_0(n: Int, vx: Array<BlockIQ4NL>, vy: Array<BlockQ8_0>): Float {
+fun ggmlVecDotIq4NlQ80Generic(n: Int, vx: Array<BlockIQ4NL>, vy: Array<BlockQ8_0>): Float {
     require(n % QK4_NL == 0) { "n ($n) must be divisible by $QK4_NL" }
     val nb = n / QK4_NL
 
@@ -587,9 +1167,49 @@ fun vecDotIQ4NLQ8_0(n: Int, vx: Array<BlockIQ4NL>, vy: Array<BlockQ8_0>): Float 
     return sumf
 }
 
-fun vecDotIQ4XSQ8K(n: Int, vx: Array<BlockIQ4XS>, vy: Array<BlockQ8K>): Float {
+fun ggmlVecDotIq4XsQ8KGeneric(n: Int, vx: Array<BlockIQ4XS>, vy: Array<BlockQ8K>): Float {
     require(n % QK_K == 0) { "n ($n) must be divisible by $QK_K" }
-        error("vecDotIQ4XSQ8K not yet ported")
+
+    val nb = n / QK_K
+
+    var sumf = 0.0f
+    for (ibl in 0 until nb) {
+        val d4d8 = halfToFloat(vx[ibl].d) * vy[ibl].d
+        var h = vx[ibl].scalesH.toInt() and 0xFFFF
+        var qsOff = 0
+        var q8Off = 0
+        var ib = 0
+        while (ib < QK_K / 32) {
+            val ls1 = ((vx[ibl].scalesL[ib / 2].toInt() and 0xFF) and 0xF) or ((h shl 4) and 0x30)
+            val ls2 = ((vx[ibl].scalesL[ib / 2].toInt() and 0xFF) ushr 4) or ((h shl 2) and 0x30)
+            h = h ushr 4
+            val d1 = d4d8 * (ls1 - 32)
+            val d2 = d4d8 * (ls2 - 32)
+            var sumi1 = 0
+            var sumi2 = 0
+            for (j in 0 until 16) {
+                sumi1 += vy[ibl].qs[q8Off + j + 0].toInt() *
+                        GGMLCommonTables.kvaluesIQ4NL[vx[ibl].qs[qsOff + j].toInt() and 0xF].toInt()
+                sumi2 += vy[ibl].qs[q8Off + j + 16].toInt() *
+                        GGMLCommonTables.kvaluesIQ4NL[(vx[ibl].qs[qsOff + j].toInt() and 0xFF) ushr 4].toInt()
+            }
+            sumf += d1 * (sumi1 + sumi2)
+            qsOff += 16
+            q8Off += 32
+            sumi1 = 0; sumi2 = 0
+            for (j in 0 until 16) {
+                sumi1 += vy[ibl].qs[q8Off + j + 0].toInt() *
+                        GGMLCommonTables.kvaluesIQ4NL[vx[ibl].qs[qsOff + j].toInt() and 0xF].toInt()
+                sumi2 += vy[ibl].qs[q8Off + j + 16].toInt() *
+                        GGMLCommonTables.kvaluesIQ4NL[(vx[ibl].qs[qsOff + j].toInt() and 0xFF) ushr 4].toInt()
+            }
+            sumf += d2 * (sumi1 + sumi2)
+            qsOff += 16
+            q8Off += 32
+            ib += 2
+        }
+    }
+    return sumf
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -626,47 +1246,4 @@ internal fun ggmlUE4M3ToFp32(b: Byte): Float {
         // Normal: (8 + mantissa) * 2^(exponent - 8)
         (8 + mantissa).toFloat() * Float.fromBits((exponent - 8 + 127) shl 23)
     }
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-//  Legacy Q1.5_K stubs (pre-existing — preserved verbatim)
-// ════════════════════════════════════════════════════════════════════════════════
-
-/**
- * Quantizes a row of float values to Q1.5_K format (ternary quantization).
- *
- * Q1.5_K uses ternary values (-1, 0, 1) to represent weights with minimal precision loss.
- * Each block contains a scale factor and packed ternary values optimized for storage efficiency.
- *
- * @param source The input array of float values to quantize
- * @param dest The output byte array for quantized data storage
- * @param elements The number of float elements to process
- * @param scale The quantization scale factor for this block
- */
-fun quantizeRowQ15K(source: FloatArray, dest: ByteArray, elements: Int, scale: Float) {
-}
-
-/**
- * Dequantizes a row of Q1.5_K data back to float values.
- *
- * @param source The input byte array containing Q1.5_K quantized data
- * @param dest The output float array for dequantized values
- * @param elements The number of elements to dequantize
- * @param scale The scale factor used during quantization
- */
-fun dequantizeRowQ15K(source: ByteArray, dest: FloatArray, elements: Int, scale: Float) {
-}
-
-/**
- * Computes the dot product of two Q1.5_K quantized vectors.
- *
- * @param elements The number of elements in each vector
- * @param vx The first quantized vector in Q1.5_K format
- * @param scaleX The scaling factor for the first vector
- * @param vy The second quantized vector in Q1.5_K format
- * @param scaleY The scaling factor for the second vector
- * @return The computed dot product as a float
- */
-fun dotQ15K(elements: Int, vx: ByteArray, scaleX: Float, vy: ByteArray, scaleY: Float): Float {
-    error("dotQ15K not yet ported")
 }
