@@ -663,6 +663,91 @@ object GGMLBackendRegistry {
 }
 
 // ---------------------------------------------------------------------------
+// Free-function wrappers (ggml-backend-reg.cpp)
+// These mirror the C API free functions that delegate to the global registry.
+// ---------------------------------------------------------------------------
+
+/** `ggml_backend_register` — C: ggml-backend-reg.cpp line 279. */
+fun ggmlBackendRegister(reg: GGMLBackendReg) {
+    GGMLBackendRegistry.registerReg(reg)
+}
+
+/** `ggml_backend_device_register` — C: ggml-backend-reg.cpp line 283. */
+fun ggmlBackendDeviceRegister(device: GGMLBackendDevice) {
+    GGMLBackendRegistry.registerDevice(device)
+}
+
+/** `ggml_backend_reg_count` — C: ggml-backend-reg.cpp line 297. */
+fun ggmlBackendRegCount(): ULong {
+    return GGMLBackendRegistry.regCount()
+}
+
+/** `ggml_backend_reg_get` — C: ggml-backend-reg.cpp line 301. */
+fun ggmlBackendRegGet(index: ULong): GGMLBackendReg? {
+    return GGMLBackendRegistry.regGet(index)
+}
+
+/** `ggml_backend_reg_by_name` — C: ggml-backend-reg.cpp line 306. */
+fun ggmlBackendRegByName(name: String): GGMLBackendReg? {
+    return GGMLBackendRegistry.regByName(name)
+}
+
+/** `ggml_backend_dev_count` — C: ggml-backend-reg.cpp line 317. */
+fun ggmlBackendDevCount(): ULong {
+    return GGMLBackendRegistry.deviceCount()
+}
+
+/** `ggml_backend_dev_get` — C: ggml-backend-reg.cpp line 321. */
+fun ggmlBackendDevGet(index: ULong): GGMLBackendDevice? {
+    return GGMLBackendRegistry.deviceGet(index)
+}
+
+/** `ggml_backend_dev_by_name` — C: ggml-backend-reg.cpp line 326. */
+fun ggmlBackendDevByName(name: String): GGMLBackendDevice? {
+    return GGMLBackendRegistry.deviceByName(name)
+}
+
+/** `ggml_backend_dev_by_type` — C: ggml-backend-reg.cpp line 336. */
+fun ggmlBackendDevByType(type: GGMLBackendDeviceType): GGMLBackendDevice? {
+    return GGMLBackendRegistry.deviceByType(type)
+}
+
+/** `ggml_backend_init_by_name` — C: ggml-backend-reg.cpp line 347. */
+fun ggmlBackendInitByName(name: String, params: String? = null): GGMLBackend? {
+    return GGMLBackendRegistry.initByName(name, params)
+}
+
+/** `ggml_backend_init_by_type` — C: ggml-backend-reg.cpp line 355. */
+fun ggmlBackendInitByType(type: GGMLBackendDeviceType, params: String? = null): GGMLBackend? {
+    return GGMLBackendRegistry.initByType(type, params)
+}
+
+/** `ggml_backend_init_best` — C: ggml-backend-reg.cpp line 363. */
+fun ggmlBackendInitBest(): GGMLBackend? {
+    return GGMLBackendRegistry.initBest()
+}
+
+/** `ggml_backend_load` — C: ggml-backend-reg.cpp line 374. */
+fun ggmlBackendLoad(path: String): GGMLBackendReg? {
+    return GGMLBackendRegistry.load(path)
+}
+
+/** `ggml_backend_unload` — C: ggml-backend-reg.cpp line 378. */
+fun ggmlBackendUnload(reg: GGMLBackendReg) {
+    GGMLBackendRegistry.unload(reg)
+}
+
+/** `ggml_backend_load_all` — C: ggml-backend-reg.cpp line 543. */
+fun ggmlBackendLoadAll() {
+    GGMLBackendRegistry.loadAll()
+}
+
+/** `ggml_backend_load_all_from_path` — C: ggml-backend-reg.cpp line 547. */
+fun ggmlBackendLoadAllFromPath(dirPath: String) {
+    GGMLBackendRegistry.loadAllFromPath(dirPath)
+}
+
+// ---------------------------------------------------------------------------
 // Backend scheduler  (ggml_backend_sched_t)
 // ---------------------------------------------------------------------------
 
