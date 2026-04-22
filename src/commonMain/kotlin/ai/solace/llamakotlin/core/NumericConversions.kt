@@ -1003,6 +1003,9 @@ fun ggml_check_edges(cgraph: GGMLCGraph, startIdx: Int, edges: List<Triple<Int, 
 // Standalone bitset functions — match C signatures from ggml-impl.h
 // ============================================================================
 
+/** Port of `ggml_bitset_size(n)` from ggml-impl.h. */
+inline fun ggml_bitset_size(n: Int): Int = (n + 31) / 32
+
 /** Port of `ggml_bitset_get(bitset, i)` from ggml-impl.h line 209. */
 inline fun ggml_bitset_get(bitset: GGMLBitset, i: Int): Boolean = bitset.get(i)
 

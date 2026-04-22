@@ -642,3 +642,51 @@ typealias GGMLBackendInitFn = () -> GGMLBackendRegHolder?
  * the current system.
  */
 typealias GGMLBackendScoreFn = () -> Int
+
+// ---------------------------------------------------------------------------
+// Meta backend query functions (from ggml-backend-meta.cpp)
+// ---------------------------------------------------------------------------
+
+/**
+ * Marker interface for meta backends (backends that wrap multiple simple backends).
+ * In C++ this is checked via vtable pointer comparison; in Kotlin we use `is` checks.
+ */
+interface GGMLMetaBackendMarker
+
+/** Port of `ggml_backend_is_meta` from ggml-backend-meta.cpp line 1953. */
+fun ggmlBackendIsMeta(backend: GGMLBackend?): Boolean =
+    backend is GGMLMetaBackendMarker
+
+/** Port of `ggml_backend_buffer_is_meta` from ggml-backend-meta.cpp line 1372. */
+fun ggmlBackendBufferIsMeta(buf: GGMLBackendBuffer?): Boolean =
+    buf is GGMLMetaBackendMarker
+
+/** Port of `ggml_backend_buft_is_meta` from ggml-backend-meta.cpp line 339. */
+fun ggmlBackendBuftIsMeta(buft: GGMLBackendBufferType?): Boolean =
+    buft is GGMLMetaBackendMarker
+
+/**
+ * Port of `ggml_backend_meta_n_backends` from ggml-backend-meta.cpp line 1968.
+ * Returns number of simple backends wrapped by a meta backend.
+ */
+fun ggmlBackendMetaNBackends(metaBackend: GGMLBackend): Int {
+    require(ggmlBackendIsMeta(metaBackend)) { "Not a meta backend" }
+    // Meta backend context stores list of wrapped backends
+    val ctx = metaBackend.context
+    if (ctx is List<*>) return ctx.size
+    error("Meta backend context not properly initialized")
+}
+
+/**
+ * Port of `ggml_backend_meta_simple_backend` from ggml-backend-meta.cpp line 1974.
+ * Returns the i-th simple backend from a meta backend.
+ */
+fun ggmlBackendMetaSimpleBackend(metaBackend: GGMLBackend, index: Int): GGMLBackend {
+    require(ggmlBackendIsMeta(metaBackend)) { "Not a meta backend" }
+    val ctx = metaBackend.context
+    if (ctx is List<*>) {
+        @Suppress("UNCHECKED_CAST")
+        return (ctx as List<GGMLBackend>)[index]
+    }
+    error("Meta backend context not properly initialized")
+}
