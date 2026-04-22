@@ -39,8 +39,8 @@ These files need significant work:
 - `ggml-cann.common` → `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` (0.00)
 - `kleidiai.kernels` → `bench.ShiftKernels` (0.00, 1 deps)
 - `ggml-sycl.fattn-common` → `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` (0.00, 3 deps)
-- `ggml-backend-impl` → `core.GGMLBackendImpl` (0.36, 47 deps)
 - `ggml-cpu.simd-mappings` → `simd.GGMLSimd` (0.00, 10 deps)
+- `ggml-backend-impl` → `core.GGMLBackendImpl` (0.56, 47 deps)
 - `ggml-openvino.utils` → `checksum.Adler32Utils` (0.00)
 - `ggml-metal.ggml-metal-common` → `common.ZlibLogger` (0.01, 1 deps)
 - `openvino.utils` → `core.GGMLTestUtils` (0.00)
@@ -81,10 +81,10 @@ present in the Rust source file.
 | `ggml-opt` | `core.GGMLOptimizationSchedulerTest` | 13/13 | `ggml_opt_dataset`, `ggml_context`, `ggml_tensor` … |
 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 10/10 | `ggml_cann_device_info`, `cann_device_info`, `ggml_cann_pool` … |
 | `kleidiai.kernels` | `bench.ShiftKernels` | 5/5 | `cpu_feature`, `kernel_info`, `lhs_packing_info` … |
+| `ggml-backend` | `core.GGMLBackendUtils` | 14/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 5/5 | `graph_key`, `graph_key_hash`, `ov_runtime_context` … |
 | `ggml-metal.ggml-metal-common` | `common.ZlibLogger` | 4/4 | `ggml_tensor`, `ggml_cgraph`, `ggml_mem_range_type` … |
-| `ggml-backend` | `core.GGMLBackendUtils` | 13/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 4/4 | `ggml_compute_params`, `ggml_tensor`, `tensor_traits` … |
 | `openvino.input_model` | `model.IntegrationTest` | 3/3 | `FrontEnd`, `GgmlDecoder`, `InputModel` |

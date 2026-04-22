@@ -13,11 +13,11 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 5 | `ggml-cann.common` | `nativeMain.kotlin.ai.solace.klang.common.ZlibLoggerNative` | 0.00 | 0 | 37 | 370.0 |
 | 6 | `kleidiai.kernels` | `bench.ShiftKernels` | 0.00 | 1 | 31 | 356.4 |
 | 7 | `ggml-sycl.fattn-common` | `commonMain.kotlin.ai.solace.klang.common.ZlibLogger` | 0.00 | 3 | 27 | 351.8 |
-| 8 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.36 | 47 | 19 | 349.4 |
+| 8 | `ggml-backend` | `core.GGMLBackendUtils` | 0.70 | 20 | 21 | 342.4 |
 | 9 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
-| 10 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
-| 11 | `ggml-metal.ggml-metal-common` | `common.ZlibLogger` | 0.01 | 1 | 23 | 265.3 |
-| 12 | `ggml-backend` | `core.GGMLBackendUtils` | 0.74 | 20 | 14 | 229.2 |
+| 10 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.56 | 47 | 16 | 292.3 |
+| 11 | `ggml-openvino.utils` | `checksum.Adler32Utils` | 0.00 | 0 | 27 | 270.0 |
+| 12 | `ggml-metal.ggml-metal-common` | `common.ZlibLogger` | 0.01 | 1 | 23 | 265.3 |
 | 13 | `openvino.utils` | `core.GGMLTestUtils` | 0.00 | 0 | 17 | 170.0 |
 | 14 | `ggml-impl` | `core.NumericConversions` | 0.54 | 58 | 8 | 154.7 |
 | 15 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.29 | 9 | 8 | 125.0 |
@@ -49,14 +49,14 @@ These files need immediate attention:
   - Similarity: 0.00
   - Dependencies: 3
 
-- **ggml-backend-impl** → `core.GGMLBackendImpl`
-  - Similarity: 0.36
-  - Dependencies: 47
-  - Lint issues: 49
-
 - **ggml-cpu.simd-mappings** → `simd.GGMLSimd`
   - Similarity: 0.00
   - Dependencies: 10
+
+- **ggml-backend-impl** → `core.GGMLBackendImpl`
+  - Similarity: 0.56
+  - Dependencies: 47
+  - Lint issues: 55
 
 - **ggml-metal.ggml-metal-common** → `common.ZlibLogger`
   - Similarity: 0.01
