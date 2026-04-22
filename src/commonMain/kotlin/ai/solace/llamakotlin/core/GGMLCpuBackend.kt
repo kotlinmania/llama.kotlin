@@ -289,7 +289,7 @@ class GGMLCpuBackend : GGMLBackend {
     /** Internal CPU context — mirrors `ggml_backend_cpu_context`. */
     internal val cpuCtx = GGMLCpuBackendContext()
 
-    private val bufferType = GGMLCpuBufferType()
+    private val bufferType = createDefaultCpuBufferType()
     // -- GGMLBackend interface ------------------------------------------------
 
     override fun getGuid(): String = BACKEND_GUID
@@ -607,7 +607,7 @@ class GGMLCpuDevice(
      *
      * Mirrors `ggml_backend_cpu_device_get_buffer_type()` (lines 410-414).
      */
-    override fun getBufferType(): GGMLBackendBufferType = GGMLCpuBufferType()
+    override fun getBufferType(): GGMLBackendBufferType = createDefaultCpuBufferType()
 
     /**
      * Create a CPU buffer wrapping an existing host [ptr].

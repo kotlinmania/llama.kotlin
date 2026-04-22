@@ -525,7 +525,7 @@ object GGMLBackendRegistry {
         register(GGMLBackendRegistration(
             name = "CPU",
             initFunction = { _ -> GGMLCpuBackend() },
-            defaultBufferType = GGMLCpuBufferType()
+            defaultBufferType = createDefaultCpuBufferType()
         ))
     }
 

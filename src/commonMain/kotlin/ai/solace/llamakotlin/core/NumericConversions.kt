@@ -1111,15 +1111,23 @@ fun ggml_print_backtrace() {
 
 // ============================================================================
 // ggml_aligned_malloc / ggml_aligned_free — ggml-impl.h line 360-361
-// In Kotlin/Native, ByteArray allocation is managed by the GC.
-// These are provided for API parity.
+//
+// On native targets, these allocate/free truly aligned memory via posix_memalign.
+// On jvm/js targets, they fall back to ByteArray (GC-managed, no alignment).
 // ============================================================================
 
-fun ggml_aligned_malloc(size: Long): ByteArray = ByteArray(size.toInt())
+expect fun ggml_aligned_malloc(size: Long): Any?
 
-fun ggml_aligned_free(ptr: ByteArray, size: Long) {
-    // No-op: Kotlin GC handles deallocation
-}
+expect fun ggml_aligned_free(ptr: Any?, size: Long)
+
+// ============================================================================
+// Platform-specific CPU buffer type factory.
+//
+// On native targets returns GGMLCpuBufferTypeNative (posix_memalign-backed).
+// On jvm/js returns GGMLCpuBufferType (ByteArray-backed).
+// ============================================================================
+
+expect fun createDefaultCpuBufferType(): GGMLBackendBufferType
 
 // ============================================================================
 // ggml_up64 — commented out in ggml-impl.h line 64-66, but included for parity

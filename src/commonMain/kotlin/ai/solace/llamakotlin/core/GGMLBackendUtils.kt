@@ -1806,9 +1806,8 @@ fun graphCopyInitTensor(
 class GGMLCpuBufferFromPtrType : GGMLBackendBufferType {
     override fun getName(): String = "CPU_Mapped"
     override fun allocBuffer(size: ULong): GGMLBackendBuffer {
-        val aligned = ((size.toInt() + TENSOR_ALIGNMENT - 1) / TENSOR_ALIGNMENT) * TENSOR_ALIGNMENT
-        val data = ByteArray(aligned)
-        return GGMLCpuBuffer(GGMLCpuBufferType(), data, size)
+        return createDefaultCpuBufferType().allocBuffer(size)
+            ?: throw OutOfMemoryError("Failed to allocate CPU buffer of size $size")
     }
     override fun getAlignment(): UInt = TENSOR_ALIGNMENT.toUInt()
     override fun getMaxSize(): ULong = ULong.MAX_VALUE
@@ -1928,7 +1927,7 @@ fun ggmlBackendCpuBufferFromPtr(ptr: ByteArray, size: ULong): GGMLBackendBuffer 
 }
 
 /** `ggml_backend_cpu_buffer_type` — C line 2328. Returns the CPU buffer type. */
-fun ggmlBackendCpuBufferType(): GGMLBackendBufferType = GGMLCpuBufferType()
+fun ggmlBackendCpuBufferType(): GGMLBackendBufferType = createDefaultCpuBufferType()
 
 // Multi-buffer functions in GGMLBackendImpl.kt (declared in ggml-backend-impl.h)
 

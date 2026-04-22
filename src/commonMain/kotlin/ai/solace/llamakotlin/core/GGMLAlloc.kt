@@ -495,7 +495,7 @@ class GGMLGraphAllocator {
     var tensorAllocators = mutableListOf<GGMLDynTensorAllocator>()
 
     // Backend buffers
-    var buffers = mutableListOf<ByteArray?>()
+    var buffers = mutableListOf<Any?>()
     
     // Backend buffer objects (new)
     var backendBuffers = mutableListOf<GGMLBackendBuffer?>()
@@ -523,12 +523,8 @@ class GGMLGraphAllocator {
             val backendBuffer = backend.allocBuffer(defaultBufferSize.toULong())
             if (backendBuffer != null) {
                 backendBuffers.add(backendBuffer)
-                // For CPU backend, we can still access the underlying ByteArray
-                if (backendBuffer is GGMLCpuBuffer) {
-                    buffers.add(backendBuffer.getBase() as ByteArray)
-                } else {
-                    buffers.add(null) // Non-CPU backends don't expose ByteArray
-                }
+                // Store the buffer's backing store (NativeAlignedBuffer on native, ByteArray on jvm/js)
+                buffers.add(backendBuffer.getBase())
             } else {
                 // Fallback to regular ByteArray
                 buffers.add(ByteArray(defaultBufferSize))
@@ -593,10 +589,11 @@ class GGMLGraphAllocator {
         }
 
         val currentBuffer = buffers[bufferId]
-        if (currentBuffer == null || currentBuffer.size < requiredSize.toInt()) {
-            // Ensure requiredSize is not zero if creating a new buffer,
-            // though ULong to Int conversion might cap it.
-            // Consider a minimum practical size or error if requiredSize is too large for Int.
+        val currentSize = when (currentBuffer) {
+            is ByteArray -> currentBuffer.size.toLong()
+            else -> 0L
+        }
+        if (currentBuffer == null || currentSize < requiredSize.toLong()) {
             val newSize = if (requiredSize > Int.MAX_VALUE.toULong()) {
                 println("Warning: requiredSize $requiredSize exceeds Int.MAX_VALUE. Clamping to Int.MAX_VALUE.")
                 Int.MAX_VALUE
@@ -604,20 +601,18 @@ class GGMLGraphAllocator {
                 requiredSize.toInt()
             }
 
-            // Add the new check:
             if (newSize <= 0 && requiredSize > 0uL) {
                 throw IllegalArgumentException(
                     "Invalid buffer size for buffer $bufferId: " +
                     "original requiredSize $requiredSize (ULong) resulted in " +
-                    "non-positive effective size $newSize (Int) for ByteArray construction. " +
+                    "non-positive effective size $newSize (Int). " +
                     "This may indicate an overflow from ULong to Int or an invalid input."
                 )
             }
-            // If requiredSize is 0uL, newSize will be 0. ByteArray(0) is valid.
-            // The condition above ensures that if requiredSize was > 0, newSize must also be > 0.
 
-            buffers[bufferId] = ByteArray(newSize) // Create/resize the actual buffer. If newSize is 0, this is ByteArray(0).
-            tensorAllocators[bufferId].reset(newSize.toULong()) // Reset the allocator with the new size
+            // Allocate via ggml_aligned_malloc — returns NativeAlignedBuffer on native, ByteArray on jvm/js
+            buffers[bufferId] = ggml_aligned_malloc(newSize.toLong()) ?: ByteArray(newSize)
+            tensorAllocators[bufferId].reset(newSize.toULong())
         }
     }
 
