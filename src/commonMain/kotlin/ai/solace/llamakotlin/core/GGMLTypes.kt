@@ -234,12 +234,15 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     NEG(true),
     STEP(true),
     RELU(true),
+    SIN(true),
+    COS(true),
     LOG(true),
     GELU(true),
     GELU_QUICK(true),
     SILU(true),
     SILU_BACK(true),
-    NORM(true), // LayerNorm, can be inplace if shapes match and specific handling
+    NORM(true),
+    L2_NORM(true),
     RMS_NORM(true),
     RMS_NORM_BACK(true),
     MUL_MAT,    // Matrix multiplication, typically not inplace
@@ -266,8 +269,9 @@ enum class GGMLOp(val canBeInplace: Boolean = false) {
     CONV_1D_2S,
     FLASH_ATTN,
     FLASH_FF,
-    MAP_UNARY, // Depends on the specific unary op mapped
-    MAP_BINARY, // Depends on the specific binary op mapped
+    MAP_UNARY,
+    MAP_BINARY,
+    MAP_CUSTOM3,
     ACC(true),    // Accumulate: dst = src0 + src1 at offset
     SET(true),    // Set: copy src1 into src0 at offset
     CONT,         // Make contiguous (same as dup)
@@ -330,10 +334,15 @@ data class GGMLBF16(val bits: UShort)
 /**
  * Base object structure
  */
+enum class GGMLObjectType { TENSOR, GRAPH, WORK_BUFFER }
+
 class GGMLObject(
+    var type: GGMLObjectType = GGMLObjectType.TENSOR,
+    var offs: Long = 0L,
     var offset: ULong = 0u,
     var size: ULong = 0u,
-    var next: GGMLObject? = null
+    var next: GGMLObject? = null,
+    var tensor: GGMLTensor? = null
 )
 
 /**
@@ -354,7 +363,8 @@ class GGMLTensor(
     var data: Any? = null,
     var name: String = "",
     var bufferId: Int = -1,
-    var dataOffset: ULong = 0u
+    var dataOffset: ULong = 0u,
+    var parentObject: GGMLObject? = null
 ) {
     var offset: ULong
         get() = dataOffset

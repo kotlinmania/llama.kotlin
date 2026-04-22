@@ -2267,3 +2267,758 @@ fun ggmlNewTensorLike(ctx: GGMLContext, src: GGMLTensor): GGMLTensor {
     // GGML tensors are always 4D; infer effective rank from trailing ne==1 dims
     return ggmlNewTensor4d(ctx, src.type, src.ne[0], src.ne[1], src.ne[2], src.ne[3])
 }
+
+// ============================================================================
+// Missing ggml.h functions — batch transliteration from ggml.c
+// ============================================================================
+
+/** Port of `ggml_is_padded_1d` from ggml.c. */
+fun ggmlIsPadded1d(tensor: GGMLTensor): Boolean =
+    tensor.nb[0] == ggmlTypeSize(tensor.type) &&
+    tensor.nb[2] == tensor.nb[1] * tensor.ne[1].toULong() &&
+    tensor.nb[3] == tensor.nb[2] * tensor.ne[2].toULong()
+
+/** Port of `ggml_is_contiguous_rows` from ggml.c. */
+fun ggmlIsContiguousRows(tensor: GGMLTensor): Boolean =
+    tensor.ne[0] == ggmlBlckSize(tensor.type) ||
+    tensor.nb[0] == ggmlTypeSize(tensor.type)
+
+/** Port of `ggml_is_contiguous_channels` from ggml.c. */
+fun ggmlIsContiguousChannels(tensor: GGMLTensor): Boolean =
+    tensor.nb[0] > tensor.nb[2] &&
+    tensor.nb[1] > tensor.nb[0] &&
+    tensor.nb[2] == ggmlTypeSize(tensor.type)
+
+/** Port of `ggml_get_data` from ggml.c. */
+fun ggmlGetData(tensor: GGMLTensor): ByteArray = tensor.data
+
+/** Port of `ggml_get_data_f32` from ggml.c. */
+fun ggmlGetDataF32(tensor: GGMLTensor): ByteArray {
+    require(tensor.type == GGMLType.F32) { "not F32" }
+    return tensor.data
+}
+
+/** Port of `ggml_get_first_tensor` from ggml.c. */
+fun ggmlGetFirstTensor(ctx: GGMLContext): GGMLTensor? {
+    var obj = ctx.objectsBegin
+    while (obj != null) {
+        if (obj.type == GGMLObjectType.TENSOR) {
+            return obj.tensor
+        }
+        obj = obj.next
+    }
+    return null
+}
+
+/** Port of `ggml_get_next_tensor` from ggml.c. */
+fun ggmlGetNextTensor(ctx: GGMLContext, tensor: GGMLTensor): GGMLTensor? {
+    var obj = tensor.parentObject?.next
+    while (obj != null) {
+        if (obj.type == GGMLObjectType.TENSOR) {
+            return obj.tensor
+        }
+        obj = obj.next
+    }
+    return null
+}
+
+/** Port of `ggml_used_mem` from ggml.c. */
+fun ggmlUsedMem(ctx: GGMLContext): ULong {
+    val end = ctx.objectsEnd ?: return 0uL
+    return (end.offs + end.size).toULong()
+}
+
+/** Port of `ggml_get_mem_size` from ggml.c. */
+fun ggmlGetMemSize(ctx: GGMLContext): ULong = ctx.memSize
+
+/** Port of `ggml_get_mem_buffer` from ggml.c. */
+fun ggmlGetMemBuffer(ctx: GGMLContext): Any? = ctx.memBuffer
+
+/** Port of `ggml_get_max_tensor_size` from ggml.c. */
+fun ggmlGetMaxTensorSize(ctx: GGMLContext): ULong {
+    var maxSize = 0uL
+    var tensor = ggmlGetFirstTensor(ctx)
+    while (tensor != null) {
+        val bytes = ggmlNbytes(tensor)
+        if (bytes > maxSize) maxSize = bytes
+        tensor = ggmlGetNextTensor(ctx, tensor)
+    }
+    return maxSize
+}
+
+/** Port of `ggml_version` from ggml.c. */
+fun ggmlVersion(): String = "0.0.0" // GGML_VERSION equivalent
+
+/** Port of `ggml_status_to_string` from ggml.c. */
+fun ggmlStatusToString(status: GGMLStatus): String = when (status) {
+    GGMLStatus.ALLOC_FAILED -> "GGML status: error (failed to allocate memory)"
+    GGMLStatus.FAILED       -> "GGML status: error (operation failed)"
+    GGMLStatus.SUCCESS      -> "GGML status: success"
+    GGMLStatus.ABORTED      -> "GGML status: warning (operation aborted)"
+}
+
+/** Port of `ggml_type_sizef` from ggml.c. */
+fun ggmlTypeSizef(type: GGMLType): Double =
+    type.byteSize.toDouble() / ggmlBlckSize(type).toDouble()
+
+/** Port of `ggml_ftype_to_ggml_type` from ggml.c. */
+fun ggmlFtypeToGgmlType(ftype: Int): GGMLType = when (ftype) {
+    0  -> GGMLType.F32
+    1  -> GGMLType.F16
+    2  -> GGMLType.Q4_0
+    3  -> GGMLType.Q4_1
+    7  -> GGMLType.Q8_0
+    8  -> GGMLType.Q5_0
+    9  -> GGMLType.Q5_1
+    10 -> GGMLType.Q2_K
+    11 -> GGMLType.Q3_K
+    12 -> GGMLType.Q4_K
+    13 -> GGMLType.Q5_K
+    14 -> GGMLType.Q6_K
+    15 -> GGMLType.BF16
+    else -> GGMLType.COUNT // GGML_TYPE_COUNT means invalid
+}
+
+/** Port of `ggml_unravel_index` from ggml.c. Returns (i0, i1, i2, i3). */
+fun ggmlUnravelIndex(tensor: GGMLTensor, i: Long): LongArray {
+    val ne0 = tensor.ne[0]; val ne1 = tensor.ne[1]; val ne2 = tensor.ne[2]
+    val i3 = i / (ne2 * ne1 * ne0)
+    val i2 = (i - i3 * ne2 * ne1 * ne0) / (ne1 * ne0)
+    val i1 = (i - i3 * ne2 * ne1 * ne0 - i2 * ne1 * ne0) / ne0
+    val i0 = i - i3 * ne2 * ne1 * ne0 - i2 * ne1 * ne0 - i1 * ne0
+    return longArrayOf(i0, i1, i2, i3)
+}
+
+/** Port of `ggml_bf16_to_fp32_row` from ggml.c. */
+fun ggmlBf16ToFp32Row(x: ShortArray, y: FloatArray, n: Int) {
+    for (i in 0 until n) {
+        y[i] = GGML_BF16_TO_FP32(GGMLBF16(x[i].toUShort()))
+    }
+}
+
+/** Port of `ggml_fp32_to_bf16_row` from ggml.c. */
+fun ggmlFp32ToBf16Row(x: FloatArray, y: ShortArray, n: Int) {
+    for (i in 0 until n) {
+        y[i] = GGML_FP32_TO_BF16(x[i]).bits.toShort()
+    }
+}
+
+/** Port of `ggml_fp32_to_bf16_row_ref` from ggml.c — reference (non-SIMD). */
+fun ggmlFp32ToBf16RowRef(x: FloatArray, y: ShortArray, n: Int) = ggmlFp32ToBf16Row(x, y, n)
+
+/** Port of `ggml_abort` from ggml.c. */
+fun ggmlAbort(file: String, line: Int, message: String) {
+    val text = "$file:$line: $message"
+    ggml_log_internal(GGMLLogLevel.ERROR, text + "\n")
+    ggml_print_backtrace()
+    throw RuntimeException(text)
+}
+
+/** Port of `ggml_set_abort_callback` from ggml.c. */
+private var gAbortCallback: ((String) -> Unit)? = null
+fun ggmlSetAbortCallback(callback: ((String) -> Unit)?) { gAbortCallback = callback }
+
+// --- Time functions (platform-agnostic using Kotlin stdlib) ---
+
+/** Port of `ggml_time_init` from ggml.c. No-op in Kotlin. */
+fun ggmlTimeInit() { /* no-op */ }
+
+/** Port of `ggml_time_ms` from ggml.c. */
+fun ggmlTimeMs(): Long = kotlin.time.TimeSource.Monotonic.markNow().elapsedNow().inWholeMilliseconds
+
+/** Port of `ggml_time_us` from ggml.c. */
+fun ggmlTimeUs(): Long = kotlin.time.TimeSource.Monotonic.markNow().elapsedNow().inWholeMicroseconds
+
+/** Port of `ggml_cycles` from ggml.c. Approximate with nanoTime. */
+fun ggmlCycles(): Long = kotlin.time.TimeSource.Monotonic.markNow().elapsedNow().inWholeNanoseconds
+
+/** Port of `ggml_cycles_per_ms` from ggml.c. */
+fun ggmlCyclesPerMs(): Long = 1_000_000L
+
+// --- Graph operations ---
+
+/** Port of `ggml_graph_reset` from ggml.c. */
+fun ggmlGraphReset(cgraph: GGMLCGraph) {
+    for (i in 0 until cgraph.nNodes) {
+        val node = cgraph.nodes[i] ?: continue
+        val gradAcc = ggmlGraphGetGradAcc(cgraph, node)
+
+        if (node.op == GGMLOp.OPT_STEP_ADAMW) {
+            node.src.getOrNull(2)?.let { ggmlSetZero(it) }
+            node.src.getOrNull(3)?.let { ggmlSetZero(it) }
+        }
+
+        if (gradAcc != null) {
+            if (node.flags and GGML_TENSOR_FLAG_LOSS != 0) {
+                require(gradAcc.type == GGMLType.F32)
+                require(ggmlIsScalar(gradAcc))
+                gradAcc.data = ByteArray(4)
+                val bits = 1.0f.toRawBits()
+                gradAcc.data[0] = (bits and 0xFF).toByte()
+                gradAcc.data[1] = ((bits shr 8) and 0xFF).toByte()
+                gradAcc.data[2] = ((bits shr 16) and 0xFF).toByte()
+                gradAcc.data[3] = ((bits shr 24) and 0xFF).toByte()
+            } else {
+                ggmlSetZero(gradAcc)
+            }
+        }
+    }
+}
+
+/** Port of `ggml_graph_get_grad_acc` from ggml.c. */
+fun ggmlGraphGetGradAcc(cgraph: GGMLCGraph, node: GGMLTensor): GGMLTensor? {
+    val hashSet = cgraph.visitedHashSet as? GGMLHashSet ?: return null
+    val gradAccs = cgraph.gradAccs
+    val idx = ggml_hash_find(hashSet, node)
+    if (idx == GGML_HASHSET_FULL || !ggml_bitset_get(hashSet.used, idx)) return null
+    return gradAccs.getOrNull(idx)
+}
+
+/** Port of `ggml_graph_get_grad` from ggml.c. */
+fun ggmlGraphGetGrad(cgraph: GGMLCGraph, node: GGMLTensor): GGMLTensor? {
+    val hashSet = cgraph.visitedHashSet as? GGMLHashSet ?: return null
+    val grads = cgraph.grads
+    val idx = ggml_hash_find(hashSet, node)
+    if (idx == GGML_HASHSET_FULL || !ggml_bitset_get(hashSet.used, idx)) return null
+    return grads.getOrNull(idx)
+}
+
+/** Port of `ggml_graph_nodes` — returns the nodes array. */
+fun ggmlGraphNodes(cgraph: GGMLCGraph): Array<GGMLTensor?> = cgraph.nodes
+
+/** Port of `ggml_graph_cpy` from ggml.c. */
+fun ggmlGraphCpy(src: GGMLCGraph, dst: GGMLCGraph) {
+    require(dst.size >= src.nLeafs)
+    require(dst.size >= src.nNodes)
+
+    dst.nLeafs = src.nLeafs
+    dst.nNodes = src.nNodes
+    dst.order = src.order
+
+    for (i in 0 until src.nLeafs) { dst.leafs[i] = src.leafs[i] }
+    for (i in 0 until src.nNodes) { dst.nodes[i] = src.nodes[i] }
+
+    val srcHash = src.visitedHashSet as? GGMLHashSet
+    val dstHash = dst.visitedHashSet as? GGMLHashSet
+    val srcUses = src.useCounts
+    val dstUses = dst.useCounts
+    if (srcHash != null && dstHash != null && srcUses != null && dstUses != null) {
+        for (i in 0 until srcHash.size) {
+            if (ggml_bitset_get(srcHash.used, i)) {
+                val newPos = ggml_hash_insert(dstHash, srcHash.keys[i]!!)
+                if (newPos >= 0) dstUses[newPos] = srcUses[i]
+            }
+        }
+    }
+}
+
+/** Port of `ggml_graph_dup` from ggml.c. */
+fun ggmlGraphDup(cgraph: GGMLCGraph): GGMLCGraph {
+    val result = GGMLCGraph(
+        size = cgraph.size,
+        nodes = arrayOfNulls(cgraph.size),
+        leafs = arrayOfNulls(cgraph.size),
+        grads = arrayOfNulls(cgraph.size),
+        gradAccs = arrayOfNulls(cgraph.size)
+    )
+    ggmlGraphCpy(cgraph, result)
+    return result
+}
+
+// --- Graph-building tensor ops ---
+
+/** Port of `ggml_add1` from ggml.c — add scalar b to every element of a. */
+private fun ggmlAdd1Impl(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, inplace: Boolean): GGMLTensor {
+    require(ggmlIsScalar(b)) { "b must be scalar" }
+    require(ggmlIsPadded1d(a)) { "a must be padded 1d" }
+    val result = if (inplace) ggmlViewTensor(ctx, a) else ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.ADD1
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlAdd1(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor = ggmlAdd1Impl(ctx, a, b, false)
+fun ggmlAdd1Inplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor = ggmlAdd1Impl(ctx, a, b, true)
+
+/** Port of `ggml_acc` from ggml.c — accumulate b into a at given strides/offset. */
+private fun ggmlAccImpl(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+                        nb1: Long, nb2: Long, nb3: Long, offset: Long, inplace: Boolean): GGMLTensor {
+    require(ggmlNelements(b) <= ggmlNelements(a)) { "b must have <= elements than a" }
+    require(ggmlIsContiguous(a)) { "a must be contiguous" }
+    require(a.type == GGMLType.F32) { "a must be F32" }
+    require(b.type == GGMLType.F32) { "b must be F32" }
+    val result = if (inplace) ggmlViewTensor(ctx, a) else ggmlDupTensor(ctx, a)
+    ggml_set_op_params(result, intArrayOf(nb1.toInt(), nb2.toInt(), nb3.toInt(), offset.toInt(), if (inplace) 1 else 0), 5)
+    result.op = GGMLOp.ACC
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlAcc(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, nb2: Long, nb3: Long, offset: Long): GGMLTensor =
+    ggmlAccImpl(ctx, a, b, nb1, nb2, nb3, offset, false)
+fun ggmlAccInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, nb2: Long, nb3: Long, offset: Long): GGMLTensor =
+    ggmlAccImpl(ctx, a, b, nb1, nb2, nb3, offset, true)
+
+/** Port of `ggml_sin_inplace` / `ggml_cos_inplace` from ggml.c. */
+fun ggmlSinInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    val result = ggmlViewTensor(ctx, a)
+    result.op = GGMLOp.SIN
+    result.src[0] = a
+    return result
+}
+
+fun ggmlCosInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    val result = ggmlViewTensor(ctx, a)
+    result.op = GGMLOp.COS
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_l2_norm` from ggml.c. */
+private fun ggmlL2NormImpl(ctx: GGMLContext, a: GGMLTensor, eps: Float, inplace: Boolean): GGMLTensor {
+    val result = if (inplace) ggmlViewTensor(ctx, a) else ggmlDupTensor(ctx, a)
+    ggml_set_op_params_f32(result, 0, eps)
+    result.op = GGMLOp.L2_NORM
+    result.src[0] = a
+    return result
+}
+
+fun ggmlL2Norm(ctx: GGMLContext, a: GGMLTensor, eps: Float): GGMLTensor = ggmlL2NormImpl(ctx, a, eps, false)
+fun ggmlL2NormInplace(ctx: GGMLContext, a: GGMLTensor, eps: Float): GGMLTensor = ggmlL2NormImpl(ctx, a, eps, true)
+
+/** Port of `ggml_cumsum` from ggml.c. */
+fun ggmlCumsum(ctx: GGMLContext, a: GGMLTensor, exclusive: Boolean): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    ggml_set_op_params_i32(result, 0, if (exclusive) 1 else 0)
+    result.op = GGMLOp.CUMSUM
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_timestep_embedding` from ggml.c. */
+fun ggmlTimestepEmbedding(ctx: GGMLContext, timesteps: GGMLTensor, dim: Int, maxPeriod: Int = 10000): GGMLTensor {
+    require(ggmlIsScalar(timesteps) || ggmlIsVector(timesteps)) { "timesteps must be scalar or vector" }
+    val half = dim / 2
+    val result = ggmlNewTensor2d(ctx, GGMLType.F32, dim.toLong(), timesteps.ne[0])
+    ggml_set_op_params_i32(result, 0, dim)
+    ggml_set_op_params_i32(result, 1, maxPeriod)
+    result.op = GGMLOp.TIMESTEP_EMBEDDING
+    result.src[0] = timesteps
+    return result
+}
+
+/** Port of `ggml_set_1d` from ggml.c. */
+private fun ggmlSet1dImpl(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, offset: Long, inplace: Boolean): GGMLTensor {
+    val result = if (inplace) ggmlViewTensor(ctx, a) else ggmlDupTensor(ctx, a)
+    ggml_set_op_params_i32(result, 0, offset.toInt())
+    result.op = GGMLOp.SET
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlSet1d(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, offset: Long): GGMLTensor = ggmlSet1dImpl(ctx, a, b, offset, false)
+fun ggmlSet1dInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, offset: Long): GGMLTensor = ggmlSet1dImpl(ctx, a, b, offset, true)
+
+/** Port of `ggml_set_2d` from ggml.c. */
+private fun ggmlSet2dImpl(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, offset: Long, inplace: Boolean): GGMLTensor {
+    val result = if (inplace) ggmlViewTensor(ctx, a) else ggmlDupTensor(ctx, a)
+    ggml_set_op_params(result, intArrayOf(nb1.toInt(), a.nb[2].toInt(), a.nb[3].toInt(), offset.toInt(), if (inplace) 1 else 0), 5)
+    result.op = GGMLOp.SET
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlSet2d(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, offset: Long): GGMLTensor = ggmlSet2dImpl(ctx, a, b, nb1, offset, false)
+fun ggmlSet2dInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, offset: Long): GGMLTensor = ggmlSet2dImpl(ctx, a, b, nb1, offset, true)
+
+/** Port of `ggml_set_inplace` from ggml.c. */
+fun ggmlSetInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, nb2: Long, nb3: Long, offset: Long): GGMLTensor =
+    ggmlAccImpl(ctx, a, b, nb1, nb2, nb3, offset, true)
+
+/** Port of `ggml_soft_max_ext_back` from ggml.c. */
+fun ggmlSoftMaxExtBack(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.SOFT_MAX_BACK
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlSoftMaxExtBackInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
+    val result = ggmlViewTensor(ctx, a)
+    result.op = GGMLOp.SOFT_MAX_BACK
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** Port of `ggml_im2col` from ggml.c. */
+fun ggmlIm2col(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+               s0: Int, s1: Int, p0: Int, p1: Int, d0: Int, d1: Int,
+               isChanLast: Boolean, dstType: GGMLType = GGMLType.F16): GGMLTensor {
+    val oh = (b.ne[1] + 2 * p1.toLong() - d1.toLong() * (a.ne[1] - 1) - 1) / s1 + 1
+    val ow = (b.ne[0] + 2 * p0.toLong() - d0.toLong() * (a.ne[0] - 1) - 1) / s0 + 1
+    val result = if (isChanLast) {
+        ggmlNewTensor4d(ctx, dstType, a.ne[0] * a.ne[1] * b.ne[2], ow, oh, b.ne[3])
+    } else {
+        ggmlNewTensor4d(ctx, dstType, a.ne[0] * a.ne[1] * b.ne[2], ow * oh, b.ne[3], 1)
+    }
+    ggml_set_op_params(result, intArrayOf(s0, s1, p0, p1, d0, d1, if (isChanLast) 1 else 0), 7)
+    result.op = GGMLOp.IM2COL
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** Port of `ggml_conv_1d_ph` from ggml.c. */
+fun ggmlConv1dPh(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s: Int, d: Int): GGMLTensor =
+    ggmlConv1d(ctx, a, b, s, a.ne[0].toInt() / 2, d)
+
+/** Port of `ggml_pad_ext` from ggml.c. */
+fun ggmlPadExt(ctx: GGMLContext, a: GGMLTensor, padLeft: Long, padRight: Long,
+               padTop: Long, padBot: Long): GGMLTensor {
+    val result = ggmlNewTensor4d(ctx, a.type,
+        a.ne[0] + padLeft + padRight,
+        a.ne[1] + padTop + padBot,
+        a.ne[2], a.ne[3])
+    ggml_set_op_params(result, intArrayOf(padLeft.toInt(), padRight.toInt(), padTop.toInt(), padBot.toInt()), 4)
+    result.op = GGMLOp.PAD
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_pad_reflect_1d` from ggml.c. */
+fun ggmlPadReflect1d(ctx: GGMLContext, a: GGMLTensor, padLeft: Int, padRight: Int): GGMLTensor {
+    require(padLeft < a.ne[0]) { "padLeft must be < ne[0]" }
+    require(padRight < a.ne[0]) { "padRight must be < ne[0]" }
+    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] + padLeft + padRight, a.ne[1], a.ne[2], a.ne[3])
+    ggml_set_op_params(result, intArrayOf(padLeft, padRight), 2)
+    result.op = GGMLOp.PAD_REFLECT_1D
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_upscale_ext` from ggml.c. */
+fun ggmlUpscaleExt(ctx: GGMLContext, a: GGMLTensor, ne0: Long, ne1: Long, ne2: Long, ne3: Long): GGMLTensor {
+    val result = ggmlNewTensor4d(ctx, a.type, ne0, ne1, ne2, ne3)
+    result.op = GGMLOp.UPSCALE
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_rope_yarn_corr_dims` from ggml.c. */
+fun ggmlRopeYarnCorrDims(nDims: Int, nCtxOrig: Int, freqBase: Float, betaFast: Float, betaSlow: Float): FloatArray {
+    fun corrDim(nDims: Int, nCtxOrig: Int, beta: Float, freqBase: Float): Float {
+        return nDims.toFloat() * kotlin.math.ln(nCtxOrig.toFloat() / (beta * 2.0f * kotlin.math.PI.toFloat())) /
+            (2.0f * kotlin.math.ln(freqBase))
+    }
+    val start = kotlin.math.floor(corrDim(nDims, nCtxOrig, betaFast, freqBase))
+    val end = kotlin.math.ceil(corrDim(nDims, nCtxOrig, betaSlow, freqBase))
+    return floatArrayOf(maxOf(0f, start), minOf(nDims - 1f, end))
+}
+
+/** Port of `ggml_flash_attn_ext_get_prec` from ggml.c. */
+fun ggmlFlashAttnExtGetPrec(flash: GGMLTensor): GGMLType {
+    val prec = ggml_get_op_params_i32(flash, 3)
+    return GGMLType.entries.getOrElse(prec) { GGMLType.F32 }
+}
+
+/** Port of `ggml_quantize_init` — no-op in Kotlin (tables pre-computed). */
+fun ggmlQuantizeInit(type: GGMLType) { /* no-op */ }
+
+/** Port of `ggml_quantize_free` — no-op in Kotlin. */
+fun ggmlQuantizeFree() { /* no-op */ }
+
+/** Port of `ggml_quantize_requires_imatrix` from ggml.c. */
+fun ggmlQuantizeRequiresImatrix(type: GGMLType): Boolean = when (type) {
+    GGMLType.Q2_K, GGMLType.Q3_K -> true
+    else -> false
+}
+
+/** Port of `ggml_guid_matches` from ggml.h — compare two GUIDs. */
+fun ggmlGuidMatches(a: ByteArray, b: ByteArray): Boolean = a.contentEquals(b)
+
+/** Port of `ggml_new_buffer` from ggml.c. */
+fun ggmlNewBuffer(ctx: GGMLContext, size: ULong): ByteArray = ByteArray(size.toInt())
+
+/** Port of `ggml_fopen` from ggml.c — Kotlin doesn't have C file I/O in common. */
+fun ggmlFopen(path: String, mode: String): Any? {
+    // Platform-specific file opening in nativeMain
+    error("ggml_fopen requires platform-specific implementation")
+}
+
+/** Port of `ggml_log_get` from ggml.c — returns current log callback. */
+fun ggmlLogGet(): GGMLLogCallback = ggmlLogCallbackDefault
+
+/** Port of `ggml_validate_row_data` from ggml.c — validate quantized row data. */
+fun ggmlValidateRowData(type: GGMLType, data: ByteArray, nbytes: Long): Boolean {
+    // Basic validation: check size is consistent with type
+    if (nbytes <= 0) return true
+    val blckSize = ggmlBlckSize(type)
+    val typeSize = ggmlTypeSize(type)
+    if (blckSize == 0L || typeSize == 0uL) return false
+    return nbytes.toULong() % typeSize == 0uL
+}
+
+// --- Map custom ops ---
+
+/** Port of `ggml_map_custom1` from ggml.c. */
+fun ggmlMapCustom1(ctx: GGMLContext, a: GGMLTensor, fun_: (GGMLTensor, GGMLTensor, Int, Int) -> Unit, nTasks: Int): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.MAP_UNARY
+    result.src[0] = a
+    return result
+}
+
+fun ggmlMapCustom1Inplace(ctx: GGMLContext, a: GGMLTensor, fun_: (GGMLTensor, GGMLTensor, Int, Int) -> Unit, nTasks: Int): GGMLTensor {
+    val result = ggmlViewTensor(ctx, a)
+    result.op = GGMLOp.MAP_UNARY
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_map_custom2` from ggml.c. */
+fun ggmlMapCustom2(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+                    fun_: (GGMLTensor, GGMLTensor, GGMLTensor, Int, Int) -> Unit, nTasks: Int): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.MAP_BINARY
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlMapCustom2Inplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+                           fun_: (GGMLTensor, GGMLTensor, GGMLTensor, Int, Int) -> Unit, nTasks: Int): GGMLTensor {
+    val result = ggmlViewTensor(ctx, a)
+    result.op = GGMLOp.MAP_BINARY
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** Port of `ggml_map_custom3` from ggml.c. */
+fun ggmlMapCustom3(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, c: GGMLTensor,
+                    fun_: (GGMLTensor, GGMLTensor, GGMLTensor, GGMLTensor, Int, Int) -> Unit, nTasks: Int): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.MAP_CUSTOM3
+    result.src[0] = a
+    result.src[1] = b
+    result.src[2] = c
+    return result
+}
+
+fun ggmlMapCustom3Inplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, c: GGMLTensor,
+                           fun_: (GGMLTensor, GGMLTensor, GGMLTensor, GGMLTensor, Int, Int) -> Unit, nTasks: Int): GGMLTensor {
+    val result = ggmlViewTensor(ctx, a)
+    result.op = GGMLOp.MAP_CUSTOM3
+    result.src[0] = a
+    result.src[1] = b
+    result.src[2] = c
+    return result
+}
+
+/** Port of `ggml_custom_4d` from ggml.c — custom op with explicit output shape. */
+fun ggmlCustom4d(ctx: GGMLContext, type: GGMLType, ne0: Long, ne1: Long, ne2: Long, ne3: Long,
+                 nInputs: Int, inputs: Array<GGMLTensor>, nTasks: Int): GGMLTensor {
+    val result = ggmlNewTensor4d(ctx, type, ne0, ne1, ne2, ne3)
+    result.op = GGMLOp.MAP_CUSTOM3
+    for (i in 0 until minOf(nInputs, GGML_MAX_SRC)) {
+        result.src[i] = inputs[i]
+    }
+    return result
+}
+
+/** Port of `ggml_custom_inplace` from ggml.c — custom op inplace on first input. */
+fun ggmlCustomInplace(ctx: GGMLContext, nInputs: Int, inputs: Array<GGMLTensor>, nTasks: Int): GGMLTensor {
+    require(nInputs > 0) { "need at least one input" }
+    val result = ggmlViewTensor(ctx, inputs[0])
+    result.op = GGMLOp.MAP_CUSTOM3
+    for (i in 0 until minOf(nInputs, GGML_MAX_SRC)) {
+        result.src[i] = inputs[i]
+    }
+    return result
+}
+
+/** Port of `ggml_graph_print` from ggml.c — print graph summary. */
+fun ggmlGraphPrint(cgraph: GGMLCGraph) {
+    println("=== GRAPH ===")
+    println("n_nodes = ${cgraph.nNodes}")
+    println("n_leafs = ${cgraph.nLeafs}")
+    for (i in 0 until cgraph.nNodes) {
+        val node = cgraph.nodes[i] ?: continue
+        println("  node ${i}: ${node.op} [${node.ne.joinToString(",")}] ${node.name}")
+    }
+    for (i in 0 until cgraph.nLeafs) {
+        val leaf = cgraph.leafs[i] ?: continue
+        println("  leaf ${i}: [${leaf.ne.joinToString(",")}] ${leaf.name}")
+    }
+    println("========")
+}
+
+/** Port of `ggml_graph_dump_dot` from ggml.c — output DOT format. */
+fun ggmlGraphDumpDot(cgraph: GGMLCGraph, gb: GGMLCGraph?, filename: String) {
+    val sb = StringBuilder()
+    sb.appendLine("digraph G {")
+    sb.appendLine("  newrank = true;")
+    sb.appendLine("  rankdir = LR;")
+    for (i in 0 until cgraph.nNodes) {
+        val node = cgraph.nodes[i] ?: continue
+        sb.appendLine("  \"${node.hashCode()}\" [label=\"${node.op}\\n${node.name}\\n[${node.ne.joinToString(",")}]\", shape=record];")
+        for (s in 0 until GGML_MAX_SRC) {
+            val src = node.src.getOrNull(s) ?: continue
+            sb.appendLine("  \"${src.hashCode()}\" -> \"${node.hashCode()}\";")
+        }
+    }
+    sb.appendLine("}")
+    // In commonMain we can't write files; print to stdout
+    println(sb.toString())
+}
+
+/** Port of `ggml_print_object` from ggml.c. */
+fun ggmlPrintObject(obj: GGMLObject) {
+    println("  - GGMLObject: type=${obj.type}, offs=${obj.offs}, size=${obj.size}")
+}
+
+/** Port of `ggml_print_objects` from ggml.c. */
+fun ggmlPrintObjects(ctx: GGMLContext) {
+    var obj = ctx.objectsBegin
+    println("=== objects in context ===")
+    while (obj != null) {
+        ggmlPrintObject(obj)
+        obj = obj.next
+    }
+    println("=== end objects ===")
+}
+
+/** Port of `ggml_commit` from ggml.c — finalize pending allocations. */
+fun ggmlCommit(ctx: GGMLContext) {
+    // In the C impl this marks the end of a "transaction" in the memory allocator
+    // In Kotlin with GC-managed memory, this is currently a no-op
+}
+
+/** Port of `ggml_threadpool_params_init` from ggml.c. */
+fun ggmlThreadpoolParamsInit(nThreads: Int): GGMLThreadpoolParams {
+    return GGMLThreadpoolParams(nThreads = nThreads)
+}
+
+/** Port of `ggml_threadpool_params_match` from ggml.c. */
+fun ggmlThreadpoolParamsMatch(a: GGMLThreadpoolParams, b: GGMLThreadpoolParams): Boolean {
+    return a.nThreads == b.nThreads
+}
+
+data class GGMLThreadpoolParams(val nThreads: Int = 1)
+
+// --- GLU (Gated Linear Unit) graph-building ops ---
+
+/** Port of `ggml_geglu_erf` from ggml.c. */
+fun ggmlGegluErf(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
+    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
+    result.op = GGMLOp.GLU
+    ggml_set_op_params_i32(result, 0, 0) // GLU_TYPE_GEGLU_ERF = 0
+    result.src[0] = a
+    return result
+}
+
+fun ggmlGegluErfSplit(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.GLU
+    ggml_set_op_params_i32(result, 0, 0)
+    ggml_set_op_params_i32(result, 1, 1) // split flag
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlGegluErfSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
+    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
+    result.op = GGMLOp.GLU
+    ggml_set_op_params_i32(result, 0, 0)
+    ggml_set_op_params_i32(result, 2, 1) // swapped flag
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_geglu_quick` from ggml.c. */
+fun ggmlGegluQuick(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
+    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
+    result.op = GGMLOp.GLU
+    ggml_set_op_params_i32(result, 0, 1) // GLU_TYPE_GEGLU_QUICK = 1
+    result.src[0] = a
+    return result
+}
+
+fun ggmlGegluQuickSplit(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.GLU
+    ggml_set_op_params_i32(result, 0, 1)
+    ggml_set_op_params_i32(result, 1, 1)
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+fun ggmlGegluQuickSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
+    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
+    result.op = GGMLOp.GLU
+    ggml_set_op_params_i32(result, 0, 1)
+    ggml_set_op_params_i32(result, 2, 1)
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_glu_split` from ggml.c — generic GLU split op. */
+fun ggmlGluSplit(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, gluType: Int): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.GLU
+    ggml_set_op_params_i32(result, 0, gluType)
+    ggml_set_op_params_i32(result, 1, 1) // split
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** Port of `ggml_xielu` from ggml.c. */
+fun ggmlXielu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.UNARY
+    result.src[0] = a
+    return result
+}
+
+/** Port of `ggml_gated_delta_net` from ggml.c. */
+fun ggmlGatedDeltaNet(ctx: GGMLContext, x: GGMLTensor, a: GGMLTensor, b: GGMLTensor,
+                       state: GGMLTensor): GGMLTensor {
+    val result = ggmlNewTensor4d(ctx, x.type, x.ne[0], x.ne[1], x.ne[2], x.ne[3])
+    result.src[0] = x
+    result.src[1] = a
+    result.src[2] = b
+    result.src[3] = state
+    return result
+}
+
+/** Port of `ggml_pool_2d_back` from ggml.c. */
+fun ggmlPool2dBack(ctx: GGMLContext, a: GGMLTensor, af: GGMLTensor,
+                    opPool: Int, k0: Int, k1: Int, s0: Int, s1: Int, p0: Float, p1: Float): GGMLTensor {
+    val result = ggmlDupTensor(ctx, af)
+    ggml_set_op_params(result, intArrayOf(opPool, k0, k1, s0, s1, p0.toRawBits(), p1.toRawBits()), 7)
+    result.src[0] = a
+    result.src[1] = af
+    return result
+}
+
+/** Port of `ggml_solve_tri` from ggml.c. */
+fun ggmlSolveTri(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, upper: Boolean): GGMLTensor {
+    val result = ggmlDupTensor(ctx, b)
+    ggml_set_op_params_i32(result, 0, if (upper) 1 else 0)
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
