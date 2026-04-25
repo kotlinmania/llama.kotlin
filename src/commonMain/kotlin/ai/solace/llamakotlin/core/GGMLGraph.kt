@@ -31,7 +31,7 @@ private fun addOrSet(context: GGMLContext, a: GGMLTensor?, b: GGMLTensor, zeroTa
         b
     } else {
         // Otherwise, add a and b
-        add(context, a, b)
+        ggmlAdd(context, a, b)
     }
 }
 
@@ -134,7 +134,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 val gradForSrc1 = if (needsRepeatBack) {
-                    repeatBack(context, tensor.grad!!, src1)
+                    ggmlRepeatBack(context, tensor.grad!!, src1)
                 } else {
                     tensor.grad!!
                 }
@@ -154,7 +154,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 src0.grad = addOrSet(
                     context,
                     src0.grad,
-                    mul(context, src1!!, tensor.grad!!),
+                    ggmlMul(context, src1!!, tensor.grad!!),
                     zeroTable
                 )
             }
@@ -162,7 +162,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 src1.grad = addOrSet(
                     context,
                     src1.grad,
-                    mul(context, src0!!, tensor.grad!!),
+                    ggmlMul(context, src0!!, tensor.grad!!),
                     zeroTable
                 )
             }
@@ -174,7 +174,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
 
             if (src0?.grad != null) {
                 // Compute grad_A = grad_C / B
-                val gradA = div(context, tensor.grad!!, src1!!)
+                val gradA = ggmlDiv(context, tensor.grad!!, src1!!)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradA, zeroTable)
@@ -184,16 +184,16 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 // Compute grad_B = -grad_C * A / (B * B)
 
                 // First compute B * B
-                val bSquared = mul(context, src1!!, src1)
+                val bSquared = ggmlMul(context, src1!!, src1)
 
                 // Then compute A / (B * B)
-                val aDivBSquared = div(context, src0!!, bSquared)
+                val aDivBSquared = ggmlDiv(context, src0!!, bSquared)
 
                 // Then compute grad_C * A / (B * B)
-                val gradCTimesADivBSquared = mul(context, tensor.grad!!, aDivBSquared)
+                val gradCTimesADivBSquared = ggmlMul(context, tensor.grad!!, aDivBSquared)
 
                 // Finally negate to get -grad_C * A / (B * B)
-                val negGradCTimesADivBSquared = neg(context, gradCTimesADivBSquared)
+                val negGradCTimesADivBSquared = ggmlNeg(context, gradCTimesADivBSquared)
 
                 // Add to source gradient
                 src1.grad = addOrSet(context, src1.grad, negGradCTimesADivBSquared, zeroTable)
@@ -273,7 +273,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Compute grad_A = grad_C * (2 * A)
-                val gradA = mul(context, tensor.grad!!, twoTimesA)
+                val gradA = ggmlMul(context, tensor.grad!!, twoTimesA)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradA, zeroTable)
@@ -401,7 +401,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Compute grad_A = grad_C * (0.5 / sqrt(A))
-                val gradA = mul(context, tensor.grad!!, halfDivSqrtA)
+                val gradA = ggmlMul(context, tensor.grad!!, halfDivSqrtA)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradA, zeroTable)
@@ -864,7 +864,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Compute grad_A = grad_C * sign(A)
-                val gradA = mul(context, tensor.grad!!, signTensor)
+                val gradA = ggmlMul(context, tensor.grad!!, signTensor)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradA, zeroTable)
@@ -1037,7 +1037,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Multiply gradient by mask: grad_tensor * (src0 > 0)
-                val gradMasked = mul(context, tensor.grad!!, mask)
+                val gradMasked = ggmlMul(context, tensor.grad!!, mask)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradMasked, zeroTable)
@@ -1217,7 +1217,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Multiply gradient by derivative: grad_tensor * derivative
-                val gradDerivative = mul(context, tensor.grad!!, derivative)
+                val gradDerivative = ggmlMul(context, tensor.grad!!, derivative)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradDerivative, zeroTable)
@@ -1233,7 +1233,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 src0.grad = addOrSet(
                     context,
                     src0.grad,
-                    mul(context, tensor.grad!!, src1!!), // grad_C * scale_factor
+                    ggmlMul(context, tensor.grad!!, src1!!), // grad_C * scale_factor
                     zeroTable
                 )
             }
@@ -1547,7 +1547,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
             }
 
             // Calculate contribution: grad_C * unmasked_mask
-            val contribution = mul(context, gradC, unmaskedMask)
+            val contribution = ggmlMul(context, gradC, unmaskedMask)
 
             // Add contribution to src0's gradient
             src0.grad = addOrSet(context, src0.grad!!, contribution, zeroTable)
@@ -1691,7 +1691,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Compute grad_A = grad_C @ B^T
-                val gradA = matMul(context, tensor.grad!!, bTransposed)
+                val gradA = ggmlMulMat(context, tensor.grad!!, bTransposed)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradA, zeroTable)
@@ -1830,7 +1830,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Compute grad_B = A^T @ grad_C
-                val gradB = matMul(context, aTransposed, tensor.grad!!)
+                val gradB = ggmlMulMat(context, aTransposed, tensor.grad!!)
 
                 // Add to source gradient
                 src1.grad = addOrSet(context, src1.grad, gradB, zeroTable)
@@ -1964,7 +1964,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                 }
 
                 // Multiply gradient by derivative: grad_tensor * derivative
-                val gradDerivative = mul(context, tensor.grad!!, derivative)
+                val gradDerivative = ggmlMul(context, tensor.grad!!, derivative)
 
                 // Add to source gradient
                 src0.grad = addOrSet(context, src0.grad, gradDerivative, zeroTable)

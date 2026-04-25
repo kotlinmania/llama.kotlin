@@ -561,7 +561,7 @@ internal fun ggmlMulMatAux(
 ): GGMLTensor {
     val n = rot.ne[0]
     var res = ggmlReshape2d(ctx, cur, n, ggmlNelements(cur) / n)
-    res = matMul(ctx, rot, res)
+    res = ggmlMulMat(ctx, rot, res)
     res = ggmlReshape4d(ctx, res, cur.ne[0], cur.ne[1], cur.ne[2], cur.ne[3])
     return res
 }
@@ -1443,21 +1443,21 @@ open class LlmGraphContext(val params: LlmGraphParams) {
     // port-lint: source llama.cpp/src/llama-graph.cpp
     fun buildLoraMm(w: GGMLTensor, cur: GGMLTensor, wS: GGMLTensor? = null): GGMLTensor {
         val c = ctx0 ?: error("ctx0 not initialised")
-        var result = matMul(c, w, cur)
+        var result = ggmlMulMat(c, w, cur)
 
         loras?.let { loraMap ->
             for ((adapter, adapterScale) in loraMap) {
                 val lw = adapter.getWeight(w) ?: continue
                 val scale = lw.getScale(adapter.alpha, adapterScale)
 
-                var abCur = matMul(c, lw.b!!, matMul(c, lw.a!!, cur))
+                var abCur = ggmlMulMat(c, lw.b!!, ggmlMulMat(c, lw.a!!, cur))
                 abCur = ggmlScale(c, abCur, scale)
-                result = add(c, result, abCur)
+                result = ggmlAdd(c, result, abCur)
             }
         }
 
         if (wS != null) {
-            result = mul(c, result, wS)
+            result = ggmlMul(c, result, wS)
         }
         return result
     }
@@ -1481,7 +1481,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
 
                 var abCur = ggmlMulMatId(c, lw.b!!, ggmlMulMatId(c, lw.a!!, cur, ids), ids)
                 abCur = ggmlScale(c, abCur, scale)
-                result = add(c, result, abCur)
+                result = ggmlAdd(c, result, abCur)
             }
         }
         return result
@@ -1521,14 +1521,14 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         }
 
         if (mw != null) {
-            out = mul(c, out, mw)
+            out = ggmlMul(c, out, mw)
             if (mb != null) {
                 cb(out, "norm_w", il)
             }
         }
 
         if (mb != null) {
-            out = add(c, out, mb)
+            out = ggmlAdd(c, out, mb)
         }
 
         return out
@@ -1562,7 +1562,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             var qkv = buildLoraMm(layer.wqkv!!, cur)
             cb(qkv, "wqkv", il)
             if (layer.bqkv != null) {
-                qkv = add(c, qkv, layer.bqkv!!)
+                qkv = ggmlAdd(c, qkv, layer.bqkv!!)
                 cb(qkv, "bqkv", il)
             }
             if (hparams.fClampKqv > 0.0f) {
@@ -1580,7 +1580,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             qCur = buildLoraMm(layer.wq!!, cur)
             cb(qCur, "Qcur", il)
             if (layer.bq != null) {
-                qCur = add(c, qCur, layer.bq!!)
+                qCur = ggmlAdd(c, qCur, layer.bq!!)
                 cb(qCur, "Qcur", il)
             }
             if (hparams.fClampKqv > 0.0f) {
@@ -1591,7 +1591,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             kCur = buildLoraMm(layer.wk!!, cur)
             cb(kCur, "Kcur", il)
             if (layer.bk != null) {
-                kCur = add(c, kCur, layer.bk!!)
+                kCur = ggmlAdd(c, kCur, layer.bk!!)
                 cb(kCur, "Kcur", il)
             }
             if (hparams.fClampKqv > 0.0f) {
@@ -1602,7 +1602,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             vCur = buildLoraMm(layer.wv!!, cur)
             cb(vCur, "Vcur", il)
             if (layer.bv != null) {
-                vCur = add(c, vCur, layer.bv!!)
+                vCur = ggmlAdd(c, vCur, layer.bv!!)
                 cb(vCur, "Vcur", il)
             }
             if (hparams.fClampKqv > 0.0f) {
@@ -1644,8 +1644,8 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         var tmp = if (up != null) buildLoraMm(up, cur) else cur
         cb(tmp, "ffn_up", il)
 
-        if (upB != null) { tmp = add(c, tmp, upB); cb(tmp, "ffn_up_b", il) }
-        if (upS != null) { tmp = mul(c, tmp, upS); cb(tmp, "ffn_up_s", il) }
+        if (upB != null) { tmp = ggmlAdd(c, tmp, upB); cb(tmp, "ffn_up_b", il) }
+        if (upS != null) { tmp = ggmlMul(c, tmp, upS); cb(tmp, "ffn_up_s", il) }
 
         var out: GGMLTensor
         if (gate != null) {
@@ -1655,8 +1655,8 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             }
             cb(out, "ffn_gate", il)
 
-            if (gateB != null) { out = add(c, out, gateB); cb(out, "ffn_gate_b", il) }
-            if (gateS != null) { out = mul(c, out, gateS); cb(out, "ffn_gate_s", il) }
+            if (gateB != null) { out = ggmlAdd(c, out, gateB); cb(out, "ffn_gate_b", il) }
+            if (gateS != null) { out = ggmlMul(c, out, gateS); cb(out, "ffn_gate_s", il) }
         } else {
             out = tmp
         }
@@ -1678,10 +1678,10 @@ open class LlmGraphContext(val params: LlmGraphParams) {
                     cb(out, "ffn_geglu", il)
                     typeGateMut = LlmFfnGateType.SEQ
                 } else {
-                    out = gelu(c, out)
+                    out = ggmlGelu(c, out)
                     cb(out, "ffn_gelu", il)
                     if (actScales != null) {
-                        out = div(c, out, actScales)
+                        out = ggmlDiv(c, out, actScales)
                         cb(out, "ffn_act", il)
                     }
                 }
@@ -1692,12 +1692,12 @@ open class LlmGraphContext(val params: LlmGraphParams) {
                     cb(out, "ffn_reglu", il)
                     typeGateMut = LlmFfnGateType.SEQ
                 } else {
-                    out = relu(c, out)
+                    out = ggmlRelu(c, out)
                     cb(out, "ffn_relu", il)
                 }
             }
             LlmFfnOpType.RELU_SQR -> {
-                out = relu(c, out)
+                out = ggmlRelu(c, out)
                 cb(out, "ffn_relu", il)
                 out = ggmlSqr(c, out)
                 cb(out, "ffn_sqr(relu)", il)
@@ -1718,7 +1718,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         }
 
         if (gate != null && typeGateMut == LlmFfnGateType.PAR) {
-            out = mul(c, out, tmp)
+            out = ggmlMul(c, out, tmp)
             cb(out, "ffn_gate_par", il)
         }
 
@@ -1727,10 +1727,10 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         }
         if (downB != null) {
             cb(out, "ffn_down", il)
-            out = add(c, out, downB)
+            out = ggmlAdd(c, out, downB)
         }
         if (downS != null) {
-            out = mul(c, out, downS)
+            out = ggmlMul(c, out, downS)
             cb(out, "ffn_down_s", il)
         }
 
@@ -1811,7 +1811,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         }
 
         if (gateInpB != null) {
-            logits = add(c, logits, gateInpB)
+            logits = ggmlAdd(c, logits, gateInpB)
             cb(logits, "ffn_moe_logits_biased", il)
         }
 
@@ -1825,7 +1825,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
 
         var selectionProbs = probs
         if (expProbsB != null) {
-            selectionProbs = add(c, probs, expProbsB)
+            selectionProbs = ggmlAdd(c, probs, expProbsB)
             cb(selectionProbs, "ffn_moe_probs_biased", il)
         }
 
@@ -1855,7 +1855,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             cb(weightsSum, "ffn_moe_weights_sum", il)
             weightsSum = ggmlClamp(c, weightsSum, 6.103515625e-5f, Float.POSITIVE_INFINITY)
             cb(weightsSum, "ffn_moe_weights_sum_clamped", il)
-            weights = div(c, weights, weightsSum)
+            weights = ggmlDiv(c, weights, weightsSum)
             cb(weights, "ffn_moe_weights_norm", il)
             weights = ggmlReshape3d(c, weights, 1, nExpertUsed, nTokensCur)
         }
@@ -1918,7 +1918,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
                 if (hasGate) {
                     val r = ggmlGegluSplit(c, moeIn, up); cb(r, "ffn_moe_geglu", il); r
                 } else {
-                    val r = gelu(c, moeIn); cb(r, "ffn_moe_gelu", il); r
+                    val r = ggmlGelu(c, moeIn); cb(r, "ffn_moe_gelu", il); r
                 }
             }
             LlmFfnOpType.SWIGLU_OAI_MOE -> {
@@ -1929,11 +1929,11 @@ open class LlmGraphContext(val params: LlmGraphParams) {
                 if (hasGate) {
                     val r = ggmlRegluSplit(c, moeIn, up); cb(r, "ffn_moe_reglu", il); r
                 } else {
-                    val r = relu(c, moeIn); cb(r, "ffn_moe_relu", il); r
+                    val r = ggmlRelu(c, moeIn); cb(r, "ffn_moe_relu", il); r
                 }
             }
             LlmFfnOpType.RELU_SQR -> {
-                var r = relu(c, moeIn); r = ggmlSqr(c, r)
+                var r = ggmlRelu(c, moeIn); r = ggmlSqr(c, r)
                 cb(r, "ffn_moe_relu_sqr", il); r
             }
             else -> error("Unsupported MoE FFN op type: $typeOp")
@@ -1948,7 +1948,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             cb(experts, "ffn_moe_down_biased", il)
         }
 
-        experts = mul(c, experts, weights)
+        experts = ggmlMul(c, experts, weights)
         cb(experts, "ffn_moe_weighted", il)
 
         ggmlBuildForwardExpand(graph, experts)
@@ -1964,7 +1964,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
 
         var moeOut = curExperts[0]!!
         for (i in 1 until nExpertUsedInt) {
-            moeOut = add(c, moeOut, curExperts[i]!!)
+            moeOut = ggmlAdd(c, moeOut, curExperts[i]!!)
             ggmlBuildForwardExpand(graph, moeOut)
         }
 
@@ -2087,7 +2087,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
 
             if (vMla != null) {
                 fa = ggmlPermute(c, fa, 0, 2, 1, 3)
-                fa = matMul(c, vMla, fa)
+                fa = ggmlMulMat(c, vMla, fa)
                 cb(fa, "fattn_mla", il)
                 fa = ggmlPermute(c, fa, 0, 2, 1, 3)
                 fa = ggmlCont(c, fa)
@@ -2095,7 +2095,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
 
             cur = ggmlReshape2d(c, fa, fa.ne[0] * fa.ne[1], fa.ne[2] * fa.ne[3])
         } else {
-            var kq = matMul(c, kPerm, qPerm)
+            var kq = ggmlMulMat(c, kPerm, qPerm)
             cb(kq, "kq", il)
             ggmlMulMatSetPrec(kq, GGMLPrec.F32)
 
@@ -2109,7 +2109,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             }
 
             if (kqB != null) {
-                kq = add(c, kq, kqB)
+                kq = ggmlAdd(c, kq, kqB)
                 cb(kq, "kq_plus_kq_b", il)
             }
 
@@ -2120,11 +2120,11 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             var vT = ggmlCont(c, ggmlTranspose(c, vPerm))
             cb(vT, "v_cont", il)
 
-            var kqv = matMul(c, vT, kq)
+            var kqv = ggmlMulMat(c, vT, kq)
             cb(kqv, "kqv", il)
 
             if (vMla != null) {
-                kqv = matMul(c, vMla, kqv)
+                kqv = ggmlMulMat(c, vMla, kqv)
                 cb(kqv, "kqv_mla", il)
             }
 
@@ -2188,7 +2188,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             cur = buildLoraMm(wo, cur, woS)
         }
         if (woB != null) {
-            cur = add(c, cur, woB)
+            cur = ggmlAdd(c, cur, woB)
         }
         return cur
     }
@@ -2280,14 +2280,14 @@ open class LlmGraphContext(val params: LlmGraphParams) {
                 cur = buildLoraMm(wo, cur)
                 ggmlMulMatSetPrec(cur, GGMLPrec.F32)
                 if (woS != null) {
-                    cur = mul(c, cur, woS)
+                    cur = ggmlMul(c, cur, woS)
                 }
             } else {
                 cur = buildLoraMm(wo, cur, woS)
             }
         }
         if (woB != null) {
-            cur = add(c, cur, woB)
+            cur = ggmlAdd(c, cur, woB)
         }
 
         return cur
@@ -2504,13 +2504,13 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             if (arch == LlamaModelArch.GLM4 || arch == LlamaModelArch.GLM4_MOE) {
                 cur = buildLoraMm(wo, cur)
                 ggmlMulMatSetPrec(cur, GGMLPrec.F32)
-                if (woS != null) cur = mul(c, cur, woS)
+                if (woS != null) cur = ggmlMul(c, cur, woS)
             } else {
                 cur = buildLoraMm(wo, cur, woS)
             }
         }
         if (woB != null) {
-            cur = add(c, cur, woB)
+            cur = ggmlAdd(c, cur, woB)
         }
         return cur
     }
@@ -2584,7 +2584,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             cur = buildLoraMm(wo, cur, woS)
         }
         if (woB != null) {
-            cur = add(c, cur, woB)
+            cur = ggmlAdd(c, cur, woB)
         }
         return cur
     }
@@ -2612,7 +2612,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             cur = buildLoraMm(wo, cur, woS)
         }
         if (woB != null) {
-            cur = add(c, cur, woB)
+            cur = ggmlAdd(c, cur, woB)
         }
         return cur
     }
@@ -2803,13 +2803,13 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         var cur = r.tEmbdPooled ?: r.tEmbd ?: error("missing t_embd_pooled/t_embd")
 
         if (dense2 != null) {
-            cur = matMul(c, dense2, cur)
+            cur = ggmlMulMat(c, dense2, cur)
         }
         if (dense2B != null) {
-            cur = add(c, cur, dense2B)
+            cur = ggmlAdd(c, cur, dense2B)
         }
         if (dense3 != null) {
-            cur = matMul(c, dense3, cur)
+            cur = ggmlMulMat(c, dense3, cur)
         }
         cb(cur, "result_embd_pooled", -1)
         r.tEmbdPooled = cur
@@ -2840,7 +2840,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             }
             LlamaPoolingType.MEAN -> {
                 val inpMean = buildInpMean()
-                cur = matMul(c, ggmlCont(c, ggmlTranspose(c, inp)), inpMean)
+                cur = ggmlMulMat(c, ggmlCont(c, ggmlTranspose(c, inp)), inpMean)
             }
             LlamaPoolingType.CLS, LlamaPoolingType.LAST -> {
                 val inpCls = buildInpCls()
@@ -2849,17 +2849,17 @@ open class LlmGraphContext(val params: LlmGraphParams) {
             LlamaPoolingType.RANK -> {
                 if (arch == LlamaModelArch.MODERN_BERT) {
                     val inpMean = buildInpMean()
-                    cur = matMul(c, ggmlCont(c, ggmlTranspose(c, inp)), inpMean)
+                    cur = ggmlMulMat(c, ggmlCont(c, ggmlTranspose(c, inp)), inpMean)
                 } else {
                     val inpCls = buildInpCls()
                     cur = ggmlGetRows(c, inp, inpCls)
                 }
                 // Classification head
                 if (cls != null) {
-                    cur = matMul(c, cls, cur)
-                    if (clsB != null) cur = add(c, cur, clsB)
+                    cur = ggmlMulMat(c, cls, cur)
+                    if (clsB != null) cur = ggmlAdd(c, cur, clsB)
                     if (arch == LlamaModelArch.MODERN_BERT) {
-                        cur = gelu(c, cur)
+                        cur = ggmlGelu(c, cur)
                     } else {
                         cur = ggmlTanh(c, cur)
                     }
@@ -2868,8 +2868,8 @@ open class LlmGraphContext(val params: LlmGraphParams) {
                     }
                 }
                 if (clsOut != null) {
-                    cur = matMul(c, clsOut, cur)
-                    if (clsOutB != null) cur = add(c, cur, clsOutB)
+                    cur = ggmlMulMat(c, clsOut, cur)
+                    if (clsOutB != null) cur = ggmlAdd(c, cur, clsOutB)
                 }
                 // Softmax for Qwen3 reranker
                 if (arch == LlamaModelArch.QWEN3 || arch == LlamaModelArch.QWEN3VL) {

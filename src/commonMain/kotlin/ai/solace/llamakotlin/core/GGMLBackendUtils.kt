@@ -1807,7 +1807,7 @@ class GGMLCpuBufferFromPtrType : GGMLBackendBufferType {
     override fun getName(): String = "CPU_Mapped"
     override fun allocBuffer(size: ULong): GGMLBackendBuffer {
         return createDefaultCpuBufferType().allocBuffer(size)
-            ?: throw OutOfMemoryError("Failed to allocate CPU buffer of size $size")
+            ?: throw IllegalStateException("Failed to allocate CPU buffer of size $size")
     }
     override fun getAlignment(): UInt = TENSOR_ALIGNMENT.toUInt()
     override fun getMaxSize(): ULong = ULong.MAX_VALUE

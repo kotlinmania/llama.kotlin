@@ -51,9 +51,9 @@ fun demonstrateOptimizedTensorOps() {
 
     graph.leafs[0] = a; graph.leafs[1] = b; graph.nLeafs = 2
 
-    val addNode = add(context, a, b)
-    val mulNode = mul(context, a, b)
-    val mmNode = matMul(context, a, b)
+    val addNode = ggmlAdd(context, a, b)
+    val mulNode = ggmlMul(context, a, b)
+    val mmNode = ggmlMulMat(context, a, b)
 
     graph.nodes[0] = addNode
     graph.nodes[1] = mulNode
@@ -105,9 +105,9 @@ fun demonstrateComputationGraph() {
     kotlin.io.println("Tensor b: [${(b.data as FloatArray).joinToString()}]")
 
     // Create operations
-    val c = add(context, a, b) // c = a + b
-    val d = mul(context, a, b) // d = a * b
-    val e = matMul(context, a, b) // e = a @ b
+    val c = ggmlAdd(context, a, b) // c = a + b
+    val d = ggmlMul(context, a, b) // d = a * b
+    val e = ggmlMulMat(context, a, b) // e = a @ b
 
     // Create a computation graph
     val graph = createGraph(100) // Maximum 100 nodes

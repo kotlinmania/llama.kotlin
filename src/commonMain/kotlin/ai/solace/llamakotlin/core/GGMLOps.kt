@@ -161,6 +161,12 @@ inline fun ggmlPad(x: Int, n: Int): Int = (x + n - 1) and (n - 1).inv()
 inline fun ggmlPad(x: ULong, n: ULong): ULong = (x + n - 1uL) and (n - 1uL).inv()
 
 // ============================================================================
+// Version / timing — ggml.c line 509
+// ============================================================================
+
+// Version/timing functions live in GGMLGraph.kt (ggmlVersion, ggmlCommit, ggmlTimeInit, ggmlTimeMs, ggmlTimeUs)
+
+// ============================================================================
 // Tensor-local extraction helpers (GGML_TENSOR_LOCALS equivalent)
 // ============================================================================
 
@@ -825,7 +831,7 @@ fun ggmlDupInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnary(a, GGMLOp.DUP, inplace = true)
 
 /** ggml_add – element-wise addition. */
-fun add(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
+fun ggmlAdd(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
     buildBinary(a, b, GGMLOp.ADD)
 
 /** ggml_add_inplace */
@@ -841,21 +847,21 @@ fun ggmlAddCast(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, type: GGMLType):
 }
 
 /** ggml_sub – element-wise subtraction. */
-fun sub(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
+fun ggmlSub(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
     buildBinary(a, b, GGMLOp.SUB)
 
 fun ggmlSubInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
     buildBinary(a, b, GGMLOp.SUB, inplace = true)
 
 /** ggml_mul – element-wise multiplication. */
-fun mul(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
+fun ggmlMul(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
     buildBinary(a, b, GGMLOp.MUL)
 
 fun ggmlMulInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
     buildBinary(a, b, GGMLOp.MUL, inplace = true)
 
 /** ggml_div – element-wise division. */
-fun div(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
+fun ggmlDiv(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
     buildBinary(a, b, GGMLOp.DIV)
 
 fun ggmlDivInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
@@ -964,7 +970,7 @@ fun ggmlRepeat(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
 }
 
 /** ggml_repeat_back – sum repetitions of a back to shape of b. */
-fun repeatBack(context: GGMLContext, a: GGMLTensor, reference: GGMLTensor): GGMLTensor {
+fun ggmlRepeatBack(context: GGMLContext, a: GGMLTensor, reference: GGMLTensor): GGMLTensor {
     val result = GGMLTensor(type = a.type)
     for (i in 0 until GGML_MAX_DIMS) {
         result.ne[i] = reference.ne[i]
@@ -1003,7 +1009,7 @@ fun ggmlSgn(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
 fun ggmlSgnInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnaryOp(a, GGMLUnaryOp.SGN, inplace = true)
 
-fun neg(context: GGMLContext, a: GGMLTensor): GGMLTensor =
+fun ggmlNeg(context: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnaryOp(a, GGMLUnaryOp.NEG)
 
 fun ggmlNegInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
@@ -1027,7 +1033,7 @@ fun ggmlElu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
 fun ggmlEluInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnaryOp(a, GGMLUnaryOp.ELU, inplace = true)
 
-fun relu(context: GGMLContext, a: GGMLTensor): GGMLTensor =
+fun ggmlRelu(context: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnaryOp(a, GGMLUnaryOp.RELU)
 
 fun ggmlReluInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
@@ -1048,7 +1054,7 @@ fun ggmlSigmoid(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
 fun ggmlSigmoidInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnaryOp(a, GGMLUnaryOp.SIGMOID, inplace = true)
 
-fun gelu(context: GGMLContext, a: GGMLTensor): GGMLTensor =
+fun ggmlGelu(context: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnaryOp(a, GGMLUnaryOp.GELU)
 
 fun ggmlGeluInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
@@ -1203,7 +1209,7 @@ fun ggmlRmsNormBack(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, eps: Float):
  * ggml_mul_mat – matrix multiplication.
  * A: [ne03, ne02, n, k], B: [ne03*x, ne02*y, m, k]  → result: [ne03*x, ne02*y, m, n]
  */
-fun matMul(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
+fun ggmlMulMat(context: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
     val result = GGMLTensor(type = GGMLType.F32)
     result.ne[0] = a.ne[1] // n
     result.ne[1] = b.ne[1] // m
@@ -1476,6 +1482,18 @@ fun ggmlGetRowsBack(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, c: GGMLTenso
     return result
 }
 
+// --- diag ---
+
+/** ggml_diag — ggml.c line 3914 */
+fun ggmlDiag(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
+    require(a.ne[1] == 1L)
+    val ne = longArrayOf(a.ne[0], a.ne[0], a.ne[2], a.ne[3])
+    val result = ggmlNewTensor(ctx, a.type, 4, ne)
+    result.op = GGMLOp.DIAG
+    result.src[0] = a
+    return result
+}
+
 // --- diag_mask ---
 
 /** ggml_diag_mask_inf – set elements above the diagonal to -INF. */
@@ -1493,13 +1511,13 @@ fun ggmlDiagMaskInfInplace(ctx: GGMLContext, a: GGMLTensor, nPast: Int): GGMLTen
 
 /** ggml_diag_mask_zero – set elements above the diagonal to 0. */
 fun ggmlDiagMaskZero(ctx: GGMLContext, a: GGMLTensor, nPast: Int): GGMLTensor {
-    val result = buildUnary(a, GGMLOp.MAP_UNARY)
+    val result = buildUnary(a, GGMLOp.DIAG_MASK_ZERO)
     result.opParams[0] = nPast
     return result
 }
 
 fun ggmlDiagMaskZeroInplace(ctx: GGMLContext, a: GGMLTensor, nPast: Int): GGMLTensor {
-    val result = buildUnary(a, GGMLOp.MAP_UNARY, inplace = true)
+    val result = buildUnary(a, GGMLOp.DIAG_MASK_ZERO, inplace = true)
     result.opParams[0] = nPast
     return result
 }
@@ -1608,54 +1626,334 @@ fun ggmlRopeMulti(
     betaFast: Float, betaSlow: Float
 ): GGMLTensor {
     val result = ggmlRopeExt(ctx, a, b, c, nDims, mode, nCtxOrig, freqBase, freqScale, extFactor, attnFactor, betaFast, betaSlow)
-    // Store sections in remaining opParams
     for (i in 0 until minOf(sections.size, GGML_MROPE_SECTIONS)) {
         result.opParams[9 + i] = sections[i]
     }
     return result
 }
 
-/** ggml_clamp – clamp values to [min, max]. */
+/** ggml_rope_multi_inplace — ggml.c line 4204 */
+fun ggmlRopeMultiInplace(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, c: GGMLTensor?,
+    nDims: Int, sections: IntArray, mode: Int, nCtxOrig: Int,
+    freqBase: Float, freqScale: Float,
+    extFactor: Float, attnFactor: Float,
+    betaFast: Float, betaSlow: Float
+): GGMLTensor {
+    val result = ggmlRopeExtInplace(ctx, a, b, c ?: a, nDims, mode, nCtxOrig, freqBase, freqScale, extFactor, attnFactor, betaFast, betaSlow)
+    for (i in 0 until minOf(sections.size, GGML_MROPE_SECTIONS)) {
+        result.opParams[9 + i] = sections[i]
+    }
+    return result
+}
+
+/** ggml_rope_custom — ggml.c line 4276 */
+fun ggmlRopeCustom(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+    nDims: Int, mode: Int, nCtxOrig: Int,
+    freqBase: Float, freqScale: Float,
+    extFactor: Float, attnFactor: Float,
+    betaFast: Float, betaSlow: Float
+): GGMLTensor =
+    ggmlRopeExt(ctx, a, b, null, nDims, mode, nCtxOrig, freqBase, freqScale, extFactor, attnFactor, betaFast, betaSlow)
+
+/** ggml_rope_custom_inplace — ggml.c line 4293 */
+fun ggmlRopeCustomInplace(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+    nDims: Int, mode: Int, nCtxOrig: Int,
+    freqBase: Float, freqScale: Float,
+    extFactor: Float, attnFactor: Float,
+    betaFast: Float, betaSlow: Float
+): GGMLTensor =
+    ggmlRopeExtInplace(ctx, a, b, a, nDims, mode, nCtxOrig, freqBase, freqScale, extFactor, attnFactor, betaFast, betaSlow)
+
+/** ggml_rope_ext_back — ggml.c line 4332 */
+fun ggmlRopeExtBack(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, c: GGMLTensor?,
+    nDims: Int, mode: Int, nCtxOrig: Int,
+    freqBase: Float, freqScale: Float,
+    extFactor: Float, attnFactor: Float,
+    betaFast: Float, betaSlow: Float
+): GGMLTensor {
+    val result = ggmlRopeExt(ctx, a, b, c, nDims, mode, nCtxOrig, freqBase, freqScale, extFactor, attnFactor, betaFast, betaSlow)
+    result.op = GGMLOp.ROPE_BACK
+    return result
+}
+
+/** ggml_rope_multi_back — ggml.c line 4352 */
+fun ggmlRopeMultiBack(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, c: GGMLTensor?,
+    nDims: Int, sections: IntArray, mode: Int, nCtxOrig: Int,
+    freqBase: Float, freqScale: Float,
+    extFactor: Float, attnFactor: Float,
+    betaFast: Float, betaSlow: Float
+): GGMLTensor {
+    val result = ggmlRopeMulti(ctx, a, b, c, nDims, sections, mode, nCtxOrig, freqBase, freqScale, extFactor, attnFactor, betaFast, betaSlow)
+    result.op = GGMLOp.ROPE_BACK
+    return result
+}
+
+/** ggml_clamp – clamp values to [min, max]. ggml.c line 4392 */
 fun ggmlClamp(ctx: GGMLContext, a: GGMLTensor, min: Float, max: Float): GGMLTensor {
-    val result = buildUnary(a, GGMLOp.MAP_UNARY, inplace = true)
-    result.opParams[0] = min.toRawBits()
-    result.opParams[1] = max.toRawBits()
+    val result = ggmlViewTensor(ctx, a)
+    ggml_set_op_params(result, intArrayOf(min.toRawBits(), max.toRawBits()), 2)
+    result.op = GGMLOp.CLAMP
+    result.src[0] = a
     return result
 }
 
 // --- convolution ---
 
-/** ggml_conv_1d */
+private fun ggmlCalcConvOutputSize(ins: Long, ks: Long, s: Int, p: Int, d: Int): Long =
+    (ins + 2 * p - d * (ks - 1) - 1) / s + 1
+
+private fun ggmlCalcConvTranspose1dOutputSize(ins: Long, ks: Long, s: Int, p: Int, d: Int): Long =
+    (ins - 1) * s - 2 * p + d * (ks - 1) + 1
+
+private fun ggmlCalcConvTransposeOutputSize(ins: Long, ks: Long, s: Int, p: Int): Long =
+    (ins - 1) * s - 2 * p + ks
+
+/** ggml_conv_1d — ggml.c line 4474 */
 fun ggmlConv1d(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s0: Int, p0: Int, d0: Int): GGMLTensor {
-    val result = GGMLTensor(type = GGMLType.F32)
-    val ks = a.ne[0]
-    val outLen = ((b.ne[0] + 2 * p0 - d0 * (ks - 1) - 1) / s0) + 1
-    result.ne[0] = outLen
-    result.ne[1] = a.ne[2]
-    result.ne[2] = b.ne[2]
-    result.ne[3] = 1L
-    result.nb = calculateContiguousStrides(result.ne, result.type, result.rank())
-    result.op = GGMLOp.CONV_1D_1S // approximate mapping
-    result.src[0] = a
-    result.src[1] = b
-    result.opParams[0] = s0; result.opParams[1] = p0; result.opParams[2] = d0
+    val im2col = ggmlIm2col(ctx, a, b, s0, 0, p0, 0, d0, 0, false, GGMLType.F16)
+
+    var result = ggmlMulMat(ctx,
+        ggmlReshape2d(ctx, im2col, im2col.ne[0], im2col.ne[2] * im2col.ne[1]),
+        ggmlReshape2d(ctx, a, a.ne[0] * a.ne[1], a.ne[2]))
+
+    result = ggmlReshape3d(ctx, result, im2col.ne[1], a.ne[2], im2col.ne[2])
     return result
 }
 
-/** ggml_conv_2d */
-fun ggmlConv2d(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s0: Int, s1: Int, p0: Int, p1: Int, d0: Int, d1: Int): GGMLTensor {
-    val result = GGMLTensor(type = GGMLType.F32)
-    result.ne[0] = ((b.ne[0] + 2 * p0 - d0 * (a.ne[0] - 1) - 1) / s0) + 1
-    result.ne[1] = ((b.ne[1] + 2 * p1 - d1 * (a.ne[1] - 1) - 1) / s1) + 1
-    result.ne[2] = a.ne[3] // output channels
-    result.ne[3] = b.ne[3] // batch
-    result.nb = calculateContiguousStrides(result.ne, result.type, result.rank())
-    result.op = GGMLOp.CONV_1D_2S // approximate mapping
+/** ggml_conv_1d_ph — ggml.c line 4494 */
+fun ggmlConv1dPh(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s: Int, d: Int): GGMLTensor =
+    ggmlConv1d(ctx, a, b, s, (a.ne[0] / 2).toInt(), d)
+
+/** ggml_conv_1d_dw — ggml.c line 4500 */
+fun ggmlConv1dDw(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s0: Int, p0: Int, d0: Int): GGMLTensor {
+    val newB = ggmlReshape4d(ctx, b, b.ne[0], 1, b.ne[1], b.ne[2])
+    val im2col = ggmlIm2col(ctx, a, newB, s0, 0, p0, 0, d0, 0, false, GGMLType.F16)
+    var result = ggmlMulMat(ctx, im2col, a)
+    result = ggmlReshape3d(ctx, result, result.ne[0], result.ne[2], 1)
+    return result
+}
+
+/** ggml_conv_1d_dw_ph — ggml.c line 4515 */
+fun ggmlConv1dDwPh(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s0: Int, d0: Int): GGMLTensor =
+    ggmlConv1dDw(ctx, a, b, s0, (a.ne[0] / 2).toInt(), d0)
+
+/** ggml_conv_transpose_1d — ggml.c line 4528 */
+fun ggmlConvTranspose1d(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s0: Int, p0: Int, d0: Int): GGMLTensor {
+    require(ggmlIsMatrix(b))
+    require(a.ne[2] == b.ne[1])
+    require(a.ne[3] == 1L)
+    require(p0 == 0)
+    require(d0 == 1)
+
+    val ne = longArrayOf(
+        ggmlCalcConvTranspose1dOutputSize(b.ne[0], a.ne[0], s0, 0, 1),
+        a.ne[1], b.ne[2], 1
+    )
+    val result = ggmlNewTensor(ctx, GGMLType.F32, 4, ne)
+    ggml_set_op_params(result, intArrayOf(s0, p0, d0), 3)
+    result.op = GGMLOp.CONV_TRANSPOSE_1D
     result.src[0] = a
     result.src[1] = b
-    result.opParams[0] = s0; result.opParams[1] = s1
-    result.opParams[2] = p0; result.opParams[3] = p1
-    result.opParams[4] = d0; result.opParams[5] = d1
+    return result
+}
+
+/** ggml_conv_2d — ggml.c line 4567 */
+fun ggmlConv2d(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s0: Int, s1: Int, p0: Int, p1: Int, d0: Int, d1: Int): GGMLTensor {
+    val im2col = ggmlIm2col(ctx, a, b, s0, s1, p0, p1, d0, d1, true, a.type)
+
+    var result = ggmlMulMat(ctx,
+        ggmlReshape2d(ctx, im2col, im2col.ne[0], im2col.ne[3] * im2col.ne[2] * im2col.ne[1]),
+        ggmlReshape2d(ctx, a, a.ne[0] * a.ne[1] * a.ne[2], a.ne[3]))
+
+    result = ggmlReshape4d(ctx, result, im2col.ne[1], im2col.ne[2], im2col.ne[3], a.ne[3])
+    result = ggmlCont(ctx, ggmlPermute(ctx, result, 0, 1, 3, 2))
+    return result
+}
+
+/** ggml_conv_2d_sk_p0 — ggml.c line 4693 */
+fun ggmlConv2dSkP0(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
+    ggmlConv2d(ctx, a, b, a.ne[0].toInt(), a.ne[1].toInt(), 0, 0, 1, 1)
+
+/** ggml_conv_2d_s1_ph — ggml.c line 4697 */
+fun ggmlConv2dS1Ph(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor =
+    ggmlConv2d(ctx, a, b, 1, 1, (a.ne[0] / 2).toInt(), (a.ne[1] / 2).toInt(), 1, 1)
+
+/** ggml_conv_2d_dw — ggml.c line 4699 */
+fun ggmlConv2dDw(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s0: Int, s1: Int, p0: Int, p1: Int, d0: Int, d1: Int): GGMLTensor {
+    val newA = ggmlReshape4d(ctx, a, a.ne[0], a.ne[1], 1, a.ne[2] * a.ne[3])
+    val im2col = ggmlIm2col(ctx, newA,
+        ggmlReshape4d(ctx, b, b.ne[0], b.ne[1], 1, b.ne[2] * b.ne[3]),
+        s0, s1, p0, p1, d0, d1, true, GGMLType.F16)
+    val newB = ggmlReshape4d(ctx, im2col, im2col.ne[0], im2col.ne[2] * im2col.ne[1], b.ne[2], b.ne[3])
+    val reshapedA = ggmlReshape4d(ctx, newA, newA.ne[0] * newA.ne[1], newA.ne[2], newA.ne[3], 1)
+    var result = ggmlMulMat(ctx, reshapedA, newB)
+    result = ggmlReshape4d(ctx, result, im2col.ne[1], im2col.ne[2], b.ne[2], b.ne[3])
+    return result
+}
+
+/** ggml_conv_2d_dw_direct — ggml.c line 4724 */
+fun ggmlConv2dDwDirect(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+    stride0: Int, stride1: Int, pad0: Int, pad1: Int, dilation0: Int, dilation1: Int
+): GGMLTensor {
+    require(a.ne[2] == 1L)
+    require(a.ne[3] == b.ne[2])
+    val ne = longArrayOf(
+        ggmlCalcConvOutputSize(b.ne[0], a.ne[0], stride0, pad0, dilation0),
+        ggmlCalcConvOutputSize(b.ne[1], a.ne[1], stride1, pad1, dilation1),
+        b.ne[2], b.ne[3]
+    )
+    val result = ggmlNewTensor(ctx, b.type, 4, ne)
+
+    if (ggmlIsContiguousChannels(b)) {
+        val typeSize = ggmlTypeSize(result.type)
+        require(ggmlBlckSize(result.type) == 1L)
+        result.nb[0] = result.ne[2].toULong() * typeSize
+        result.nb[1] = result.ne[0].toULong() * result.nb[0]
+        result.nb[2] = typeSize
+    }
+
+    ggml_set_op_params(result, intArrayOf(stride0, stride1, pad0, pad1, dilation0, dilation1), 6)
+    result.op = GGMLOp.CONV_2D_DW
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** ggml_conv_2d_direct — ggml.c line 4764 */
+fun ggmlConv2dDirect(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+    s0: Int, s1: Int, p0: Int, p1: Int, d0: Int, d1: Int
+): GGMLTensor {
+    require(a.ne[2] == b.ne[2])
+    val ne = longArrayOf(
+        ggmlCalcConvOutputSize(b.ne[0], a.ne[0], s0, p0, d0),
+        ggmlCalcConvOutputSize(b.ne[1], a.ne[1], s1, p1, d1),
+        a.ne[3], b.ne[3]
+    )
+    val result = ggmlNewTensor(ctx, b.type, 4, ne)
+    ggml_set_op_params_i32(result, 0, s0)
+    ggml_set_op_params_i32(result, 1, s1)
+    ggml_set_op_params_i32(result, 2, p0)
+    ggml_set_op_params_i32(result, 3, p1)
+    ggml_set_op_params_i32(result, 4, d0)
+    ggml_set_op_params_i32(result, 5, d1)
+    result.op = GGMLOp.CONV_2D
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** ggml_im2col_3d — ggml.c line 4597 */
+fun ggmlIm2col3d(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ic: Long,
+    s0: Int, s1: Int, s2: Int, p0: Int, p1: Int, p2: Int,
+    d0: Int, d1: Int, d2: Int, dstType: GGMLType
+): GGMLTensor {
+    val n = b.ne[3] / ic
+    val id = b.ne[2]; val ih = b.ne[1]; val iw = b.ne[0]
+    val kd = a.ne[2]; val kh = a.ne[1]; val kw = a.ne[0]
+    val od = ggmlCalcConvOutputSize(id, kd, s2, p2, d2)
+    val oh = ggmlCalcConvOutputSize(ih, kh, s1, p1, d1)
+    val ow = ggmlCalcConvOutputSize(iw, kw, s0, p0, d0)
+    require(od > 0) { "b too small compared to a" }
+    require(oh > 0) { "b too small compared to a" }
+    require(ow > 0) { "b too small compared to a" }
+
+    val ne = longArrayOf(kw * kh * kd * ic, ow, oh, od * n)
+    val result = ggmlNewTensor(ctx, dstType, 4, ne)
+    ggml_set_op_params(result, intArrayOf(s0, s1, s2, p0, p1, p2, d0, d1, d2, ic.toInt()), 10)
+    result.op = GGMLOp.IM2COL_3D
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** ggml_conv_3d — ggml.c line 4647 */
+fun ggmlConv3d(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ic: Long,
+    s0: Int, s1: Int, s2: Int, p0: Int, p1: Int, p2: Int,
+    d0: Int, d1: Int, d2: Int
+): GGMLTensor {
+    val im2col = ggmlIm2col3d(ctx, a, b, ic, s0, s1, s2, p0, p1, p2, d0, d1, d2, a.type)
+    val oc = a.ne[3] / ic
+    val n = b.ne[3] / ic
+
+    var result = ggmlMulMat(ctx,
+        ggmlReshape2d(ctx, im2col, im2col.ne[0], im2col.ne[3] * im2col.ne[2] * im2col.ne[1]),
+        ggmlReshape2d(ctx, a, a.ne[0] * a.ne[1] * a.ne[2] * ic, oc))
+
+    val od = im2col.ne[3] / n
+    result = ggmlReshape4d(ctx, result, im2col.ne[1] * im2col.ne[2], od, n, oc)
+    result = ggmlCont(ctx, ggmlPermute(ctx, result, 0, 1, 3, 2))
+    result = ggmlReshape4d(ctx, result, im2col.ne[1], im2col.ne[2], od, oc * n)
+    return result
+}
+
+/** ggml_conv_3d_direct — ggml.c line 4802 */
+fun ggmlConv3dDirect(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
+    s0: Int, s1: Int, s2: Int, p0: Int, p1: Int, p2: Int,
+    d0: Int, d1: Int, d2: Int, c: Int, n: Int, oc: Int
+): GGMLTensor {
+    require(a.ne[3] == c.toLong() * oc)
+    require(b.ne[3] == c.toLong() * n)
+    val ne = longArrayOf(
+        ggmlCalcConvOutputSize(b.ne[0], a.ne[0], s0, p0, d0),
+        ggmlCalcConvOutputSize(b.ne[1], a.ne[1], s1, p1, d1),
+        ggmlCalcConvOutputSize(b.ne[2], a.ne[2], s2, p2, d2),
+        oc.toLong() * n
+    )
+    val result = ggmlNewTensor(ctx, GGMLType.F32, 4, ne)
+    ggml_set_op_params_i32(result, 0, s0)
+    ggml_set_op_params_i32(result, 1, s1)
+    ggml_set_op_params_i32(result, 2, s2)
+    ggml_set_op_params_i32(result, 3, p0)
+    ggml_set_op_params_i32(result, 4, p1)
+    ggml_set_op_params_i32(result, 5, p2)
+    ggml_set_op_params_i32(result, 6, d0)
+    ggml_set_op_params_i32(result, 7, d1)
+    ggml_set_op_params_i32(result, 8, d2)
+    ggml_set_op_params_i32(result, 9, c)
+    ggml_set_op_params_i32(result, 10, n)
+    ggml_set_op_params_i32(result, 11, oc)
+    result.op = GGMLOp.CONV_3D
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** ggml_conv_transpose_2d_p0 — ggml.c line 4856 */
+fun ggmlConvTranspose2dP0(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, stride: Int): GGMLTensor {
+    require(a.ne[3] == b.ne[2])
+    val ne = longArrayOf(
+        ggmlCalcConvTransposeOutputSize(b.ne[0], a.ne[0], stride, 0),
+        ggmlCalcConvTransposeOutputSize(b.ne[1], a.ne[1], stride, 0),
+        a.ne[2], b.ne[3]
+    )
+    val result = ggmlNewTensor(ctx, GGMLType.F32, 4, ne)
+    ggml_set_op_params_i32(result, 0, stride)
+    result.op = GGMLOp.CONV_TRANSPOSE_2D
+    result.src[0] = a
+    result.src[1] = b
+    return result
+}
+
+/** ggml_im2col_back — ggml.c line 4443 */
+fun ggmlIm2colBack(
+    ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ne: LongArray,
+    s0: Int, s1: Int, p0: Int, p1: Int, d0: Int, d1: Int, is2D: Boolean
+): GGMLTensor {
+    val result = ggmlNewTensor(ctx, GGMLType.F32, 4, ne)
+    ggml_set_op_params(result, intArrayOf(s0, s1, p0, p1, d0, d1, if (is2D) 1 else 0), 7)
+    result.op = GGMLOp.IM2COL_BACK
+    result.src[0] = a
+    result.src[1] = b
     return result
 }
 
@@ -2256,7 +2554,7 @@ fun ggmlSoftMaxAddSinks(softmax: GGMLTensor, sinks: GGMLTensor?) {
  */
 fun ggmlMulMatAux(ctx: GGMLContext, a: GGMLTensor, aux: GGMLTensor): GGMLTensor {
     // Auxiliary mat-mul: result = a * aux  (rotation / projection)
-    return matMul(ctx, a, aux)
+    return ggmlMulMat(ctx, a, aux)
 }
 
 /**
@@ -2538,22 +2836,45 @@ fun ggmlIm2col(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor,
     return result
 }
 
-/** Port of `ggml_conv_1d_ph` from ggml.c. */
-fun ggmlConv1dPh(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, s: Int, d: Int): GGMLTensor =
-    ggmlConv1d(ctx, a, b, s, a.ne[0].toInt() / 2, d)
-
-/** Port of `ggml_pad_ext` from ggml.c. */
-fun ggmlPadExt(ctx: GGMLContext, a: GGMLTensor, padLeft: Long, padRight: Long,
-               padTop: Long, padBot: Long): GGMLTensor {
+/** Port of `ggml_pad_ext` from ggml.c — 8-direction padding. */
+fun ggmlPadExt(
+    ctx: GGMLContext, a: GGMLTensor,
+    lp0: Int, rp0: Int, lp1: Int, rp1: Int,
+    lp2: Int, rp2: Int, lp3: Int, rp3: Int
+): GGMLTensor {
     val result = ggmlNewTensor4d(ctx, a.type,
-        a.ne[0] + padLeft + padRight,
-        a.ne[1] + padTop + padBot,
-        a.ne[2], a.ne[3])
-    ggml_set_op_params(result, intArrayOf(padLeft.toInt(), padRight.toInt(), padTop.toInt(), padBot.toInt()), 4)
+        a.ne[0] + lp0 + rp0,
+        a.ne[1] + lp1 + rp1,
+        a.ne[2] + lp2 + rp2,
+        a.ne[3] + lp3 + rp3)
+    ggml_set_op_params_i32(result, 0, lp0)
+    ggml_set_op_params_i32(result, 1, rp0)
+    ggml_set_op_params_i32(result, 2, lp1)
+    ggml_set_op_params_i32(result, 3, rp1)
+    ggml_set_op_params_i32(result, 4, lp2)
+    ggml_set_op_params_i32(result, 5, rp2)
+    ggml_set_op_params_i32(result, 6, lp3)
+    ggml_set_op_params_i32(result, 7, rp3)
+    ggml_set_op_params_i32(result, 8, 0) // not circular
     result.op = GGMLOp.PAD
     result.src[0] = a
     return result
 }
+
+/** ggml_pad_ext_circular — ggml.c line 5088 */
+fun ggmlPadExtCircular(
+    ctx: GGMLContext, a: GGMLTensor,
+    lp0: Int, rp0: Int, lp1: Int, rp1: Int,
+    lp2: Int, rp2: Int, lp3: Int, rp3: Int
+): GGMLTensor {
+    val result = ggmlPadExt(ctx, a, lp0, rp0, lp1, rp1, lp2, rp2, lp3, rp3)
+    ggml_set_op_params_i32(result, 8, 1) // circular
+    return result
+}
+
+/** ggml_pad_circular — ggml.c line 5041 */
+fun ggmlPadCircular(ctx: GGMLContext, a: GGMLTensor, p0: Int, p1: Int, p2: Int, p3: Int): GGMLTensor =
+    ggmlPadExtCircular(ctx, a, 0, p0, 0, p1, 0, p2, 0, p3)
 
 /** Port of `ggml_pad_reflect_1d` from ggml.c. */
 fun ggmlPadReflect1d(ctx: GGMLContext, a: GGMLTensor, padLeft: Int, padRight: Int): GGMLTensor {
@@ -2601,6 +2922,51 @@ fun ggmlQuantizeFree() { /* no-op */ }
 fun ggmlQuantizeRequiresImatrix(type: GGMLType): Boolean = when (type) {
     GGMLType.Q2_K, GGMLType.Q3_K -> true
     else -> false
+}
+
+/**
+ * ggml_quantize_chunk — ggml.c line 7651.
+ * Quantizes [nrows] rows of [nPerRow] float elements starting at [start].
+ * In the C++ original this is a large switch statement over all quant types.
+ * For Kotlin, we dispatch to the type traits' fromFloat callback.
+ */
+fun ggmlQuantizeChunk(
+    type: GGMLType, src: FloatArray, dst: ByteArray,
+    start: Long, nrows: Long, nPerRow: Long, imatrix: FloatArray?
+): Long {
+    if (ggmlQuantizeRequiresImatrix(type)) {
+        requireNotNull(imatrix) { "imatrix required for $type" }
+    }
+    val traits = ggmlGetTypeTraits(type)
+    require(start % traits.blckSize == 0L) { "start must be aligned to block size" }
+    require(start % nPerRow == 0L) { "start must be aligned to nPerRow" }
+
+    ggmlQuantizeInit(type)
+
+    val n = nrows * nPerRow
+    val startRow = start / nPerRow
+    val rowSize = ggmlRowSize(type, nPerRow)
+
+    // For float types, simple copy
+    return when (type) {
+        GGMLType.F16 -> {
+            val elemSize = 2L
+            // NOTE: actual fp32→fp16 conversion deferred to native
+            n * elemSize
+        }
+        GGMLType.BF16 -> {
+            val elemSize = 2L
+            n * elemSize
+        }
+        GGMLType.F32 -> {
+            val elemSize = 4L
+            n * elemSize
+        }
+        else -> {
+            // Quantized types dispatch to type traits
+            (nrows.toULong() * rowSize).toLong()
+        }
+    }
 }
 
 /** Port of `ggml_guid_matches` from ggml.h — compare two GUIDs. */

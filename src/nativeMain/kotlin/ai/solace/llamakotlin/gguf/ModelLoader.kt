@@ -707,7 +707,7 @@ class LoadedModel(val ggufContext: GGUFContext) {
             val b = createTestTensor(context)
             
             // Perform matrix multiplication using context (graph execution would be required)
-            val result = matMul(context, a, b)
+            val result = ggmlMulMat(context, a, b)
             
             // Check if we got expected results (basic validation)
             val expected = 7.0f // (1*1 + 2*3) = 7 for element [0,0]

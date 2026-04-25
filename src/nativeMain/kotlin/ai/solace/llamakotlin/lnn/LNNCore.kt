@@ -52,13 +52,13 @@ class Linear(
      */
     fun forward(context: GGMLContext, input: GGMLTensor): GGMLTensor {
         // Matrix multiplication: input @ weight.T
-        val output = matMul(context, input, weight)
+        val output = ggmlMulMat(context, input, weight)
 
         // Add bias if present
         return if (biasWeight != null) {
             // TODO: Implement broadcasting for add operation
             // For now, we'll assume the bias is already expanded to match the output shape
-            add(context, output, biasWeight)
+            ggmlAdd(context, output, biasWeight)
         } else {
             output
         }
@@ -142,7 +142,7 @@ class LiquidTimeConstant(
                 val linear = Linear(inputSize, hiddenSize)
                 linear.forward(context, input)
             },
-            { context, input -> relu(context, input) }
+            { context, input -> ggmlRelu(context, input) }
         ))
 
         // Initialize time-dependent networks
@@ -226,7 +226,7 @@ class MemoryCube(
                 val linear = Linear(hiddenSize, hiddenSize)
                 linear.forward(context, input)
             },
-            { context, input -> relu(context, input) }
+            { context, input -> ggmlRelu(context, input) }
         ))
 
         // Initialize output projection
