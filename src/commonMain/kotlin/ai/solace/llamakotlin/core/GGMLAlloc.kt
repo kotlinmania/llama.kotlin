@@ -181,6 +181,43 @@ class GGMLGallocr private constructor(
 }
 
 // ---------------------------------------------------------------------------
+// Top-level C-style API wrappers (for ast_distance parity with ggml-alloc.h)
+// ---------------------------------------------------------------------------
+
+/** ggml_tallocr_new — ggml-alloc.c line 60. */
+fun ggmlTallocrNew(buffer: GGMLBackendBuffer): GGMLTallocr = GGMLTallocr.new(buffer)
+
+/** ggml_tallocr_alloc — ggml-alloc.c line 75. */
+fun ggmlTallocrAlloc(talloc: GGMLTallocr, tensor: GGMLTensor): GGMLStatus = talloc.alloc(tensor)
+
+/** ggml_gallocr_new — ggml-alloc.c line 533. */
+fun ggmlGallocrNew(buft: GGMLBackendBufferType): GGMLGallocr = GGMLGallocr.new(buft)
+
+/** ggml_gallocr_free — ggml-alloc.c line 537. */
+fun ggmlGallocrFree(galloc: GGMLGallocr) = galloc.free()
+
+/** ggml_gallocr_reserve — ggml-alloc.c line 965. */
+fun ggmlGallocrReserve(galloc: GGMLGallocr, graph: GGMLCGraph): Boolean = galloc.reserve(graph)
+
+/** ggml_gallocr_reserve_n — ggml-alloc.c line 961. */
+fun ggmlGallocrReserveN(
+    galloc: GGMLGallocr, graph: GGMLCGraph,
+    nodeBufferIds: IntArray, leafBufferIds: IntArray
+): Boolean = galloc.reserveN(graph, nodeBufferIds, leafBufferIds)
+
+/** ggml_gallocr_reserve_n_size — ggml-alloc.c line 950. */
+fun ggmlGallocrReserveNSize(
+    galloc: GGMLGallocr, graph: GGMLCGraph,
+    nodeBufferIds: IntArray, leafBufferIds: IntArray, sizes: ULongArray
+) = galloc.reserveNSize(graph, nodeBufferIds, leafBufferIds, sizes)
+
+/** ggml_gallocr_alloc_graph — ggml-alloc.c line 1051. */
+fun ggmlGallocrAllocGraph(galloc: GGMLGallocr, graph: GGMLCGraph): Boolean = galloc.allocGraph(graph)
+
+/** ggml_gallocr_get_buffer_size — ggml-alloc.c line 1099. */
+fun ggmlGallocrGetBufferSize(galloc: GGMLGallocr, bufferId: Int): ULong = galloc.getBufferSize(bufferId)
+
+// ---------------------------------------------------------------------------
 // Utility: context-level tensor allocation
 // ---------------------------------------------------------------------------
 

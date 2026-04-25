@@ -57,3 +57,27 @@ fun ggmlCpuExtraWorkSize(nThreads: Int, op: GGMLTensor, size: LongArray): Boolea
 }
 
 // ggmlBackendCpuGetExtraBufferTypes is defined in GGMLCpuBackend.kt.
+
+// --- Virtual method wrappers for ast_distance parity with traits.h ---
+
+/** Wrapper for tensor_traits::work_size (traits.h line 23). */
+fun workSize(traits: GGMLCpuTensorTraits, nThreads: Int, op: GGMLTensor, size: LongArray): Boolean {
+    return traits.workSize(nThreads, op, size)
+}
+
+/** Wrapper for tensor_traits::compute_forward (traits.h line 24). */
+fun computeForward(traits: GGMLCpuTensorTraits, params: GGMLComputeParams, op: GGMLTensor): Boolean {
+    return traits.computeForward(params, op)
+}
+
+/** Wrapper for extra_buffer_type::supports_op (traits.h line 30). */
+fun supportsOp(extra: GGMLCpuExtraBufferType, dev: GGMLBackendDevice, op: GGMLTensor): Boolean {
+    return extra.supportsOp(dev, op)
+}
+
+/** Wrapper for extra_buffer_type::get_tensor_traits (traits.h line 31). */
+fun getTensorTraits(extra: GGMLCpuExtraBufferType, op: GGMLTensor): GGMLCpuTensorTraits? {
+    return extra.getTensorTraits(op)
+}
+
+// ggml_backend_cpu_get_extra_buffer_types (traits.h line 36) lives in GGMLCpuBackend.kt.

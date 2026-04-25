@@ -6,8 +6,8 @@ Based on AST analysis, here are the concrete next steps.
 
 - **Current Progress:** 7.2% (22/277 files)
 - **Matched Files:** 20
-- **Average Similarity:** 0.17
-- **Critical Issues:** 18 files with <0.60 similarity
+- **Average Similarity:** 0.20
+- **Critical Issues:** 17 files with <0.60 similarity
 
 ## Priority 1: Fix Incomplete High-Dependency Files
 
