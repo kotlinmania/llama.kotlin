@@ -6,44 +6,44 @@ Based on AST analysis, here are the concrete next steps.
 
 - **Current Progress:** 7.2% (22/277 files)
 - **Matched Files:** 20
-- **Average Similarity:** 0.20
-- **Critical Issues:** 17 files with <0.60 similarity
+- **Average Similarity:** 0.19
+- **Critical Issues:** 18 files with <0.60 similarity
 
 ## Priority 1: Fix Incomplete High-Dependency Files
 
-### 1. include.ggml-backend
-- **Similarity:** 0.00 (needs 85% improvement)
-- **Dependencies:** 38
-- **Priority Score:** 1595.1
-- **Symbol Deficit:** 91 (functions: 84, types: 7)
-- **Action:** Deep review - likely missing major functionality
-
-### 2. include.ggml
-- **Similarity:** 0.45 (needs 40% improvement)
+### 1. include.ggml
+- **Similarity:** 0.46 (needs 39% improvement)
 - **Dependencies:** 68
 - **Priority Score:** 547.1
 - **Symbol Deficit:** 29 (functions: 17, types: 12)
 - **Action:** Deep review - likely missing major functionality
 
-### 3. ggml-cpu.simd-mappings
+### 2. ggml-cpu.simd-mappings
 - **Similarity:** 0.00 (needs 85% improvement)
 - **Dependencies:** 10
 - **Priority Score:** 307.9
 - **Symbol Deficit:** 20 (functions: 20, types: 0)
 - **Action:** Deep review - likely missing major functionality
 
-### 4. ggml-backend-impl
+### 3. ggml-backend-impl
 - **Similarity:** 0.63 (needs 22% improvement)
 - **Dependencies:** 47
 - **Priority Score:** 291.0
 - **Symbol Deficit:** 16 (functions: 0, types: 16)
 - **Action:** Review and complete missing sections
 
-### 5. ggml-impl
+### 4. ggml-impl
 - **Similarity:** 0.52 (needs 33% improvement)
 - **Dependencies:** 58
 - **Priority Score:** 191.4
 - **Symbol Deficit:** 10 (functions: 4, types: 6)
+- **Action:** Deep review - likely missing major functionality
+
+### 5. include.ggml-backend
+- **Similarity:** 0.33 (needs 52% improvement)
+- **Dependencies:** 38
+- **Priority Score:** 133.6
+- **Symbol Deficit:** 7 (functions: 0, types: 7)
 - **Action:** Deep review - likely missing major functionality
 
 ### 6. include.ggml-cpu

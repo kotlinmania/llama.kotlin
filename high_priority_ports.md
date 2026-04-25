@@ -6,13 +6,13 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
-| 1 | `include.ggml-backend` | `core.GGMLBackend` | 0.00 | 38 | 91 | 1595.1 |
-| 2 | `include.ggml` | `core.GGMLOps` | 0.45 | 68 | 29 | 547.1 |
+| 1 | `ggml-backend` | `core.GGMLBackendUtils` | 0.15 | 0 | 114 | 1140.0 |
+| 2 | `include.ggml` | `core.GGMLOps` | 0.46 | 68 | 29 | 547.1 |
 | 3 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
 | 4 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.63 | 47 | 16 | 291.0 |
 | 5 | `ggml-impl` | `core.NumericConversions` | 0.52 | 58 | 10 | 191.4 |
-| 6 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 0 | 17 | 170.0 |
-| 7 | `openvino.utils` | `core.GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
+| 6 | `openvino.utils` | `core.GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
+| 7 | `include.ggml-backend` | `core.GGMLBackend` | 0.33 | 38 | 7 | 133.6 |
 | 8 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 0.25 | 13 | 7 | 116.9 |
 | 9 | `include.ggml-alloc` | `core.GGMLAlloc` | 0.22 | 8 | 6 | 94.9 |
 | 10 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.64 | 9 | 5 | 77.2 |
@@ -31,15 +31,10 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 These files need immediate attention:
 
-- **include.ggml-backend** → `core.GGMLBackend`
-  - Similarity: 0.00
-  - Dependencies: 38
-  - Lint issues: 22
-
 - **include.ggml** → `core.GGMLOps`
-  - Similarity: 0.45
+  - Similarity: 0.46
   - Dependencies: 68
-  - Lint issues: 124
+  - Lint issues: 90
 
 - **ggml-cpu.simd-mappings** → `simd.GGMLSimd`
   - Similarity: 0.00
@@ -49,6 +44,11 @@ These files need immediate attention:
   - Similarity: 0.52
   - Dependencies: 58
   - Lint issues: 8
+
+- **include.ggml-backend** → `core.GGMLBackend`
+  - Similarity: 0.33
+  - Dependencies: 38
+  - Lint issues: 25
 
 - **include.ggml-cpu** → `core.GGMLCpuExecutor`
   - Similarity: 0.25

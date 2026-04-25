@@ -16,12 +16,12 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.20
+**Average Similarity:** 0.19
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
-- Good (0.60-0.84): 3 files (15.0% of matched)
-- Critical (<0.60): 17 files (85.0% of matched)
+- Good (0.60-0.84): 2 files (10.0% of matched)
+- Critical (<0.60): 18 files (90.0% of matched)
 
 ### Excellent Ports (Similarity ≥ 0.85)
 
@@ -32,11 +32,12 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
-- `include.ggml-backend` → `core.GGMLBackend` (0.00, 38 deps)
-- `include.ggml` → `core.GGMLOps` (0.45, 68 deps)
+- `ggml-backend` → `core.GGMLBackendUtils` (0.15)
+- `include.ggml` → `core.GGMLOps` (0.46, 68 deps)
 - `ggml-cpu.simd-mappings` → `simd.GGMLSimd` (0.00, 10 deps)
 - `ggml-impl` → `core.NumericConversions` (0.52, 58 deps)
 - `openvino.utils` → `core.GGMLTensorUtils` (0.00)
+- `include.ggml-backend` → `core.GGMLBackend` (0.33, 38 deps)
 - `include.ggml-cpu` → `core.GGMLCpuExecutor` (0.25, 13 deps)
 - `include.ggml-alloc` → `core.GGMLAlloc` (0.22, 8 deps)
 - `ggml-sycl.quants` → `core.GGMLCpuQuants` (0.00)
@@ -57,11 +58,11 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
-| `include.ggml-backend` | `core.GGMLBackend` | 7/18 | `ggml_tensor`, `ggml_cgraph`, `ggml_backend_dev_type` … |
+| `ggml-backend` | `core.GGMLBackendUtils` | 13/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
 | `include.ggml` | `core.GGMLOps` | 12/25 | `ggml_status`, `ggml_object`, `ggml_context` … |
 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
-| `ggml-backend` | `core.GGMLBackendUtils` | 13/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
+| `include.ggml-backend` | `core.GGMLBackend` | 7/18 | `ggml_tensor`, `ggml_cgraph`, `ggml_backend_dev_type` … |
 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 6/9 | `ggml_threadpool`, `ggml_context`, `ggml_tensor` … |
 | `include.ggml-alloc` | `core.GGMLAlloc` | 6/8 | `ggml_backend_buffer_type`, `ggml_backend_buffer`, `ggml_backend` … |
 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 4/4 | `ggml_compute_params`, `ggml_tensor`, `tensor_traits` … |
@@ -97,7 +98,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4084 / 60 lines (6807%)
+**Documentation coverage:** 4082 / 60 lines (6803%)
 
 Top documentation gaps (>20%):
 

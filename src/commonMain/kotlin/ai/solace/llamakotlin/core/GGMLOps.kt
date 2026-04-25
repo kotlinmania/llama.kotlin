@@ -730,9 +730,19 @@ fun ggmlViewTensor(ctx: GGMLContext, src: GGMLTensor): GGMLTensor {
 // Context tensor enumeration
 // ============================================================================
 
-/** Get a tensor from the context by name. */
+/** Get a tensor from the context by name. C: ggml.c line 1965. */
 fun ggmlGetTensor(ctx: GGMLContext, name: String): GGMLTensor? {
-    error("ggmlGetTensor not yet ported")
+    var obj = ctx.objectsBegin
+    while (obj != null) {
+        if (obj.type == GGMLObjectType.TENSOR) {
+            val cur = obj.tensor
+            if (cur != null && cur.name == name) {
+                return cur
+            }
+        }
+        obj = obj.next
+    }
+    return null
 }
 
 // ============================================================================
@@ -888,17 +898,32 @@ fun ggmlLog(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
 fun ggmlLogInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
     buildUnary(a, GGMLOp.LOG, inplace = true)
 
-/** ggml_sin – element-wise sine. */
+/** ggml_sin – element-wise sine. C: ggml.c line 2393. */
 fun ggmlSin(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
-    buildUnaryOp(a, GGMLUnaryOp.ABS).also {
-        // sin doesn't have its own GGMLOp – it is unary
-        // But in the C header it's GGML_OP_SIN -- if your GGMLOp enum has SIN, use that
-        // For now, minimal with TODO
-    }
+    ggmlSinImpl(ctx, a, inplace = false)
 
-/** ggml_cos – element-wise cosine. */
-fun ggmlCos(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
-    error("ggmlCos not yet ported")
+fun ggmlSinInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
+    ggmlSinImpl(ctx, a, inplace = true)
+
+/** ggml_cos – element-wise cosine. C: ggml.c line 2419. */
+fun ggmlCos(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
+    ggmlCosImpl(ctx, a, inplace = false)
+
+fun ggmlCosInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
+    ggmlCosImpl(ctx, a, inplace = true)
+
+private fun ggmlSinImpl(ctx: GGMLContext, a: GGMLTensor, inplace: Boolean): GGMLTensor {
+    val result = if (inplace) ggmlViewTensor(ctx, a) else ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.SIN
+    result.src[0] = a
+    return result
+}
+
+private fun ggmlCosImpl(ctx: GGMLContext, a: GGMLTensor, inplace: Boolean): GGMLTensor {
+    val result = if (inplace) ggmlViewTensor(ctx, a) else ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.COS
+    result.src[0] = a
+    return result
 }
 
 // --- reduction ops ---
@@ -1133,25 +1158,70 @@ fun ggmlTruncInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor =
 
 // --- GLU ops ---
 
-/** ggml_glu – generic gated linear unit. */
-fun ggmlGlu(ctx: GGMLContext, a: GGMLTensor, op: GGMLGluOp, swapped: Boolean): GGMLTensor {
-    val result = GGMLTensor(type = a.type)
-    result.ne[0] = a.ne[0] / 2
-    for (i in 1 until GGML_MAX_DIMS) result.ne[i] = a.ne[i]
-    result.nb = calculateContiguousStrides(result.ne, result.type, result.rank())
-    result.op = GGMLOp.MAP_UNARY // GLU routes through GLU op in full C impl
+/**
+ * ggml_glu_impl — C: ggml.c line 2862.
+ * Internal implementation for all GLU variants.
+ */
+private fun ggmlGluImpl(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor?, op: GGMLGluOp, swapped: Boolean): GGMLTensor {
+    require(ggmlIsContiguous1(a))
+
+    if (b != null) {
+        require(ggmlIsContiguous1(b))
+        require(ggmlAreSameShape(a, b))
+        require(a.type == b.type)
+    }
+
+    val ne = LongArray(GGML_MAX_DIMS) { if (it == 0) a.ne[0] / 2 else a.ne[it] }
+    val result = if (b != null) {
+        ggmlNewTensor(ctx, a.type, GGML_MAX_DIMS, a.ne.copyOf())
+    } else {
+        ggmlNewTensor(ctx, a.type, GGML_MAX_DIMS, ne)
+    }
+
+    ggml_set_op_params_i32(result, 0, op.ordinal)
+    ggml_set_op_params_i32(result, 1, if (swapped) 1 else 0)
+
+    result.op = GGMLOp.GLU
     result.src[0] = a
-    result.opParams[0] = op.ordinal
-    result.opParams[1] = if (swapped) 1 else 0
+    result.src[1] = b
     return result
 }
 
-fun ggmlReglu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGlu(ctx, a, GGMLGluOp.REGLU, false)
-fun ggmlRegluSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGlu(ctx, a, GGMLGluOp.REGLU, true)
-fun ggmlGeglu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGlu(ctx, a, GGMLGluOp.GEGLU, false)
-fun ggmlGegluSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGlu(ctx, a, GGMLGluOp.GEGLU, true)
-fun ggmlSwiglu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGlu(ctx, a, GGMLGluOp.SWIGLU, false)
-fun ggmlSwigluSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGlu(ctx, a, GGMLGluOp.SWIGLU, true)
+/** ggml_glu — C: ggml.c line 2945. */
+fun ggmlGlu(ctx: GGMLContext, a: GGMLTensor, op: GGMLGluOp, swapped: Boolean): GGMLTensor =
+    ggmlGluImpl(ctx, a, null, op, swapped)
+
+/** ggml_glu_split — C: ggml.c line 2953. */
+fun ggmlGluSplit(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, op: GGMLGluOp): GGMLTensor =
+    ggmlGluImpl(ctx, a, b, op, false)
+
+fun ggmlReglu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.REGLU, false)
+fun ggmlRegluSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.REGLU, true)
+fun ggmlRegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, gate, up, GGMLGluOp.REGLU, false)
+
+fun ggmlGeglu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.GEGLU, false)
+fun ggmlGegluSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.GEGLU, true)
+fun ggmlGegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, gate, up, GGMLGluOp.GEGLU, false)
+
+fun ggmlSwiglu(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.SWIGLU, false)
+fun ggmlSwigluSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.SWIGLU, true)
+fun ggmlSwigluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, gate, up, GGMLGluOp.SWIGLU, false)
+
+fun ggmlGegluErf(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.GEGLU_ERF, false)
+fun ggmlGegluErfSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.GEGLU_ERF, true)
+fun ggmlGegluErfSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, gate, up, GGMLGluOp.GEGLU_ERF, false)
+
+fun ggmlGegluQuick(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.GEGLU_QUICK, false)
+fun ggmlGegluQuickSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, a, null, GGMLGluOp.GEGLU_QUICK, true)
+fun ggmlGegluQuickSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor = ggmlGluImpl(ctx, gate, up, GGMLGluOp.GEGLU_QUICK, false)
+
+/** ggml_swiglu_oai — C: ggml.c line 3066. */
+fun ggmlSwigluOai(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, alpha: Float, limit: Float): GGMLTensor {
+    val result = ggmlGluImpl(ctx, a, b, GGMLGluOp.SWIGLU_OAI, false)
+    ggml_set_op_params_f32(result, 2, alpha)
+    ggml_set_op_params_f32(result, 3, limit)
+    return result
+}
 
 // --- normalization ---
 
@@ -2451,47 +2521,72 @@ fun ggmlThreadpoolParamsDefault(nThreads: Int): GGMLThreadpoolParams =
     GGMLThreadpoolParams(nThreads = nThreads)
 
 // =============================================================================
-// Minimal functions needed by llm_graph_context but not yet fully implemented
+// Additional graph-building functions (ggml.c)
 // =============================================================================
 
-/** ggml_swiglu_split – SwiGLU with separate gate and up tensors. */
-fun ggmlSwigluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    error("ggmlSwigluSplit not yet ported")
-}
-
-/** ggml_geglu_split – GeGLU with separate gate and up tensors. */
-fun ggmlGegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    error("ggmlGegluSplit not yet ported")
-}
-
-/** ggml_reglu_split – ReGLU with separate gate and up tensors. */
-fun ggmlRegluSplit(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor): GGMLTensor {
-    error("ggmlRegluSplit not yet ported")
-}
-
-/** ggml_swiglu_oai – OpenAI-style SwiGLU with alpha and limit parameters. */
-fun ggmlSwigluOai(ctx: GGMLContext, gate: GGMLTensor, up: GGMLTensor, alpha: Float, limit: Float): GGMLTensor {
-    error("ggmlSwigluOai not yet ported")
-}
-
-/** ggml_argsort_top_k – Return indices of top-k elements per row. */
-fun ggmlArgsortTopK(ctx: GGMLContext, a: GGMLTensor, k: Long): GGMLTensor {
-    error("ggmlArgsortTopK not yet ported")
-}
-
-/** ggml_set_rows – scatter rows from [src] into [dst] at positions given by [ids]. */
-fun ggmlSetRows(ctx: GGMLContext, dst: GGMLTensor, src: GGMLTensor, ids: GGMLTensor): GGMLTensor {
-    error("ggmlSetRows not yet ported")
-}
-
-/** ggml_add_id – element-wise add with expert-id routing. */
+/** ggml_add_id — C: ggml.c line 2077. Element-wise add with expert-id routing. */
 fun ggmlAddId(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, ids: GGMLTensor): GGMLTensor {
-    error("ggmlAddId not yet ported")
+    require(a.ne[0] == b.ne[0])
+    require(a.ne[1] == ids.ne[0])
+    require(a.ne[2] == ids.ne[1])
+    require(ids.type == GGMLType.I32)
+
+    val result = ggmlDupTensor(ctx, a)
+    result.op = GGMLOp.ADD_ID
+    result.src[0] = a
+    result.src[1] = b
+    result.src[2] = ids
+    return result
 }
 
-/** ggml_repeat_4d – repeat tensor to fill target shape. */
+/** ggml_repeat_4d — C: ggml.c line 2540. Repeat tensor to fill target shape. */
 fun ggmlRepeat4d(ctx: GGMLContext, a: GGMLTensor, ne0: Long, ne1: Long, ne2: Long, ne3: Long): GGMLTensor {
-    error("ggmlRepeat4d not yet ported")
+    val canRepeat = ggmlIsEmpty(a) || (
+        (ne0 % a.ne[0] == 0L) &&
+        (ne1 % a.ne[1] == 0L) &&
+        (ne2 % a.ne[2] == 0L) &&
+        (ne3 % a.ne[3] == 0L)
+    )
+    require(canRepeat)
+
+    val result = ggmlNewTensor4d(ctx, a.type, ne0, ne1, ne2, ne3)
+    result.op = GGMLOp.REPEAT
+    result.src[0] = a
+    return result
+}
+
+/** ggml_set_rows — C: ggml.c line 3884. Scatter rows from src into dst at positions given by ids. */
+fun ggmlSetRows(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, c: GGMLTensor): GGMLTensor {
+    require(a.ne[0] == b.ne[0])
+    require(a.ne[2] == b.ne[2])
+    require(a.ne[3] == b.ne[3])
+    require(b.ne[1] == c.ne[0])
+    require(b.ne[2] % c.ne[1] == 0L)
+    require(b.ne[3] % c.ne[2] == 0L)
+    require(c.ne[3] == 1L)
+    require(b.type == GGMLType.F32)
+    require(c.type == GGMLType.I64 || c.type == GGMLType.I32)
+    require(ggmlIsContiguousRows(a))
+    require(ggmlIsContiguousRows(b))
+
+    val result = ggmlViewTensor(ctx, a)
+    result.op = GGMLOp.SET_ROWS
+    result.src[0] = b
+    result.src[1] = c
+    result.src[2] = a
+    return result
+}
+
+/** ggml_argsort_top_k — C: ggml.c line 5258. Return indices of top-k elements per row. */
+fun ggmlArgsortTopK(ctx: GGMLContext, a: GGMLTensor, k: Int): GGMLTensor {
+    require(a.ne[0] >= k.toLong())
+
+    var result = ggmlArgsort(ctx, a, GGMLSortOrder.DESC)
+    result = ggmlView4d(ctx, result,
+        k.toLong(), result.ne[1], result.ne[2], result.ne[3],
+        result.nb[1], result.nb[2], result.nb[3],
+        0uL)
+    return result
 }
 
 /** ggml_format_name – format a tensor name using printf-style syntax. */
@@ -2722,21 +2817,6 @@ fun ggmlAcc(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, nb2: Long
     ggmlAccImpl(ctx, a, b, nb1, nb2, nb3, offset, false)
 fun ggmlAccInplace(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, nb1: Long, nb2: Long, nb3: Long, offset: Long): GGMLTensor =
     ggmlAccImpl(ctx, a, b, nb1, nb2, nb3, offset, true)
-
-/** Port of `ggml_sin_inplace` / `ggml_cos_inplace` from ggml.c. */
-fun ggmlSinInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
-    val result = ggmlViewTensor(ctx, a)
-    result.op = GGMLOp.SIN
-    result.src[0] = a
-    return result
-}
-
-fun ggmlCosInplace(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
-    val result = ggmlViewTensor(ctx, a)
-    result.op = GGMLOp.COS
-    result.src[0] = a
-    return result
-}
 
 /** Port of `ggml_l2_norm` from ggml.c. */
 private fun ggmlL2NormImpl(ctx: GGMLContext, a: GGMLTensor, eps: Float, inplace: Boolean): GGMLTensor {
@@ -3121,79 +3201,6 @@ fun ggmlThreadpoolParamsInit(nThreads: Int): GGMLThreadpoolParams {
 /** Port of `ggml_threadpool_params_match` from ggml.c. */
 fun ggmlThreadpoolParamsMatch(a: GGMLThreadpoolParams, b: GGMLThreadpoolParams): Boolean {
     return a.nThreads == b.nThreads
-}
-
-// --- GLU (Gated Linear Unit) graph-building ops ---
-
-/** Port of `ggml_geglu_erf` from ggml.c. */
-fun ggmlGegluErf(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
-    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
-    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
-    result.op = GGMLOp.GLU
-    ggml_set_op_params_i32(result, 0, 0) // GLU_TYPE_GEGLU_ERF = 0
-    result.src[0] = a
-    return result
-}
-
-fun ggmlGegluErfSplit(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-    val result = ggmlDupTensor(ctx, a)
-    result.op = GGMLOp.GLU
-    ggml_set_op_params_i32(result, 0, 0)
-    ggml_set_op_params_i32(result, 1, 1) // split flag
-    result.src[0] = a
-    result.src[1] = b
-    return result
-}
-
-fun ggmlGegluErfSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
-    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
-    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
-    result.op = GGMLOp.GLU
-    ggml_set_op_params_i32(result, 0, 0)
-    ggml_set_op_params_i32(result, 2, 1) // swapped flag
-    result.src[0] = a
-    return result
-}
-
-/** Port of `ggml_geglu_quick` from ggml.c. */
-fun ggmlGegluQuick(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
-    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
-    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
-    result.op = GGMLOp.GLU
-    ggml_set_op_params_i32(result, 0, 1) // GLU_TYPE_GEGLU_QUICK = 1
-    result.src[0] = a
-    return result
-}
-
-fun ggmlGegluQuickSplit(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor): GGMLTensor {
-    val result = ggmlDupTensor(ctx, a)
-    result.op = GGMLOp.GLU
-    ggml_set_op_params_i32(result, 0, 1)
-    ggml_set_op_params_i32(result, 1, 1)
-    result.src[0] = a
-    result.src[1] = b
-    return result
-}
-
-fun ggmlGegluQuickSwapped(ctx: GGMLContext, a: GGMLTensor): GGMLTensor {
-    require(a.ne[0] % 2 == 0L) { "ne[0] must be even for GLU" }
-    val result = ggmlNewTensor4d(ctx, a.type, a.ne[0] / 2, a.ne[1], a.ne[2], a.ne[3])
-    result.op = GGMLOp.GLU
-    ggml_set_op_params_i32(result, 0, 1)
-    ggml_set_op_params_i32(result, 2, 1)
-    result.src[0] = a
-    return result
-}
-
-/** Port of `ggml_glu_split` from ggml.c — generic GLU split op. */
-fun ggmlGluSplit(ctx: GGMLContext, a: GGMLTensor, b: GGMLTensor, gluType: Int): GGMLTensor {
-    val result = ggmlDupTensor(ctx, a)
-    result.op = GGMLOp.GLU
-    ggml_set_op_params_i32(result, 0, gluType)
-    ggml_set_op_params_i32(result, 1, 1) // split
-    result.src[0] = a
-    result.src[1] = b
-    return result
 }
 
 /** Port of `ggml_xielu` from ggml.c. */

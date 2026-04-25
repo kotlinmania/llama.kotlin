@@ -1834,7 +1834,7 @@ open class LlmGraphContext(val params: LlmGraphParams) {
         }
 
         // -- top-k expert selection -----------------------------------------
-        val selectedExperts = ggmlArgsortTopK(c, selectionProbs, nExpertUsed)
+        val selectedExperts = ggmlArgsortTopK(c, selectionProbs, nExpertUsed.toInt())
         cb(selectedExperts, "ffn_moe_topk", il)
 
         probs = ggmlReshape3d(c, probs, 1, nExpert, nTokensCur)
