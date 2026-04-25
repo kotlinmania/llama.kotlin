@@ -44,6 +44,429 @@ private fun get_scale_min_k4(j: Int, q: ByteArray, qOff: Int): ScaleMin {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  Quantization helper functions (ggml-quants.c lines 559–1080)
+// ════════════════════════════════════════════════════════════════════════════════
+
+/** Port of `nearest_int` (C line 559). Uses the float bit trick for fast rounding. */
+private fun nearest_int(fval: Float): Int {
+    val v = fval + 12582912f
+    val i = v.toRawBits()
+    return (i and 0x007fffff) - 0x00400000
+}
+
+/** Port of `make_qx_quants` (C line 566). Signed quantization helper. */
+private fun make_qx_quants(
+    n: Int, nmax: Int, x: FloatArray, xOff: Int,
+    L: ByteArray, lOff: Int, rmseType: Int,
+    qw: FloatArray?, qwOff: Int
+): Float {
+    var max = 0f
+    var amax = 0f
+    for (i in 0 until n) {
+        val ax = kotlin.math.abs(x[xOff + i])
+        if (ax > amax) { amax = ax; max = x[xOff + i] }
+    }
+    if (amax < GROUP_MAX_EPS) {
+        for (i in 0 until n) L[lOff + i] = 0
+        return 0f
+    }
+    var iscale = -nmax.toFloat() / max
+    var rmseTypeVar = rmseType
+    if (rmseTypeVar == 0) {
+        for (i in 0 until n) {
+            val l = nearest_int(iscale * x[xOff + i])
+            L[lOff + i] = (nmax + maxOf(-nmax, minOf(nmax - 1, l))).toByte()
+        }
+        return 1f / iscale
+    }
+    var returnEarly = false
+    if (rmseTypeVar < 0) {
+        rmseTypeVar = -rmseTypeVar
+        returnEarly = true
+    }
+    var sumlx = 0f
+    var suml2 = 0f
+    for (i in 0 until n) {
+        var l = nearest_int(iscale * x[xOff + i])
+        l = maxOf(-nmax, minOf(nmax - 1, l))
+        L[lOff + i] = (l + nmax).toByte()
+        val w = if (qw != null) qw[qwOff + i]
+                else if (rmseTypeVar == 1) x[xOff + i] * x[xOff + i]
+                else if (rmseTypeVar == 2) 1f
+                else if (rmseTypeVar == 3) kotlin.math.abs(x[xOff + i])
+                else kotlin.math.sqrt(kotlin.math.abs(x[xOff + i]))
+        sumlx += w * x[xOff + i] * l
+        suml2 += w * l * l
+    }
+    var scale = if (suml2 != 0f) sumlx / suml2 else 0f
+    if (returnEarly) return if (suml2 > 0f) 0.5f * (scale + 1f / iscale) else 1f / iscale
+    var best = scale * sumlx
+    for (is_ in -9..9) {
+        if (is_ == 0) continue
+        iscale = -(nmax + 0.1f * is_) / max
+        sumlx = 0f; suml2 = 0f
+        for (i in 0 until n) {
+            var l = nearest_int(iscale * x[xOff + i])
+            l = maxOf(-nmax, minOf(nmax - 1, l))
+            val w = if (qw != null) qw[qwOff + i]
+                    else if (rmseTypeVar == 1) x[xOff + i] * x[xOff + i]
+                    else if (rmseTypeVar == 2) 1f
+                    else if (rmseTypeVar == 3) kotlin.math.abs(x[xOff + i])
+                    else kotlin.math.sqrt(kotlin.math.abs(x[xOff + i]))
+            sumlx += w * x[xOff + i] * l
+            suml2 += w * l * l
+        }
+        if (suml2 > 0 && sumlx * sumlx > best * suml2) {
+            for (i in 0 until n) {
+                val l = nearest_int(iscale * x[xOff + i])
+                L[lOff + i] = (nmax + maxOf(-nmax, minOf(nmax - 1, l))).toByte()
+            }
+            scale = sumlx / suml2; best = scale * sumlx
+        }
+    }
+    return scale
+}
+
+/** Port of `make_q3_quants` (C line 635). Signed quantization with optional RMSE refinement. */
+private fun make_q3_quants(
+    n: Int, nmax: Int, x: FloatArray, xOff: Int,
+    L: ByteArray, lOff: Int, doRmse: Boolean
+): Float {
+    var max = 0f
+    var amax = 0f
+    for (i in 0 until n) {
+        val ax = kotlin.math.abs(x[xOff + i])
+        if (ax > amax) { amax = ax; max = x[xOff + i] }
+    }
+    if (amax < GROUP_MAX_EPS) {
+        for (i in 0 until n) L[lOff + i] = 0
+        return 0f
+    }
+    val iscale = -nmax.toFloat() / max
+    if (doRmse) {
+        var sumlx = 0f
+        var suml2 = 0f
+        for (i in 0 until n) {
+            var l = nearest_int(iscale * x[xOff + i])
+            l = maxOf(-nmax, minOf(nmax - 1, l))
+            L[lOff + i] = l.toByte()
+            val w = x[xOff + i] * x[xOff + i]
+            sumlx += w * x[xOff + i] * l
+            suml2 += w * l * l
+        }
+        for (itry in 0 until 5) {
+            var nChanged = 0
+            for (i in 0 until n) {
+                val w = x[xOff + i] * x[xOff + i]
+                val slx0 = sumlx - w * x[xOff + i] * L[lOff + i]
+                if (slx0 > 0) {
+                    var sl2 = suml2 - w * L[lOff + i] * L[lOff + i]
+                    var newL = nearest_int(x[xOff + i] * sl2 / slx0)
+                    newL = maxOf(-nmax, minOf(nmax - 1, newL))
+                    if (newL != L[lOff + i].toInt()) {
+                        val slx = slx0 + w * x[xOff + i] * newL
+                        sl2 += w * newL * newL
+                        if (sl2 > 0 && slx * slx * suml2 > sumlx * sumlx * sl2) {
+                            L[lOff + i] = newL.toByte(); sumlx = slx; suml2 = sl2
+                            ++nChanged
+                        }
+                    }
+                }
+            }
+            if (nChanged == 0) break
+        }
+        for (i in 0 until n) {
+            L[lOff + i] = (L[lOff + i] + nmax).toByte()
+        }
+        return if (suml2 > 0f) sumlx / suml2 else 0f
+    }
+    for (i in 0 until n) {
+        var l = nearest_int(iscale * x[xOff + i])
+        l = maxOf(-nmax, minOf(nmax - 1, l))
+        L[lOff + i] = (l + nmax).toByte()
+    }
+    return 1f / iscale
+}
+
+/** Port of `make_qkx1_quants` (C line 694). Unsigned quantization with min subtraction. */
+private fun make_qkx1_quants(
+    n: Int, nmax: Int, x: FloatArray, xOff: Int,
+    L: UByteArray, lOff: Int, theMin: FloatArray, minIdx: Int,
+    ntry: Int, alpha: Float
+): Float {
+    var min = x[xOff]
+    var max = x[xOff]
+    for (i in 1 until n) {
+        if (x[xOff + i] < min) min = x[xOff + i]
+        if (x[xOff + i] > max) max = x[xOff + i]
+    }
+    if (max == min) {
+        for (i in 0 until n) L[lOff + i] = 0u
+        theMin[minIdx] = 0f
+        return 0f
+    }
+    if (min > 0) min = 0f
+    var iscale = nmax.toFloat() / (max - min)
+    var scale = 1f / iscale
+    for (itry in 0 until ntry) {
+        var sumlx = 0f; var suml2 = 0
+        var didChange = false
+        for (i in 0 until n) {
+            var l = nearest_int(iscale * (x[xOff + i] - min))
+            l = maxOf(0, minOf(nmax, l))
+            if (l.toUByte() != L[lOff + i]) {
+                L[lOff + i] = l.toUByte()
+                didChange = true
+            }
+            sumlx += (x[xOff + i] - min) * l
+            suml2 += l * l
+        }
+        scale = sumlx / suml2
+        var sum = 0f
+        for (i in 0 until n) {
+            sum += x[xOff + i] - scale * L[lOff + i].toInt()
+        }
+        min = alpha * min + (1 - alpha) * sum / n
+        if (min > 0) min = 0f
+        iscale = 1f / scale
+        if (!didChange) break
+    }
+    theMin[minIdx] = -min
+    return scale
+}
+
+/** Port of `make_qkx2_quants` (C line 737). Weighted quantization with search. */
+private fun make_qkx2_quants(
+    n: Int, nmax: Int, x: FloatArray, xOff: Int,
+    weights: FloatArray, wOff: Int, L: UByteArray, lOff: Int,
+    theMin: FloatArray, minIdx: Int, Laux: UByteArray, lauxOff: Int,
+    rmin: Float, rdelta: Float, nstep: Int, useMad: Boolean
+): Float {
+    var min = x[xOff]
+    var max = x[xOff]
+    var sumW = weights[wOff]
+    var sumX = sumW * x[xOff]
+    for (i in 1 until n) {
+        if (x[xOff + i] < min) min = x[xOff + i]
+        if (x[xOff + i] > max) max = x[xOff + i]
+        val w = weights[wOff + i]
+        sumW += w
+        sumX += w * x[xOff + i]
+    }
+    if (min > 0) min = 0f
+    if (max == min) {
+        for (i in 0 until n) L[lOff + i] = 0u
+        theMin[minIdx] = -min
+        return 0f
+    }
+    var iscale = nmax.toFloat() / (max - min)
+    var scale = 1f / iscale
+    var bestError = 0f
+    for (i in 0 until n) {
+        var l = nearest_int(iscale * (x[xOff + i] - min))
+        L[lOff + i] = maxOf(0, minOf(nmax, l)).toUByte()
+        var diff = scale * L[lOff + i].toInt() + min - x[xOff + i]
+        diff = if (useMad) kotlin.math.abs(diff) else diff * diff
+        val w = weights[wOff + i]
+        bestError += w * diff
+    }
+    if (nstep < 1) {
+        theMin[minIdx] = -min
+        return scale
+    }
+    for (is_ in 0..nstep) {
+        iscale = (rmin + rdelta * is_ + nmax) / (max - min)
+        var sumL = 0f; var sumL2 = 0f; var sumXL = 0f
+        for (i in 0 until n) {
+            var l = nearest_int(iscale * (x[xOff + i] - min))
+            l = maxOf(0, minOf(nmax, l))
+            Laux[lauxOff + i] = l.toUByte()
+            val w = weights[wOff + i]
+            sumL += w * l
+            sumL2 += w * l * l
+            sumXL += w * l * x[xOff + i]
+        }
+        val D = sumW * sumL2 - sumL * sumL
+        if (D > 0) {
+            var thisScale = (sumW * sumXL - sumX * sumL) / D
+            var thisMin = (sumL2 * sumX - sumL * sumXL) / D
+            if (thisMin > 0) {
+                thisMin = 0f
+                thisScale = sumXL / sumL2
+            }
+            var curError = 0f
+            for (i in 0 until n) {
+                var diff = thisScale * Laux[lauxOff + i].toInt() + thisMin - x[xOff + i]
+                diff = if (useMad) kotlin.math.abs(diff) else diff * diff
+                val w = weights[wOff + i]
+                curError += w * diff
+            }
+            if (curError < bestError) {
+                for (i in 0 until n) L[lOff + i] = Laux[lauxOff + i]
+                bestError = curError
+                scale = thisScale
+                min = thisMin
+            }
+        }
+    }
+    theMin[minIdx] = -min
+    return scale
+}
+
+/** Port of `make_qkx3_quants` (C line 931). Like qkx2 but weights can be null. */
+private fun make_qkx3_quants(
+    n: Int, nmax: Int, x: FloatArray, xOff: Int,
+    weights: FloatArray?, wOff: Int, L: UByteArray, lOff: Int,
+    theMin: FloatArray, minIdx: Int, Laux: UByteArray, lauxOff: Int,
+    rmin: Float, rdelta: Float, nstep: Int, useMad: Boolean
+): Float {
+    var min = x[xOff]
+    var max = x[xOff]
+    var sumW = if (weights != null) weights[wOff] else x[xOff] * x[xOff]
+    var sumX = sumW * x[xOff]
+    for (i in 1 until n) {
+        if (x[xOff + i] < min) min = x[xOff + i]
+        if (x[xOff + i] > max) max = x[xOff + i]
+        val w = if (weights != null) weights[wOff + i] else x[xOff + i] * x[xOff + i]
+        sumW += w
+        sumX += w * x[xOff + i]
+    }
+    if (min > 0) min = 0f
+    if (max <= min) {
+        for (i in 0 until n) L[lOff + i] = 0u
+        theMin[minIdx] = -min
+        return 0f
+    }
+    var iscale = nmax.toFloat() / (max - min)
+    var scale = 1f / iscale
+    var bestMad = 0f
+    for (i in 0 until n) {
+        var l = nearest_int(iscale * (x[xOff + i] - min))
+        L[lOff + i] = maxOf(0, minOf(nmax, l)).toUByte()
+        var diff = scale * L[lOff + i].toInt() + min - x[xOff + i]
+        diff = if (useMad) kotlin.math.abs(diff) else diff * diff
+        val w = if (weights != null) weights[wOff + i] else x[xOff + i] * x[xOff + i]
+        bestMad += w * diff
+    }
+    if (nstep < 1) {
+        theMin[minIdx] = -min
+        return scale
+    }
+    for (is_ in 0..nstep) {
+        iscale = (rmin + rdelta * is_ + nmax) / (max - min)
+        var sumL = 0f; var sumL2 = 0f; var sumXL = 0f
+        for (i in 0 until n) {
+            var l = nearest_int(iscale * (x[xOff + i] - min))
+            l = maxOf(0, minOf(nmax, l))
+            Laux[lauxOff + i] = l.toUByte()
+            val w = if (weights != null) weights[wOff + i] else x[xOff + i] * x[xOff + i]
+            sumL += w * l
+            sumL2 += w * l * l
+            sumXL += w * l * x[xOff + i]
+        }
+        val D = sumW * sumL2 - sumL * sumL
+        if (D > 0) {
+            var thisScale = (sumW * sumXL - sumX * sumL) / D
+            var thisMin = (sumL2 * sumX - sumL * sumXL) / D
+            if (thisMin > 0) {
+                thisMin = 0f
+                thisScale = sumXL / sumL2
+            }
+            var mad = 0f
+            for (i in 0 until n) {
+                var diff = thisScale * Laux[lauxOff + i].toInt() + thisMin - x[xOff + i]
+                diff = if (useMad) kotlin.math.abs(diff) else diff * diff
+                val w = if (weights != null) weights[wOff + i] else x[xOff + i] * x[xOff + i]
+                mad += w * diff
+            }
+            if (mad < bestMad) {
+                for (i in 0 until n) L[lOff + i] = Laux[lauxOff + i]
+                bestMad = mad
+                scale = thisScale
+                min = thisMin
+            }
+        }
+    }
+    theMin[minIdx] = -min
+    return scale
+}
+
+/** Port of `make_qp_quants` (C line 1014). Positive-only quantization with iterative refinement. */
+private fun make_qp_quants(
+    n: Int, nmax: Int, x: FloatArray, xOff: Int,
+    L: UByteArray, lOff: Int, quantWeights: FloatArray, qwOff: Int
+): Float {
+    var max = 0f
+    for (i in 0 until n) {
+        max = maxOf(max, x[xOff + i])
+    }
+    if (max < GROUP_MAX_EPS) {
+        for (i in 0 until n) L[lOff + i] = 0u
+        return 0f
+    }
+    var iscale = nmax.toFloat() / max
+    for (i in 0 until n) {
+        L[lOff + i] = nearest_int(iscale * x[xOff + i]).toUByte()
+    }
+    var scale = 1f / iscale
+    var bestMse = 0f
+    for (i in 0 until n) {
+        val diff = x[xOff + i] - scale * L[lOff + i].toInt()
+        val w = quantWeights[qwOff + i]
+        bestMse += w * diff * diff
+    }
+    for (is_ in -4..4) {
+        if (is_ == 0) continue
+        val iscaleIs = (0.1f * is_ + nmax) / max
+        val scaleIs = 1f / iscaleIs
+        var mse = 0f
+        for (i in 0 until n) {
+            var l = nearest_int(iscaleIs * x[xOff + i])
+            l = minOf(nmax, l)
+            val diff = x[xOff + i] - scaleIs * l
+            val w = quantWeights[qwOff + i]
+            mse += w * diff * diff
+        }
+        if (mse < bestMse) {
+            bestMse = mse
+            iscale = iscaleIs
+        }
+    }
+    var sumlx = 0f
+    var suml2 = 0f
+    for (i in 0 until n) {
+        var l = nearest_int(iscale * x[xOff + i])
+        l = minOf(nmax, l)
+        L[lOff + i] = l.toUByte()
+        val w = quantWeights[qwOff + i]
+        sumlx += w * x[xOff + i] * l
+        suml2 += w * l * l
+    }
+    for (itry in 0 until 5) {
+        var nChanged = 0
+        for (i in 0 until n) {
+            val w = quantWeights[qwOff + i]
+            val slx = sumlx - w * x[xOff + i] * L[lOff + i].toInt()
+            val sl2 = suml2 - w * L[lOff + i].toInt() * L[lOff + i].toInt()
+            if (slx > 0 && sl2 > 0) {
+                var newL = nearest_int(x[xOff + i] * sl2 / slx)
+                newL = minOf(nmax, newL)
+                if (newL != L[lOff + i].toInt()) {
+                    val slxNew = slx + w * x[xOff + i] * newL
+                    val sl2New = sl2 + w * newL * newL
+                    if (slxNew * slxNew * suml2 > sumlx * sumlx * sl2New) {
+                        L[lOff + i] = newL.toUByte(); sumlx = slxNew; suml2 = sl2New
+                        ++nChanged
+                    }
+                }
+            }
+        }
+        if (nChanged == 0) break
+    }
+    return if (suml2 > 0f) sumlx / suml2 else 0f
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 //  ByteArray block readers — read fields at known offsets
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -907,7 +1330,58 @@ fun quantize_row_q6_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: 
 }
 
 fun quantize_row_q8_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_q8_K_ref: complex K-quant quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockQ8K.SIZE_BYTES
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        var max = 0f
+        var amax = 0f
+        for (j in 0 until QK_K) {
+            val ax = kotlin.math.abs(x[xIdx + j])
+            if (ax > amax) { amax = ax; max = ax }
+        }
+        val bOff = yOff + i * blockSize
+        if (amax == 0f) {
+            // Write d = 0 as float32 LE
+            val dBits = 0f.toRawBits()
+            y[bOff + 0] = (dBits and 0xFF).toByte()
+            y[bOff + 1] = ((dBits shr 8) and 0xFF).toByte()
+            y[bOff + 2] = ((dBits shr 16) and 0xFF).toByte()
+            y[bOff + 3] = ((dBits shr 24) and 0xFF).toByte()
+            // Zero out qs and bsums
+            for (j in 0 until QK_K) y[bOff + 4 + j] = 0
+            for (j in 0 until (QK_K / 16) * 2) y[bOff + 4 + QK_K + j] = 0
+            xIdx += QK_K
+            continue
+        }
+        val iscale = -128f / max
+        val qsOff = bOff + 4
+        for (j in 0 until QK_K) {
+            val v = nearest_int(iscale * x[xIdx + j])
+            y[qsOff + j] = minOf(127, v).toByte()
+        }
+        // Compute bsums (QK_K/16 int16_t values)
+        val bsumsOff = bOff + 4 + QK_K
+        for (j in 0 until QK_K / 16) {
+            var sum = 0
+            for (ii in 0 until 16) {
+                sum += y[qsOff + j * 16 + ii].toInt()
+            }
+            // Write int16 LE
+            y[bsumsOff + j * 2 + 0] = (sum and 0xFF).toByte()
+            y[bsumsOff + j * 2 + 1] = ((sum shr 8) and 0xFF).toByte()
+        }
+        // Write d = 1/iscale as float32 LE
+        val d = 1f / iscale
+        val dBits = d.toRawBits()
+        y[bOff + 0] = (dBits and 0xFF).toByte()
+        y[bOff + 1] = ((dBits shr 8) and 0xFF).toByte()
+        y[bOff + 2] = ((dBits shr 16) and 0xFF).toByte()
+        y[bOff + 3] = ((dBits shr 24) and 0xFF).toByte()
+        xIdx += QK_K
+    }
 }
 
 fun quantize_row_tq1_0_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
