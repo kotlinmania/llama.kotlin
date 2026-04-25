@@ -220,10 +220,10 @@ data class LlamaPerfSamplerData(
  * Maps to `struct llama_sampler_data` in C++.
  */
 data class LlamaSamplerData(
-    val logits: GGMLTensor? = null,
-    val probs: GGMLTensor? = null,
-    val sampled: GGMLTensor? = null,
-    val candidates: GGMLTensor? = null,
+    var logits: GGMLTensor? = null,
+    var probs: GGMLTensor? = null,
+    var sampled: GGMLTensor? = null,
+    var candidates: GGMLTensor? = null,
 )
 
 // ---------------------------------------------------------------------------

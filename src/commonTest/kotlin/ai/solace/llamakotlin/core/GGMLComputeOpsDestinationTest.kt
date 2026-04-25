@@ -102,7 +102,7 @@ class GGMLComputeOpsDestinationTest {
         }
 
         // Perform addition into destination tensor
-        computeAdd(graphAllocator, context, src0, src1, dst)
+        computeAdd(graphAllocator, src0, src1, dst)
 
         // Verify results are written to destination
         for (i in 0 until dims[0].toInt()) {
@@ -125,7 +125,7 @@ class GGMLComputeOpsDestinationTest {
         currentOffset += size
         val dst = createAndInitTensor("mul_dst", GGMLType.F32, dims, currentOffset)
 
-        computeMul(graphAllocator, context, src0, src1, dst)
+        computeMul(graphAllocator, src0, src1, dst)
 
         for (i in 0 until dims[0].toInt()) {
             val expected = src0.getFloat(graphAllocator, i) * src1.getFloat(graphAllocator, i)
@@ -275,7 +275,7 @@ class GGMLComputeOpsDestinationTest {
 
         // Should throw exception due to dimension mismatch
         assertFailsWith<IllegalArgumentException>("Should throw for dimension mismatch") {
-            computeAdd(graphAllocator, context, src0, src1, badDst)
+            computeAdd(graphAllocator, src0, src1, badDst)
         }
     }
 
@@ -295,7 +295,7 @@ class GGMLComputeOpsDestinationTest {
 
         // Should throw exception due to type mismatch
         assertFailsWith<IllegalArgumentException>("Should throw for type mismatch") {
-            computeAdd(graphAllocator, context, src0, src1, badDst)
+            computeAdd(graphAllocator, src0, src1, badDst)
         }
     }
 }

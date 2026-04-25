@@ -9,6 +9,8 @@ import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.toLong
+import kotlinx.cinterop.value
 import kotlinx.cinterop.COpaquePointerVar
 import platform.posix.free
 import platform.posix.posix_memalign

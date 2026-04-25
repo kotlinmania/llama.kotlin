@@ -788,7 +788,7 @@ fun ggml_vec_dot_q4_K_q8_K_generic(
         var sumi = 0
         for (j in 0 until QK_K / 16) {
             val bsum = vy.readShortLE(yOff + q8BsumsOff + j * 2).toInt()
-            val minByte = ((utmp[2 + j / 4] shr ((j % 4) * 8).toUInt()) and 0xFFu).toInt()
+            val minByte = ((utmp[2 + j / 4] shr ((j % 4) * 8)) and 0xFFu).toInt()
             sumi += bsum * minByte
         }
 
@@ -796,7 +796,7 @@ fun ggml_vec_dot_q4_K_q8_K_generic(
         var isIdx = 0
         var q8Pos = 0
         for (j in 0 until QK_K / 32) {
-            val scale = ((utmp[isIdx / 4] shr ((isIdx % 4) * 8).toUInt()) and 0xFFu).toInt()
+            val scale = ((utmp[isIdx / 4] shr ((isIdx % 4) * 8)) and 0xFFu).toInt()
             isIdx++
             for (l in 0 until 8) aux16[l] = vy[yOff + q8QsOff + q8Pos + l].toInt() * aux8[aIdx + l]
             for (l in 0 until 8) aux32[l] += scale * aux16[l]
@@ -887,7 +887,7 @@ fun ggml_vec_dot_q5_K_q8_K_generic(
         var sumi = 0
         for (j in 0 until QK_K / 16) {
             val bsum = vy.readShortLE(yOff + q8BsumsOff + j * 2).toInt()
-            val minByte = ((utmp[2 + j / 4] shr ((j % 4) * 8).toUInt()) and 0xFFu).toInt()
+            val minByte = ((utmp[2 + j / 4] shr ((j % 4) * 8)) and 0xFFu).toInt()
             sumi += bsum * minByte
         }
 
@@ -895,7 +895,7 @@ fun ggml_vec_dot_q5_K_q8_K_generic(
         var isIdx = 0
         var q8Pos = 0
         for (j in 0 until QK_K / 32) {
-            val scale = ((utmp[isIdx / 4] shr ((isIdx % 4) * 8).toUInt()) and 0xFFu).toInt()
+            val scale = ((utmp[isIdx / 4] shr ((isIdx % 4) * 8)) and 0xFFu).toInt()
             isIdx++
             for (l in 0 until 8) aux16[l] = vy[yOff + q8QsOff + q8Pos + l].toInt() * aux8[aIdx + l]
             for (l in 0 until 8) aux32[l] += scale * aux16[l]

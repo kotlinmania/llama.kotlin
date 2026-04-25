@@ -2,17 +2,7 @@
 
 package ai.solace.llamakotlin.core
 
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK_K
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK4_0
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK4_1
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK5_0
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK5_1
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK8_0
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK4_NL
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK_MXFP4
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK_NVFP4
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK_NVFP4_SUB
-import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK1_0
+// QK constants are top-level in GGMLTypes.kt and GGMLCommon.kt — same package, no import needed.
 
 /**
  * Port of `ggml-quants.c` — dequantization, quantization-row-ref, and
@@ -30,7 +20,7 @@ import ai.solace.llamakotlin.core.GGMLCommon.Companion.QK1_0
  */
 
 private const val GROUP_MAX_EPS = 1e-15f
-private const val IQ1S_DELTA = 0.125f
+// IQ1S_DELTA is defined in GGMLCommon.kt
 
 // ════════════════════════════════════════════════════════════════════════════════
 //  Helper: get_scale_min_k4 (used by Q4_K, Q5_K dequantize)

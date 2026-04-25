@@ -2,6 +2,7 @@
 
 package ai.solace.llamakotlin.core
 
+import kotlinx.cinterop.toLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -121,8 +122,17 @@ class GGMLCpuBufferNativeTest {
         dataOffset: ULong = 0u
     ): GGMLTensor {
         val t = GGMLTensor(type = type)
+        // C convention: unused dims are 1, not 0 (mirrors ggml_new_tensor_1d)
         t.ne[0] = ne0
-        t.nb[0] = type.byteSize.toUInt().toULong()
+        t.ne[1] = 1
+        t.ne[2] = 1
+        t.ne[3] = 1
+        // Set strides matching C layout
+        val bs = type.byteSize.toUInt().toULong()
+        t.nb[0] = bs
+        t.nb[1] = bs * ne0.toULong()
+        t.nb[2] = t.nb[1]
+        t.nb[3] = t.nb[2]
         t.dataOffset = dataOffset
         return t
     }
@@ -233,6 +243,11 @@ class GGMLCpuBufferNativeTest {
         // Write pattern to source
         val pattern = ByteArray(32) { (it * 5).toByte() }
         bufA.setTensor(src, pattern, 0u, 32u)
+
+        // Verify the write worked by reading back from bufA
+        val readback = ByteArray(32)
+        bufA.getTensor(src, readback, 0u, 32u)
+        assertContentEquals(pattern, readback, "setTensor/getTensor on bufA should round-trip")
 
         // Copy src → dst
         val ok = bufB.copyTensor(src, dst)

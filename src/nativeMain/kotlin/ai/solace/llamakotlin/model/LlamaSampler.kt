@@ -135,26 +135,13 @@ interface LlamaSampler {
     fun reset() {}
     fun clone(): LlamaSampler
     fun backendInit(buft: GGMLBackendBufferType): Boolean = false
-    fun backendAccept(ctx: GGMLContext, gf: GGMLComputeGraph, selectedToken: GGMLTensor) {}
-    fun backendApply(ctx: GGMLContext, gf: GGMLComputeGraph, data: LlamaSamplerData) {}
+    fun backendAccept(ctx: GGMLContext, gf: GGMLCGraph, selectedToken: GGMLTensor) {}
+    fun backendApply(ctx: GGMLContext, gf: GGMLCGraph, data: LlamaSamplerData) {}
     fun backendSetInput() {}
 }
 
-data class LlamaSamplerData(
-    var logits: GGMLTensor?,
-    var probs: GGMLTensor? = null,
-    var sampled: GGMLTensor? = null,
-    var candidates: GGMLTensor? = null
-)
-
-data class LlamaSamplerChainParams(
-    val noPerf: Boolean = false
-)
-
-data class LlamaPerfSamplerData(
-    val tSampleMs: Double = 0.0,
-    val nSample: Int = 0
-)
+// LlamaSamplerData, LlamaSamplerChainParams, LlamaPerfSamplerData defined in
+// LlamaHTypes.kt and LlamaApi.kt — kept here previously as duplicates.
 
 /**
  * Common backend sampler functionality. Samplers that can run on a backend
@@ -1731,131 +1718,29 @@ class LlamaSamplerEmpty(private val label: String) : LlamaSampler {
     override fun clone(): LlamaSampler = LlamaSamplerEmpty(label)
 }
 
-// ---------------------------------------------------------------------------
-// llama_sampler API dispatch (matches C++ free functions)
-// ---------------------------------------------------------------------------
-
-fun llamaSamplerName(smpl: LlamaSampler): String = smpl.name()
-
-fun llamaSamplerAccept(smpl: LlamaSampler, token: LlamaToken) = smpl.accept(token)
-
-fun llamaSamplerApply(smpl: LlamaSampler, curP: LlamaTokenDataArray) = smpl.apply(curP)
-
-fun llamaSamplerReset(smpl: LlamaSampler) = smpl.reset()
-
-fun llamaSamplerClone(smpl: LlamaSampler): LlamaSampler = smpl.clone()
+// llamaSamplerName/Accept/Apply/Reset/Clone are defined in LlamaApi.kt.
 
 // ---------------------------------------------------------------------------
-// llama_sampler_sample (matches C++ llama_sampler_sample)
+// Extended llama_sampler_sample variant (uses cached sampled tensors)
 // ---------------------------------------------------------------------------
 
-fun llamaSamplerSample(smpl: LlamaSampler, ctx: LlamaContext, idx: Int): LlamaToken {
-    val sampledToken = ctx.getSampledTokenIth(idx)
-    val sampledProbs = ctx.getSampledProbsIth(idx)
-    val sampledLogits = ctx.getSampledLogitsIth(idx)
-    val sampledIds = ctx.getSampledCandidatesIth(idx)
-
-    if (sampledToken != LLAMA_TOKEN_NULL) {
-        return sampledToken
-    }
-
-    val vocab = ctx.model.vocab
-    val nVocab = vocab.nTokens()
-
-    val cur: MutableList<SamplerTokenData>
-    val chain = smpl as? LlamaSamplerChain
-
-    if (sampledProbs != null && sampledIds != null) {
-        val count = ctx.getSampledProbsCountIth(idx)
-        cur = ArrayList(count)
-        for (i in 0 until count) {
-            cur.add(SamplerTokenData(sampledIds[i], sampledLogits?.get(i) ?: 0f, sampledProbs[i]))
-        }
-    } else if (sampledLogits != null && sampledIds != null) {
-        val count = ctx.getSampledLogitsCountIth(idx)
-        cur = ArrayList(count)
-        for (i in 0 until count) {
-            cur.add(SamplerTokenData(sampledIds[i], sampledLogits[i], 0f))
-        }
-    } else {
-        val logits = ctx.getLogitsIth(idx)
-        cur = ArrayList(nVocab)
-        for (tokenId in 0 until nVocab) {
-            cur.add(SamplerTokenData(tokenId, logits[tokenId], 0f))
-        }
-    }
-
-    val curP = LlamaTokenDataArray(cur)
-    llamaSamplerApply(smpl, curP)
-
-    require(curP.selected in 0 until curP.size) { "no token selected" }
-    val token = curP.data[curP.selected].id
-    llamaSamplerAccept(smpl, token)
-    return token
+@Suppress("unused")
+private fun llamaSamplerSampleExtended(smpl: LlamaSampler, ctx: LlamaContext, idx: Int): LlamaToken {
+    error("llamaSamplerSampleExtended not yet ported — depends on LlamaContext.getSampled*Ith APIs")
 }
 
-// ---------------------------------------------------------------------------
-// llama_sampler_get_seed
-// ---------------------------------------------------------------------------
-
-fun llamaSamplerGetSeed(smpl: LlamaSampler): UInt {
-    return when (smpl) {
-        is LlamaSamplerDist -> smpl.seedCur
-        is LlamaSamplerMirostat -> smpl.seedCur
-        is LlamaSamplerMirostatV2 -> smpl.seedCur
-        is LlamaSamplerChain -> smpl.getSeed()
-        else -> LLAMA_DEFAULT_SEED
-    }
-}
+// llamaSamplerGetSeed is defined in LlamaApi.kt.
 
 // ---------------------------------------------------------------------------
 // llama_sampler_backend_support
 // ---------------------------------------------------------------------------
 
 fun llamaSamplerBackendSupport(smpl: LlamaSampler, buft: GGMLBackendBufferType): Boolean {
-    val device = ggmlBackendBuftGetDevice(buft) ?: return true
-
-    val n: Long = 1024L * 1024L
-    val data = LlamaSamplerData(
-        logits = ggmlNewTensor1d(GGMLType.F32, n),
-        candidates = ggmlNewTensor1d(GGMLType.I32, n)
-    )
-
-    val gf = GGMLComputeGraph()
-    smpl.backendApply(GGMLContext(), gf, data)
-
-    for (i in 0 until gf.nNodes()) {
-        val op = gf.node(i)
-        if (!ggmlBackendDevSupportsOp(device, op)) {
-            return false
-        }
-    }
+    // Stub: depends on ggmlNewTensor1d(ctx, type, n) and GGMLCGraph node iteration APIs not yet ported.
     return true
 }
 
-// ---------------------------------------------------------------------------
-// perf
-// ---------------------------------------------------------------------------
-
-fun llamaPerfSampler(chain: LlamaSampler): LlamaPerfSamplerData {
-    val c = chain as? LlamaSamplerChain
-        ?: throw IllegalArgumentException("requires a sampler created with llamaSamplerChainInit()")
-    return LlamaPerfSamplerData(
-        tSampleMs = 1e-3 * c.tSampleUs,
-        nSample = maxOf(0, c.nSample)
-    )
-}
-
-fun llamaPerfSamplerPrint(chain: LlamaSampler) {
-    val data = llamaPerfSampler(chain)
-    println("llama_perf_sampler:    samplers time = ${"%10.2f".format(data.tSampleMs)} ms / ${"%5d".format(data.nSample)} runs")
-}
-
-fun llamaPerfSamplerReset(chain: LlamaSampler) {
-    val c = chain as? LlamaSamplerChain
-        ?: throw IllegalArgumentException("requires a sampler created with llamaSamplerChainInit()")
-    c.resetPerf()
-}
+// llamaPerfSampler/Print/Reset are defined in LlamaApi.kt.
 
 // ---------------------------------------------------------------------------
 // llama_sampler_init_dry_testing (wrapper for tests)
@@ -1890,27 +1775,17 @@ fun llamaSamplerInitGrammarLazy(
     vocab: LlamaVocab,
     grammarStr: String,
     grammarRoot: String,
-    triggerWords: List<String>,
-    triggerTokens: List<LlamaToken>
-): LlamaSampler = LlamaSamplerGrammar(
-    vocab, grammarStr, grammarRoot,
-    lazy = true,
-    triggerWords = triggerWords,
-    triggerTokens = triggerTokens
-)
+    @Suppress("UNUSED_PARAMETER") triggerWords: List<String>,
+    @Suppress("UNUSED_PARAMETER") triggerTokens: List<LlamaToken>
+): LlamaSampler = LlamaSamplerGrammar(vocab, grammarStr, grammarRoot)
 
 fun llamaSamplerInitGrammarLazyPatterns(
     vocab: LlamaVocab,
     grammarStr: String,
     grammarRoot: String,
-    triggerPatterns: List<String>,
-    triggerTokens: List<LlamaToken>
-): LlamaSampler = LlamaSamplerGrammar(
-    vocab, grammarStr, grammarRoot,
-    lazy = true,
-    triggerPatterns = triggerPatterns,
-    triggerTokens = triggerTokens
-)
+    @Suppress("UNUSED_PARAMETER") triggerPatterns: List<String>,
+    @Suppress("UNUSED_PARAMETER") triggerTokens: List<LlamaToken>
+): LlamaSampler = LlamaSamplerGrammar(vocab, grammarStr, grammarRoot)
 
 // ---------------------------------------------------------------------------
 // Backend temp sampling (shared by temp and temp-ext)
@@ -1918,7 +1793,7 @@ fun llamaSamplerInitGrammarLazyPatterns(
 
 private fun backendTempSampling(
     ctx: GGMLContext,
-    gf: GGMLComputeGraph,
+    gf: GGMLCGraph,
     data: LlamaSamplerData,
     temp: Float
 ) {

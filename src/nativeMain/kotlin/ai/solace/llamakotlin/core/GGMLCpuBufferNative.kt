@@ -134,7 +134,7 @@ class GGMLCpuBufferNative(
      */
     override fun setTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
         val dstOffset = tensor.dataOffset.toLong() + offset.toLong()
-        nativeBuffer.copyFromByteArray(data, offset.toInt(), dstOffset, size.toInt())
+        nativeBuffer.copyFromByteArray(data, 0, dstOffset, size.toInt())
     }
 
     /**
@@ -147,7 +147,7 @@ class GGMLCpuBufferNative(
      */
     override fun getTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
         val srcOffset = tensor.dataOffset.toLong() + offset.toLong()
-        nativeBuffer.copyToByteArray(data, srcOffset, offset.toInt(), size.toInt())
+        nativeBuffer.copyToByteArray(data, srcOffset, 0, size.toInt())
     }
 
     /**
@@ -166,7 +166,7 @@ class GGMLCpuBufferNative(
         val srcBuffer = src.buffer ?: return false
         if (!srcBuffer.getType().isHost()) return false
 
-        val nbytes = calculateTensorByteSize(src)
+        val nbytes = src.nBytes()
 
         val srcBase = srcBuffer.getBase()
         val dstOffset = dst.dataOffset.toLong()
@@ -175,7 +175,7 @@ class GGMLCpuBufferNative(
         when (srcBase) {
             is NativeAlignedBuffer -> {
                 // Native-to-native copy via memcpy
-                nativeBuffer.copyFrom(srcBase, srcOffset, dstOffset, nbytes.toLong())
+                nativeBuffer.copyFrom(srcBase, srcOffset, dstOffset, nbytes)
             }
             is ByteArray -> {
                 // ByteArray source → native destination
@@ -253,26 +253,26 @@ class GGMLCpuBufferFromPtrNative(
 
     override fun setTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
         val dstOffset = tensor.dataOffset.toLong() + offset.toLong()
-        nativeBuffer.copyFromByteArray(data, offset.toInt(), dstOffset, size.toInt())
+        nativeBuffer.copyFromByteArray(data, 0, dstOffset, size.toInt())
     }
 
     override fun getTensor(tensor: GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
         val srcOffset = tensor.dataOffset.toLong() + offset.toLong()
-        nativeBuffer.copyToByteArray(data, srcOffset, offset.toInt(), size.toInt())
+        nativeBuffer.copyToByteArray(data, srcOffset, 0, size.toInt())
     }
 
     override fun copyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
         val srcBuffer = src.buffer ?: return false
         if (!srcBuffer.getType().isHost()) return false
 
-        val nbytes = calculateTensorByteSize(src)
+        val nbytes = src.nBytes()
         val srcBase = srcBuffer.getBase()
         val dstOffset = dst.dataOffset.toLong()
         val srcOffset = src.dataOffset.toLong()
 
         when (srcBase) {
             is NativeAlignedBuffer -> {
-                nativeBuffer.copyFrom(srcBase, srcOffset, dstOffset, nbytes.toLong())
+                nativeBuffer.copyFrom(srcBase, srcOffset, dstOffset, nbytes)
             }
             is ByteArray -> {
                 nativeBuffer.copyFromByteArray(srcBase, srcOffset.toInt(), dstOffset, nbytes.toInt())

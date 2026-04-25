@@ -808,10 +808,14 @@ object GGMLTestUtils {
                 throw IllegalStateException("Allocator buffer $bufferId unavailable for tensor ${tensor.name}")
             }
             val buffer = graphAllocator.buffers[bufferId]!!
-            require(requiredSize <= buffer.size) {
-                "Allocator buffer $bufferId too small (${buffer.size}) for tensor ${tensor.name} copy of $requiredSize bytes"
+            val bufferSize = when (buffer) {
+                is ByteArray -> buffer.size
+                else -> Int.MAX_VALUE // native buffers don't expose size here
             }
-            return buffer
+            require(requiredSize <= bufferSize) {
+                "Allocator buffer $bufferId too small ($bufferSize) for tensor ${tensor.name} copy of $requiredSize bytes"
+            }
+            return buffer as ByteArray
         }
     }
 }
@@ -895,7 +899,12 @@ object GGMLTestAllocatorState {
     private fun ensureArena(allocator: GGMLGraphAllocator): Arena {
         val existing = arenas[allocator]
         if (existing != null) return existing
-        val inferredCapacity = allocator.buffers.firstOrNull()?.size?.toULong() ?: 0u
+        val inferredCapacity = allocator.buffers.firstOrNull()?.let {
+            when (it) {
+                is ByteArray -> it.size.toULong()
+                else -> ULong.MAX_VALUE
+            }
+        } ?: 0u
         val arena = Arena(0u, inferredCapacity)
         arenas[allocator] = arena
         return arena
@@ -921,10 +930,14 @@ fun GGMLGraphAllocator.allocateTensorData(byteSize: Int, alignment: Int = 16): U
         buffers[bufferId] = newBuffer
         newBuffer
     }
+    val bufferSizeBytes = when (buffer) {
+        is ByteArray -> buffer.size.toULong()
+        else -> ULong.MAX_VALUE
+    }
     val offset = GGMLTestAllocatorState.bumpAllocate(this, byteSize.toULong(), alignment)
     val endOffset = offset + byteSize.toULong()
-    require(endOffset <= buffer.size.toULong()) {
-        "Test allocator buffer overflow: requested $endOffset bytes exceeds buffer size ${buffer.size}"
+    require(endOffset <= bufferSizeBytes) {
+        "Test allocator buffer overflow: requested $endOffset bytes exceeds buffer size $bufferSizeBytes"
     }
     return offset
 }

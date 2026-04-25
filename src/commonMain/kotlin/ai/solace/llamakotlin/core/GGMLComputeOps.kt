@@ -162,7 +162,7 @@ internal fun computeDotProductF32Q4_K(
         val d = tensorQ4_K.getQ4_KBlockScale(graphAllocator, blockIdx)
         val dmin = tensorQ4_K.getQ4_KBlockScaleMin(graphAllocator, blockIdx)
         
-        val buffer = graphAllocator.buffers[tensorQ4_K.bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[tensorQ4_K.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         val blockByteOffset = blockIdx * tensorQ4_K.type.byteSize.toInt()
         
         // Process in 32-element sub-blocks (8 sub-blocks per Q4_K block)
@@ -256,8 +256,8 @@ internal fun computeDotProductQ4_KQ4_K(
         val dB = tensorQ4_KB.getQ4_KBlockScale(graphAllocator, blockIdx)
         val dminB = tensorQ4_KB.getQ4_KBlockScaleMin(graphAllocator, blockIdx)
         
-        val bufferA = graphAllocator.buffers[tensorQ4_KA.bufferId] ?: throw IllegalStateException("Tensor A buffer not found")
-        val bufferB = graphAllocator.buffers[tensorQ4_KB.bufferId] ?: throw IllegalStateException("Tensor B buffer not found")
+        val bufferA = graphAllocator.buffers[tensorQ4_KA.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor A buffer not found")
+        val bufferB = graphAllocator.buffers[tensorQ4_KB.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor B buffer not found")
         val blockByteOffsetA = blockIdx * tensorQ4_KA.type.byteSize.toInt()
         val blockByteOffsetB = blockIdx * tensorQ4_KB.type.byteSize.toInt()
         
@@ -529,7 +529,7 @@ internal fun computeDotProductQ4_KF32(
             val d = tensorQ4_K.getQ4_KBlockScale(graphAllocator, blockIndex)
             val dmin = tensorQ4_K.getQ4_KBlockScaleMin(graphAllocator, blockIndex)
             
-            val buffer = graphAllocator.buffers[tensorQ4_K.bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+            val buffer = graphAllocator.buffers[tensorQ4_K.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
             val blockByteOffset = blockIndex * tensorQ4_K.type.byteSize.toInt()
             
             // Process 8 sub-blocks of 32 elements each
@@ -584,7 +584,7 @@ internal fun computeDotProductQ4_KF32(
                 
                 // Simplified dequantization
                 val subBlock = itemInBlock / 32
-                val buffer = graphAllocator.buffers[tensorQ4_K.bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+                val buffer = graphAllocator.buffers[tensorQ4_K.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
                 val blockByteOffset = blockIndex * tensorQ4_K.type.byteSize.toInt()
                 
                 val scaleByteOffset = blockByteOffset + 4 + subBlock
@@ -747,8 +747,8 @@ internal fun computeDotProductF32F32(
     require(tensorF32A.ne[0].toInt() == commonDimK) { "tensorF32A K dim (${tensorF32A.ne[0]}) must match commonDimK ($commonDimK)"}
     require(tensorF32B.ne[1].toInt() == commonDimK) { "tensorF32B K dim (${tensorF32B.ne[1]}) must match commonDimK ($commonDimK)"}
 
-    val bufferA = graphAllocator.buffers.getOrNull(tensorF32A.bufferId)
-    val bufferB = graphAllocator.buffers.getOrNull(tensorF32B.bufferId)
+    val bufferA = graphAllocator.buffers.getOrNull(tensorF32A.bufferId) as? ByteArray
+    val bufferB = graphAllocator.buffers.getOrNull(tensorF32B.bufferId) as? ByteArray
     if (bufferA != null && bufferB != null) {
         val strideA = tensorF32A.nb[0].toInt()
         val strideB = tensorF32B.nb[1].toInt()
@@ -3032,7 +3032,7 @@ private fun dequantizeQ3_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
         // Get quantized scale for this sub-block (stored in scales array)
         val blockByteOffset = blockIndex * tensor.type.byteSize.toInt()
         val scaleOffset = blockByteOffset + QK_K/8 + QK_K/4 + subBlock
-        val buffer = graphAllocator.buffers[tensor.bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[tensor.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         val quantizedScale = buffer[(tensor.dataOffset + scaleOffset.toULong()).toInt()]
         
         // Reconstruct scale
@@ -3079,7 +3079,7 @@ private fun dequantizeQ4_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
     for (subBlock in 0 until 8) {
         // Get quantized scale and min for this sub-block from the scales array
         val blockByteOffset = blockIndex * tensor.type.byteSize.toInt()
-        val buffer = graphAllocator.buffers[tensor.bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[tensor.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         
         // Read packed scale and min values
         val scaleByteOffset = blockByteOffset + 4 + subBlock
@@ -3120,7 +3120,7 @@ private fun dequantizeQ4_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
  */
 private fun dequantizeQ5_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor, blockIndex: Int, dest: FloatArray, destOffset: Int) {
     val d = tensor.getQ5_KBlockScale(graphAllocator, blockIndex)
-    val buffer = graphAllocator.buffers[tensor.bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+    val buffer = graphAllocator.buffers[tensor.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
     val blockByteOffset = blockIndex * tensor.type.byteSize.toInt()
     
     var elementIdx = destOffset
@@ -3173,7 +3173,7 @@ private fun dequantizeQ5_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGML
  */
 private fun dequantizeQ6_KBlock(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor, blockIndex: Int, dest: FloatArray, destOffset: Int) {
     val d = tensor.getQ6_KBlockScale(graphAllocator, blockIndex)
-    val buffer = graphAllocator.buffers[tensor.bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+    val buffer = graphAllocator.buffers[tensor.bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
     val blockByteOffset = blockIndex * tensor.type.byteSize.toInt()
     
     var elementIdx = destOffset
@@ -5187,7 +5187,7 @@ object GGMLComputeOps {
         tensor: GGMLTensor,
         flatIndex: Int
     ): Float {
-        val buf = graphAllocator.buffers[tensor.bufferId]
+        val buf = graphAllocator.buffers[tensor.bufferId] as? ByteArray
             ?: error("Tensor buffer not found for bufferId ${tensor.bufferId}")
         val byteOff = tensor.dataOffset.toInt() + flatIndex * Float.SIZE_BYTES
         return buf.getFloatLe(byteOff)
@@ -5203,7 +5203,7 @@ object GGMLComputeOps {
         flatIndex: Int,
         value: Float
     ) {
-        val buf = graphAllocator.buffers[tensor.bufferId]
+        val buf = graphAllocator.buffers[tensor.bufferId] as? ByteArray
             ?: error("Tensor buffer not found for bufferId ${tensor.bufferId}")
         val byteOff = tensor.dataOffset.toInt() + flatIndex * Float.SIZE_BYTES
         buf.setFloatLe(byteOff, value)

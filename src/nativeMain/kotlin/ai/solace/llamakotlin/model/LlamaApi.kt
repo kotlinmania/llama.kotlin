@@ -605,7 +605,7 @@ fun llamaParamsFit(
 ): LlamaParamsFitStatus {
     val t0 = llamaTimeUs()
     val status: LlamaParamsFitStatus = try {
-        llamaParamsFitImpl(pathModel, mparams, cparams, margins, nCtxMin, logLevel)
+        llamaParamsFitImpl(pathModel, mparams, cparams, margins, nCtxMin)
         llamaLogInfo("llamaParamsFit: successfully fit params to free device memory\n")
         LlamaParamsFitStatus.SUCCESS
     } catch (e: LlamaParamsFitException) {
@@ -1160,12 +1160,7 @@ fun llamaPerfContextReset(ctx: LlamaContext) {
 /** Returns default [LlamaModelQuantizeParams]. Maps to `llama_model_quantize_default_params()`. */
 fun llamaModelQuantizeDefaultParams(): LlamaModelQuantizeParams = LlamaModelQuantizeParams()
 
-// ---------------------------------------------------------------------------
-// Max parallel sequences  (llama_max_parallel_sequences)
-// ---------------------------------------------------------------------------
-
-/** Maximum parallel sequences supported. Maps to `llama_max_parallel_sequences()`. */
-fun llamaMaxParallelSequences(): ULong = 1uL
+// llamaMaxParallelSequences is defined in LlamaCparams.kt.
 
 // ---------------------------------------------------------------------------
 // Context query helpers  (llama_n_ctx_seq)

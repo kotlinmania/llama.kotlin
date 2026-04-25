@@ -334,8 +334,6 @@ data class GGMLBF16(val bits: UShort)
 /**
  * Base object structure
  */
-enum class GGMLObjectType { TENSOR, GRAPH, WORK_BUFFER }
-
 class GGMLObject(
     var type: GGMLObjectType = GGMLObjectType.TENSOR,
     var offs: Long = 0L,
@@ -508,7 +506,7 @@ class GGMLTensor(
 
     // Accessor methods for F32
     fun getFloat(graphAllocator: GGMLGraphAllocator, vararg indices: Int): Float {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -519,7 +517,7 @@ class GGMLTensor(
     }
 
     fun setFloat(graphAllocator: GGMLGraphAllocator, value: Float, vararg indices: Int) {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -531,7 +529,7 @@ class GGMLTensor(
 
     // Accessor methods for I32
     fun getInt(graphAllocator: GGMLGraphAllocator, vararg indices: Int): Int {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -542,7 +540,7 @@ class GGMLTensor(
     }
 
     fun setInt(graphAllocator: GGMLGraphAllocator, value: Int, vararg indices: Int) {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -554,7 +552,7 @@ class GGMLTensor(
 
     // Accessor methods for I16
     fun getShort(graphAllocator: GGMLGraphAllocator, vararg indices: Int): Short {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -565,7 +563,7 @@ class GGMLTensor(
     }
 
     fun setShort(graphAllocator: GGMLGraphAllocator, value: Short, vararg indices: Int) {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -577,7 +575,7 @@ class GGMLTensor(
 
     // Accessor methods for F16 (Half Float)
     fun getHalf(graphAllocator: GGMLGraphAllocator, vararg indices: Int): Float {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -590,7 +588,7 @@ class GGMLTensor(
     }
 
     fun setHalf(graphAllocator: GGMLGraphAllocator, value: Float, vararg indices: Int) {
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated.")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
@@ -605,7 +603,7 @@ class GGMLTensor(
     // Accessor methods for I8 (Byte)
     fun getByte(graphAllocator: GGMLGraphAllocator, vararg indices: Int): Byte {
         // require(type == GGMLType.I8) { "getByte() called on non-I8 tensor: $type" }
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
         if (finalByteOffset.toInt() < 0 || finalByteOffset.toInt() + Byte.SIZE_BYTES > buffer.size) {
@@ -616,7 +614,7 @@ class GGMLTensor(
 
     fun setByte(graphAllocator: GGMLGraphAllocator, value: Byte, vararg indices: Int) {
         // require(type == GGMLType.I8) { "setByte() called on non-I8 tensor: $type" }
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
         if (finalByteOffset.toInt() < 0 || finalByteOffset.toInt() + Byte.SIZE_BYTES > buffer.size) {
@@ -628,7 +626,7 @@ class GGMLTensor(
     // Accessor methods for I64 (Long)
     fun getLong(graphAllocator: GGMLGraphAllocator, vararg indices: Int): Long {
         // require(type == GGMLType.I64) { "getLong() called on non-I64 tensor: $type" }
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
         if (finalByteOffset.toInt() < 0 || finalByteOffset.toInt() + Long.SIZE_BYTES > buffer.size) {
@@ -639,7 +637,7 @@ class GGMLTensor(
 
     fun setLong(graphAllocator: GGMLGraphAllocator, value: Long, vararg indices: Int) {
         // require(type == GGMLType.I64) { "setLong() called on non-I64 tensor: $type" }
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         val elementByteOffset = getElementByteOffset(*indices)
         val finalByteOffset = dataOffset + elementByteOffset
         if (finalByteOffset.toInt() < 0 || finalByteOffset.toInt() + Long.SIZE_BYTES > buffer.size) {
@@ -699,7 +697,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalScaleByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated for tensor '$name'.")
 
         // The scale is the first F16 (2 bytes) in the block
@@ -728,7 +726,7 @@ class GGMLTensor(
         val qsArrayBaseOffsetInBlock = 2uL // The F16 scale takes the first 2 bytes of the block
         val finalWeightByteOffset = dataOffset + blockByteOffset + qsArrayBaseOffsetInBlock + itemIndexInBlock.toULong()
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId. Ensure graphAllocator.buffers is populated for tensor '$name'.")
 
         if (finalWeightByteOffset.toInt() < 0 || finalWeightByteOffset.toInt() + Byte.SIZE_BYTES > buffer.size) {
@@ -754,7 +752,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalScaleByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         // The scale is the first F16 (2 bytes) in the block
@@ -786,7 +784,7 @@ class GGMLTensor(
 
         val finalByteToReadOffset = dataOffset + blockByteOffset + qsArrayBaseOffsetInBlock + byteContainingNibbleIndex.toULong()
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         if (finalByteToReadOffset.toInt() < 0 || finalByteToReadOffset.toInt() + Byte.SIZE_BYTES > buffer.size) {
@@ -815,7 +813,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize // type.byteSize for Q4_1 is 20 bytes
         val finalScaleByteOffset = dataOffset + blockByteOffset // Scale 'd' is the first F16
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         if (finalScaleByteOffset.toInt() < 0 || finalScaleByteOffset.toInt() + SIZE_BYTES > buffer.size) {
@@ -838,7 +836,7 @@ class GGMLTensor(
         val minOffsetWithinBlock = SIZE_BYTES.toULong() // Min 'm' is the second F16 (after the scale 'd')
         val finalMinByteOffset = dataOffset + blockByteOffset + minOffsetWithinBlock
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         if (finalMinByteOffset.toInt() < 0 || finalMinByteOffset.toInt() + SIZE_BYTES > buffer.size) {
@@ -865,7 +863,7 @@ class GGMLTensor(
 
         val finalByteToReadOffset = dataOffset + blockByteOffset + qsBaseOffsetWithinBlock + byteContainingNibbleIndex.toULong()
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         if (finalByteToReadOffset.toInt() < 0 || finalByteToReadOffset.toInt() + Byte.SIZE_BYTES > buffer.size) {
@@ -895,7 +893,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalByteOffset = dataOffset + blockByteOffset + (QK_K/16 + QK_K/4).toULong()
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return halfToFloat(buffer.getShortLe(finalByteOffset.toInt()))
     }
     
@@ -910,7 +908,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalByteOffset = dataOffset + blockByteOffset + (QK_K/16 + QK_K/4).toULong() + 2uL
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return halfToFloat(buffer.getShortLe(finalByteOffset.toInt()))
     }
     
@@ -925,7 +923,7 @@ class GGMLTensor(
         val scalesOffsetWithinBlock = scaleIndex.toULong()
         val finalByteOffset = dataOffset + blockByteOffset + scalesOffsetWithinBlock
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return buffer[finalByteOffset.toInt()]
     }
@@ -941,7 +939,7 @@ class GGMLTensor(
         val quantOffsetWithinBlock = (QK_K/16).toULong() + quantIndex.toULong()
         val finalByteOffset = dataOffset + blockByteOffset + quantOffsetWithinBlock
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return buffer[finalByteOffset.toInt()]
     }
 
@@ -959,7 +957,7 @@ class GGMLTensor(
         val scaleOffsetWithinBlock = (QK_K/8).toULong() + (QK_K/4).toULong() + 12uL
         val finalByteOffset = dataOffset + blockByteOffset + scaleOffsetWithinBlock
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return halfToFloat(buffer.getShortLe(finalByteOffset.toInt()))
     }
 
@@ -976,7 +974,7 @@ class GGMLTensor(
         // d is the first F16 in the block
         val finalByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return halfToFloat(buffer.getShortLe(finalByteOffset.toInt()))
     }
     
@@ -992,7 +990,7 @@ class GGMLTensor(
         // dmin is the second F16 in the block (after d)
         val finalByteOffset = dataOffset + blockByteOffset + 2uL
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return halfToFloat(buffer.getShortLe(finalByteOffset.toInt()))
     }
 
@@ -1014,7 +1012,7 @@ class GGMLTensor(
         // Scales start after d (F16) + dmin (F16) = 4 bytes
         val scaleByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong()
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         val scaleByte = buffer[(dataOffset + scaleByteOffset).toInt()]
         return scaleByte.readBits(0, 6)
     }
@@ -1034,7 +1032,7 @@ class GGMLTensor(
         require(blockIndex >= 0 && blockIndex < numBlocks) { "blockIndex $blockIndex out of bounds for $numBlocks blocks" }
 
         val blockByteOffset = blockIndex.toULong() * type.byteSize
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         
         // Min values are packed with scales - low 2 bits in the scale byte, high 4 bits packed in bytes 8-11 of the scales array
         val scaleByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong()
@@ -1067,7 +1065,7 @@ class GGMLTensor(
         require(blockIndex >= 0 && blockIndex < numBlocks) { "blockIndex $blockIndex out of bounds for $numBlocks blocks" }
 
         val blockByteOffset = blockIndex.toULong() * type.byteSize
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         
         // Weights start after d (F16) + dmin (F16) + scales[K_SCALE_SIZE] = 4 + 12 = 16 bytes
         val weightsStartOffset = blockByteOffset + 4uL + K_SCALE_SIZE.toULong()
@@ -1094,7 +1092,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         buffer.setShortLe(finalByteOffset.toInt(), floatToHalf(scale))
     }
 
@@ -1109,7 +1107,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalByteOffset = dataOffset + blockByteOffset + 2uL
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         buffer.setShortLe(finalByteOffset.toInt(), floatToHalf(scaleMin))
     }
 
@@ -1131,7 +1129,7 @@ class GGMLTensor(
         require(blockIndex >= 0 && blockIndex < numBlocks) { "blockIndex $blockIndex out of bounds for $numBlocks blocks" }
 
         val blockByteOffset = blockIndex.toULong() * type.byteSize
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         
         // Pack scale (6 bits) + min low bits (2 bits) into one byte
         val scaleByteOffset = blockByteOffset + 4uL + subBlockIndex.toULong()
@@ -1168,7 +1166,7 @@ class GGMLTensor(
         require(blockIndex >= 0 && blockIndex < numBlocks) { "blockIndex $blockIndex out of bounds for $numBlocks blocks" }
 
         val blockByteOffset = blockIndex.toULong() * type.byteSize
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found")
         
         // Weights start after d (F16) + dmin (F16) + scales[K_SCALE_SIZE] = 4 + 12 = 16 bytes
         val weightsStartOffset = blockByteOffset + 4uL + K_SCALE_SIZE.toULong()
@@ -1191,7 +1189,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return halfToFloat(buffer.getShortLe(finalByteOffset.toInt()))
     }
 
@@ -1209,7 +1207,7 @@ class GGMLTensor(
         val scaleOffsetWithinBlock = (QK_K/2).toULong() + (QK_K/4).toULong() + (QK_K/16).toULong()
         val finalByteOffset = dataOffset + blockByteOffset + scaleOffsetWithinBlock
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return halfToFloat(buffer.getShortLe(finalByteOffset.toInt()))
     }
 
@@ -1225,7 +1223,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return buffer.getFloatLe(finalByteOffset.toInt())
     }
 
@@ -1243,7 +1241,7 @@ class GGMLTensor(
         val weightOffsetWithinBlock = 4uL + itemIndexInBlock.toULong()
         val finalByteOffset = dataOffset + blockByteOffset + weightOffsetWithinBlock
 
-        val buffer = graphAllocator.buffers[bufferId] ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId")
         return buffer[finalByteOffset.toInt()]
     }
     
@@ -1263,7 +1261,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalScaleByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         // The scale is the first F16 (2 bytes) in the block
@@ -1298,7 +1296,7 @@ class GGMLTensor(
         
         val finalByteToReadOffset = dataOffset + blockByteOffset + ternaryDataBaseOffsetInBlock + groupIndex.toULong()
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         if (finalByteToReadOffset.toInt() < 0 || finalByteToReadOffset.toInt() + 1 > buffer.size) {
@@ -1353,7 +1351,7 @@ class GGMLTensor(
         
         val finalByteToWriteOffset = dataOffset + blockByteOffset + ternaryDataBaseOffsetInBlock + groupIndex.toULong()
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         // Read current packed byte
@@ -1400,7 +1398,7 @@ class GGMLTensor(
         val blockByteOffset = blockIndex.toULong() * type.byteSize
         val finalScaleByteOffset = dataOffset + blockByteOffset
 
-        val buffer = graphAllocator.buffers[bufferId]
+        val buffer = graphAllocator.buffers[bufferId] as? ByteArray
             ?: throw IllegalStateException("Tensor buffer not found for bufferId $bufferId for tensor '$name'.")
 
         val scaleBits = floatToHalf(scale)

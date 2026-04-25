@@ -234,7 +234,7 @@ class GGMLReferenceValidationTest {
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
                     val dst = graphAllocator.allocateLike(tensor1, "add_dst")
-                    computeAdd(graphAllocator, dummyContext, tensor1, tensor2, dst)
+                    computeAdd(graphAllocator, tensor1, tensor2, dst)
                     extractFloatArray(dst)
                 }
                 "MUL" -> {
@@ -245,7 +245,7 @@ class GGMLReferenceValidationTest {
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
                     val dst = graphAllocator.allocateLike(tensor1, "mul_dst")
-                    computeMul(graphAllocator, dummyContext, tensor1, tensor2, dst)
+                    computeMul(graphAllocator, tensor1, tensor2, dst)
                     extractFloatArray(dst)
                 }
                 "SUB" -> {
@@ -256,25 +256,25 @@ class GGMLReferenceValidationTest {
                     val tensor1 = createTensorFromFloatArray("input1", testVector.dataType, input1Data)
                     val tensor2 = createTensorFromFloatArray("input2", testVector.dataType, input2Data)
                     val dst = graphAllocator.allocateLike(tensor1, "sub_dst")
-                    computeSub(graphAllocator, dummyContext, tensor1, tensor2, dst)
+                    computeSub(graphAllocator, tensor1, tensor2, dst)
                     extractFloatArray(dst)
                 }
                 "NEG" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
                     val dst = graphAllocator.allocateLike(tensor, "neg_dst")
-                    computeNeg(graphAllocator, dummyContext, tensor, dst)
+                    computeNeg(graphAllocator, tensor, dst)
                     extractFloatArray(dst)
                 }
                 "GELU" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
                     val dst = graphAllocator.allocateLike(tensor, "gelu_dst")
-                    computeGelu(graphAllocator, dummyContext, tensor, dst)
+                    computeGelu(graphAllocator, tensor, dst)
                     extractFloatArray(dst)
                 }
                 "RELU" -> {
                     val tensor = createTensorFromFloatArray("input", testVector.dataType, testVector.inputData)
                     val dst = graphAllocator.allocateLike(tensor, "relu_dst")
-                    computeRelu(graphAllocator, dummyContext, tensor, dst)
+                    computeRelu(graphAllocator, tensor, dst)
                     extractFloatArray(dst)
                 }
                 "QUANTIZE_DEQUANTIZE" -> {
@@ -470,8 +470,8 @@ class GGMLReferenceValidationTest {
             val f32Dst = graphAllocator.allocateLike(f32Tensor, "neg_dst")
             val f16Dst = graphAllocator.allocateLike(f16Tensor, "neg_dst")
 
-            computeNeg(graphAllocator, dummyContext, f32Tensor, f32Dst)
-            computeNeg(graphAllocator, dummyContext, f16Tensor, f16Dst)
+            computeNeg(graphAllocator, f32Tensor, f32Dst)
+            computeNeg(graphAllocator, f16Tensor, f16Dst)
 
             val f32Output = extractFloatArray(f32Dst)
             val f16Output = extractFloatArray(f16Dst)
@@ -516,7 +516,7 @@ class GGMLReferenceValidationTest {
         // Test ADD baseline
         try {
             val addDst = graphAllocator.allocateLike(inputTensor, "add_dst")
-            computeAdd(graphAllocator, dummyContext, inputTensor, onesTensor, addDst)
+            computeAdd(graphAllocator, inputTensor, onesTensor, addDst)
             val addOutput = extractFloatArray(addDst)
             val expectedAdd = regressionTests["simple_add"]!!
             
@@ -537,7 +537,7 @@ class GGMLReferenceValidationTest {
         // Test NEG baseline
         try {
             val negDst = graphAllocator.allocateLike(inputTensor, "neg_dst")
-            computeNeg(graphAllocator, dummyContext, inputTensor, negDst)
+            computeNeg(graphAllocator, inputTensor, negDst)
             val negOutput = extractFloatArray(negDst)
             val expectedNeg = regressionTests["simple_neg"]!!
             

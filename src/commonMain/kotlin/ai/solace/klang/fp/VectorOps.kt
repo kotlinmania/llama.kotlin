@@ -3,6 +3,7 @@ package ai.solace.klangnative.fp
 import ai.solace.klangnative.bitwise.Float32Math
 import ai.solace.llamakotlin.core.GGML_FP16_TO_FP32
 import ai.solace.llamakotlin.core.GGML_FP32_TO_FP16
+import ai.solace.llamakotlin.core.GGMLBF16
 import ai.solace.llamakotlin.core.ggml_compute_bf16_to_fp32
 import ai.solace.llamakotlin.core.ggml_compute_fp32_to_bf16
 import kotlin.math.*
@@ -154,7 +155,7 @@ fun ggml_vec_norm_inv_f32(n: Int, s: FloatArray, x: FloatArray) {
 fun ggml_vec_sum_f32(n: Int, s: FloatArray, x: FloatArray) { var sum = 0.0f; for (i in 0 until n) sum += x[i]; s[0] = sum }
 fun ggml_vec_sum_f32_ggf(n: Int, s: DoubleArray, x: FloatArray) { var sum = 0.0; for (i in 0 until n) sum += x[i]; s[0] = sum }
 fun ggml_vec_sum_f16_ggf(n: Int, s: FloatArray, x: ShortArray) { var sum = 0.0f; for (i in 0 until n) sum += GGML_FP16_TO_FP32(x[i]); s[0] = sum }
-fun ggml_vec_sum_bf16_ggf(n: Int, s: FloatArray, x: ShortArray) { var sum = 0.0f; for (i in 0 until n) sum += ggml_compute_bf16_to_fp32(x[i]); s[0] = sum }
+fun ggml_vec_sum_bf16_ggf(n: Int, s: FloatArray, x: ShortArray) { var sum = 0.0f; for (i in 0 until n) sum += ggml_compute_bf16_to_fp32(GGMLBF16(x[i].toUShort())); s[0] = sum }
 fun ggml_vec_max_f32(n: Int, s: FloatArray, x: FloatArray) { var m = Float.NEGATIVE_INFINITY; for (i in 0 until n) if (x[i] > m) m = x[i]; s[0] = m }
 fun ggml_vec_argmax_f32(n: Int, x: FloatArray): Int { var m = Float.NEGATIVE_INFINITY; var idx = 0; for (i in 0 until n) if (x[i] > m) { m = x[i]; idx = i }; return idx }
 fun ggml_vec_cumsum_f32(n: Int, y: FloatArray, x: FloatArray) { var sum = 0.0f; for (i in 0 until n) { sum += x[i]; y[i] = sum } }
@@ -178,7 +179,7 @@ fun ggml_vec_dot_f16(n: Int, s: FloatArray, bs: Int, x: ShortArray, bx: Int, y: 
 fun ggml_vec_dot_bf16(n: Int, s: FloatArray, bs: Int, x: ShortArray, bx: Int, y: ShortArray, by: Int, nrc: Int) {
     require(nrc == 1)
     var sum = 0.0f
-    for (i in 0 until n) sum += ggml_compute_bf16_to_fp32(x[i]) * ggml_compute_bf16_to_fp32(y[i])
+    for (i in 0 until n) sum += ggml_compute_bf16_to_fp32(GGMLBF16(x[i].toUShort())) * ggml_compute_bf16_to_fp32(GGMLBF16(y[i].toUShort()))
     s[0] = sum
 }
 

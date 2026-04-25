@@ -2273,30 +2273,13 @@ fun ggmlNewTensorLike(ctx: GGMLContext, src: GGMLTensor): GGMLTensor {
 // Missing ggml.h functions — batch transliteration from ggml.c
 // ============================================================================
 
-/** Port of `ggml_is_padded_1d` from ggml.c. */
-fun ggmlIsPadded1d(tensor: GGMLTensor): Boolean =
-    tensor.nb[0] == ggmlTypeSize(tensor.type) &&
-    tensor.nb[2] == tensor.nb[1] * tensor.ne[1].toULong() &&
-    tensor.nb[3] == tensor.nb[2] * tensor.ne[2].toULong()
-
-/** Port of `ggml_is_contiguous_rows` from ggml.c. */
-fun ggmlIsContiguousRows(tensor: GGMLTensor): Boolean =
-    tensor.ne[0] == ggmlBlckSize(tensor.type) ||
-    tensor.nb[0] == ggmlTypeSize(tensor.type)
-
-/** Port of `ggml_is_contiguous_channels` from ggml.c. */
-fun ggmlIsContiguousChannels(tensor: GGMLTensor): Boolean =
-    tensor.nb[0] > tensor.nb[2] &&
-    tensor.nb[1] > tensor.nb[0] &&
-    tensor.nb[2] == ggmlTypeSize(tensor.type)
-
 /** Port of `ggml_get_data` from ggml.c. */
-fun ggmlGetData(tensor: GGMLTensor): ByteArray = tensor.data
+fun ggmlGetData(tensor: GGMLTensor): ByteArray = tensor.data as ByteArray
 
 /** Port of `ggml_get_data_f32` from ggml.c. */
 fun ggmlGetDataF32(tensor: GGMLTensor): ByteArray {
     require(tensor.type == GGMLType.F32) { "not F32" }
-    return tensor.data
+    return tensor.data as ByteArray
 }
 
 /** Port of `ggml_get_first_tensor` from ggml.c. */
@@ -2326,7 +2309,7 @@ fun ggmlGetNextTensor(ctx: GGMLContext, tensor: GGMLTensor): GGMLTensor? {
 /** Port of `ggml_used_mem` from ggml.c. */
 fun ggmlUsedMem(ctx: GGMLContext): ULong {
     val end = ctx.objectsEnd ?: return 0uL
-    return (end.offs + end.size).toULong()
+    return end.offs.toULong() + end.size
 }
 
 /** Port of `ggml_get_mem_size` from ggml.c. */
@@ -2347,48 +2330,9 @@ fun ggmlGetMaxTensorSize(ctx: GGMLContext): ULong {
     return maxSize
 }
 
-/** Port of `ggml_version` from ggml.c. */
-fun ggmlVersion(): String = "0.0.0" // GGML_VERSION equivalent
-
-/** Port of `ggml_status_to_string` from ggml.c. */
-fun ggmlStatusToString(status: GGMLStatus): String = when (status) {
-    GGMLStatus.ALLOC_FAILED -> "GGML status: error (failed to allocate memory)"
-    GGMLStatus.FAILED       -> "GGML status: error (operation failed)"
-    GGMLStatus.SUCCESS      -> "GGML status: success"
-    GGMLStatus.ABORTED      -> "GGML status: warning (operation aborted)"
-}
-
 /** Port of `ggml_type_sizef` from ggml.c. */
 fun ggmlTypeSizef(type: GGMLType): Double =
     type.byteSize.toDouble() / ggmlBlckSize(type).toDouble()
-
-/** Port of `ggml_ftype_to_ggml_type` from ggml.c. */
-fun ggmlFtypeToGgmlType(ftype: Int): GGMLType = when (ftype) {
-    0  -> GGMLType.F32
-    1  -> GGMLType.F16
-    2  -> GGMLType.Q4_0
-    3  -> GGMLType.Q4_1
-    7  -> GGMLType.Q8_0
-    8  -> GGMLType.Q5_0
-    9  -> GGMLType.Q5_1
-    10 -> GGMLType.Q2_K
-    11 -> GGMLType.Q3_K
-    12 -> GGMLType.Q4_K
-    13 -> GGMLType.Q5_K
-    14 -> GGMLType.Q6_K
-    15 -> GGMLType.BF16
-    else -> GGMLType.COUNT // GGML_TYPE_COUNT means invalid
-}
-
-/** Port of `ggml_unravel_index` from ggml.c. Returns (i0, i1, i2, i3). */
-fun ggmlUnravelIndex(tensor: GGMLTensor, i: Long): LongArray {
-    val ne0 = tensor.ne[0]; val ne1 = tensor.ne[1]; val ne2 = tensor.ne[2]
-    val i3 = i / (ne2 * ne1 * ne0)
-    val i2 = (i - i3 * ne2 * ne1 * ne0) / (ne1 * ne0)
-    val i1 = (i - i3 * ne2 * ne1 * ne0 - i2 * ne1 * ne0) / ne0
-    val i0 = i - i3 * ne2 * ne1 * ne0 - i2 * ne1 * ne0 - i1 * ne0
-    return longArrayOf(i0, i1, i2, i3)
-}
 
 /** Port of `ggml_bf16_to_fp32_row` from ggml.c. */
 fun ggmlBf16ToFp32Row(x: ShortArray, y: FloatArray, n: Int) {
@@ -2421,15 +2365,6 @@ fun ggmlSetAbortCallback(callback: ((String) -> Unit)?) { gAbortCallback = callb
 
 // --- Time functions (platform-agnostic using Kotlin stdlib) ---
 
-/** Port of `ggml_time_init` from ggml.c. No-op in Kotlin. */
-fun ggmlTimeInit() { /* no-op */ }
-
-/** Port of `ggml_time_ms` from ggml.c. */
-fun ggmlTimeMs(): Long = kotlin.time.TimeSource.Monotonic.markNow().elapsedNow().inWholeMilliseconds
-
-/** Port of `ggml_time_us` from ggml.c. */
-fun ggmlTimeUs(): Long = kotlin.time.TimeSource.Monotonic.markNow().elapsedNow().inWholeMicroseconds
-
 /** Port of `ggml_cycles` from ggml.c. Approximate with nanoTime. */
 fun ggmlCycles(): Long = kotlin.time.TimeSource.Monotonic.markNow().elapsedNow().inWholeNanoseconds
 
@@ -2438,80 +2373,8 @@ fun ggmlCyclesPerMs(): Long = 1_000_000L
 
 // --- Graph operations ---
 
-/** Port of `ggml_graph_reset` from ggml.c. */
-fun ggmlGraphReset(cgraph: GGMLCGraph) {
-    for (i in 0 until cgraph.nNodes) {
-        val node = cgraph.nodes[i] ?: continue
-        val gradAcc = ggmlGraphGetGradAcc(cgraph, node)
-
-        if (node.op == GGMLOp.OPT_STEP_ADAMW) {
-            node.src.getOrNull(2)?.let { ggmlSetZero(it) }
-            node.src.getOrNull(3)?.let { ggmlSetZero(it) }
-        }
-
-        if (gradAcc != null) {
-            if (node.flags and GGML_TENSOR_FLAG_LOSS != 0) {
-                require(gradAcc.type == GGMLType.F32)
-                require(ggmlIsScalar(gradAcc))
-                gradAcc.data = ByteArray(4)
-                val bits = 1.0f.toRawBits()
-                gradAcc.data[0] = (bits and 0xFF).toByte()
-                gradAcc.data[1] = ((bits shr 8) and 0xFF).toByte()
-                gradAcc.data[2] = ((bits shr 16) and 0xFF).toByte()
-                gradAcc.data[3] = ((bits shr 24) and 0xFF).toByte()
-            } else {
-                ggmlSetZero(gradAcc)
-            }
-        }
-    }
-}
-
-/** Port of `ggml_graph_get_grad_acc` from ggml.c. */
-fun ggmlGraphGetGradAcc(cgraph: GGMLCGraph, node: GGMLTensor): GGMLTensor? {
-    val hashSet = cgraph.visitedHashSet as? GGMLHashSet ?: return null
-    val gradAccs = cgraph.gradAccs
-    val idx = ggml_hash_find(hashSet, node)
-    if (idx == GGML_HASHSET_FULL || !ggml_bitset_get(hashSet.used, idx)) return null
-    return gradAccs.getOrNull(idx)
-}
-
-/** Port of `ggml_graph_get_grad` from ggml.c. */
-fun ggmlGraphGetGrad(cgraph: GGMLCGraph, node: GGMLTensor): GGMLTensor? {
-    val hashSet = cgraph.visitedHashSet as? GGMLHashSet ?: return null
-    val grads = cgraph.grads
-    val idx = ggml_hash_find(hashSet, node)
-    if (idx == GGML_HASHSET_FULL || !ggml_bitset_get(hashSet.used, idx)) return null
-    return grads.getOrNull(idx)
-}
-
 /** Port of `ggml_graph_nodes` — returns the nodes array. */
 fun ggmlGraphNodes(cgraph: GGMLCGraph): Array<GGMLTensor?> = cgraph.nodes
-
-/** Port of `ggml_graph_cpy` from ggml.c. */
-fun ggmlGraphCpy(src: GGMLCGraph, dst: GGMLCGraph) {
-    require(dst.size >= src.nLeafs)
-    require(dst.size >= src.nNodes)
-
-    dst.nLeafs = src.nLeafs
-    dst.nNodes = src.nNodes
-    dst.order = src.order
-
-    for (i in 0 until src.nLeafs) { dst.leafs[i] = src.leafs[i] }
-    for (i in 0 until src.nNodes) { dst.nodes[i] = src.nodes[i] }
-
-    val srcHash = src.visitedHashSet as? GGMLHashSet
-    val dstHash = dst.visitedHashSet as? GGMLHashSet
-    val srcUses = src.useCounts
-    val dstUses = dst.useCounts
-    if (srcHash != null && dstHash != null && srcUses != null && dstUses != null) {
-        for (i in 0 until srcHash.size) {
-            if (ggml_bitset_get(srcHash.used, i)) {
-                val newPos = ggml_hash_insert(dstHash, srcHash.keys[i]!!)
-                if (newPos >= 0) dstUses[newPos] = srcUses[i]
-            }
-        }
-    }
-}
 
 /** Port of `ggml_graph_dup` from ggml.c. */
 fun ggmlGraphDup(cgraph: GGMLCGraph): GGMLCGraph {
@@ -2849,22 +2712,6 @@ fun ggmlCustomInplace(ctx: GGMLContext, nInputs: Int, inputs: Array<GGMLTensor>,
     return result
 }
 
-/** Port of `ggml_graph_print` from ggml.c — print graph summary. */
-fun ggmlGraphPrint(cgraph: GGMLCGraph) {
-    println("=== GRAPH ===")
-    println("n_nodes = ${cgraph.nNodes}")
-    println("n_leafs = ${cgraph.nLeafs}")
-    for (i in 0 until cgraph.nNodes) {
-        val node = cgraph.nodes[i] ?: continue
-        println("  node ${i}: ${node.op} [${node.ne.joinToString(",")}] ${node.name}")
-    }
-    for (i in 0 until cgraph.nLeafs) {
-        val leaf = cgraph.leafs[i] ?: continue
-        println("  leaf ${i}: [${leaf.ne.joinToString(",")}] ${leaf.name}")
-    }
-    println("========")
-}
-
 /** Port of `ggml_graph_dump_dot` from ggml.c — output DOT format. */
 fun ggmlGraphDumpDot(cgraph: GGMLCGraph, gb: GGMLCGraph?, filename: String) {
     val sb = StringBuilder()
@@ -2900,12 +2747,6 @@ fun ggmlPrintObjects(ctx: GGMLContext) {
     println("=== end objects ===")
 }
 
-/** Port of `ggml_commit` from ggml.c — finalize pending allocations. */
-fun ggmlCommit(ctx: GGMLContext) {
-    // In the C impl this marks the end of a "transaction" in the memory allocator
-    // In Kotlin with GC-managed memory, this is currently a no-op
-}
-
 /** Port of `ggml_threadpool_params_init` from ggml.c. */
 fun ggmlThreadpoolParamsInit(nThreads: Int): GGMLThreadpoolParams {
     return GGMLThreadpoolParams(nThreads = nThreads)
@@ -2915,8 +2756,6 @@ fun ggmlThreadpoolParamsInit(nThreads: Int): GGMLThreadpoolParams {
 fun ggmlThreadpoolParamsMatch(a: GGMLThreadpoolParams, b: GGMLThreadpoolParams): Boolean {
     return a.nThreads == b.nThreads
 }
-
-data class GGMLThreadpoolParams(val nThreads: Int = 1)
 
 // --- GLU (Gated Linear Unit) graph-building ops ---
 

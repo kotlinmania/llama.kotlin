@@ -653,67 +653,26 @@ fun ggmlBackendBuftIsMeta(buft: GGMLBackendBufferType?): Boolean =
     buft is GGMLMetaBackendMarker
 
 /**
- * Port of `ggml_backend_meta_n_backends` from ggml-backend-meta.cpp line 1968.
- * Returns number of simple backends wrapped by a meta backend.
+ * Port of `ggml_backend_meta_n_backends`.
+ * Stub: meta backend port pending — depends on holder/context plumbing not yet ported.
  */
-fun ggmlBackendMetaNBackends(metaBackend: GGMLBackend): Int {
-    require(ggmlBackendIsMeta(metaBackend)) { "Not a meta backend" }
-    // Meta backend context stores list of wrapped backends
-    val ctx = metaBackend.context
-    if (ctx is List<*>) return ctx.size
-    error("Meta backend context not properly initialized")
-}
+fun ggmlBackendMetaNBackends(@Suppress("UNUSED_PARAMETER") metaBackend: GGMLBackend): Int =
+    error("ggmlBackendMetaNBackends not yet ported")
 
 /**
- * Port of `ggml_backend_meta_simple_backend` from ggml-backend-meta.cpp line 1974.
- * Returns the i-th simple backend from a meta backend.
+ * Port of `ggml_backend_meta_simple_backend`.
+ * Stub: meta backend port pending.
  */
-fun ggmlBackendMetaSimpleBackend(metaBackend: GGMLBackend, index: Int): GGMLBackend {
-    require(ggmlBackendIsMeta(metaBackend)) { "Not a meta backend" }
-    val ctx = metaBackend.context
-    if (ctx is List<*>) {
-        return ctx[index] as GGMLBackend
-    }
-    error("Meta backend context not properly initialized")
-}
+fun ggmlBackendMetaSimpleBackend(
+    @Suppress("UNUSED_PARAMETER") metaBackend: GGMLBackend,
+    @Suppress("UNUSED_PARAMETER") index: Int
+): GGMLBackend = error("ggmlBackendMetaSimpleBackend not yet ported")
 
 /**
- * Port of `ggml_backend_meta_alloc_ctx_tensors_from_buft` from ggml-backend-meta.cpp.
- * Allocates tensors from a context into a meta-buffer backed by per-simple-backend sub-buffers.
+ * Port of `ggml_backend_meta_alloc_ctx_tensors_from_buft`.
+ * Stub: meta backend port pending.
  */
 fun ggmlBackendMetaAllocCtxTensorsFromBuft(
-    ctx: GGMLContext,
-    buft: GGMLBackendBufferType
-): GGMLBackendBuffer {
-    require(ggmlBackendBuftIsMeta(buft)) { "buft must be a meta buffer type" }
-
-    // Determine how many simple buffer types the meta buft wraps
-    val nSimpleBufts = if (buft.context is List<*>) (buft.context as List<*>).size else 1
-
-    // Create per-simple-buft sub-contexts for tensor cloning
-    data class BufConfig(val subCtx: GGMLContext, var buf: GGMLBackendBuffer?)
-    val bufConfigs = MutableList(nSimpleBufts) { BufConfig(GGMLContext(), null) }
-
-    // Create meta buffer wrapping all configs
-    val metaBufCtx = bufConfigs
-    val metaBuf = ggmlBackendBufferInit(buft, metaBufCtx, 0L)
-
-    // Assign all tensors in ctx to the meta buffer
-    var t = ctx.objectsBegin?.tensor
-    while (t != null) {
-        t.buffer = metaBuf
-        // Advance to next tensor in context
-        val obj = t.parentObject?.next
-        t = obj?.tensor
-    }
-
-    // Allocate each sub-buffer from its simple buffer type
-    for (i in 0 until nSimpleBufts) {
-        val simpleBuft = if (buft.context is List<*>) (buft.context as List<*>)[i] as GGMLBackendBufferType else buft
-        bufConfigs[i].buf = ggmlBackendAllocCtxTensorsFromBuft(bufConfigs[i].subCtx, simpleBuft)
-        val subSize = bufConfigs[i].buf?.size ?: 0L
-        if (subSize > metaBuf.size) metaBuf.size = subSize
-    }
-
-    return metaBuf
-}
+    @Suppress("UNUSED_PARAMETER") ctx: GGMLContext,
+    @Suppress("UNUSED_PARAMETER") buft: GGMLBackendBufferType
+): GGMLBackendBuffer = error("ggmlBackendMetaAllocCtxTensorsFromBuft not yet ported")

@@ -124,10 +124,10 @@ class GGMLPerformanceBenchmarkTest {
             val divDst = allocateDestination(tensorA, name = "div_dst_$size")
 
             results += benchmarkOperation("ADD_F32", size) {
-                computeAdd(graphAllocator, context, tensorA, tensorB, addDst)
+                computeAdd(graphAllocator, tensorA, tensorB, addDst)
             }
             results += benchmarkOperation("MUL_F32", size) {
-                computeMul(graphAllocator, context, tensorA, tensorB, mulDst)
+                computeMul(graphAllocator, tensorA, tensorB, mulDst)
             }
             results += benchmarkOperation("SUB_F32", size) {
                 computeSub(graphAllocator, tensorA, tensorB, subDst)
@@ -281,8 +281,8 @@ class GGMLPerformanceBenchmarkTest {
         val dst = allocateDestination(tensorA, name = "summary_dst")
 
         val operations = mapOf<String, (GGMLTensor) -> Unit>(
-            "ADD" to { computeAdd(graphAllocator, context, tensorA, tensorB, dst) },
-            "MUL" to { computeMul(graphAllocator, context, tensorA, tensorB, dst) },
+            "ADD" to { computeAdd(graphAllocator, tensorA, tensorB, dst) },
+            "MUL" to { computeMul(graphAllocator, tensorA, tensorB, dst) },
             "SUB" to { computeSub(graphAllocator, tensorA, tensorB, dst) },
             "DIV" to { computeDiv(graphAllocator, tensorA, tensorB, dst) },
             "NEG" to { computeNeg(graphAllocator, tensorA, dst) }
