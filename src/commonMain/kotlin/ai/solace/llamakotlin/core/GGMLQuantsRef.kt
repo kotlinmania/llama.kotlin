@@ -20,7 +20,36 @@ package ai.solace.llamakotlin.core
  */
 
 private const val GROUP_MAX_EPS = 1e-15f
-// IQ1S_DELTA is defined in GGMLCommon.kt
+private const val GROUP_MAX_EPS_IQ3_XXS = 1e-8f
+private const val GROUP_MAX_EPS_IQ2_S = 1e-8f
+private const val GROUP_MAX_EPS_IQ1_M = 1e-7f
+private const val GROUP_MAX_EPS_IQ1_S = 1e-12f
+
+// C line 24
+private fun best_index_int8(n: Int, `val`: ByteArray, valOff: Int, x: Float): Int {
+    if (x <= `val`[valOff].toInt()) return 0
+    if (x >= `val`[valOff + n - 1].toInt()) return n - 1
+    var ml = 0; var mu = n - 1
+    while (mu - ml > 1) {
+        val mav = (ml + mu) / 2
+        if (x < `val`[valOff + mav].toInt()) mu = mav else ml = mav
+    }
+    return if (x - `val`[valOff + mu - 1].toInt() < `val`[valOff + mu].toInt() - x) mu - 1 else mu
+}
+
+// C line 295
+private fun best_index_mxfp4(x: Float, e: Float): Int {
+    var bestIndex = 0
+    var bestErr = kotlin.math.abs(kvalues_mxfp4[0].toInt() * e - x)
+    for (i in 1 until 16) {
+        val err = kotlin.math.abs(kvalues_mxfp4[i].toInt() * e - x)
+        if (err < bestErr) {
+            bestIndex = i
+            bestErr = err
+        }
+    }
+    return bestIndex
+}
 
 // ════════════════════════════════════════════════════════════════════════════════
 //  Helper: get_scale_min_k4 (used by Q4_K, Q5_K dequantize)
@@ -467,7 +496,7 @@ private fun make_qp_quants(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  ByteArray block readers — read fields at known offsets
+//  ByteArray block readers/writers — read/write fields at known offsets
 // ════════════════════════════════════════════════════════════════════════════════
 
 private fun readShortLE(data: ByteArray, off: Int): Short =
@@ -478,6 +507,30 @@ private fun readIntLE(data: ByteArray, off: Int): Int =
     ((data[off + 1].toInt() and 0xFF) shl 8) or
     ((data[off + 2].toInt() and 0xFF) shl 16) or
     ((data[off + 3].toInt() and 0xFF) shl 24)
+
+private fun writeShortLE(data: ByteArray, off: Int, v: Short) {
+    data[off + 0] = (v.toInt() and 0xFF).toByte()
+    data[off + 1] = ((v.toInt() shr 8) and 0xFF).toByte()
+}
+
+private fun writeFloatLE(data: ByteArray, off: Int, v: Float) {
+    val bits = v.toRawBits()
+    data[off + 0] = (bits and 0xFF).toByte()
+    data[off + 1] = ((bits shr 8) and 0xFF).toByte()
+    data[off + 2] = ((bits shr 16) and 0xFF).toByte()
+    data[off + 3] = ((bits shr 24) and 0xFF).toByte()
+}
+
+private fun writeIntLE(data: ByteArray, off: Int, v: Int) {
+    data[off + 0] = (v and 0xFF).toByte()
+    data[off + 1] = ((v shr 8) and 0xFF).toByte()
+    data[off + 2] = ((v shr 16) and 0xFF).toByte()
+    data[off + 3] = ((v shr 24) and 0xFF).toByte()
+}
+
+private fun writeFp16(data: ByteArray, off: Int, v: Float) {
+    writeShortLE(data, off, GGML_FP32_TO_FP16(v))
+}
 
 private fun readUShortLE(data: ByteArray, off: Int): Int =
     (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
@@ -1310,23 +1363,418 @@ fun quantize_row_q1_0_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: 
 // K-quant quantize_row_*_ref — complex implementations, deferred for now
 
 fun quantize_row_q2_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_q2_K_ref: complex K-quant quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockQ2K.SIZE_BYTES
+
+    val L = IntArray(QK_K)
+    val Laux = IntArray(16)
+    val weights = FloatArray(16)
+    val mins = FloatArray(QK_K / 16)
+    val scales = FloatArray(QK_K / 16)
+
+    val q4scale = 15f
+
+    // Temp UByteArray wrappers for make_qkx2_quants
+    val Lu = UByteArray(QK_K)
+    val Lauxu = UByteArray(16)
+    val theMin = FloatArray(1)
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        var maxScale = 0f
+        var maxMin = 0f
+        for (j in 0 until QK_K / 16) {
+            for (l in 0 until 16) weights[l] = kotlin.math.abs(x[xIdx + 16 * j + l])
+            theMin[0] = 0f
+            scales[j] = make_qkx2_quants(16, 3, x, xIdx + 16 * j, weights, 0,
+                Lu, 16 * j, theMin, 0, Lauxu, 0, -0.5f, 0.1f, 15, true)
+            mins[j] = theMin[0]
+            if (scales[j] > maxScale) maxScale = scales[j]
+            if (mins[j] > maxMin) maxMin = mins[j]
+        }
+
+        // scales[QK_K/16] at offset 0
+        val scalesOff = bOff + 0
+        if (maxScale > 0) {
+            val iscale = q4scale / maxScale
+            for (j in 0 until QK_K / 16) {
+                val l = nearest_int(iscale * scales[j])
+                y[scalesOff + j] = l.toByte()
+            }
+            writeFp16(y, bOff + 80, maxScale / q4scale)
+        } else {
+            for (j in 0 until QK_K / 16) y[scalesOff + j] = 0
+            writeFp16(y, bOff + 80, 0f)
+        }
+        if (maxMin > 0) {
+            val iscale = q4scale / maxMin
+            for (j in 0 until QK_K / 16) {
+                val l = nearest_int(iscale * mins[j])
+                y[scalesOff + j] = (y[scalesOff + j].toInt() or (l shl 4)).toByte()
+            }
+            writeFp16(y, bOff + 82, maxMin / q4scale)
+        } else {
+            writeFp16(y, bOff + 82, 0f)
+        }
+        for (j in 0 until QK_K / 16) {
+            val d = fp16ToF32(y, bOff + 80) * ((y[scalesOff + j].toInt() and 0xFF) and 0xF)
+            if (d == 0f) continue
+            val dm = fp16ToF32(y, bOff + 82) * ((y[scalesOff + j].toInt() and 0xFF) shr 4)
+            for (ii in 0 until 16) {
+                var l = nearest_int((x[xIdx + 16 * j + ii] + dm) / d)
+                l = maxOf(0, minOf(3, l))
+                L[16 * j + ii] = l
+            }
+        }
+
+        // qs[QK_K/4] at offset 16
+        val qsOff = bOff + 16
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) {
+                y[qsOff + j / 4 + l] = (L[j + l] or (L[j + l + 32] shl 2) or
+                    (L[j + l + 64] shl 4) or (L[j + l + 96] shl 6)).toByte()
+            }
+        }
+
+        xIdx += QK_K
+    }
 }
 
 fun quantize_row_q3_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_q3_K_ref: complex K-quant quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockQ3K.SIZE_BYTES
+
+    val L = ByteArray(QK_K)
+    val scales = FloatArray(QK_K / 16)
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        val hmOff = bOff + 0
+        val qsOff = bOff + 32
+        val scOff = bOff + 96
+
+        var maxScale = 0f
+        var amax = 0f
+        for (j in 0 until QK_K / 16) {
+            scales[j] = make_q3_quants(16, 4, x, xIdx + 16 * j, L, 16 * j, true)
+            val scale = kotlin.math.abs(scales[j])
+            if (scale > amax) {
+                amax = scale; maxScale = scales[j]
+            }
+        }
+
+        // Clear scales[12]
+        for (j in 0 until 12) y[scOff + j] = 0
+        if (maxScale != 0f) {
+            val iscale = -32f / maxScale
+            for (j in 0 until QK_K / 16) {
+                var l = nearest_int(iscale * scales[j])
+                l = maxOf(-32, minOf(31, l)) + 32
+                if (j < 8) {
+                    y[scOff + j] = (y[scOff + j].toInt() or (l and 0xF)).toByte()
+                } else {
+                    y[scOff + j - 8] = (y[scOff + j - 8].toInt() or ((l and 0xF) shl 4)).toByte()
+                }
+                val lh = l shr 4
+                y[scOff + j % 4 + 8] = (y[scOff + j % 4 + 8].toInt() or (lh shl (2 * (j / 4)))).toByte()
+            }
+            writeFp16(y, bOff + 108, 1f / iscale)
+        } else {
+            writeFp16(y, bOff + 108, 0f)
+        }
+
+        var sc: Int
+        for (j in 0 until QK_K / 16) {
+            sc = if (j < 8) (y[scOff + j].toInt() and 0xFF) and 0xF
+                 else (y[scOff + j - 8].toInt() and 0xFF) shr 4
+            sc = (sc or ((((y[scOff + 8 + j % 4].toInt() and 0xFF) shr (2 * (j / 4))) and 3) shl 4)) - 32
+            val d = fp16ToF32(y, bOff + 108) * sc
+            if (d == 0f) continue
+            for (ii in 0 until 16) {
+                var l = nearest_int(x[xIdx + 16 * j + ii] / d)
+                l = maxOf(-4, minOf(3, l))
+                L[16 * j + ii] = (l + 4).toByte()
+            }
+        }
+
+        // hmask[QK_K/8] at offset 0
+        for (j in 0 until QK_K / 8) y[hmOff + j] = 0
+        var m = 0
+        var hm = 1
+        for (j in 0 until QK_K) {
+            if ((L[j].toInt() and 0xFF) > 3) {
+                y[hmOff + m] = (y[hmOff + m].toInt() or hm).toByte()
+                L[j] = ((L[j].toInt() and 0xFF) - 4).toByte()
+            }
+            m++
+            if (m == QK_K / 8) {
+                m = 0; hm = hm shl 1
+            }
+        }
+        // qs[QK_K/4] at offset 32
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) {
+                y[qsOff + j / 4 + l] = ((L[j + l].toInt() and 0xFF) or
+                    ((L[j + l + 32].toInt() and 0xFF) shl 2) or
+                    ((L[j + l + 64].toInt() and 0xFF) shl 4) or
+                    ((L[j + l + 96].toInt() and 0xFF) shl 6)).toByte()
+            }
+        }
+
+        xIdx += QK_K
+    }
 }
 
 fun quantize_row_q4_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_q4_K_ref: complex K-quant quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockQ4K.SIZE_BYTES
+
+    val L = IntArray(QK_K)
+    val Laux = IntArray(32)
+    val weights = FloatArray(32)
+    val mins = FloatArray(QK_K / 32)
+    val scales = FloatArray(QK_K / 32)
+
+    val Lu = UByteArray(QK_K)
+    val Lauxu = UByteArray(32)
+    val theMin = FloatArray(1)
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        val scOff = bOff + 4
+
+        var maxScale = 0f
+        var maxMin = 0f
+        for (j in 0 until QK_K / 32) {
+            var sumX2 = 0f
+            for (l in 0 until 32) sumX2 += x[xIdx + 32 * j + l] * x[xIdx + 32 * j + l]
+            val avX = kotlin.math.sqrt(sumX2 / 32f)
+            for (l in 0 until 32) weights[l] = avX + kotlin.math.abs(x[xIdx + 32 * j + l])
+            theMin[0] = 0f
+            scales[j] = make_qkx2_quants(32, 15, x, xIdx + 32 * j, weights, 0,
+                Lu, 32 * j, theMin, 0, Lauxu, 0, -1f, 0.1f, 20, false)
+            mins[j] = theMin[0]
+            if (scales[j] > maxScale) maxScale = scales[j]
+            if (mins[j] > maxMin) maxMin = mins[j]
+        }
+
+        val invScale = if (maxScale > 0) 63f / maxScale else 0f
+        val invMin = if (maxMin > 0) 63f / maxMin else 0f
+        for (j in 0 until QK_K / 32) {
+            var ls = nearest_int(invScale * scales[j])
+            var lm = nearest_int(invMin * mins[j])
+            ls = minOf(63, ls)
+            lm = minOf(63, lm)
+            if (j < 4) {
+                y[scOff + j] = ls.toByte()
+                y[scOff + j + 4] = lm.toByte()
+            } else {
+                y[scOff + j + 4] = ((ls and 0xF) or ((lm and 0xF) shl 4)).toByte()
+                y[scOff + j - 4] = (y[scOff + j - 4].toInt() or ((ls shr 4) shl 6)).toByte()
+                y[scOff + j] = (y[scOff + j].toInt() or ((lm shr 4) shl 6)).toByte()
+            }
+        }
+        writeFp16(y, bOff + 0, maxScale / 63f)
+        writeFp16(y, bOff + 2, maxMin / 63f)
+
+        for (j in 0 until QK_K / 32) {
+            val sm = get_scale_min_k4(j, y, scOff)
+            val d = fp16ToF32(y, bOff + 0) * sm.d
+            if (d == 0f) continue
+            val dm = fp16ToF32(y, bOff + 2) * sm.m
+            for (ii in 0 until 32) {
+                var l = nearest_int((x[xIdx + 32 * j + ii] + dm) / d)
+                l = maxOf(0, minOf(15, l))
+                L[32 * j + ii] = l
+            }
+        }
+
+        // qs[QK_K/2] at offset 16
+        val qsOff = bOff + 16
+        var qIdx = 0
+        for (j in 0 until QK_K step 64) {
+            for (l in 0 until 32) {
+                y[qsOff + qIdx + l] = (L[j + l] or (L[j + l + 32] shl 4)).toByte()
+            }
+            qIdx += 32
+        }
+
+        xIdx += QK_K
+    }
 }
 
 fun quantize_row_q5_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_q5_K_ref: complex K-quant quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockQ5K.SIZE_BYTES
+
+    val L = IntArray(QK_K)
+    val mins = FloatArray(QK_K / 32)
+    val scales = FloatArray(QK_K / 32)
+    val weights = FloatArray(32)
+
+    val Lu = UByteArray(QK_K)
+    val Lauxu = UByteArray(32)
+    val theMin = FloatArray(1)
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        val scOff = bOff + 4
+        val qhOff = bOff + 16
+        val qlOff = bOff + 48
+
+        var maxScale = 0f
+        var maxMin = 0f
+        for (j in 0 until QK_K / 32) {
+            var sumX2 = 0f
+            for (l in 0 until 32) sumX2 += x[xIdx + 32 * j + l] * x[xIdx + 32 * j + l]
+            val avX = kotlin.math.sqrt(sumX2 / 32f)
+            for (l in 0 until 32) weights[l] = avX + kotlin.math.abs(x[xIdx + 32 * j + l])
+            theMin[0] = 0f
+            scales[j] = make_qkx2_quants(32, 31, x, xIdx + 32 * j, weights, 0,
+                Lu, 32 * j, theMin, 0, Lauxu, 0, -0.5f, 0.1f, 15, false)
+            mins[j] = theMin[0]
+            if (scales[j] > maxScale) maxScale = scales[j]
+            if (mins[j] > maxMin) maxMin = mins[j]
+        }
+
+        val invScale = if (maxScale > 0) 63f / maxScale else 0f
+        val invMin = if (maxMin > 0) 63f / maxMin else 0f
+        for (j in 0 until QK_K / 32) {
+            var ls = nearest_int(invScale * scales[j])
+            var lm = nearest_int(invMin * mins[j])
+            ls = minOf(63, ls)
+            lm = minOf(63, lm)
+            if (j < 4) {
+                y[scOff + j] = ls.toByte()
+                y[scOff + j + 4] = lm.toByte()
+            } else {
+                y[scOff + j + 4] = ((ls and 0xF) or ((lm and 0xF) shl 4)).toByte()
+                y[scOff + j - 4] = (y[scOff + j - 4].toInt() or ((ls shr 4) shl 6)).toByte()
+                y[scOff + j] = (y[scOff + j].toInt() or ((lm shr 4) shl 6)).toByte()
+            }
+        }
+        writeFp16(y, bOff + 0, maxScale / 63f)
+        writeFp16(y, bOff + 2, maxMin / 63f)
+
+        for (j in 0 until QK_K / 32) {
+            val sm = get_scale_min_k4(j, y, scOff)
+            val d = fp16ToF32(y, bOff + 0) * sm.d
+            if (d == 0f) continue
+            val dm = fp16ToF32(y, bOff + 2) * sm.m
+            for (ii in 0 until 32) {
+                var l = nearest_int((x[xIdx + 32 * j + ii] + dm) / d)
+                l = maxOf(0, minOf(31, l))
+                L[32 * j + ii] = l
+            }
+        }
+
+        // qh[QK_K/8] at offset 16
+        for (j in 0 until QK_K / 8) y[qhOff + j] = 0
+
+        var m1 = 1; var m2 = 2
+        var qlIdx = 0
+        for (n in 0 until QK_K step 64) {
+            for (j in 0 until 32) {
+                var l1 = L[n + j]
+                if (l1 > 15) {
+                    l1 -= 16; y[qhOff + j] = (y[qhOff + j].toInt() or m1).toByte()
+                }
+                var l2 = L[n + j + 32]
+                if (l2 > 15) {
+                    l2 -= 16; y[qhOff + j] = (y[qhOff + j].toInt() or m2).toByte()
+                }
+                y[qlOff + qlIdx + j] = (l1 or (l2 shl 4)).toByte()
+            }
+            m1 = m1 shl 2; m2 = m2 shl 2
+            qlIdx += 32
+        }
+
+        xIdx += QK_K
+    }
 }
 
 fun quantize_row_q6_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_q6_K_ref: complex K-quant quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockQ6K.SIZE_BYTES
+
+    val L = ByteArray(QK_K)
+    val scales = FloatArray(QK_K / 16)
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        val qlOff = bOff + 0
+        val qhOff = bOff + 128
+        val scOff = bOff + 192
+
+        var maxScale = 0f
+        var maxAbsScale = 0f
+
+        for (ib in 0 until QK_K / 16) {
+            val scale = make_qx_quants(16, 32, x, xIdx + 16 * ib, L, 16 * ib, 1, null, 0)
+            scales[ib] = scale
+
+            val absScale = kotlin.math.abs(scale)
+            if (absScale > maxAbsScale) {
+                maxAbsScale = absScale
+                maxScale = scale
+            }
+        }
+
+        if (maxAbsScale < GROUP_MAX_EPS) {
+            // Zero out entire block
+            for (j in 0 until blockSize) y[bOff + j] = 0
+            writeFp16(y, bOff + 208, 0f)
+            xIdx += QK_K
+            continue
+        }
+
+        val iscale = -128f / maxScale
+        writeFp16(y, bOff + 208, 1f / iscale)
+        for (ib in 0 until QK_K / 16) {
+            y[scOff + ib] = minOf(127, nearest_int(iscale * scales[ib])).toByte()
+        }
+
+        for (j in 0 until QK_K / 16) {
+            val d = fp16ToF32(y, bOff + 208) * y[scOff + j].toInt()
+            if (d == 0f) continue
+            for (ii in 0 until 16) {
+                var l = nearest_int(x[xIdx + 16 * j + ii] / d)
+                l = maxOf(-32, minOf(31, l))
+                L[16 * j + ii] = (l + 32).toByte()
+            }
+        }
+
+        var qlIdx = 0
+        var qhIdx = 0
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) {
+                val q1 = (L[j + l + 0].toInt() and 0xFF) and 0xF
+                val q2 = (L[j + l + 32].toInt() and 0xFF) and 0xF
+                val q3 = (L[j + l + 64].toInt() and 0xFF) and 0xF
+                val q4 = (L[j + l + 96].toInt() and 0xFF) and 0xF
+                y[qlOff + qlIdx + l + 0] = (q1 or (q3 shl 4)).toByte()
+                y[qlOff + qlIdx + l + 32] = (q2 or (q4 shl 4)).toByte()
+                y[qhOff + qhIdx + l] = (((L[j + l].toInt() and 0xFF) shr 4) or
+                    (((L[j + l + 32].toInt() and 0xFF) shr 4) shl 2) or
+                    (((L[j + l + 64].toInt() and 0xFF) shr 4) shl 4) or
+                    (((L[j + l + 96].toInt() and 0xFF) shr 4) shl 6)).toByte()
+            }
+            qlIdx += 64
+            qhIdx += 32
+        }
+
+        xIdx += QK_K
+    }
 }
 
 fun quantize_row_q8_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
@@ -1340,7 +1788,7 @@ fun quantize_row_q8_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: 
         var amax = 0f
         for (j in 0 until QK_K) {
             val ax = kotlin.math.abs(x[xIdx + j])
-            if (ax > amax) { amax = ax; max = ax }
+            if (ax > amax) { amax = ax; max = x[xIdx + j] }
         }
         val bOff = yOff + i * blockSize
         if (amax == 0f) {
@@ -1356,7 +1804,8 @@ fun quantize_row_q8_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: 
             xIdx += QK_K
             continue
         }
-        val iscale = -128f / max
+        // -127 not -128, needed for IQ2_XXS AVX compatibility
+        val iscale = -127f / max
         val qsOff = bOff + 4
         for (j in 0 until QK_K) {
             val v = nearest_int(iscale * x[xIdx + j])
@@ -1385,19 +1834,171 @@ fun quantize_row_q8_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: 
 }
 
 fun quantize_row_tq1_0_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_tq1_0_ref: ternary quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockTQ1_0.SIZE_BYTES
+    val qsSize = (QK_K - 4 * QK_K / 64) / 5  // 48
+    val qhSize = QK_K / 64                     // 4
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        val qsOff = bOff + 0
+        val qhOff = bOff + qsSize
+        val dOff = bOff + qsSize + qhSize
+
+        var amax = 0f
+        for (j in 0 until QK_K) {
+            amax = maxOf(amax, kotlin.math.abs(x[xIdx + j]))
+        }
+        val d = amax
+        val id = if (d != 0f) 1f / d else 0f
+        writeFp16(y, dOff, d)
+
+        // 5 elements per byte, along 32 bytes
+        var xLocal = xIdx
+        var j = 0
+        while (j < qsSize - qsSize % 32) {
+            for (m in 0 until 32) {
+                var q = 0
+                for (n in 0 until 5) {
+                    val xi = kotlin.math.round(x[xLocal + m + n * 32] * id).toInt() + 1  // -1, 0, 1 -> 0, 1, 2
+                    q *= 3
+                    q += xi
+                }
+                // ceiling division (243 == pow(3, 5))
+                q = ((q * 256 + 242) / 243)
+                y[qsOff + j + m] = (q and 0xFF).toByte()
+            }
+            xLocal += 5 * 32
+            j += 32
+        }
+        // along 16 bytes
+        while (j < qsSize) {
+            for (m in 0 until 16) {
+                var q = 0
+                for (n in 0 until 5) {
+                    val xi = kotlin.math.round(x[xLocal + m + n * 16] * id).toInt() + 1
+                    q *= 3
+                    q += xi
+                }
+                q = ((q * 256 + 242) / 243)
+                y[qsOff + j + m] = (q and 0xFF).toByte()
+            }
+            xLocal += 5 * 16
+            j += 16
+        }
+        // 4 elements per byte
+        for (jj in 0 until qhSize) {
+            var q = 0
+            for (m in 0 until 4) {
+                val xi = kotlin.math.round(x[xLocal + jj + m * qhSize] * id).toInt() + 1
+                q *= 3
+                q += xi
+            }
+            q *= 3  // shift the first value to the most significant trit
+            q = ((q * 256 + 242) / 243)
+            y[qhOff + jj] = (q and 0xFF).toByte()
+        }
+        xIdx += QK_K
+    }
 }
 
 fun quantize_row_tq2_0_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_tq2_0_ref: ternary quantization not yet ported")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockTQ2_0.SIZE_BYTES
+    val qsSize = QK_K / 4  // 64
+
+    var xIdx = xOff
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        val qsOff = bOff + 0
+        val dOff = bOff + qsSize
+
+        var amax = 0f
+        for (j in 0 until QK_K) {
+            amax = maxOf(amax, kotlin.math.abs(x[xIdx + j]))
+        }
+        val d = amax
+        val id = if (d != 0f) 1f / d else 0f
+        writeFp16(y, dOff, d)
+
+        var j = 0
+        while (j < qsSize) {
+            for (m in 0 until 32) {
+                var q = 0
+                for (n in 0 until 4) {
+                    val xi = kotlin.math.round(x[xIdx + m + n * 32] * id).toInt() + 1  // -1, 0, 1 -> 0, 1, 2
+                    q += (xi and 3) shl (2 * n)
+                }
+                y[qsOff + j + m] = (q and 0xFF).toByte()
+            }
+            xIdx += 4 * 32
+            j += 32
+        }
+    }
 }
 
 fun quantize_row_mxfp4_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_mxfp4_ref: MXFP4 quantization not yet ported")
+    val qk = QK_MXFP4
+    require(k % qk == 0L)
+    val nb = (k / qk).toInt()
+    val blockSize = BlockMXFP4.SIZE_BYTES  // 17
+
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        val base = xOff + i * qk
+        var amax = 0f
+        for (j in 0 until qk) {
+            if (amax < kotlin.math.abs(x[base + j])) {
+                amax = kotlin.math.abs(x[base + j])
+            }
+        }
+        val e: Int = if (amax > 0f) (kotlin.math.floor(kotlin.math.log2(amax.toDouble())).toInt() - 2 + 127) else 0
+        val d = GGML_E8M0_TO_FP32_HALF((e and 0xFF).toUByte())
+
+        y[bOff] = (e and 0xFF).toByte()  // block.e
+
+        val qsOff = bOff + 1
+        for (j in 0 until qk / 2) {
+            val x0 = best_index_mxfp4(x[base + j], d)
+            val x1 = best_index_mxfp4(x[base + j + qk / 2], d)
+            y[qsOff + j] = (x0 or (x1 shl 4)).toByte()
+        }
+    }
 }
 
 fun quantize_row_nvfp4_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_nvfp4_ref: NVFP4 quantization not yet ported")
+    val qk = QK_NVFP4
+    val qkSub = QK_NVFP4_SUB
+    val nSub = QK_NVFP4 / QK_NVFP4_SUB
+    require(k % qk == 0L)
+    val nb = (k / qk).toInt()
+    val blockSize = BlockNVFP4.SIZE_BYTES  // 36
+
+    for (i in 0 until nb) {
+        val bOff = yOff + i * blockSize
+        for (s in 0 until nSub) {
+            val xbOff = xOff + i * qk + s * qkSub
+            var amax = 0f
+            for (j in 0 until qkSub) {
+                if (amax < kotlin.math.abs(x[xbOff + j])) {
+                    amax = kotlin.math.abs(x[xbOff + j])
+                }
+            }
+            val ue = ggml_fp32_to_ue4m3(amax / 6f)
+            y[bOff + s] = ue.toByte()  // block.d[s]
+            val d = ggml_ue4m3_to_fp32(ue)
+
+            val qsBase = bOff + nSub + s * (qkSub / 2)
+            for (j in 0 until qkSub / 2) {
+                val x0 = best_index_mxfp4(x[xbOff + j], d)
+                val x1 = best_index_mxfp4(x[xbOff + j + qkSub / 2], d)
+                y[qsBase + j] = (x0 or (x1 shl 4)).toByte()
+            }
+        }
+    }
 }
 
 // IQ quantize_row_ref — all require grid tables
@@ -1427,63 +2028,721 @@ fun quantize_row_iq2_s_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k:
 // ════════════════════════════════════════════════════════════════════════════════
 
 fun quantize_q1_0(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q1_0: importance-matrix quantization not yet ported")
+    if (imatrix == null) {
+        quantize_row_q1_0_ref(src, 0, dst, 0, nrows * nPerRow)
+        return nrows * ggmlRowSize(GGMLType.Q1_0, nPerRow).toLong()
+    }
+    val rowSize = ggmlRowSize(GGMLType.Q1_0, nPerRow).toLong()
+    var srcOff = 0
+    var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_q1_0_ref(src, srcOff, dst, dstOff, nPerRow)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize.toInt()
+    }
+    return nrows * rowSize
 }
 
+// C line 2008: quantize_row_q4_0_impl
+// Block layout: d(fp16, 2 bytes at 0), qs(QK4_0/2=16 bytes at 2). Block size = 18.
+private fun quantize_row_q4_0_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val weight = FloatArray(QK4_0)
+    val L = ByteArray(QK4_0)
+
+    var sumX2 = 0f
+    for (j in 0 until nPerRow) sumX2 += x[xOff + j] * x[xOff + j]
+    val sigma2 = sumX2 / nPerRow
+
+    val nb = nPerRow / QK4_0
+    for (ib in 0 until nb) {
+        val xbOff = xOff + QK4_0 * ib
+        val qwbOff = qwOff + QK4_0 * ib
+        for (j in 0 until QK4_0) weight[j] = quantWeights[qwbOff + j] * kotlin.math.sqrt(sigma2 + x[xbOff + j] * x[xbOff + j])
+        val d = make_qx_quants(QK4_0, 8, x, xbOff, L, 0, 1, weight, 0)
+        val bOff = yOff + 18 * ib
+        writeFp16(y, bOff + 0, d)
+        for (j in 0 until 16) {
+            y[bOff + 2 + j] = ((L[j].toInt() and 0xFF) or ((L[j + 16].toInt() and 0xFF) shl 4)).toByte()
+        }
+    }
+}
+
+// C line 2052
 fun quantize_q4_0(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q4_0: importance-matrix quantization not yet ported")
+    if (imatrix == null) {
+        quantize_row_q4_0_ref(src, 0, dst, 0, nrows * nPerRow)
+        return nrows * ggmlRowSize(GGMLType.Q4_0, nPerRow).toLong()
+    }
+    val rowSize = ggmlRowSize(GGMLType.Q4_0, nPerRow).toLong()
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_q4_0_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize.toInt()
+    }
+    return nrows * rowSize
 }
 
+// C line 2067: quantize_row_q4_1_impl
+// Block layout: d(fp16, 2 at 0), m(fp16, 2 at 2), qs(16 at 4). Block size = 20.
+private fun quantize_row_q4_1_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val weight = FloatArray(QK4_1)
+    val L = UByteArray(QK4_1)
+    val Laux = UByteArray(QK4_1)
+
+    var sumX2 = 0f
+    for (j in 0 until nPerRow) sumX2 += x[xOff + j] * x[xOff + j]
+    val sigma2 = sumX2 / nPerRow
+
+    val nb = nPerRow / QK4_1
+    val theMin = FloatArray(1)
+    for (ib in 0 until nb) {
+        val xbOff = xOff + QK4_1 * ib
+        val qwbOff = qwOff + QK4_1 * ib
+        for (j in 0 until QK4_1) weight[j] = quantWeights[qwbOff + j] * kotlin.math.sqrt(sigma2 + x[xbOff + j] * x[xbOff + j])
+        val d = make_qkx3_quants(QK4_1, 15, x, xbOff, weight, 0, L, 0, theMin, 0, Laux, 0, -0.9f, 0.05f, 36, false)
+        val bOff = yOff + 20 * ib
+        writeFp16(y, bOff + 0, d)
+        writeFp16(y, bOff + 2, -theMin[0])
+        for (j in 0 until 16) {
+            y[bOff + 4 + j] = (L[j].toInt() or (L[j + 16].toInt() shl 4)).toByte()
+        }
+    }
+}
+
+// C line 2097
 fun quantize_q4_1(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q4_1: importance-matrix quantization not yet ported")
+    if (imatrix == null) {
+        quantize_row_q4_1_ref(src, 0, dst, 0, nrows * nPerRow)
+        return nrows * ggmlRowSize(GGMLType.Q4_1, nPerRow).toLong()
+    }
+    val rowSize = ggmlRowSize(GGMLType.Q4_1, nPerRow).toLong()
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_q4_1_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize.toInt()
+    }
+    return nrows * rowSize
 }
 
+// C line 2112: quantize_row_q5_0_impl
+// Block layout: d(fp16, 2 at 0), qh(uint32, 4 at 2), qs(16 at 6). Block size = 22.
+private fun quantize_row_q5_0_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val weight = FloatArray(QK5_0)
+    val L = ByteArray(QK5_0)
+
+    var sumX2 = 0f
+    for (j in 0 until nPerRow) sumX2 += x[xOff + j] * x[xOff + j]
+    val sigma2 = sumX2 / nPerRow
+
+    val nb = nPerRow / QK5_0
+    for (ib in 0 until nb) {
+        val xbOff = xOff + QK5_0 * ib
+        val qwbOff = qwOff + QK5_0 * ib
+        for (j in 0 until QK5_0) weight[j] = quantWeights[qwbOff + j] * kotlin.math.sqrt(sigma2 + x[xbOff + j] * x[xbOff + j])
+        val d = make_qx_quants(QK5_0, 16, x, xbOff, L, 0, 1, weight, 0)
+        val bOff = yOff + 22 * ib
+        writeFp16(y, bOff + 0, d)
+
+        var qh = 0
+        for (j in 0 until 16) {
+            val xi0 = L[j].toInt() and 0xFF
+            val xi1 = L[j + 16].toInt() and 0xFF
+            y[bOff + 6 + j] = ((xi0 and 0x0F) or ((xi1 and 0x0F) shl 4)).toByte()
+            qh = qh or (((xi0 and 0x10) shr 4) shl (j + 0))
+            qh = qh or (((xi1 and 0x10) shr 4) shl (j + QK5_0 / 2))
+        }
+        writeIntLE(y, bOff + 2, qh)
+    }
+}
+
+// C line 2151
 fun quantize_q5_0(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q5_0: importance-matrix quantization not yet ported")
+    val rowSize = (nPerRow / QK5_0) * BlockQ5_0.SIZE_BYTES
+    if (imatrix == null) {
+        quantize_row_q5_0_ref(src, 0, dst, 0, nrows * nPerRow)
+        return nrows * rowSize
+    }
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_q5_0_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize.toInt()
+    }
+    return nrows * rowSize
 }
 
+// C line 2166: quantize_row_q5_1_impl
+// Block layout: d(fp16, 2 at 0), m(fp16, 2 at 2), qh(uint32, 4 at 4), qs(16 at 8). Block size = 24.
+private fun quantize_row_q5_1_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val weight = FloatArray(QK5_1)
+    val L = UByteArray(QK5_1)
+    val Laux = UByteArray(QK5_1)
+
+    var sumX2 = 0f
+    for (j in 0 until nPerRow) sumX2 += x[xOff + j] * x[xOff + j]
+    val sigma2 = sumX2 / nPerRow
+
+    val nb = nPerRow / QK5_1
+    val theMin = FloatArray(1)
+    for (ib in 0 until nb) {
+        val xbOff = xOff + QK5_1 * ib
+        val qwbOff = qwOff + QK5_1 * ib
+        for (j in 0 until QK5_1) weight[j] = quantWeights[qwbOff + j] * kotlin.math.sqrt(sigma2 + x[xbOff + j] * x[xbOff + j])
+        val d = make_qkx3_quants(QK5_1, 31, x, xbOff, weight, 0, L, 0, theMin, 0, Laux, 0, -0.9f, 0.05f, 36, false)
+        val bOff = yOff + 24 * ib
+        writeFp16(y, bOff + 0, d)
+        writeFp16(y, bOff + 2, -theMin[0])
+
+        var qh = 0
+        for (j in 0 until 16) {
+            val xi0 = L[j].toInt()
+            val xi1 = L[j + 16].toInt()
+            y[bOff + 8 + j] = ((xi0 and 0x0F) or ((xi1 and 0x0F) shl 4)).toByte()
+            qh = qh or (((xi0 and 0x10) shr 4) shl (j + 0))
+            qh = qh or (((xi1 and 0x10) shr 4) shl (j + QK5_0 / 2))
+        }
+        writeIntLE(y, bOff + 4, qh)
+    }
+}
+
+// C line 2204
 fun quantize_q5_1(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q5_1: importance-matrix quantization not yet ported")
+    val rowSize = (nPerRow / QK5_1) * BlockQ5_1.SIZE_BYTES
+    if (imatrix == null) {
+        quantize_row_q5_1_ref(src, 0, dst, 0, nrows * nPerRow)
+        return nrows * rowSize
+    }
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_q5_1_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize.toInt()
+    }
+    return nrows * rowSize
 }
 
+// C line 2219
 fun quantize_q8_0(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q8_0: importance-matrix quantization not yet ported")
+    val rowSize = ggmlRowSize(GGMLType.Q8_0, nPerRow).toLong()
+    quantize_row_q8_0_ref(src, 0, dst, 0, nrows * nPerRow)
+    return nrows * rowSize
 }
 
+// C line 1087: quantize_row_q2_K_impl
+// Block layout: scales(16 at 0), qs(64 at 16), d(fp16 at 80), dmin(fp16 at 82). Block size = 84.
+private fun quantize_row_q2_K_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val nb = nPerRow / QK_K
+
+    val L = UByteArray(QK_K)
+    val Laux = UByteArray(16)
+    val mins = FloatArray(QK_K / 16)
+    val scales = FloatArray(QK_K / 16)
+    val sw = FloatArray(QK_K / 16)
+    val weight = FloatArray(16)
+    val Ls = UByteArray(QK_K / 16)
+    val Lm = UByteArray(QK_K / 16)
+
+    var xCur = xOff
+    for (i in 0 until nb) {
+        for (idx in sw.indices) sw[idx] = 0f
+        var sumx2 = 0f
+        for (j in 0 until QK_K) sumx2 += x[xCur + j] * x[xCur + j]
+        val sigma2 = sumx2 / QK_K
+        for (j in 0 until QK_K / 16) {
+            val qwBase = qwOff + QK_K * i + 16 * j
+            for (l in 0 until 16) weight[l] = quantWeights[qwBase + l] * kotlin.math.sqrt(sigma2 + x[xCur + 16 * j + l] * x[xCur + 16 * j + l])
+            for (l in 0 until QK_K / 16) sw[j] += weight[l]
+            scales[j] = make_qkx3_quants(16, 3, x, xCur + 16 * j, weight, 0, L, 16 * j, mins, j, Laux, 0, -0.9f, 0.05f, 36, false)
+        }
+
+        var dm = make_qp_quants(QK_K / 16, 15, scales, 0, Ls, 0, sw, 0)
+        var mm = make_qp_quants(QK_K / 16, 15, mins, 0, Lm, 0, sw, 0)
+
+        val bOff = yOff + 84 * i
+        writeFp16(y, bOff + 80, dm)
+        writeFp16(y, bOff + 82, mm)
+        dm = fp16ToF32(y, bOff + 80)
+        mm = fp16ToF32(y, bOff + 82)
+
+        for (j in 0 until QK_K / 16) {
+            y[bOff + j] = (Ls[j].toInt() or (Lm[j].toInt() shl 4)).toByte()
+        }
+
+        // requantize
+        for (j in 0 until QK_K / 16) {
+            val d = dm * ((y[bOff + j].toInt() and 0xFF) and 0xF)
+            if (d == 0f) continue
+            val m = mm * ((y[bOff + j].toInt() and 0xFF) shr 4)
+            for (ii in 0 until 16) {
+                var l = nearest_int((x[xCur + 16 * j + ii] + m) / d)
+                l = maxOf(0, minOf(3, l))
+                L[16 * j + ii] = l.toUByte()
+            }
+        }
+
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) {
+                y[bOff + 16 + j / 4 + l] = (L[j + l].toInt() or (L[j + l + 32].toInt() shl 2) or (L[j + l + 64].toInt() shl 4) or (L[j + l + 96].toInt() shl 6)).toByte()
+            }
+        }
+
+        xCur += QK_K
+    }
+}
+
+// C line 1149
 fun quantize_q2_K(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q2_K: importance-matrix quantization not yet ported")
+    val rowSize = ggmlRowSize(GGMLType.Q2_K, nPerRow).toLong()
+    if (imatrix == null) {
+        quantize_row_q2_K_ref(src, 0, dst, 0, nrows * nPerRow)
+    } else {
+        var srcOff = 0; var dstOff = 0
+        for (row in 0 until nrows) {
+            quantize_row_q2_K_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+            srcOff += nPerRow.toInt()
+            dstOff += rowSize.toInt()
+        }
+    }
+    return nrows * rowSize
 }
 
+// C line 1293: quantize_row_q3_K_impl
+// Block layout: hmask(32 at 0), qs(64 at 32), scales(12 at 96), d(fp16 at 108). Block size = 110.
+private fun quantize_row_q3_K_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val nb = nPerRow / QK_K
+
+    val L = ByteArray(QK_K)
+    val scales = FloatArray(QK_K / 16)
+    val weight = FloatArray(16)
+    val sw = FloatArray(QK_K / 16)
+    val Ls = ByteArray(QK_K / 16)
+
+    var xCur = xOff
+    for (i in 0 until nb) {
+        var sumx2 = 0f
+        for (j in 0 until QK_K) sumx2 += x[xCur + j] * x[xCur + j]
+        val sigma2 = 2 * sumx2 / QK_K
+
+        for (j in 0 until QK_K / 16) {
+            val qwBase = qwOff + QK_K * i + 16 * j
+            for (l in 0 until 16) weight[l] = quantWeights[qwBase + l] * kotlin.math.sqrt(sigma2 + x[xCur + 16 * j + l] * x[xCur + 16 * j + l])
+            var sumw = 0f
+            for (l in 0 until 16) sumw += weight[l]
+            sw[j] = sumw
+            scales[j] = make_qx_quants(16, 4, x, xCur + 16 * j, L, 16 * j, 1, weight, 0)
+        }
+
+        val bOff = yOff + 110 * i
+        val scOff = bOff + 96
+        for (idx in 0 until 12) y[scOff + idx] = 0
+
+        val dBlock = make_qx_quants(QK_K / 16, 32, scales, 0, Ls, 0, 1, sw, 0)
+        for (j in 0 until QK_K / 16) {
+            val l = Ls[j].toInt() and 0xFF
+            if (j < 8) {
+                y[scOff + j] = ((y[scOff + j].toInt() and 0xFF) or (l and 0xF)).toByte()
+            } else {
+                y[scOff + j - 8] = ((y[scOff + j - 8].toInt() and 0xFF) or ((l and 0xF) shl 4)).toByte()
+            }
+            val lh = l shr 4
+            y[scOff + j % 4 + 8] = ((y[scOff + j % 4 + 8].toInt() and 0xFF) or (lh shl (2 * (j / 4)))).toByte()
+        }
+        writeFp16(y, bOff + 108, dBlock)
+
+        // requantize
+        for (j in 0 until QK_K / 16) {
+            var sc = if (j < 8) (y[scOff + j].toInt() and 0xFF) and 0xF else (y[scOff + j - 8].toInt() and 0xFF) shr 4
+            sc = (sc or ((((y[scOff + 8 + j % 4].toInt() and 0xFF) shr (2 * (j / 4))) and 3) shl 4)) - 32
+            val d = fp16ToF32(y, bOff + 108) * sc
+            if (d == 0f) continue
+            for (ii in 0 until 16) {
+                var l = nearest_int(x[xCur + 16 * j + ii] / d)
+                l = maxOf(-4, minOf(3, l))
+                L[16 * j + ii] = (l + 4).toByte()
+            }
+        }
+
+        // hmask
+        val hmOff = bOff + 0
+        for (idx in 0 until QK_K / 8) y[hmOff + idx] = 0
+        var m = 0
+        var hm = 1
+        for (j in 0 until QK_K) {
+            if ((L[j].toInt() and 0xFF) > 3) {
+                y[hmOff + m] = ((y[hmOff + m].toInt() and 0xFF) or hm).toByte()
+                L[j] = ((L[j].toInt() and 0xFF) - 4).toByte()
+            }
+            m++
+            if (m == QK_K / 8) { m = 0; hm = hm shl 1 }
+        }
+
+        // pack qs
+        val qsOff = bOff + 32
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) {
+                y[qsOff + j / 4 + l] = ((L[j + l].toInt() and 0xFF) or ((L[j + l + 32].toInt() and 0xFF) shl 2) or ((L[j + l + 64].toInt() and 0xFF) shl 4) or ((L[j + l + 96].toInt() and 0xFF) shl 6)).toByte()
+            }
+        }
+
+        xCur += QK_K
+    }
+}
+
+// C line 1377
 fun quantize_q3_K(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q3_K: importance-matrix quantization not yet ported")
+    val rowSize = ggmlRowSize(GGMLType.Q3_K, nPerRow).toLong()
+    if (imatrix == null) {
+        quantize_row_q3_K_ref(src, 0, dst, 0, nrows * nPerRow)
+    } else {
+        var srcOff = 0; var dstOff = 0
+        for (row in 0 until nrows) {
+            quantize_row_q3_K_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+            srcOff += nPerRow.toInt()
+            dstOff += rowSize.toInt()
+        }
+    }
+    return nrows * rowSize
 }
 
+// C line 1491: quantize_row_q4_K_impl
+// Block layout: d(fp16 at 0), dmin(fp16 at 2), scales(12 at 4), qs(128 at 16). Block size = 144.
+private fun quantize_row_q4_K_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val nb = nPerRow / QK_K
+
+    val L = UByteArray(QK_K)
+    val Laux = UByteArray(32)
+    val Ls = UByteArray(QK_K / 32)
+    val Lm = UByteArray(QK_K / 32)
+    val weights = FloatArray(32)
+    val sw = FloatArray(QK_K / 32)
+    val mins = FloatArray(QK_K / 32)
+    val scales = FloatArray(QK_K / 32)
+
+    var xCur = xOff
+    for (i in 0 until nb) {
+        var sumX2 = 0f
+        for (l in 0 until QK_K) sumX2 += x[xCur + l] * x[xCur + l]
+        val sigma2 = 2 * sumX2 / QK_K
+        val avX = kotlin.math.sqrt(sigma2)
+
+        for (j in 0 until QK_K / 32) {
+            val qwBase = qwOff + QK_K * i + 32 * j
+            for (l in 0 until 32) weights[l] = quantWeights[qwBase + l] * kotlin.math.sqrt(sigma2 + x[xCur + 32 * j + l] * x[xCur + 32 * j + l])
+            var sumw = 0f
+            for (l in 0 until 32) sumw += weights[l]
+            sw[j] = sumw
+            scales[j] = make_qkx3_quants(32, 15, x, xCur + 32 * j, weights, 0, L, 32 * j, mins, j, Laux, 0, -0.9f, 0.05f, 36, false)
+        }
+
+        val dBlock = make_qp_quants(QK_K / 32, 63, scales, 0, Ls, 0, sw, 0)
+        val mBlock = make_qp_quants(QK_K / 32, 63, mins, 0, Lm, 0, sw, 0)
+
+        val bOff = yOff + 144 * i
+        val scOff = bOff + 4
+        for (j in 0 until QK_K / 32) {
+            val ls = Ls[j].toInt()
+            val lm = Lm[j].toInt()
+            if (j < 4) {
+                y[scOff + j] = ls.toByte()
+                y[scOff + j + 4] = lm.toByte()
+            } else {
+                y[scOff + j + 4] = ((ls and 0xF) or ((lm and 0xF) shl 4)).toByte()
+                y[scOff + j - 4] = ((y[scOff + j - 4].toInt() and 0xFF) or ((ls shr 4) shl 6)).toByte()
+                y[scOff + j - 0] = ((y[scOff + j - 0].toInt() and 0xFF) or ((lm shr 4) shl 6)).toByte()
+            }
+        }
+        writeFp16(y, bOff + 0, dBlock)
+        writeFp16(y, bOff + 2, mBlock)
+
+        // requantize
+        for (j in 0 until QK_K / 32) {
+            val sm = get_scale_min_k4(j, y, scOff)
+            val d = fp16ToF32(y, bOff + 0) * sm.d
+            if (d == 0f) continue
+            val dm = fp16ToF32(y, bOff + 2) * sm.m
+            for (ii in 0 until 32) {
+                var l = nearest_int((x[xCur + 32 * j + ii] + dm) / d)
+                l = maxOf(0, minOf(15, l))
+                L[32 * j + ii] = l.toUByte()
+            }
+        }
+
+        // pack qs
+        var qOff = bOff + 16
+        for (j in 0 until QK_K step 64) {
+            for (l in 0 until 32) y[qOff + l] = (L[j + l].toInt() or (L[j + l + 32].toInt() shl 4)).toByte()
+            qOff += 32
+        }
+
+        xCur += QK_K
+    }
+}
+
+// C line 1564
 fun quantize_q4_K(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q4_K: importance-matrix quantization not yet ported")
+    val rowSize = ggmlRowSize(GGMLType.Q4_K, nPerRow).toLong()
+    if (imatrix == null) {
+        quantize_row_q4_K_ref(src, 0, dst, 0, nrows * nPerRow)
+    } else {
+        var srcOff = 0; var dstOff = 0
+        for (row in 0 until nrows) {
+            quantize_row_q4_K_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+            srcOff += nPerRow.toInt()
+            dstOff += rowSize.toInt()
+        }
+    }
+    return nrows * rowSize
 }
 
+// C line 1696: quantize_row_q5_K_impl
+// Block layout: d(fp16 at 0), dmin(fp16 at 2), scales(12 at 4), qh(32 at 16), qs(128 at 48). Block size = 176.
+private fun quantize_row_q5_K_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val nb = nPerRow / QK_K
+
+    val L = UByteArray(QK_K)
+    val Laux = UByteArray(32)
+    val Ls = UByteArray(QK_K / 32)
+    val Lm = UByteArray(QK_K / 32)
+    val mins = FloatArray(QK_K / 32)
+    val scales = FloatArray(QK_K / 32)
+    val sw = FloatArray(QK_K / 32)
+    val weights = FloatArray(32)
+
+    var xCur = xOff
+    for (i in 0 until nb) {
+        var sumX2 = 0f
+        for (l in 0 until QK_K) sumX2 += x[xCur + l] * x[xCur + l]
+        val sigma2 = 2 * sumX2 / QK_K
+        val avX = kotlin.math.sqrt(sigma2)
+
+        for (j in 0 until QK_K / 32) {
+            val qwBase = qwOff + QK_K * i + 32 * j
+            for (l in 0 until 32) weights[l] = quantWeights[qwBase + l] * kotlin.math.sqrt(sigma2 + x[xCur + 32 * j + l] * x[xCur + 32 * j + l])
+            var sumw = 0f
+            for (l in 0 until 32) sumw += weights[l]
+            sw[j] = sumw
+            scales[j] = make_qkx3_quants(32, 31, x, xCur + 32 * j, weights, 0, L, 32 * j, mins, j, Laux, 0, -0.9f, 0.05f, 36, false)
+        }
+
+        val dBlock = make_qp_quants(QK_K / 32, 63, scales, 0, Ls, 0, sw, 0)
+        val mBlock = make_qp_quants(QK_K / 32, 63, mins, 0, Lm, 0, sw, 0)
+
+        val bOff = yOff + 176 * i
+        val scOff = bOff + 4
+        for (j in 0 until QK_K / 32) {
+            var ls = minOf(63, Ls[j].toInt())
+            var lm = minOf(63, Lm[j].toInt())
+            if (j < 4) {
+                y[scOff + j] = ls.toByte()
+                y[scOff + j + 4] = lm.toByte()
+            } else {
+                y[scOff + j + 4] = ((ls and 0xF) or ((lm and 0xF) shl 4)).toByte()
+                y[scOff + j - 4] = ((y[scOff + j - 4].toInt() and 0xFF) or ((ls shr 4) shl 6)).toByte()
+                y[scOff + j - 0] = ((y[scOff + j - 0].toInt() and 0xFF) or ((lm shr 4) shl 6)).toByte()
+            }
+        }
+        writeFp16(y, bOff + 0, dBlock)
+        writeFp16(y, bOff + 2, mBlock)
+
+        // requantize
+        for (j in 0 until QK_K / 32) {
+            val sm = get_scale_min_k4(j, y, scOff)
+            val d = fp16ToF32(y, bOff + 0) * sm.d
+            if (d == 0f) continue
+            val dm = fp16ToF32(y, bOff + 2) * sm.m
+            for (ii in 0 until 32) {
+                var l = nearest_int((x[xCur + 32 * j + ii] + dm) / d)
+                l = maxOf(0, minOf(31, l))
+                L[32 * j + ii] = l.toUByte()
+            }
+        }
+
+        // pack qh and ql
+        val qhOff = bOff + 16
+        val qlOff = bOff + 48
+        for (idx in 0 until QK_K / 8) y[qhOff + idx] = 0
+
+        var m1 = 1
+        var m2 = 2
+        var qlCur = qlOff
+        for (n in 0 until QK_K step 64) {
+            for (j in 0 until 32) {
+                var l1 = L[n + j].toInt()
+                if (l1 > 15) {
+                    l1 -= 16; y[qhOff + j] = ((y[qhOff + j].toInt() and 0xFF) or m1).toByte()
+                }
+                var l2 = L[n + j + 32].toInt()
+                if (l2 > 15) {
+                    l2 -= 16; y[qhOff + j] = ((y[qhOff + j].toInt() and 0xFF) or m2).toByte()
+                }
+                y[qlCur + j] = (l1 or (l2 shl 4)).toByte()
+            }
+            m1 = m1 shl 2; m2 = m2 shl 2
+            qlCur += 32
+        }
+
+        xCur += QK_K
+    }
+}
+
+// C line 1789
 fun quantize_q5_K(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q5_K: importance-matrix quantization not yet ported")
+    val rowSize = ggmlRowSize(GGMLType.Q5_K, nPerRow).toLong()
+    if (imatrix == null) {
+        quantize_row_q5_K_ref(src, 0, dst, 0, nrows * nPerRow)
+    } else {
+        var srcOff = 0; var dstOff = 0
+        for (row in 0 until nrows) {
+            quantize_row_q5_K_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+            srcOff += nPerRow.toInt()
+            dstOff += rowSize.toInt()
+        }
+    }
+    return nrows * rowSize
 }
 
+// C line 1908: quantize_row_q6_K_impl
+// Block layout: ql(128 at 0), qh(64 at 128), scales(16 at 192), d(fp16 at 208). Block size = 210.
+private fun quantize_row_q6_K_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int,
+    nPerRow: Int, quantWeights: FloatArray, qwOff: Int
+) {
+    val nb = nPerRow / QK_K
+
+    val L = ByteArray(QK_K)
+    val scales = FloatArray(QK_K / 16)
+
+    var xCur = xOff
+    for (i in 0 until nb) {
+        var maxScale = 0f
+        var maxAbsScale = 0f
+
+        for (ib in 0 until QK_K / 16) {
+            val scale: Float
+            val qwBase = qwOff + QK_K * i + 16 * ib
+            scale = make_qx_quants(16, 32, x, xCur + 16 * ib, L, 16 * ib, 1, quantWeights, qwBase)
+            scales[ib] = scale
+            val absScale = kotlin.math.abs(scale)
+            if (absScale > maxAbsScale) {
+                maxAbsScale = absScale
+                maxScale = scale
+            }
+        }
+
+        val bOff = yOff + 210 * i
+        if (maxAbsScale < GROUP_MAX_EPS) {
+            for (idx in 0 until 210) y[bOff + idx] = 0
+            writeFp16(y, bOff + 208, 0f)
+            xCur += QK_K
+            continue
+        }
+
+        val iscale = -128f / maxScale
+        writeFp16(y, bOff + 208, 1f / iscale)
+        for (ib in 0 until QK_K / 16) {
+            y[bOff + 192 + ib] = minOf(127, nearest_int(iscale * scales[ib])).toByte()
+        }
+
+        // requantize
+        for (j in 0 until QK_K / 16) {
+            val d = fp16ToF32(y, bOff + 208) * y[bOff + 192 + j].toInt()
+            if (d == 0f) continue
+            for (ii in 0 until 16) {
+                var l = nearest_int(x[xCur + 16 * j + ii] / d)
+                l = maxOf(-32, minOf(31, l))
+                L[16 * j + ii] = (l + 32).toByte()
+            }
+        }
+
+        // pack ql and qh
+        var qlOff = bOff + 0
+        var qhOff = bOff + 128
+        for (j in 0 until QK_K step 128) {
+            for (l in 0 until 32) {
+                val q1 = (L[j + l + 0].toInt() and 0xFF) and 0xF
+                val q2 = (L[j + l + 32].toInt() and 0xFF) and 0xF
+                val q3 = (L[j + l + 64].toInt() and 0xFF) and 0xF
+                val q4 = (L[j + l + 96].toInt() and 0xFF) and 0xF
+                y[qlOff + l + 0] = (q1 or (q3 shl 4)).toByte()
+                y[qlOff + l + 32] = (q2 or (q4 shl 4)).toByte()
+                y[qhOff + l] = (((L[j + l].toInt() and 0xFF) shr 4) or (((L[j + l + 32].toInt() and 0xFF) shr 4) shl 2) or (((L[j + l + 64].toInt() and 0xFF) shr 4) shl 4) or (((L[j + l + 96].toInt() and 0xFF) shr 4) shl 6)).toByte()
+            }
+            qlOff += 64
+            qhOff += 32
+        }
+
+        xCur += QK_K
+    }
+}
+
+// C line 1992
 fun quantize_q6_K(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_q6_K: importance-matrix quantization not yet ported")
+    val rowSize = ggmlRowSize(GGMLType.Q6_K, nPerRow).toLong()
+    if (imatrix == null) {
+        quantize_row_q6_K_ref(src, 0, dst, 0, nrows * nPerRow)
+    } else {
+        var srcOff = 0; var dstOff = 0
+        for (row in 0 until nrows) {
+            quantize_row_q6_K_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, (row * nPerRow).toInt())
+            srcOff += nPerRow.toInt()
+            dstOff += rowSize.toInt()
+        }
+    }
+    return nrows * rowSize
 }
 
+// C line 2338
 fun quantize_tq1_0(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_tq1_0: importance-matrix quantization not yet ported")
+    val rowSize = (nPerRow / QK_K) * BlockTQ1_0.SIZE_BYTES
+    quantize_row_tq1_0_ref(src, 0, dst, 0, nrows * nPerRow)
+    return nrows * rowSize
 }
 
+// C line 2345
 fun quantize_tq2_0(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_tq2_0: importance-matrix quantization not yet ported")
+    val rowSize = (nPerRow / QK_K) * BlockTQ2_0.SIZE_BYTES
+    quantize_row_tq2_0_ref(src, 0, dst, 0, nrows * nPerRow)
+    return nrows * rowSize
 }
 
+// C line 2226
 fun quantize_mxfp4(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_mxfp4: importance-matrix quantization not yet ported")
+    quantize_row_mxfp4_ref(src, 0, dst, 0, nrows * nPerRow)
+    val rowSize = (nPerRow / QK_MXFP4) * BlockMXFP4.SIZE_BYTES
+    return nrows * rowSize
 }
 
+// C line 2232
 fun quantize_nvfp4(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_nvfp4: importance-matrix quantization not yet ported")
+    quantize_row_nvfp4_ref(src, 0, dst, 0, nrows * nPerRow)
+    val rowSize = (nPerRow / QK_NVFP4) * BlockNVFP4.SIZE_BYTES
+    return nrows * rowSize
 }
 
 fun quantize_iq2_xxs(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
