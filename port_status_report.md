@@ -16,7 +16,7 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.19
+**Average Similarity:** 0.20
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -39,11 +39,11 @@ These files need significant work:
 - `openvino.utils` → `core.GGMLTensorUtils` (0.00)
 - `include.ggml-backend` → `core.GGMLBackend` (0.33, 38 deps)
 - `include.ggml-cpu` → `core.GGMLCpuExecutor` (0.25, 13 deps)
+- `ggml-cpu.ggml-cpu-impl` → `core.GGMLCpuImpl` (0.25, 11 deps)
 - `include.ggml-alloc` → `core.GGMLAlloc` (0.22, 8 deps)
 - `ggml-sycl.quants` → `core.GGMLCpuQuants` (0.00)
 - `ggml-common` → `core.GGMLCommon` (0.00, 16 deps)
 - `ggml-cpu.common` → `core.GGMLCpuCommon` (0.56, 47 deps)
-- `ggml-cpu.ggml-cpu-impl` → `core.GGMLCpuImpl` (0.00, 11 deps)
 - `ggml` → `core.GGMLTypes` (0.00)
 - `ggml-quants` → `core.GGMLQuantsRef` (0.00, 6 deps)
 - `ggml-cpu.quants` → `core.GGMLQuants` (0.00, 4 deps)
@@ -64,6 +64,7 @@ present in the Rust source file.
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
 | `include.ggml-backend` | `core.GGMLBackend` | 7/18 | `ggml_tensor`, `ggml_cgraph`, `ggml_backend_dev_type` … |
 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 6/9 | `ggml_threadpool`, `ggml_context`, `ggml_tensor` … |
+| `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 5/7 | `ggml_int16x8x2_t`, `ggml_uint8x16x2_t`, `ggml_uint8x16x4_t` … |
 | `include.ggml-alloc` | `core.GGMLAlloc` | 6/8 | `ggml_backend_buffer_type`, `ggml_backend_buffer`, `ggml_backend` … |
 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 4/4 | `ggml_compute_params`, `ggml_tensor`, `tensor_traits` … |
 | `ggml-sycl.quants` | `core.GGMLCpuQuants` | 2/2 | `block_q_t`, `traits` |
@@ -98,7 +99,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4082 / 60 lines (6803%)
+**Documentation coverage:** 4060 / 60 lines (6767%)
 
 Top documentation gaps (>20%):
 

@@ -5,16 +5,180 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
 import ai.solace.llamakotlin.core.GGML_FP16_TO_FP32
 import ai.solace.llamakotlin.core.GGML_FP32_TO_FP16
 import ai.solace.llamakotlin.core.halfToFloat
+import ai.solace.llamakotlin.core.ggmlFp16ToFp32
+import ai.solace.llamakotlin.core.ggmlFp32ToFp16
 
 // port-lint: source ggml/src/ggml-cpu/simd-mappings.h
 // The C header defines SIMD macros per-architecture (ARM NEON, AVX, SVE, etc.).
-// In Kotlin/Native we only have the scalar fallback path.
+// In Kotlin/Native we provide scalar fallback implementations for all paths.
 
-/** Scalar fallback for GGML_CPU_FP16_TO_FP32 — on x86 this is a lookup table, here we just convert. */
+// ============================================================================
+// FP16 ↔ FP32 conversion macros (scalar fallbacks)
+// C: simd-mappings.h lines 38-163
+// ============================================================================
+
+/** Scalar fallback for GGML_CPU_FP16_TO_FP32 (all platforms). */
 inline fun GGML_CPU_FP16_TO_FP32(x: Short): Float = GGML_FP16_TO_FP32(x)
 
-/** Scalar fallback for GGML_CPU_FP32_TO_FP16. */
+/** Scalar fallback for GGML_CPU_FP32_TO_FP16 (all platforms). */
 inline fun GGML_CPU_FP32_TO_FP16(x: Float): Short = GGML_FP32_TO_FP16(x)
+
+/** Scalar fallback for GGML_CPU_COMPUTE_FP16_TO_FP32. */
+inline fun GGML_CPU_COMPUTE_FP16_TO_FP32(x: Short): Float = GGML_FP16_TO_FP32(x)
+
+/** Scalar fallback for GGML_CPU_COMPUTE_FP32_TO_FP16. */
+inline fun GGML_CPU_COMPUTE_FP32_TO_FP16(x: Float): Short = GGML_FP32_TO_FP16(x)
+
+// --- Platform-specific FP16 converters (all route to software conversion) ---
+
+/** NEON FP16→FP32. C: neon_compute_fp16_to_fp32 */
+fun neonComputeFp16ToFp32(h: UShort): Float = ggmlFp16ToFp32(h)
+
+/** NEON FP32→FP16. C: neon_compute_fp32_to_fp16 */
+fun neonComputeFp32ToFp16(f: Float): UShort = ggmlFp32ToFp16(f)
+
+/** POWER9 FP16→FP32. C: power_compute_fp16_to_fp32 */
+fun powerComputeFp16ToFp32(h: UShort): Float = ggmlFp16ToFp32(h)
+
+/** POWER9 FP32→FP16. C: power_compute_fp32_to_fp16 */
+fun powerComputeFp32ToFp16(f: Float): UShort = ggmlFp32ToFp16(f)
+
+/** RISC-V FP16→FP32. C: riscv_compute_fp16_to_fp32 */
+fun riscvComputeFp16ToFp32(h: UShort): Float = ggmlFp16ToFp32(h)
+
+/** RISC-V FP32→FP16. C: riscv_compute_fp32_to_fp16 */
+fun riscvComputeFp32ToFp16(f: Float): UShort = ggmlFp32ToFp16(f)
+
+/** Lookup-table FP16→FP32. C: ggml_lookup_fp16_to_fp32 (line 134) */
+fun ggmlLookupFp16ToFp32(f: UShort): Float = ggmlFp16ToFp32(f)
+
+// ============================================================================
+// Endianness helper — C: simd-mappings.h line 741
+// ============================================================================
+
+/** Return the i-th byte of the integer 1 in native byte order. C: ggml_endian_byte */
+fun ggmlEndianByte(i: Int): UByte {
+    val one = 1
+    return ((one shr (i * 8)) and 0xFF).toUByte()
+}
+
+// ============================================================================
+// FP16 vector load/store (scalar fallbacks)
+// Each platform has its own variant; we implement all as scalar loops.
+// ============================================================================
+
+/** AVX: load 8 FP16 values as FP32 array. C: __avx_f32cx8_load (line 636) */
+fun avxF32cx8Load(data: ShortArray, offset: Int = 0): FloatArray {
+    return FloatArray(8) { i -> ggmlFp16ToFp32(data[offset + i].toUShort()) }
+}
+
+/** AVX: store 8 FP32 values as FP16. C: __avx_f32cx8_store (line 645) */
+fun avxF32cx8Store(dst: ShortArray, offset: Int, src: FloatArray) {
+    for (i in 0 until 8) {
+        dst[offset + i] = ggmlFp32ToFp16(src[i]).toShort()
+    }
+}
+
+/** WASM: load 4 FP16 values as FP32 array. C: __wasm_f16x4_load (line 827) */
+fun wasmF16x4Load(data: ShortArray, offset: Int = 0): FloatArray {
+    return FloatArray(4) { i -> ggmlFp16ToFp32(data[offset + i].toUShort()) }
+}
+
+/** WASM: store 4 FP32 values as FP16. C: __wasm_f16x4_store (line 838) */
+fun wasmF16x4Store(dst: ShortArray, offset: Int, src: FloatArray) {
+    for (i in 0 until 4) {
+        dst[offset + i] = ggmlFp32ToFp16(src[i]).toShort()
+    }
+}
+
+/** SSE: load 4 FP16 values as FP32 array. C: __sse_f16x4_load (line 943) */
+fun sseF16x4Load(data: ShortArray, offset: Int = 0): FloatArray {
+    return FloatArray(4) { i -> ggmlFp16ToFp32(data[offset + i].toUShort()) }
+}
+
+/** SSE: store 4 FP32 values as FP16. C: __sse_f16x4_store (line 954) */
+fun sseF16x4Store(dst: ShortArray, offset: Int, src: FloatArray) {
+    for (i in 0 until 4) {
+        dst[offset + i] = ggmlFp32ToFp16(src[i]).toShort()
+    }
+}
+
+/** LASX: load 8 FP16 values as FP32 array. C: __lasx_f32cx8_load (line 1041) */
+fun lasxF32cx8Load(data: ShortArray, offset: Int = 0): FloatArray {
+    return FloatArray(8) { i -> ggmlFp16ToFp32(data[offset + i].toUShort()) }
+}
+
+/** LASX: store 8 FP32 values as FP16. C: __lasx_f32cx8_store (line 1048) */
+fun lasxF32cx8Store(dst: ShortArray, offset: Int, src: FloatArray) {
+    for (i in 0 until 8) {
+        dst[offset + i] = ggmlFp32ToFp16(src[i]).toShort()
+    }
+}
+
+/** LSX: load 4 FP16 values as FP32 array. C: __lsx_f16x4_load (line 1127) */
+fun lsxF16x4Load(data: ShortArray, offset: Int = 0): FloatArray {
+    return FloatArray(4) { i -> ggmlFp16ToFp32(data[offset + i].toUShort()) }
+}
+
+/** LSX: store 4 FP32 values as FP16. C: __lsx_f16x4_store (line 1138) */
+fun lsxF16x4Store(dst: ShortArray, offset: Int, src: FloatArray) {
+    for (i in 0 until 4) {
+        dst[offset + i] = ggmlFp32ToFp16(src[i]).toShort()
+    }
+}
+
+/** VXE/Z: load 4 FP16 values as FP32 array. C: __lzs_f16cx4_load (line 1226) */
+fun lzsF16cx4Load(data: ShortArray, offset: Int = 0): FloatArray {
+    return FloatArray(4) { i -> ggmlFp16ToFp32(data[offset + i].toUShort()) }
+}
+
+/** VXE/Z: store 4 FP32 values as FP16. C: __lzs_f16cx4_store (line 1238) */
+fun lzsF16cx4Store(dst: ShortArray, offset: Int, src: FloatArray) {
+    for (i in 0 until 4) {
+        dst[offset + i] = ggmlFp32ToFp16(src[i]).toShort()
+    }
+}
+
+// ============================================================================
+// GGML_F32_VEC scalar fallbacks
+// The C macros define per-platform vector ops. We provide scalar equivalents.
+// ============================================================================
+
+const val GGML_F32_EPR = 8
+
+fun ggmlF32VecZero(): FloatArray = FloatArray(GGML_F32_EPR)
+fun ggmlF32VecSet1(x: Float): FloatArray = FloatArray(GGML_F32_EPR) { x }
+
+fun ggmlF32VecLoad(data: FloatArray, offset: Int = 0): FloatArray =
+    data.copyOfRange(offset, offset + GGML_F32_EPR)
+
+fun ggmlF32VecStore(dst: FloatArray, offset: Int, src: FloatArray) {
+    src.copyInto(dst, offset, 0, GGML_F32_EPR)
+}
+
+fun ggmlF32VecFma(a: FloatArray, b: FloatArray, c: FloatArray): FloatArray {
+    return FloatArray(GGML_F32_EPR) { i -> a[i] + b[i] * c[i] }
+}
+
+fun ggmlF32VecAdd(a: FloatArray, b: FloatArray): FloatArray {
+    return FloatArray(GGML_F32_EPR) { i -> a[i] + b[i] }
+}
+
+fun ggmlF32VecMul(a: FloatArray, b: FloatArray): FloatArray {
+    return FloatArray(GGML_F32_EPR) { i -> a[i] * b[i] }
+}
+
+fun ggmlF32VecReduce(vararg sums: FloatArray): Float {
+    var total = 0.0f
+    for (s in sums) {
+        for (v in s) total += v
+    }
+    return total
+}
+
+// ============================================================================
+// Dot product operations (scalar, unrolled)
+// ============================================================================
 
 internal object GGMLSimd {
 

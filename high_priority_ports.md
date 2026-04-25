@@ -14,12 +14,12 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 | 6 | `openvino.utils` | `core.GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
 | 7 | `include.ggml-backend` | `core.GGMLBackend` | 0.33 | 38 | 7 | 133.6 |
 | 8 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 0.25 | 13 | 7 | 116.9 |
-| 9 | `include.ggml-alloc` | `core.GGMLAlloc` | 0.22 | 8 | 6 | 94.9 |
-| 10 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.64 | 9 | 5 | 77.2 |
-| 11 | `ggml-sycl.quants` | `core.GGMLCpuQuants` | 0.00 | 0 | 5 | 50.0 |
-| 12 | `ggml-common` | `core.GGMLCommon` | 0.00 | 16 | 2 | 45.5 |
-| 13 | `ggml-cpu.common` | `core.GGMLCpuCommon` | 0.56 | 47 | 2 | 43.9 |
-| 14 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 0.00 | 11 | 0 | 12.4 |
+| 9 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 0.25 | 11 | 6 | 99.2 |
+| 10 | `include.ggml-alloc` | `core.GGMLAlloc` | 0.22 | 8 | 6 | 94.9 |
+| 11 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.64 | 9 | 5 | 77.2 |
+| 12 | `ggml-sycl.quants` | `core.GGMLCpuQuants` | 0.00 | 0 | 5 | 50.0 |
+| 13 | `ggml-common` | `core.GGMLCommon` | 0.00 | 16 | 2 | 45.5 |
+| 14 | `ggml-cpu.common` | `core.GGMLCpuCommon` | 0.56 | 47 | 2 | 43.9 |
 | 15 | `ggml` | `core.GGMLTypes` | 0.00 | 0 | 1 | 10.0 |
 | 16 | `ggml-quants` | `core.GGMLQuantsRef` | 0.00 | 6 | 0 | 9.7 |
 | 17 | `ggml-cpu.quants` | `core.GGMLQuants` | 0.00 | 4 | 0 | 8.0 |
@@ -55,6 +55,10 @@ These files need immediate attention:
   - Dependencies: 13
   - Lint issues: 2
 
+- **ggml-cpu.ggml-cpu-impl** → `core.GGMLCpuImpl`
+  - Similarity: 0.25
+  - Dependencies: 11
+
 - **include.ggml-alloc** → `core.GGMLAlloc`
   - Similarity: 0.22
   - Dependencies: 8
@@ -67,10 +71,6 @@ These files need immediate attention:
 - **ggml-cpu.common** → `core.GGMLCpuCommon`
   - Similarity: 0.56
   - Dependencies: 47
-
-- **ggml-cpu.ggml-cpu-impl** → `core.GGMLCpuImpl`
-  - Similarity: 0.00
-  - Dependencies: 11
 
 - **ggml-quants** → `core.GGMLQuantsRef`
   - Similarity: 0.00

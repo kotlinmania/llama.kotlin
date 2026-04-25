@@ -6,7 +6,7 @@ Based on AST analysis, here are the concrete next steps.
 
 - **Current Progress:** 7.2% (22/277 files)
 - **Matched Files:** 20
-- **Average Similarity:** 0.19
+- **Average Similarity:** 0.20
 - **Critical Issues:** 18 files with <0.60 similarity
 
 ## Priority 1: Fix Incomplete High-Dependency Files
@@ -53,24 +53,25 @@ Based on AST analysis, here are the concrete next steps.
 - **Symbol Deficit:** 7 (functions: 1, types: 6)
 - **Action:** Deep review - likely missing major functionality
 
-### 7. ggml-common
+### 7. ggml-cpu.ggml-cpu-impl
+- **Similarity:** 0.25 (needs 60% improvement)
+- **Dependencies:** 11
+- **Priority Score:** 99.2
+- **Symbol Deficit:** 6 (functions: 1, types: 5)
+- **Action:** Deep review - likely missing major functionality
+
+### 8. ggml-common
 - **Similarity:** 0.00 (needs 85% improvement)
 - **Dependencies:** 16
 - **Priority Score:** 45.5
 - **Symbol Deficit:** 2 (functions: 2, types: 0)
 - **Action:** Deep review - likely missing major functionality
 
-### 8. ggml-cpu.common
+### 9. ggml-cpu.common
 - **Similarity:** 0.56 (needs 29% improvement)
 - **Dependencies:** 47
 - **Priority Score:** 43.9
 - **Symbol Deficit:** 2 (functions: 0, types: 2)
-- **Action:** Deep review - likely missing major functionality
-
-### 9. ggml-cpu.ggml-cpu-impl
-- **Similarity:** 0.00 (needs 85% improvement)
-- **Dependencies:** 11
-- **Priority Score:** 12.4
 - **Action:** Deep review - likely missing major functionality
 
 ## Priority 2: Port Missing High-Value Files
