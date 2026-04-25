@@ -155,6 +155,10 @@ enum class GGMLType(val description: String, val byteSize: ULong) {
     // 31-33 removed (Q4_0_4_4, Q4_0_4_8, Q4_0_8_8)
     TQ1_0("tq1_0", 0uL),     // (34) Ternary quantization
     TQ2_0("tq2_0", 0uL),     // (35) Ternary quantization v2
+    // 36-38 removed (IQ4_NL_4_4, IQ4_NL_4_8, IQ4_NL_8_8)
+    MXFP4("mxfp4", 17uL),    // (39) MXFP4: 1 + QK_MXFP4/2 = 1 + 16 = 17 bytes
+    NVFP4("nvfp4", 36uL),    // (40) NVFP4: 4 + QK_NVFP4/2 = 4 + 32 = 36 bytes
+    Q1_0("q1_0", 18uL),      // (41) Q1_0: 2 + QK1_0/8 = 2 + 16 = 18 bytes
     // Custom extension types (not in C++ ggml)
     BITNET_1_58("bitnet_1_58", Short.SIZE_BYTES.toULong() + 8uL),
     Q1_5_K("q1_5_k", 0uL),
@@ -205,6 +209,10 @@ enum class GGMLType(val description: String, val byteSize: ULong) {
                 // 31-33 removed
                 34 -> TQ1_0
                 35 -> TQ2_0
+                // 36-38 removed
+                39 -> MXFP4
+                40 -> NVFP4
+                41 -> Q1_0
                 else -> null
             }
         }

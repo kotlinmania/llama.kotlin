@@ -2338,7 +2338,7 @@ private fun quantize_row_iq4_nl_impl(
         var sumqx = 0f; var sumq2 = 0f
         for (j in 0 until blockSize) {
             val al = id * x[xbOff + j]
-            val l = best_index_int8(16, values, al)
+            val l = best_index_int8(16, values, 0, al)
             L[lbOff + j] = l.toUByte()
             val q = values[l].toFloat()
             val w = weight[j]
@@ -2352,7 +2352,7 @@ private fun quantize_row_iq4_nl_impl(
             sumqx = 0f; sumq2 = 0f
             for (j in 0 until blockSize) {
                 val al = id * x[xbOff + j]
-                val l = best_index_int8(16, values, al)
+                val l = best_index_int8(16, values, 0, al)
                 val q = values[l].toFloat()
                 val w = weight[j]
                 sumqx += w * q * x[xbOff + j]
@@ -2384,7 +2384,7 @@ private fun quantize_row_iq4_nl_impl(
             val lbOff = ib * blockSize
             val xbOff = xOff + ib * blockSize
             for (j in 0 until blockSize) {
-                L[lbOff + j] = best_index_int8(16, values, idl * x[xbOff + j]).toUByte()
+                L[lbOff + j] = best_index_int8(16, values, 0, idl * x[xbOff + j]).toUByte()
             }
             l += 32
             val lL = l and 0xf
@@ -2401,7 +2401,7 @@ private fun quantize_row_iq4_nl_impl(
         if (ntry > 0) {
             val id = if (scales[0] != 0f) 1f / scales[0] else 0f
             for (j in 0 until superBlockSize) {
-                L[j] = best_index_int8(16, values, id * x[xOff + j]).toUByte()
+                L[j] = best_index_int8(16, values, 0, id * x[xOff + j]).toUByte()
             }
         }
     }
