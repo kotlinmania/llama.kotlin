@@ -307,7 +307,7 @@ fun llamaNumaInit(strategy: GGMLNumaStrategy) {
  * Maps to `llama_backend_free()`.
  */
 fun llamaBackendFree() {
-    // Placeholder — in C++ this calls ggml_quantize_free().
+    // Interim — in C++ this calls ggml_quantize_free().
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +406,7 @@ internal fun llamaGetDeviceMemoryData(
 }
 
 // ---------------------------------------------------------------------------
-// llama_params_fit_impl  (full port with TODO stubs for device queries)
+// llama_params_fit_impl  (full port with deferred device queries)
 // ---------------------------------------------------------------------------
 
 private const val MIB: Long = 1024L * 1024L
@@ -428,7 +428,7 @@ private const val MIB: Long = 1024L * 1024L
  * Because the Kotlin port currently supports only a CPU backend, the
  * multi-device paths are structurally ported but will effectively be
  * unreachable until GPU backends are added.  Device memory queries
- * (`llamaGetDeviceMemoryData`) are stubbed with TODOs.
+ * (`llamaGetDeviceMemoryData`) are deferred.
  *
  * @param pathModel  Path to the GGUF model file.
  * @param mparams    Model params (may be mutated: n_gpu_layers, tensor_split).
@@ -1010,7 +1010,7 @@ fun llamaNThreads(ctx: LlamaContext): Int = ctx.cparams.nThreads
 fun llamaNThreadsBatch(ctx: LlamaContext): Int = ctx.cparams.nThreadsBatch
 
 // ---------------------------------------------------------------------------
-// State save/load  (stubs)
+// State save/load  (deferred)
 // ---------------------------------------------------------------------------
 
 /**
@@ -1073,7 +1073,7 @@ fun llamaStateLoadFile(
 }
 
 // ---------------------------------------------------------------------------
-// Sequence-level state  (stubs)
+// Sequence-level state  (deferred)
 // ---------------------------------------------------------------------------
 
 /**

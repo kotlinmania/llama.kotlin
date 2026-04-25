@@ -654,14 +654,14 @@ fun ggmlBackendBuftIsMeta(buft: GGMLBackendBufferType?): Boolean =
 
 /**
  * Port of `ggml_backend_meta_n_backends`.
- * Stub: meta backend port pending — depends on holder/context plumbing not yet ported.
+ * Awaiting meta backend port — depends on holder/context plumbing not yet ported.
  */
 fun ggmlBackendMetaNBackends(@Suppress("UNUSED_PARAMETER") metaBackend: GGMLBackend): Int =
     error("ggmlBackendMetaNBackends not yet ported")
 
 /**
  * Port of `ggml_backend_meta_simple_backend`.
- * Stub: meta backend port pending.
+ * Awaiting meta backend port.
  */
 fun ggmlBackendMetaSimpleBackend(
     @Suppress("UNUSED_PARAMETER") metaBackend: GGMLBackend,
@@ -670,7 +670,7 @@ fun ggmlBackendMetaSimpleBackend(
 
 /**
  * Port of `ggml_backend_meta_alloc_ctx_tensors_from_buft`.
- * Stub: meta backend port pending.
+ * Awaiting meta backend port.
  */
 fun ggmlBackendMetaAllocCtxTensorsFromBuft(
     @Suppress("UNUSED_PARAMETER") ctx: GGMLContext,

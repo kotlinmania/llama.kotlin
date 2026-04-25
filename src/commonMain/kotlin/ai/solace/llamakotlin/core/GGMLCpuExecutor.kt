@@ -566,6 +566,44 @@ fun ggmlCpuDetectFeatures(): GGMLCpuFeatures {
 }
 
 // ---------------------------------------------------------------------------
+// Individual CPU feature probes  (ggml_cpu_has_*)
+// ---------------------------------------------------------------------------
+
+private val cpuFeatures: GGMLCpuFeatures by lazy { ggmlCpuDetectFeatures() }
+
+// x86
+fun ggmlCpuHasSse3(): Boolean = cpuFeatures.hasSse3
+fun ggmlCpuHasSsse3(): Boolean = cpuFeatures.hasSsse3
+fun ggmlCpuHasAvx(): Boolean = cpuFeatures.hasAvx
+fun ggmlCpuHasAvxVnni(): Boolean = cpuFeatures.hasAvxVnni
+fun ggmlCpuHasAvx2(): Boolean = cpuFeatures.hasAvx2
+fun ggmlCpuHasBmi2(): Boolean = cpuFeatures.hasBmi2
+fun ggmlCpuHasF16c(): Boolean = cpuFeatures.hasF16c
+fun ggmlCpuHasFma(): Boolean = cpuFeatures.hasFma
+fun ggmlCpuHasAvx512(): Boolean = cpuFeatures.hasAvx512
+fun ggmlCpuHasAvx512Vbmi(): Boolean = cpuFeatures.hasAvx512Vbmi
+fun ggmlCpuHasAvx512Vnni(): Boolean = cpuFeatures.hasAvx512Vnni
+fun ggmlCpuHasAvx512Bf16(): Boolean = cpuFeatures.hasAvx512Bf16
+fun ggmlCpuHasAmxInt8(): Boolean = cpuFeatures.hasAmxInt8
+// ARM
+fun ggmlCpuHasNeon(): Boolean = cpuFeatures.hasNeon
+fun ggmlCpuHasArmFma(): Boolean = cpuFeatures.hasArmFma
+fun ggmlCpuHasFp16Va(): Boolean = cpuFeatures.hasFp16Va
+fun ggmlCpuHasDotprod(): Boolean = cpuFeatures.hasDotprod
+fun ggmlCpuHasMatmulInt8(): Boolean = cpuFeatures.hasMatmulInt8
+fun ggmlCpuHasSve(): Boolean = cpuFeatures.hasSve
+fun ggmlCpuGetSveCnt(): Int = cpuFeatures.sveCnt
+fun ggmlCpuHasSme(): Boolean = cpuFeatures.hasSme
+// RISC-V
+fun ggmlCpuHasRiscvV(): Boolean = cpuFeatures.hasRiscvV
+fun ggmlCpuGetRvvVlen(): Int = cpuFeatures.rvvVlen
+// Other
+fun ggmlCpuHasVsx(): Boolean = cpuFeatures.hasVsx
+fun ggmlCpuHasVxe(): Boolean = cpuFeatures.hasVxe
+fun ggmlCpuHasWasmSimd(): Boolean = cpuFeatures.hasWasmSimd
+fun ggmlCpuHasLlamafile(): Boolean = cpuFeatures.hasLlamafile
+
+// ---------------------------------------------------------------------------
 // Type traits (CPU-specific)  (ggml_type_traits_cpu)
 // ---------------------------------------------------------------------------
 

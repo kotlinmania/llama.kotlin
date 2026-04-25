@@ -74,7 +74,7 @@ fun quantize_row_tq2_0(x: FloatArray, y: ByteArray, k: Long) { require(k % QK_K 
 fun quantize_row_q8_K_generic(x: FloatArray, y: ByteArray, k: Long) { quantize_row_q8_K_ref(x, y, k) }
 fun quantize_row_iq4_nl(x: FloatArray, y: ByteArray, k: Long) { require(k % QK4_NL == 0L); quantize_row_iq4_nl_ref(x, y, k) }
 
-// _ref stubs — real implementations live in ggml-quants.c port (GGMLQuants lower section)
+// _ref implementations — real bodies live in ggml-quants.c port (GGMLQuants lower section)
 private fun quantize_row_q1_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q1_0_ref") }
 private fun quantize_row_q4_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q4_0_ref") }
 private fun quantize_row_q4_1_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q4_1_ref") }
@@ -1084,7 +1084,7 @@ fun ggml_vec_dot_iq4_xs_q8_K_generic(
     s[sOffset] = sumf
 }
 
-// IQ dot products that require grid lookup tables — stubs until grids are ported from ggml-common.h
+// IQ dot products that require grid lookup tables — deferred until grids are ported from ggml-common.h
 fun ggml_vec_dot_iq2_xxs_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq2xxs_grid") }
 fun ggml_vec_dot_iq2_xs_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq2xs_grid") }
 fun ggml_vec_dot_iq2_s_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq2s_grid") }

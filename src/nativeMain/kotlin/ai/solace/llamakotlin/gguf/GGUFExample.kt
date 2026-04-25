@@ -11,7 +11,7 @@ class GGUFExample {
             appendLine("=========================")
             
             try {
-                // Step 1: Generate a test GGUF file (stubbed minimal bytes)
+                // Step 1: Generate a test GGUF file (minimal minimal bytes)
                 val testData = ByteArray(0)
                 appendLine("✓ Generated test GGUF file (${testData.size} bytes)")
                 

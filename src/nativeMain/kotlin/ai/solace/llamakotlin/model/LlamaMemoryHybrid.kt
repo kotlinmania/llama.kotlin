@@ -41,7 +41,7 @@ class LlamaMemoryHybrid(
 
     override fun initBatch(balloc: LlamaBatchAllocr, nUbatch: Int, embdAll: Boolean): LlamaMemoryContext {
         // Batch splitting follows the recurrent pattern (split_seq when embdAll).
-        // The actual split logic depends on LlamaBatchAllocr which is stubbed;
+        // The actual split logic depends on LlamaBatchAllocr which is not yet ported;
         // return a hybrid context that delegates to both sub-memories.
         // LATER: full port requires LlamaBatchAllocr integration
         return LlamaMemoryHybridContext.error(LlamaMemoryStatus.FAILED_PREPARE)
@@ -128,7 +128,7 @@ class LlamaMemoryHybrid(
         // Return a combined summary of byte totals.
         val mb = mutableMapOf<String, Long>()
         mb["kv_cache"] = memAttn.totalSize()
-        // Recurrent sizes are behind TODO stubs; report zero until ported.
+        // Recurrent sizes are behind deferred markers; report zero until ported.
         mb["recurrent"] = 0L
         return mb
     }

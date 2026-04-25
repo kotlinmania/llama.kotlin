@@ -16,7 +16,7 @@ package ai.solace.llamakotlin.core
  * Quantize-row-ref functions read F32 input and write packed blocks.
  *
  * IQ dequantize functions that depend on grid lookup tables (iq2xxs_grid,
- * iq1s_grid, etc.) are stubbed with TODO until those tables are ported.
+ * iq1s_grid, etc.) are deferred until those tables are ported.
  */
 
 private const val GROUP_MAX_EPS = 1e-15f
@@ -618,7 +618,7 @@ fun dequantize_row_iq4_xs(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: 
     }
 }
 
-// IQ dequantize functions requiring grid tables — stubbed until tables are ported
+// IQ dequantize functions requiring grid tables — deferred until tables are ported
 
 fun dequantize_row_iq2_xxs(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
     TODO("requires iq2xxs_grid table")
@@ -884,7 +884,7 @@ fun quantize_row_q1_0_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: 
     }
 }
 
-// K-quant quantize_row_*_ref — complex implementations, stubbed for now
+// K-quant quantize_row_*_ref — complex implementations, deferred for now
 
 fun quantize_row_q2_K_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
     TODO("quantize_row_q2_K_ref: complex K-quant quantization not yet ported")

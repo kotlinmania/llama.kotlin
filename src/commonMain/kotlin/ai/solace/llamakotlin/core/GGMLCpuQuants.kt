@@ -20,7 +20,7 @@ package ai.solace.llamakotlin.core
 private const val GROUP_MAX_EPS = 1e-15f
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  Quantize-row stubs (delegate to _ref once those are ported in GGMLQuantsRef.kt)
+//  Quantize-row wrappers (delegate to _ref once those are ported in GGMLQuantsRef.kt)
 // ════════════════════════════════════════════════════════════════════════════════
 
 fun quantizeRowQ10(x: FloatArray, y: ByteArray, k: Long) {

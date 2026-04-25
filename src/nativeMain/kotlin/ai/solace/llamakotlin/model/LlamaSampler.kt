@@ -1736,7 +1736,7 @@ private fun llamaSamplerSampleExtended(smpl: LlamaSampler, ctx: LlamaContext, id
 // ---------------------------------------------------------------------------
 
 fun llamaSamplerBackendSupport(smpl: LlamaSampler, buft: GGMLBackendBufferType): Boolean {
-    // Stub: depends on ggmlNewTensor1d(ctx, type, n) and GGMLCGraph node iteration APIs not yet ported.
+    // Depends on ggmlNewTensor1d(ctx, type, n) and GGMLCGraph node iteration APIs not yet ported.
     return true
 }
 

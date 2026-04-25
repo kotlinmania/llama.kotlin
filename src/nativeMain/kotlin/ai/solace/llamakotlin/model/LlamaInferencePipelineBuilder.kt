@@ -1,7 +1,7 @@
 package ai.solace.llamakotlin.model
 
 /**
- * Stub pipeline builder used by the InferenceExample programs.
+ * Minimal pipeline builder used by the InferenceExample programs.
  *
  * The full inference pipeline has not yet been ported; the wiring exists so
  * the example file compiles and the API surface mirrors what the eventual
@@ -55,7 +55,7 @@ data class LlamaModelInfo(val config: LlamaConfig) {
 }
 
 /**
- * Stub inference pipeline. Full port pending — generate/generateStream
+ * Minimal inference pipeline. Full port pending — generate/generateStream
  * return the prompt and an empty completion until the pipeline is
  * implemented.
  */

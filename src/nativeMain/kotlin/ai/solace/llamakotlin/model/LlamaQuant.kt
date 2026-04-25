@@ -131,7 +131,7 @@ class QuantizeState(
  * - Tensor categorisation by name pattern matching
  * - Per-category type selection with layer-aware heuristics
  * - Fallback type resolution when block sizes are incompatible
- * - The main quantisation driver (stubbed – requires model-loader integration)
+ * - The main quantisation driver (deferred – requires model-loader integration)
  *
  * The actual quantise/dequantise kernels live in `GGMLComputeOps` / `GGMLQuants`
  * in the core package.

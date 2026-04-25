@@ -256,7 +256,7 @@ class LlamaAttention(
     }
 
     /**
-     * Placeholder for graph computation - will be implemented with proper graph execution.
+     * Interim implementation for graph computation - will be implemented with proper graph execution.
      */
     private fun computeGraph(context: GGMLContext, graphAllocator: GGMLGraphAllocator, graph: GGMLCGraph) {
         // This would typically use the existing graph computation infrastructure

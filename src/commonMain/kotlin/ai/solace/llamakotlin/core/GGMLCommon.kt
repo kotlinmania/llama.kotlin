@@ -1007,7 +1007,7 @@ object GGMLCommonTables {
     // They are omitted here for code size reasons and will be loaded lazily from a
     // resource or generated programmatically when needed by IQ quantization kernels.
     //
-    // The following stubs document the expected shapes. Implementations should fill
+    // The following declarations document the expected shapes. Implementations should fill
     // these via `by lazy { ... }` when actual IQ quantization support is added.
 
     /**

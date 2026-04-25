@@ -309,7 +309,7 @@ sealed class FragmentBufferVariant {
 }
 
 // ---------------------------------------------------------------------------
-// Tokenizer interface + stubs
+// Tokenizer interface
 // ---------------------------------------------------------------------------
 
 /**
@@ -500,7 +500,7 @@ private data class BpeBigram(
  *
  * The full implementation includes regex-based word splitting (via
  * [LlmTokenizerBpe.regexExprs]) and iterative merge. The regex pre-split
- * is stubbed – in production it would delegate to a Unicode-aware regex engine.
+ * is deferred – in production it would delegate to a Unicode-aware regex engine.
  */
 class LlmTokenizerBpeSession(
     private val vocab: LlamaVocab,

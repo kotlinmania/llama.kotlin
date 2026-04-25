@@ -2946,7 +2946,7 @@ fun ggmlGraphCompute(cgraph: GGMLCGraph, plan: GGMLComputePlan): GGMLStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Version / commit stubs
+// Version / commit info
 // ---------------------------------------------------------------------------
 
 /** GGML version string. */

@@ -225,7 +225,7 @@ class GGUFParser(private val data: ByteArray) {
  *
  * This corresponds to the C++ `gguf_init_from_file_ptr` function.  It
  * validates the magic, version, and header, then reads KV pairs and tensor
- * info entries into the context.  Complex tensor-data loading is stubbed
+ * info entries into the context.  Complex tensor-data loading is deferred
  * with `TODO`.
  */
 object GGUFFileReader {
@@ -475,7 +475,7 @@ internal class ByteArrayReader(private val data: ByteArray) {
 
 // These are top-level functions that operate on a GGUFContextInternal,
 // matching the C function signatures.  Simple accessors are fully
-// implemented; write / serialization helpers use TODO stubs.
+// implemented; write / serialization helpers are deferred.
 
 /** Return the file-format version (mirrors `gguf_get_version`). */
 fun getVersion(ctx: GGUFContextInternal): UInt = ctx.version

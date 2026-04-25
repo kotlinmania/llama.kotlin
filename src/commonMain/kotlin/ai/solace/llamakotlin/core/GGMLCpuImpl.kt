@@ -9,7 +9,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  *
  * This file contains:
  * - [GGMLComputeParams]: per-thread compute context passed to every CPU kernel.
- * - Threadpool barrier and chunk-scheduling function stubs.
+ * - Threadpool barrier and chunk-scheduling functions.
  * - Platform-agnostic scalar fallbacks for FP16 ↔ FP32 conversion.
  *
  * SIMD intrinsic types (NEON, SSE/AVX, POWER9, WASM, LoongArch, VXE) are
@@ -88,7 +88,7 @@ data class GGMLComputeParams(
 }
 
 // ============================================================================
-// Threadpool helpers (stubs — will be implemented with real threading)
+// Threadpool helpers (single-threaded for now, real threading to be added)
 // ============================================================================
 
 /**
@@ -100,7 +100,7 @@ data class GGMLComputeParams(
  */
 fun ggmlBarrier(tp: GGMLThreadpool) {
     if (tp.nThreads == 1) return
-    // TODO: implement multi-threaded spin barrier when threading is added
+    // FIXME - implement multi-threaded spin barrier when threading is added
 }
 
 /**

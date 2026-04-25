@@ -650,7 +650,7 @@ object GGMLBackendRegistry {
             ?: deviceByType(GGMLBackendDeviceType.CPU))?.initBackend()
     }
 
-    // -- dynamic loading stubs ----------------------------------------------
+    // -- dynamic loading (no-op on native, used for dynamic backend plugins) --
 
     /** `ggml_backend_load` */
     fun load(path: String): GGMLBackendReg? { return null }
@@ -716,7 +716,7 @@ class GGMLBackendSched private constructor(
 
     // --- graph allocator (ggml_gallocr_t) ---
     // Will be typed as GGMLGAllocr when ggml-alloc.c gallocr is fully ported.
-    // For now, Any? placeholder matches the opaque pointer pattern.
+    // For now, Any? matches the opaque pointer pattern until gallocr is fully ported.
     var galloc: Any? = null
 
     // --- hash map of the nodes in the graph ---

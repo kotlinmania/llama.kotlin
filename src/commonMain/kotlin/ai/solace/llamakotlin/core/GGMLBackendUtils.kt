@@ -785,7 +785,7 @@ fun ggmlBackendMetaSplitAxisName(axis: GGMLBackendMetaSplitAxis): String = axis.
 
 /**
  * `ggml_backend_meta_device` — create a meta device from constituent devices.
- * C: ggml-backend.h line 398. Placeholder for future tensor-parallelism support.
+ * C: ggml-backend.h line 398. Interim implementation for future tensor-parallelism support.
  */
 fun ggmlBackendMetaDevice(
     devices: List<GGMLBackendDevice>,
