@@ -676,3 +676,30 @@ fun ggmlBackendMetaAllocCtxTensorsFromBuft(
     @Suppress("UNUSED_PARAMETER") ctx: GGMLContext,
     @Suppress("UNUSED_PARAMETER") buft: GGMLBackendBufferType
 ): GGMLBackendBuffer = error("ggmlBackendMetaAllocCtxTensorsFromBuft not yet ported")
+
+// --- Functions declared in ggml-backend-impl.h, moved here for ast_distance parity ---
+
+/**
+ * ggml_backend_buffer_copy_tensor — ggml-backend-impl.h line 79 / ggml-backend.cpp line 205.
+ * Copies src tensor data using the destination buffer's copyTensor hook.
+ */
+fun ggmlBackendBufferCopyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
+    val dstBuf = dst.viewSrc?.buffer ?: dst.buffer ?: return false
+    return dstBuf.copyTensor(src, dst)
+}
+
+/**
+ * ggml_backend_buffer_is_multi_buffer — ggml-backend-impl.h line 84 / ggml-backend.cpp line 723.
+ * Returns true if [buffer] is a multi-buffer wrapper.
+ */
+fun ggmlBackendBufferIsMultiBuffer(buffer: GGMLBackendBuffer): Boolean {
+    return buffer is GGMLBackendMultiBufferWrapper
+}
+
+/**
+ * ggml_backend_multi_buffer_set_usage — ggml-backend-impl.h line 85 / ggml-backend.cpp line 728.
+ * Sets usage flag on every sub-buffer inside a multi-buffer.
+ */
+fun ggmlBackendMultiBufferSetUsage(buffer: GGMLBackendBuffer, usage: GGMLBackendBufferUsage) {
+    buffer.setUsage(usage)
+}

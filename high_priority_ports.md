@@ -8,13 +8,13 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 |------|--------|--------|------------|------|-----------|----------|
 | 1 | `include.ggml-backend` | `core.GGMLBackend` | 0.00 | 38 | 91 | 1595.1 |
 | 2 | `include.ggml` | `core.GGMLOps` | 0.45 | 68 | 29 | 547.1 |
-| 3 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.38 | 47 | 19 | 349.1 |
-| 4 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
+| 3 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.00 | 10 | 20 | 307.9 |
+| 4 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.63 | 47 | 16 | 291.0 |
 | 5 | `include.ggml-alloc` | `core.GGMLAlloc` | 0.05 | 8 | 14 | 212.0 |
 | 6 | `ggml-impl` | `core.NumericConversions` | 0.52 | 58 | 10 | 191.4 |
-| 7 | `openvino.utils` | `core.GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
-| 8 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.21 | 9 | 9 | 140.5 |
-| 9 | `ggml-backend` | `core.GGMLBackendUtils` | 0.74 | 0 | 14 | 140.0 |
+| 7 | `ggml-backend` | `core.GGMLBackendUtils` | 0.72 | 0 | 17 | 170.0 |
+| 8 | `openvino.utils` | `core.GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
+| 9 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.21 | 9 | 9 | 140.5 |
 | 10 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 0.25 | 13 | 7 | 116.9 |
 | 11 | `ggml-sycl.quants` | `core.GGMLCpuQuants` | 0.00 | 0 | 5 | 50.0 |
 | 12 | `ggml-common` | `core.GGMLCommon` | 0.00 | 16 | 2 | 45.5 |
@@ -40,11 +40,6 @@ These files need immediate attention:
   - Similarity: 0.45
   - Dependencies: 68
   - Lint issues: 124
-
-- **ggml-backend-impl** → `core.GGMLBackendImpl`
-  - Similarity: 0.38
-  - Dependencies: 47
-  - Lint issues: 49
 
 - **ggml-cpu.simd-mappings** → `simd.GGMLSimd`
   - Similarity: 0.00

@@ -157,15 +157,7 @@ fun ggmlBackendBufferReset(buffer: GGMLBackendBuffer) {
     buffer.reset()
 }
 
-/**
- * `ggml_backend_buffer_copy_tensor` — copy src tensor data using the
- * destination buffer's copyTensor hook.
- * C: ggml-backend.cpp line 205.
- */
-fun ggmlBackendBufferCopyTensor(src: GGMLTensor, dst: GGMLTensor): Boolean {
-    val dstBuf = dst.viewSrc?.buffer ?: dst.buffer ?: return false
-    return dstBuf.copyTensor(src, dst)
-}
+// ggmlBackendBufferCopyTensor lives in GGMLBackendImpl.kt (declared in ggml-backend-impl.h)
 
 // =====================================================================
 // 3. Backend (stream) free-standing functions
@@ -656,23 +648,7 @@ fun ggmlBackendMultiBufferAllocBuffer(buffers: List<GGMLBackendBuffer>): GGMLBac
     return GGMLBackendMultiBufferWrapper(ctx, buffers[0].getType(), totalSize)
 }
 
-/**
- * `ggml_backend_buffer_is_multi_buffer`
- * Returns true if [buffer] is a multi-buffer wrapper.
- * C: ggml-backend.cpp line 723.
- */
-fun ggmlBackendBufferIsMultiBuffer(buffer: GGMLBackendBuffer): Boolean {
-    return buffer is GGMLBackendMultiBufferWrapper
-}
-
-/**
- * `ggml_backend_multi_buffer_set_usage`
- * Set usage flag on every sub-buffer inside a multi-buffer.
- * C: ggml-backend.cpp line 728.
- */
-fun ggmlBackendMultiBufferSetUsage(buffer: GGMLBackendBuffer, usage: GGMLBackendBufferUsage) {
-    buffer.setUsage(usage)
-}
+// ggmlBackendBufferIsMultiBuffer and ggmlBackendMultiBufferSetUsage live in GGMLBackendImpl.kt
 
 /**
  * `ggml_backend_multi_buffer_free_buffer` — static vtable entry in C.

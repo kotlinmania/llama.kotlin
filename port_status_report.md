@@ -16,12 +16,12 @@
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.16
+**Average Similarity:** 0.17
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
-- Good (0.60-0.84): 1 files (5.0% of matched)
-- Critical (<0.60): 19 files (95.0% of matched)
+- Good (0.60-0.84): 2 files (10.0% of matched)
+- Critical (<0.60): 18 files (90.0% of matched)
 
 ### Excellent Ports (Similarity ≥ 0.85)
 
@@ -34,7 +34,6 @@ These files need significant work:
 
 - `include.ggml-backend` → `core.GGMLBackend` (0.00, 38 deps)
 - `include.ggml` → `core.GGMLOps` (0.45, 68 deps)
-- `ggml-backend-impl` → `core.GGMLBackendImpl` (0.38, 47 deps)
 - `ggml-cpu.simd-mappings` → `simd.GGMLSimd` (0.00, 10 deps)
 - `include.ggml-alloc` → `core.GGMLAlloc` (0.05, 8 deps)
 - `ggml-impl` → `core.NumericConversions` (0.52, 58 deps)
@@ -64,8 +63,8 @@ present in the Rust source file.
 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
 | `include.ggml-alloc` | `core.GGMLAlloc` | 6/8 | `ggml_backend_buffer_type`, `ggml_backend_buffer`, `ggml_backend` … |
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
-| `ggml-cpu.traits` | `core.GGMLCpuTraits` | 4/4 | `ggml_compute_params`, `ggml_tensor`, `tensor_traits` … |
 | `ggml-backend` | `core.GGMLBackendUtils` | 13/16 | `ggml_tensor`, `ggml_backend_buffer_i`, `ggml_status` … |
+| `ggml-cpu.traits` | `core.GGMLCpuTraits` | 4/4 | `ggml_compute_params`, `ggml_tensor`, `tensor_traits` … |
 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 6/9 | `ggml_threadpool`, `ggml_context`, `ggml_tensor` … |
 | `ggml-sycl.quants` | `core.GGMLCpuQuants` | 2/2 | `block_q_t`, `traits` |
 | `ggml-cpu.common` | `core.GGMLCpuCommon` | 2/4 | `ggml_compute_params`, `ggml_tensor` |
@@ -99,7 +98,7 @@ present in the Rust source file.
 
 ## Documentation Gaps
 
-**Documentation coverage:** 4074 / 60 lines (6790%)
+**Documentation coverage:** 4071 / 60 lines (6785%)
 
 Top documentation gaps (>20%):
 
