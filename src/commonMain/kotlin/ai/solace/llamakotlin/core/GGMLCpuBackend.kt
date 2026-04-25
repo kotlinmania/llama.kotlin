@@ -36,7 +36,7 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
  * Mirrors `ggml_backend_cpu_get_extra_buffer_types()`.
  */
 fun ggmlBackendCpuGetExtraBufferTypes(): MutableList<GGMLBackendBufferType> {
-    // Placeholder — add extra buffer types here when they are ported
+    // Empty — add extra buffer types here when accelerator extensions are ported
     return mutableListOf()
 }
 
