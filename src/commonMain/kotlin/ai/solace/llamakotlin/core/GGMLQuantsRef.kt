@@ -15,8 +15,9 @@ package ai.solace.llamakotlin.core
  * Dequantize functions read packed blocks and write F32 output.
  * Quantize-row-ref functions read F32 input and write packed blocks.
  *
- * IQ dequantize functions that depend on grid lookup tables (iq2xxs_grid,
- * iq1s_grid, etc.) are deferred until those tables are ported.
+ * IQ dequantize functions use grid lookup tables from GGMLIQGrids.kt
+ * (iq2xxs_grid, iq2xs_grid, iq2s_grid, iq3xxs_grid, iq3s_grid, iq1s_grid)
+ * and sign/mask tables from GGMLQuants.kt (ksigns_iq2xs, kmask_iq2xs).
  */
 
 private const val GROUP_MAX_EPS = 1e-15f
@@ -1094,34 +1095,319 @@ fun dequantize_row_iq4_xs(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: 
     }
 }
 
-// IQ dequantize functions requiring grid tables — deferred until tables are ported
+// IQ dequantize functions — ported from ggml-quants.c
+
+// Helper: extract byte j from a ULong grid entry (treating it as uint8_t[8])
+private fun gridByteU(grid: ULong, j: Int): Int = ((grid shr (j * 8)) and 0xFFu).toInt()
+
+// Helper: extract byte j from a ULong grid entry as signed int8
+private fun gridByteS(grid: ULong, j: Int): Int = ((grid shr (j * 8)) and 0xFFu).toInt().toByte().toInt()
+
+// Helper: extract byte j from a UInt grid entry (treating it as uint8_t[4])
+private fun gridByteU(grid: UInt, j: Int): Int = ((grid shr (j * 8)) and 0xFFu).toInt()
 
 fun dequantize_row_iq2_xxs(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
-    TODO("requires iq2xxs_grid table")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockIQ2XXS.SIZE_BYTES // 66
+
+    var yIdx = yOff
+    for (i in 0 until nb) {
+        val bOff = xOff + i * blockSize
+        val d = fp16ToF32(x, bOff)
+        // qs is uint16_t[QK_K/8] starting at offset 2
+        val qsOff = bOff + 2
+
+        for (ib32 in 0 until QK_K / 32) {
+            // memcpy(aux32, x[i].qs + 4*ib32, 2*sizeof(uint32_t))
+            // 4*ib32 uint16_t entries = 8*ib32 bytes
+            val a0off = qsOff + 8 * ib32
+            val aux32_0 = readIntLE(x, a0off)
+            val aux32_1 = readIntLE(x, a0off + 4)
+            val db = d * (0.5f + (aux32_1 ushr 28)) * 0.25f
+            for (l in 0 until 4) {
+                // aux8[l] = byte l of aux32_0/aux32_1 combined
+                val aux8l = (aux32_0 ushr (l * 8)) and 0xFF
+                val grid = iq2xxs_grid[aux8l]
+                val signs = ksigns_iq2xs[((aux32_1 ushr (7 * l)) and 127)].toInt() and 0xFF
+                for (j in 0 until 8) {
+                    val g = gridByteU(grid, j)
+                    val mask = kmask_iq2xs[j].toInt() and 0xFF
+                    y[yIdx + j] = db * g * (if (signs and mask != 0) -1f else 1f)
+                }
+                yIdx += 8
+            }
+        }
+    }
 }
 
 fun dequantize_row_iq2_xs(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
-    TODO("requires iq2xs_grid table")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockIQ2XS.SIZE_BYTES // 74
+
+    var yIdx = yOff
+    for (i in 0 until nb) {
+        val bOff = xOff + i * blockSize
+        val d = fp16ToF32(x, bOff)
+        // Layout: d(2), qs[QK_K/8] as uint16_t (64 bytes) at 2, scales[QK_K/32] (8 bytes) at 66
+        val qsOff = bOff + 2
+        val scOff = bOff + 2 + (QK_K / 8) * 2 // = bOff + 66
+
+        for (ib32 in 0 until QK_K / 32) {
+            val scByte = x[scOff + ib32].toInt() and 0xFF
+            val db0 = d * (0.5f + (scByte and 0xf)) * 0.25f
+            val db1 = d * (0.5f + (scByte shr 4)) * 0.25f
+            for (l in 0 until 4) {
+                // x[i].qs[4*ib32 + l] is uint16_t — read 2 bytes LE
+                val qval = readUShortLE(x, qsOff + (4 * ib32 + l) * 2)
+                val grid = iq2xs_grid[qval and 511]
+                val signs = ksigns_iq2xs[(qval shr 9)].toInt() and 0xFF
+                for (j in 0 until 8) {
+                    val g = gridByteU(grid, j)
+                    val mask = kmask_iq2xs[j].toInt() and 0xFF
+                    y[yIdx + j] = (if (l < 2) db0 else db1) * g * (if (signs and mask != 0) -1f else 1f)
+                }
+                yIdx += 8
+            }
+        }
+    }
 }
 
 fun dequantize_row_iq2_s(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
-    TODO("requires iq2s_grid table")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockIQ2S.SIZE_BYTES // 82
+
+    var yIdx = yOff
+    for (i in 0 until nb) {
+        val bOff = xOff + i * blockSize
+        val d = fp16ToF32(x, bOff)
+        // Layout: d(2), qs[QK_K/4](64) at 2, qh[QK_K/32](8) at 66, scales[QK_K/32](8) at 74
+        val qhOff = bOff + 2 + QK_K / 4        // = bOff + 66
+        val scOff = qhOff + QK_K / 32           // = bOff + 74
+        var qsPtr = bOff + 2                    // qs pointer (advances by 4 per ib32)
+        var signsPtr = bOff + 2 + QK_K / 8      // signs = qs + QK_K/8 (advances by 4 per ib32)
+
+        for (ib32 in 0 until QK_K / 32) {
+            val scByte = x[scOff + ib32].toInt() and 0xFF
+            val db0 = d * (0.5f + (scByte and 0xf)) * 0.25f
+            val db1 = d * (0.5f + (scByte shr 4)) * 0.25f
+            for (l in 0 until 4) {
+                val dl = if (l < 2) db0 else db1
+                val qsByte = x[qsPtr + l].toInt() and 0xFF
+                val qhByte = x[qhOff + ib32].toInt() and 0xFF
+                // qs[l] | (qh[ib32] << (8 - 2*l) & 0x300)
+                val gridIdx = qsByte or ((qhByte shl (8 - 2 * l)) and 0x300)
+                val grid = iq2s_grid[gridIdx]
+                val signsByte = x[signsPtr + l].toInt() and 0xFF
+                for (j in 0 until 8) {
+                    val g = gridByteU(grid, j)
+                    val mask = kmask_iq2xs[j].toInt() and 0xFF
+                    y[yIdx + j] = dl * g * (if (signsByte and mask != 0) -1f else 1f)
+                }
+                yIdx += 8
+            }
+            qsPtr += 4
+            signsPtr += 4
+        }
+    }
 }
 
 fun dequantize_row_iq3_xxs(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
-    TODO("requires iq3xxs_grid table")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockIQ3XXS.SIZE_BYTES // 98
+
+    var yIdx = yOff
+    for (i in 0 until nb) {
+        val bOff = xOff + i * blockSize
+        val d = fp16ToF32(x, bOff)
+        // Layout: d(2), qs[3*QK_K/8] at 2
+        // qs = first QK_K/4 = 64 bytes of qs data
+        // scales_and_signs = qs + QK_K/4 (= the remaining 32 bytes)
+        var qsPtr = bOff + 2
+        val sasOff = bOff + 2 + QK_K / 4  // scales_and_signs
+
+        for (ib32 in 0 until QK_K / 32) {
+            val aux32 = readIntLE(x, sasOff + 4 * ib32)
+            val db = d * (0.5f + (aux32 ushr 28)) * 0.5f
+            for (l in 0 until 4) {
+                val signs = ksigns_iq2xs[((aux32 ushr (7 * l)) and 127)].toInt() and 0xFF
+                val grid1 = iq3xxs_grid[x[qsPtr + 2 * l + 0].toInt() and 0xFF]
+                val grid2 = iq3xxs_grid[x[qsPtr + 2 * l + 1].toInt() and 0xFF]
+                for (j in 0 until 4) {
+                    val mask0 = kmask_iq2xs[j + 0].toInt() and 0xFF
+                    val mask4 = kmask_iq2xs[j + 4].toInt() and 0xFF
+                    y[yIdx + j + 0] = db * gridByteU(grid1, j) * (if (signs and mask0 != 0) -1f else 1f)
+                    y[yIdx + j + 4] = db * gridByteU(grid2, j) * (if (signs and mask4 != 0) -1f else 1f)
+                }
+                yIdx += 8
+            }
+            qsPtr += 8
+        }
+    }
 }
 
 fun dequantize_row_iq3_s(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
-    TODO("requires iq3s_grid table")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockIQ3S.SIZE_BYTES // 110
+
+    var yIdx = yOff
+    for (i in 0 until nb) {
+        val bOff = xOff + i * blockSize
+        val d = fp16ToF32(x, bOff)
+        // Layout: d(2), qs[QK_K/4](64) at 2, qh[QK_K/32](8) at 66, signs[QK_K/8](32) at 74, scales[IQ3S_N_SCALE](4) at 106
+        var qsPtr = bOff + 2
+        var qhPtr = bOff + 2 + QK_K / 4          // = bOff + 66
+        var signsPtr = bOff + 2 + QK_K / 4 + QK_K / 32  // = bOff + 74
+        val scOff = bOff + 2 + QK_K / 4 + QK_K / 32 + QK_K / 8  // = bOff + 106
+
+        for (ib32 in 0 until QK_K / 32 step 2) {
+            val scByte = x[scOff + ib32 / 2].toInt() and 0xFF
+            val db1 = d * (1 + 2 * (scByte and 0xf))
+            val db2 = d * (1 + 2 * (scByte shr 4))
+            val qh0 = x[qhPtr + 0].toInt() and 0xFF
+
+            // First 32 values (ib32)
+            for (l in 0 until 4) {
+                val grid1Idx = (x[qsPtr + 2 * l + 0].toInt() and 0xFF) or ((qh0 shl (8 - 2 * l)) and 256)
+                val grid2Idx = (x[qsPtr + 2 * l + 1].toInt() and 0xFF) or ((qh0 shl (7 - 2 * l)) and 256)
+                val grid1 = iq3s_grid[grid1Idx]
+                val grid2 = iq3s_grid[grid2Idx]
+                val signsVal = x[signsPtr + l].toInt() and 0xFF
+                for (j in 0 until 4) {
+                    val mask0 = kmask_iq2xs[j + 0].toInt() and 0xFF
+                    val mask4 = kmask_iq2xs[j + 4].toInt() and 0xFF
+                    y[yIdx + j + 0] = db1 * gridByteU(grid1, j) * (if (signsVal and mask0 != 0) -1f else 1f)
+                    y[yIdx + j + 4] = db1 * gridByteU(grid2, j) * (if (signsVal and mask4 != 0) -1f else 1f)
+                }
+                yIdx += 8
+            }
+            qsPtr += 8
+            signsPtr += 4
+
+            // Second 32 values (ib32 + 1)
+            val qh1 = x[qhPtr + 1].toInt() and 0xFF
+            for (l in 0 until 4) {
+                val grid1Idx = (x[qsPtr + 2 * l + 0].toInt() and 0xFF) or ((qh1 shl (8 - 2 * l)) and 256)
+                val grid2Idx = (x[qsPtr + 2 * l + 1].toInt() and 0xFF) or ((qh1 shl (7 - 2 * l)) and 256)
+                val grid1 = iq3s_grid[grid1Idx]
+                val grid2 = iq3s_grid[grid2Idx]
+                val signsVal = x[signsPtr + l].toInt() and 0xFF
+                for (j in 0 until 4) {
+                    val mask0 = kmask_iq2xs[j + 0].toInt() and 0xFF
+                    val mask4 = kmask_iq2xs[j + 4].toInt() and 0xFF
+                    y[yIdx + j + 0] = db2 * gridByteU(grid1, j) * (if (signsVal and mask0 != 0) -1f else 1f)
+                    y[yIdx + j + 4] = db2 * gridByteU(grid2, j) * (if (signsVal and mask4 != 0) -1f else 1f)
+                }
+                yIdx += 8
+            }
+            qhPtr += 2
+            qsPtr += 8
+            signsPtr += 4
+        }
+    }
 }
 
 fun dequantize_row_iq1_s(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
-    TODO("requires iq1s_grid table")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockIQ1S.SIZE_BYTES // 50
+
+    var yIdx = yOff
+    for (i in 0 until nb) {
+        val bOff = xOff + i * blockSize
+        val d = fp16ToF32(x, bOff)
+        // Layout: d(2), qs[QK_K/8](32) at 2, qh[QK_K/32] as uint16_t (16 bytes) at 34
+        var qsPtr = bOff + 2
+        val qhOff = bOff + 2 + QK_K / 8  // = bOff + 34
+
+        for (ib in 0 until QK_K / 32) {
+            val qhVal = readUShortLE(x, qhOff + ib * 2)
+            val dl = d * (2 * ((qhVal shr 12) and 7) + 1)
+            val delta = if (qhVal and 0x8000 != 0) -IQ1S_DELTA else IQ1S_DELTA
+            for (l in 0 until 4) {
+                val gridIdx = (x[qsPtr + l].toInt() and 0xFF) or (((qhVal shr (3 * l)) and 7) shl 8)
+                val grid = iq1s_grid[gridIdx]
+                for (j in 0 until 8) {
+                    y[yIdx + j] = dl * (gridByteS(grid, j) + delta)
+                }
+                yIdx += 8
+            }
+            qsPtr += 4
+        }
+    }
 }
 
 fun dequantize_row_iq1_m(x: ByteArray, xOff: Int, y: FloatArray, yOff: Int, k: Long) {
-    TODO("requires iq1s_grid table")
+    require(k % QK_K == 0L)
+    val nb = (k / QK_K).toInt()
+    val blockSize = BlockIQ1M.SIZE_BYTES // 56
+
+    var yIdx = yOff
+    for (i in 0 until nb) {
+        val bOff = xOff + i * blockSize
+        // Layout: qs[QK_K/8](32) at 0, qh[QK_K/16](16) at 32, scales[QK_K/32](8) at 48
+        val qhBase = bOff + QK_K / 8         // = bOff + 32
+        val scBase = bOff + QK_K / 8 + QK_K / 16  // = bOff + 48
+
+        // Reconstruct fp16 scale from 4-bit pieces of scales[]
+        // sc = (const uint16_t *)x[i].scales  (reading scales as uint16_t[4])
+        val sc0 = readUShortLE(x, scBase + 0)
+        val sc1 = readUShortLE(x, scBase + 2)
+        val sc2 = readUShortLE(x, scBase + 4)
+        val sc3 = readUShortLE(x, scBase + 6)
+        val scaleU16 = (sc0 shr 12) or ((sc1 shr 8) and 0x00f0) or ((sc2 shr 4) and 0x0f00) or (sc3 and 0xf000)
+        val d = GGML_FP16_TO_FP32(scaleU16.toShort())
+
+        var qsPtr = bOff
+        var qhPtr = qhBase
+
+        for (ib in 0 until QK_K / 32) {
+            // sc[ib/2] read as uint16_t
+            val scVal = readUShortLE(x, scBase + (ib / 2) * 2)
+            val dl1 = d * (2 * ((scVal shr (6 * (ib % 2) + 0)) and 0x7) + 1)
+            val dl2 = d * (2 * ((scVal shr (6 * (ib % 2) + 3)) and 0x7) + 1)
+
+            val qh0 = x[qhPtr + 0].toInt() and 0xFF
+            val qh1 = x[qhPtr + 1].toInt() and 0xFF
+
+            val idx0 = (x[qsPtr + 0].toInt() and 0xFF) or ((qh0 shl 8) and 0x700)
+            val idx1 = (x[qsPtr + 1].toInt() and 0xFF) or ((qh0 shl 4) and 0x700)
+            val idx2 = (x[qsPtr + 2].toInt() and 0xFF) or ((qh1 shl 8) and 0x700)
+            val idx3 = (x[qsPtr + 3].toInt() and 0xFF) or ((qh1 shl 4) and 0x700)
+
+            val delta0 = if (qh0 and 0x08 != 0) -IQ1M_DELTA else IQ1M_DELTA
+            val delta1 = if (qh0 and 0x80 != 0) -IQ1M_DELTA else IQ1M_DELTA
+            val delta2 = if (qh1 and 0x08 != 0) -IQ1M_DELTA else IQ1M_DELTA
+            val delta3 = if (qh1 and 0x80 != 0) -IQ1M_DELTA else IQ1M_DELTA
+
+            // First two sub-blocks use dl1
+            for (l in 0 until 2) {
+                val idx = if (l == 0) idx0 else idx1
+                val delta = if (l == 0) delta0 else delta1
+                val grid = iq1s_grid[idx]
+                for (j in 0 until 8) {
+                    y[yIdx + j] = dl1 * (gridByteS(grid, j) + delta)
+                }
+                yIdx += 8
+            }
+            // Last two sub-blocks use dl2
+            for (l in 2 until 4) {
+                val idx = if (l == 2) idx2 else idx3
+                val delta = if (l == 2) delta2 else delta3
+                val grid = iq1s_grid[idx]
+                for (j in 0 until 8) {
+                    y[yIdx + j] = dl2 * (gridByteS(grid, j) + delta)
+                }
+                yIdx += 8
+            }
+            qsPtr += 4
+            qhPtr += 2
+        }
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -2007,12 +2293,149 @@ fun quantize_row_iq3_xxs_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, 
     TODO("quantize_row_iq3_xxs_ref: requires IQ grid tables")
 }
 
+// C line 4794: quantize_row_iq4_nl_impl
+// Shared impl for iq4_nl and iq4_xs quantization
+private fun quantize_row_iq4_nl_impl(
+    superBlockSize: Int, blockSize: Int,
+    x: FloatArray, xOff: Int,
+    dh: ByteArray, dhOff: Int,         // fp16 output: d
+    q4: ByteArray, q4Off: Int,         // uint8_t qs output
+    scalesH: ByteArray, shOff: Int,    // uint16_t scales_h (may be unused)
+    scalesL: ByteArray?, slOff: Int,   // uint8_t scales_l (null when unused)
+    scales: FloatArray, weight: FloatArray, L: UByteArray,
+    values: ByteArray,
+    quantWeights: FloatArray?, qwOff: Int,
+    ntry: Int
+) {
+    var sigma2 = 0f
+    for (j in 0 until superBlockSize) sigma2 += x[xOff + j] * x[xOff + j]
+    sigma2 *= 2f / superBlockSize
+
+    for (j in 0 until superBlockSize / 2) q4[q4Off + j] = 0
+    writeFp16(dh, dhOff, 0f)
+
+    var maxScale = 0f; var amaxScale = 0f
+    for (ib in 0 until superBlockSize / blockSize) {
+        val xbOff = xOff + ib * blockSize
+        val lbOff = ib * blockSize
+        if (quantWeights != null) {
+            val qwbOff = qwOff + ib * blockSize
+            for (j in 0 until blockSize) weight[j] = quantWeights[qwbOff + j] * kotlin.math.sqrt(sigma2 + x[xbOff + j] * x[xbOff + j])
+        } else {
+            for (j in 0 until blockSize) weight[j] = x[xbOff + j] * x[xbOff + j]
+        }
+        var amax = 0f; var max = 0f
+        for (j in 0 until blockSize) {
+            val ax = kotlin.math.abs(x[xbOff + j])
+            if (ax > amax) { amax = ax; max = x[xbOff + j] }
+        }
+        if (amax < GROUP_MAX_EPS) {
+            scales[ib] = 0f
+            continue
+        }
+        var d = if (ntry > 0) -max / values[0].toInt() else max / values[0].toInt()
+        var id = 1f / d
+        var sumqx = 0f; var sumq2 = 0f
+        for (j in 0 until blockSize) {
+            val al = id * x[xbOff + j]
+            val l = best_index_int8(16, values, al)
+            L[lbOff + j] = l.toUByte()
+            val q = values[l].toFloat()
+            val w = weight[j]
+            sumqx += w * q * x[xbOff + j]
+            sumq2 += w * q * q
+        }
+        d = if (sumq2 > 0) sumqx / sumq2 else 0f
+        var best = d * sumqx
+        for (itry in -ntry..ntry) {
+            id = (itry + values[0].toInt()) / max
+            sumqx = 0f; sumq2 = 0f
+            for (j in 0 until blockSize) {
+                val al = id * x[xbOff + j]
+                val l = best_index_int8(16, values, al)
+                val q = values[l].toFloat()
+                val w = weight[j]
+                sumqx += w * q * x[xbOff + j]
+                sumq2 += w * q * q
+            }
+            if (sumq2 > 0 && sumqx * sumqx > best * sumq2) {
+                d = sumqx / sumq2; best = d * sumqx
+            }
+        }
+        scales[ib] = d
+        val absD = kotlin.math.abs(d)
+        if (absD > amaxScale) {
+            amaxScale = absD; maxScale = d
+        }
+    }
+
+    if (superBlockSize / blockSize > 1) {
+        val nb = superBlockSize / blockSize
+        // zero scales_h
+        for (j in 0 until (nb + 7) / 8) writeShortLE(scalesH, shOff + j * 2, 0)
+        val d = -maxScale / 32
+        writeFp16(dh, dhOff, d)
+        val id = if (d != 0f) 1f / d else 0f
+        for (ib in 0 until superBlockSize / blockSize) {
+            var l = nearest_int(id * scales[ib])
+            l = maxOf(-32, minOf(31, l))
+            val dl = d * l
+            val idl = if (dl != 0f) 1f / dl else 0f
+            val lbOff = ib * blockSize
+            val xbOff = xOff + ib * blockSize
+            for (j in 0 until blockSize) {
+                L[lbOff + j] = best_index_int8(16, values, idl * x[xbOff + j]).toUByte()
+            }
+            l += 32
+            val lL = l and 0xf
+            val lH = l shr 4
+            if (ib % 2 == 0) scalesL!![slOff + ib / 2] = lL.toByte()
+            else scalesL!![slOff + ib / 2] = (scalesL[slOff + ib / 2].toInt() or (lL shl 4)).toByte()
+            // scales_h is uint16_t array — use byte-level writes
+            val shIdx = shOff + (ib / 8) * 2
+            val curH = readShortLE(scalesH, shIdx).toInt() and 0xFFFF
+            writeShortLE(scalesH, shIdx, (curH or (lH shl (2 * (ib % 8)))).toShort())
+        }
+    } else {
+        writeFp16(dh, dhOff, scales[0])
+        if (ntry > 0) {
+            val id = if (scales[0] != 0f) 1f / scales[0] else 0f
+            for (j in 0 until superBlockSize) {
+                L[j] = best_index_int8(16, values, id * x[xOff + j]).toUByte()
+            }
+        }
+    }
+
+    for (i in 0 until superBlockSize / 32) {
+        for (j in 0 until 16) {
+            q4[q4Off + 16 * i + j] = (L[32 * i + j].toInt() or (L[32 * i + 16 + j].toInt() shl 4)).toByte()
+        }
+    }
+}
+
 fun quantize_row_iq4_nl_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_iq4_nl_ref: requires IQ grid tables")
+    require(k % QK4_NL == 0L)
+    val nblock = (k / QK4_NL).toInt()
+    val blockSize = 18 // sizeof(block_iq4_nl) = 2 + QK4_NL/2
+    val L = UByteArray(QK4_NL)
+    val weight = FloatArray(QK4_NL)
+    val scale = FloatArray(1)
+    val unusedH = ByteArray(2)
+    for (ibl in 0 until nblock) {
+        val bOff = yOff + ibl * blockSize
+        quantize_row_iq4_nl_impl(
+            QK4_NL, 32, x, xOff + QK4_NL * ibl,
+            y, bOff,           // dh at block start
+            y, bOff + 2,       // qs at offset 2
+            unusedH, 0, null, 0,
+            scale, weight, L, kvalues_iq4nl, null, 0, -1
+        )
+    }
 }
 
 fun quantize_row_iq4_xs_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_iq4_xs_ref: requires IQ grid tables")
+    require(k % QK_K == 0L)
+    quantize_iq4_xs(x, yOff = yOff, dst = y, nrows = 1, nPerRow = k, imatrix = null)
 }
 
 fun quantize_row_iq3_s_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
@@ -2769,12 +3192,64 @@ fun quantize_iq1_m(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, 
     TODO("quantize_iq1_m: requires IQ grid tables")
 }
 
+// C line 4905
 fun quantize_iq4_nl(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq4_nl: importance-matrix quantization not yet ported")
+    require(nPerRow % QK4_NL == 0L)
+    val nblock = (nPerRow / QK4_NL).toInt()
+    val blockSize = 18 // sizeof(block_iq4_nl) = 2 + QK4_NL/2
+    val L = UByteArray(QK4_NL)
+    val weight = FloatArray(QK4_NL)
+    val unusedH = ByteArray(2)
+    val scale = FloatArray(1)
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        for (ibl in 0 until nblock) {
+            val bOff = dstOff + ibl * blockSize
+            val qwOff = if (imatrix != null) QK4_NL * ibl else 0
+            quantize_row_iq4_nl_impl(
+                QK4_NL, 32, src, srcOff + QK4_NL * ibl,
+                dst, bOff,           // dh
+                dst, bOff + 2,       // qs
+                unusedH, 0, null, 0,
+                scale, weight, L, kvalues_iq4nl,
+                imatrix, qwOff, 7
+            )
+        }
+        srcOff += nPerRow.toInt()
+        dstOff += nblock * blockSize
+    }
+    return nrows * nblock * blockSize.toLong()
 }
 
-fun quantize_iq4_xs(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq4_xs: importance-matrix quantization not yet ported")
+// C line 4943
+fun quantize_iq4_xs(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?, yOff: Int = 0): Long {
+    require(nPerRow % QK_K == 0L)
+    val nblock = (nPerRow / QK_K).toInt()
+    // block_iq4_xs: d(fp16, 2) + scales_h(uint16, 2) + scales_l(QK_K/64=4) + qs(QK_K/2=128) = 136
+    val blockSize = 136
+    val L = UByteArray(QK_K)
+    val weight = FloatArray(32)
+    val scales = FloatArray(QK_K / 32)
+    var srcOff = 0; var dstOff = yOff
+    for (row in 0 until nrows) {
+        for (ibl in 0 until nblock) {
+            val bOff = dstOff + ibl * blockSize
+            val qwOff = if (imatrix != null) QK_K * ibl else 0
+            // d at bOff+0, scales_h at bOff+2, scales_l at bOff+4, qs at bOff+8
+            quantize_row_iq4_nl_impl(
+                QK_K, 32, src, srcOff + QK_K * ibl,
+                dst, bOff,           // dh (fp16)
+                dst, bOff + 8,       // qs at offset 8
+                dst, bOff + 2,       // scales_h (uint16 at offset 2)
+                dst, bOff + 4,       // scales_l at offset 4
+                scales, weight, L, kvalues_iq4nl,
+                imatrix, qwOff, 7
+            )
+        }
+        srcOff += nPerRow.toInt()
+        dstOff += nblock * blockSize
+    }
+    return nrows * nblock * blockSize.toLong()
 }
 
 fun quantize_iq3_s(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
