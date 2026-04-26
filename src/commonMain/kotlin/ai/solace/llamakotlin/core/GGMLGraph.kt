@@ -55,7 +55,7 @@ private fun subOrSet(context: GGMLContext, a: GGMLTensor?, b: GGMLTensor, zeroTa
         // If the context requests immediate computation, perform it now
         if (context.computeImmediately) {
             // We need to implement computeNeg
-            throw NotImplementedError("NEG operation not implemented yet")
+            error("fatal error")
         } else {
             result
         }
@@ -70,7 +70,7 @@ private fun subOrSet(context: GGMLContext, a: GGMLTensor?, b: GGMLTensor, zeroTa
         // If the context requests immediate computation, perform it now
         if (context.computeImmediately) {
             // We need to implement computeSub
-            throw NotImplementedError("SUB operation not implemented yet")
+            error("fatal error")
         } else {
             result
         }
@@ -268,7 +268,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("SQR backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -396,7 +396,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("SQRT backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -430,7 +430,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     GGMLType.I16 -> (tensor.grad!!.data as ShortArray)[0].toFloat()
                     GGMLType.I32 -> (tensor.grad!!.data as IntArray)[0].toFloat()
                     GGMLType.I64 -> (tensor.grad!!.data as LongArray)[0].toFloat()
-                    else -> throw NotImplementedError("SUM backward pass not implemented for type ${tensor.grad!!.type}")
+                    else -> error("fatal error")
                 }
 
                 // Fill the gradient tensor with the gradient value
@@ -461,7 +461,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("SUM backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -492,7 +492,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     GGMLType.I16 -> (tensor.grad!!.data as ShortArray)[0].toFloat()
                     GGMLType.I32 -> (tensor.grad!!.data as IntArray)[0].toFloat()
                     GGMLType.I64 -> (tensor.grad!!.data as LongArray)[0].toFloat()
-                    else -> throw NotImplementedError("MEAN backward pass not implemented for type ${tensor.grad!!.type}")
+                    else -> error("fatal error")
                 }
 
                 // Calculate gradient value divided by number of elements
@@ -526,7 +526,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("MEAN backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -758,7 +758,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("REPEAT backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -859,7 +859,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("ABS backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -908,7 +908,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("SGN backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -959,7 +959,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("STEP backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -1032,7 +1032,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("RELU backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -1212,7 +1212,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("GELU backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -1366,7 +1366,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     GGMLType.I16 -> ShortArray(totalElementsSrc0) { 0 }
                     GGMLType.I32 -> IntArray(totalElementsSrc0) { 0 }
                     GGMLType.I64 -> LongArray(totalElementsSrc0) { 0L }
-                    else -> throw NotImplementedError("GET_ROWS backward: unhandled type for grad init ${src0.type}")
+                    else -> error("fatal error")
                 }
 
                 val gradC = tensor.grad!!             // Gradient of the output tensor C
@@ -1455,7 +1455,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                             }
                         }
                     }
-                    else -> throw NotImplementedError("GET_ROWS backward: unhandled type for data accumulation ${gradAContribution.type}")
+                    else -> error("fatal error")
                 }
 
                 // Add the accumulated contributions from gradAContribution to src0.grad
@@ -1543,7 +1543,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     unmaskedMask.data = maskData
                 }
-                else -> throw NotImplementedError("DIAG_MASK_INF backward: Unhandled type ${type} for mask creation.")
+                else -> error("fatal error")
             }
 
             // Calculate contribution: grad_C * unmasked_mask
@@ -1686,7 +1686,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("MUL_MAT backward pass not implemented for type ${src1.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -1825,7 +1825,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("MUL_MAT backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -1959,7 +1959,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("SILU backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -2024,7 +2024,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                         }
                     }
                     else -> {
-                        throw NotImplementedError("NORM backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
                 norm = kotlin.math.sqrt(norm)
@@ -2194,7 +2194,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("NORM backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -2257,7 +2257,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                         }
                     }
                     else -> {
-                        throw NotImplementedError("RMS_NORM backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
                 meanSquared /= totalSize
@@ -2406,7 +2406,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                     }
                     else -> {
                         // For other types, we'll implement later
-                        throw NotImplementedError("RMS_NORM backward pass not implemented for type ${src0.type}")
+                        error("fatal error")
                     }
                 }
 
@@ -2416,7 +2416,7 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
         }
         else -> {
             // For other operations, we'll implement later
-            throw NotImplementedError("Backward pass for operation ${tensor.op} not implemented yet")
+            error("fatal error")
         }
     }
 }
