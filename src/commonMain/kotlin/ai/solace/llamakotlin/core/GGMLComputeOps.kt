@@ -4635,7 +4635,7 @@ fun computeOutProd(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams
                 }
             }
         }
-        GGMLType.F16 -> error("fatal error") // TODO: ggml_compute_forward_out_prod_f16_f32
+        GGMLType.F16 -> error("fatal error") // C++: ggml_compute_forward_out_prod_f16_f32
         else -> error("fatal error")
     }
 }

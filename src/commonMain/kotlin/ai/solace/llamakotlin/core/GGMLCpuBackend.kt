@@ -681,7 +681,7 @@ class GGMLCpuDevice(
  * result into the [GGMLBackendFeature] list format.
  */
 fun ggmlBackendCpuGetFeatures(): List<GGMLBackendFeature> {
-    // Placeholder: return an empty list until ggmlCpuDetectFeatures() is implemented
+    // C++: returns detected CPU features — empty until ggmlCpuDetectFeatures() is ported
     return emptyList()
 }
 
