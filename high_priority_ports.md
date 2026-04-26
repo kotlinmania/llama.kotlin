@@ -6,26 +6,26 @@ Priority = (missing functions + missing types) × (10 + log1p(deps) × 2) + log1
 
 | Rank | Source | Target | Similarity | Deps | SymDeficit | Priority |
 |------|--------|--------|------------|------|-----------|----------|
-| 1 | `include.ggml-backend` | `core.GGMLBackend` | 0.00 | 38 | 91 | 1595.1 |
-| 2 | `include.ggml` | `core.GGMLOps` | 0.46 | 68 | 29 | 547.1 |
-| 3 | `ggml-cpu.quants` | `core.GGMLQuants` | 0.10 | 4 | 27 | 364.2 |
-| 4 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.55 | 47 | 17 | 310.4 |
-| 5 | `ggml-impl` | `core.NumericConversions` | 0.52 | 58 | 10 | 191.4 |
-| 6 | `openvino.utils` | `core.GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
-| 7 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 0.25 | 13 | 7 | 116.9 |
-| 8 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 0.25 | 11 | 6 | 99.2 |
-| 9 | `include.ggml-alloc` | `core.GGMLAlloc` | 0.22 | 8 | 6 | 94.9 |
-| 10 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.64 | 9 | 5 | 77.2 |
-| 11 | `ggml-sycl.quants` | `core.GGMLCpuQuants` | 0.00 | 0 | 5 | 50.0 |
-| 12 | `ggml-common` | `core.GGMLCommon` | 0.00 | 16 | 2 | 45.5 |
-| 13 | `ggml-cpu.common` | `core.GGMLCpuCommon` | 0.56 | 47 | 2 | 43.9 |
-| 14 | `ggml-quants` | `core.GGMLQuantsRef` | 0.12 | 6 | 1 | 22.5 |
-| 15 | `ggml` | `core.GGMLTypes` | 0.00 | 0 | 1 | 10.0 |
-| 16 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.17 | 10 | 0 | 10.0 |
-| 17 | `ggml-threading` | `core.GGMLScheduler` | 0.10 | 1 | 0 | 3.1 |
-| 18 | `ggml-cpu.ggml-cpu` | `core.GGMLCpuBackend` | 0.00 | 0 | 0 | 0.0 |
-| 19 | `ggml-backend` | `core.GGMLBackendUtils` | 0.00 | 0 | 0 | 0.0 |
-| 20 | `ggml-cpu.ops` | `core.GGMLComputeOps` | 0.00 | 0 | 0 | 0.0 |
+| 1 | `ggml-cpu.ops` | `core.GGMLComputeOps` | 0.00 | 0 | 228 | 2280.0 |
+| 2 | `include.ggml-backend` | `core.GGMLBackend` | 0.00 | 38 | 91 | 1595.1 |
+| 3 | `include.ggml` | `core.GGMLOps` | 0.46 | 68 | 29 | 547.1 |
+| 4 | `ggml-cpu.quants` | `core.GGMLQuants` | 0.10 | 4 | 27 | 364.2 |
+| 5 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 0.55 | 47 | 17 | 310.4 |
+| 6 | `ggml-cpu.ggml-cpu` | `core.GGMLCpuBackend` | 0.35 | 0 | 21 | 210.0 |
+| 7 | `ggml-impl` | `core.NumericConversions` | 0.52 | 58 | 10 | 191.4 |
+| 8 | `openvino.utils` | `core.GGMLTensorUtils` | 0.00 | 0 | 17 | 170.0 |
+| 9 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 0.25 | 13 | 7 | 116.9 |
+| 10 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 0.25 | 11 | 6 | 99.2 |
+| 11 | `include.ggml-alloc` | `core.GGMLAlloc` | 0.22 | 8 | 6 | 94.9 |
+| 12 | `ggml-cpu.traits` | `core.GGMLCpuTraits` | 0.64 | 9 | 5 | 77.2 |
+| 13 | `ggml-sycl.quants` | `core.GGMLCpuQuants` | 0.00 | 0 | 5 | 50.0 |
+| 14 | `ggml-common` | `core.GGMLCommon` | 0.00 | 16 | 2 | 45.5 |
+| 15 | `ggml-cpu.common` | `core.GGMLCpuCommon` | 0.56 | 47 | 2 | 43.9 |
+| 16 | `ggml-quants` | `core.GGMLQuantsRef` | 0.12 | 6 | 1 | 22.5 |
+| 17 | `ggml` | `core.GGMLTypes` | 0.00 | 0 | 1 | 10.0 |
+| 18 | `ggml-cpu.simd-mappings` | `simd.GGMLSimd` | 0.17 | 10 | 0 | 10.0 |
+| 19 | `ggml-threading` | `core.GGMLScheduler` | 0.10 | 1 | 0 | 3.1 |
+| 20 | `ggml-backend` | `core.GGMLBackendUtils` | 0.00 | 0 | 0 | 0.0 |
 
 ## Critical Issues (Similarity < 0.60 with Dependencies)
 

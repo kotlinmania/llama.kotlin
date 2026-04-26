@@ -795,3 +795,156 @@ class GGMLCpuBackendReg private constructor() : GGMLBackendReg {
  * Mirrors `ggml_backend_cpu_reg()` (lines 690-701).
  */
 fun ggmlBackendCpuRegSingleton(): GGMLBackendReg = GGMLCpuBackendReg.instance
+
+// ============================================================================
+// Free-standing function wrappers (match C++ ggml-cpu.cpp function names)
+// ============================================================================
+
+// C++: ggml_backend_cpu_get_name (line 112)
+fun ggmlBackendCpuGetName(backend: GGMLBackend): String {
+    return "CPU"
+}
+
+// C++: ggml_backend_cpu_free (line 118)
+fun ggmlBackendCpuFree(backend: GGMLCpuBackend) {
+    backend.free()
+}
+
+// C++: ggml_backend_cpu_graph_plan_create (line 130)
+fun ggmlBackendCpuGraphPlanCreate(backend: GGMLCpuBackend, cgraph: GGMLCGraph): Any? {
+    return backend.graphPlanCreate(cgraph)
+}
+
+// C++: ggml_backend_cpu_graph_plan_free (line 153)
+fun ggmlBackendCpuGraphPlanFree(backend: GGMLCpuBackend, plan: Any?) {
+    backend.graphPlanFree(plan)
+}
+
+// C++: ggml_backend_cpu_graph_plan_compute (line 162)
+fun ggmlBackendCpuGraphPlanCompute(backend: GGMLCpuBackend, plan: Any?): GGMLStatus {
+    return backend.graphPlanCompute(plan)
+}
+
+// C++: ggml_backend_cpu_graph_compute (line 170)
+fun ggmlBackendCpuGraphCompute(backend: GGMLCpuBackend, cgraph: GGMLCGraph): GGMLStatus {
+    return backend.graphCompute(cgraph)
+}
+
+// C++: ggml_backend_cpu_guid (line 212)
+fun ggmlBackendCpuGuid(): ByteArray {
+    return byteArrayOf(
+        0xaa.toByte(), 0x67, 0xc7.toByte(), 0x43, 0x96.toByte(), 0xe6.toByte(),
+        0xa3.toByte(), 0x8a.toByte(), 0xe3.toByte(), 0xaf.toByte(), 0xea.toByte(),
+        0x92.toByte(), 0x36, 0xbc.toByte(), 0xfc.toByte(), 0x89.toByte()
+    )
+}
+
+// C++: ggml_backend_cpu_device_get_name (line 353)
+fun ggmlBackendCpuDeviceGetName(dev: GGMLBackendDevice): String {
+    return "CPU"
+}
+
+// C++: ggml_backend_cpu_device_get_description (line 359)
+fun ggmlBackendCpuDeviceGetDescription(dev: GGMLBackendDevice): String {
+    return dev.getDescription()
+}
+
+// C++: ggml_backend_cpu_device_get_memory (line 365)
+fun ggmlBackendCpuDeviceGetMemory(dev: GGMLBackendDevice): Pair<ULong, ULong> {
+    return dev.getMemory()
+}
+
+// C++: ggml_backend_cpu_device_get_type (line 384)
+fun ggmlBackendCpuDeviceGetType(dev: GGMLBackendDevice): GGMLBackendDeviceType {
+    return GGMLBackendDeviceType.CPU
+}
+
+// C++: ggml_backend_cpu_device_get_props (line 390)
+fun ggmlBackendCpuDeviceGetProps(dev: GGMLBackendDevice): Any {
+    return dev.getProps()
+}
+
+// C++: ggml_backend_cpu_device_init_backend (line 403)
+fun ggmlBackendCpuDeviceInitBackend(dev: GGMLBackendDevice, params: String?): GGMLBackend {
+    return GGMLCpuBackend()
+}
+
+// C++: ggml_backend_cpu_device_get_buffer_type (line 410)
+fun ggmlBackendCpuDeviceGetBufferType(dev: GGMLBackendDevice): GGMLBackendBufferType {
+    return createDefaultCpuBufferType()
+}
+
+// C++: ggml_backend_cpu_device_buffer_from_host_ptr (line 416)
+fun ggmlBackendCpuDeviceBufferFromHostPtr(dev: GGMLBackendDevice, data: ByteArray, size: ULong, maxTensorSize: ULong): GGMLBackendBuffer {
+    return GGMLCpuBuffer(GGMLCpuBufferType(), data, size)
+}
+
+// C++: ggml_backend_cpu_device_supports_op (line 423)
+fun ggmlBackendCpuDeviceSupportsOp(dev: GGMLBackendDevice, op: GGMLTensor): Boolean {
+    val src0 = op.src.getOrNull(0)
+    val src1 = op.src.getOrNull(1)
+
+    if (op.op == GGMLOp.NONE || op.op == GGMLOp.RESHAPE || op.op == GGMLOp.VIEW ||
+        op.op == GGMLOp.PERMUTE || op.op == GGMLOp.TRANSPOSE) {
+        return true
+    }
+
+    // Check extra buffer types on sources
+    for (i in 0 until minOf(4, op.src.size)) {
+        val srcI = op.src[i] ?: continue
+        val srcBuf = srcI.buffer ?: continue
+        if (ggmlBackendCpuIsExtraBufferType(srcBuf.getType())) {
+            return true
+        }
+    }
+
+    return when (op.op) {
+        GGMLOp.CPY, GGMLOp.SET_ROWS ->
+            op.type != GGMLType.IQ3_XXS && op.type != GGMLType.IQ3_S &&
+            op.type != GGMLType.IQ2_XXS && op.type != GGMLType.IQ2_XS &&
+            op.type != GGMLType.IQ2_S && op.type != GGMLType.IQ1_S &&
+            op.type != GGMLType.IQ1_M
+        GGMLOp.MUL_MAT -> {
+            src1 != null && (src1.type == GGMLType.F32 || src0 != null)
+        }
+        GGMLOp.SOFT_MAX_BACK -> {
+            if (op.src.getOrNull(0)?.type != GGMLType.F32 || op.src.getOrNull(1)?.type != GGMLType.F32) {
+                false
+            } else {
+                val maxBias = op.opParams.getOrNull(1) ?: 0
+                maxBias == 0
+            }
+        }
+        GGMLOp.IM2COL_BACK -> src0?.type == GGMLType.F32 && src1?.type == GGMLType.F32
+        GGMLOp.GET_ROWS_BACK -> src0?.type == GGMLType.F32 || src0?.type == GGMLType.F16
+        GGMLOp.OUT_PROD -> {
+            val quantizedOk = src0 != null && ggmlIsQuantized(src0.type) &&
+                src0.ne[2] == (src1?.ne?.getOrNull(2) ?: 0L) &&
+                src0.ne[3] == (src1?.ne?.getOrNull(3) ?: 0L)
+            (src0?.type == GGMLType.F32 || quantizedOk) &&
+            src1?.type == GGMLType.F32 && op.type == GGMLType.F32
+        }
+        else -> true
+    }
+}
+
+// C++: ggml_backend_cpu_device_supports_buft (line 476)
+fun ggmlBackendCpuDeviceSupportsBuft(dev: GGMLBackendDevice, buft: GGMLBackendBufferType): Boolean {
+    return buft.isHost() || ggmlBackendCpuIsExtraBufferType(buft)
+}
+
+// C++: ggml_backend_cpu_reg_get_name (line 501)
+fun ggmlBackendCpuRegGetName(reg: GGMLBackendReg): String {
+    return "CPU"
+}
+
+// C++: ggml_backend_cpu_reg_get_device_count (line 507)
+fun ggmlBackendCpuRegGetDeviceCount(reg: GGMLBackendReg): Long {
+    return 1L
+}
+
+// C++: ggml_backend_cpu_reg_get_device (line 513)
+fun ggmlBackendCpuRegGetDevice(reg: GGMLBackendReg, index: Long): GGMLBackendDevice {
+    require(index == 0L)
+    return GGMLCpuDevice(reg)
+}

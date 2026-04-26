@@ -9,14 +9,14 @@
 | Metric | Count | Percentage |
 |--------|-------|------------|
 | Total source files | 277 | 100% |
-| Target units (paired) | 24 | - |
-| Target files (total) | 24 | - |
+| Target units (paired) | 25 | - |
+| Target files (total) | 25 | - |
 | Porting progress | 20 | 7.2% (matched) |
 | Missing files | 257 | 92.8% |
 
 ## Port Quality Analysis
 
-**Average Similarity:** 0.20
+**Average Similarity:** 0.21
 
 **Quality Distribution:**
 - Excellent (≥0.85): 0 files (0.0% of matched)
@@ -32,10 +32,12 @@ These files are well-ported and likely complete:
 
 These files need significant work:
 
+- `ggml-cpu.ops` → `core.GGMLComputeOps` (0.00)
 - `include.ggml-backend` → `core.GGMLBackend` (0.00, 38 deps)
 - `include.ggml` → `core.GGMLOps` (0.46, 68 deps)
 - `ggml-cpu.quants` → `core.GGMLQuants` (0.10, 4 deps)
 - `ggml-backend-impl` → `core.GGMLBackendImpl` (0.55, 47 deps)
+- `ggml-cpu.ggml-cpu` → `core.GGMLCpuBackend` (0.35)
 - `ggml-impl` → `core.NumericConversions` (0.52, 58 deps)
 - `openvino.utils` → `core.GGMLTensorUtils` (0.00)
 - `include.ggml-cpu` → `core.GGMLCpuExecutor` (0.25, 13 deps)
@@ -48,9 +50,7 @@ These files need significant work:
 - `ggml` → `core.GGMLTypes` (0.00)
 - `ggml-cpu.simd-mappings` → `simd.GGMLSimd` (0.17, 10 deps)
 - `ggml-threading` → `core.GGMLScheduler` (0.10, 1 deps)
-- `ggml-cpu.ggml-cpu` → `core.GGMLCpuBackend` (0.00)
 - `ggml-backend` → `core.GGMLBackendUtils` (0.00)
-- `ggml-cpu.ops` → `core.GGMLComputeOps` (0.00)
 
 ## Incorrect Ports (Missing Types)
 
@@ -59,9 +59,11 @@ present in the Rust source file.
 
 | Source | Target | Missing types | Examples |
 |--------|--------|---------------|----------|
+| `ggml-cpu.ops` | `core.GGMLComputeOps` | 10/10 | `ggml_tensor`, `ggml_conv_2d_dw_params`, `ggml_sort_order` … |
 | `include.ggml-backend` | `core.GGMLBackend` | 7/18 | `ggml_tensor`, `ggml_cgraph`, `ggml_backend_dev_type` … |
 | `include.ggml` | `core.GGMLOps` | 12/25 | `ggml_status`, `ggml_object`, `ggml_context` … |
 | `ggml-backend-impl` | `core.GGMLBackendImpl` | 16/18 | `ggml_backend_buffer_type_i`, `ggml_tensor`, `ggml_backend_buffer_type` … |
+| `ggml-cpu.ggml-cpu` | `core.GGMLCpuBackend` | 13/13 | `ggml_backend_cpu_context`, `ggml_backend_plan_cpu`, `ggml_cplan` … |
 | `ggml-impl` | `core.NumericConversions` | 6/12 | `ggml_tensor`, `ggml_op`, `ggml_cgraph_eval_order` … |
 | `include.ggml-cpu` | `core.GGMLCpuExecutor` | 6/9 | `ggml_threadpool`, `ggml_context`, `ggml_tensor` … |
 | `ggml-cpu.ggml-cpu-impl` | `core.GGMLCpuImpl` | 5/7 | `ggml_int16x8x2_t`, `ggml_uint8x16x2_t`, `ggml_uint8x16x4_t` … |
