@@ -9,10 +9,37 @@ import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
 import ai.solace.llamakotlin.core.ByteArrayExtensions.setShortLe
+import ai.solace.klangnative.fp.ggml_vec_gelu_f32
+import ai.solace.klangnative.fp.ggml_vec_gelu_f16
+import ai.solace.klangnative.fp.ggml_vec_gelu_erf_f32
+import ai.solace.klangnative.fp.ggml_vec_gelu_erf_f16
+import ai.solace.klangnative.fp.ggml_vec_gelu_quick_f32
+import ai.solace.klangnative.fp.ggml_vec_gelu_quick_f16
+import ai.solace.klangnative.fp.ggml_vec_silu_f32
+import ai.solace.klangnative.fp.ggml_vec_silu_f16
+import ai.solace.klangnative.fp.ggml_vec_leaky_relu_f32
+import ai.solace.klangnative.fp.ggml_vec_leaky_relu_f16
+import ai.solace.klangnative.fp.ggml_vec_silu_backward_f32
+import ai.solace.klangnative.fp.ggml_vec_silu_backward_f16
+import ai.solace.klangnative.fp.ggml_vec_reglu_f32
+import ai.solace.klangnative.fp.ggml_vec_reglu_f16
+import ai.solace.klangnative.fp.ggml_vec_geglu_f32
+import ai.solace.klangnative.fp.ggml_vec_geglu_f16
+import ai.solace.klangnative.fp.ggml_vec_swiglu_f32
+import ai.solace.klangnative.fp.ggml_vec_swiglu_f16
+import ai.solace.klangnative.fp.ggml_vec_geglu_erf_f32
+import ai.solace.klangnative.fp.ggml_vec_geglu_erf_f16
+import ai.solace.klangnative.fp.ggml_vec_geglu_quick_f32
+import ai.solace.klangnative.fp.ggml_vec_geglu_quick_f16
+import ai.solace.klangnative.fp.ggml_vec_scale_f32
+import ai.solace.klangnative.fp.ggmlVecCvarF32
+import kotlin.math.exp
+import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
- * Line-by-line transliteration of ops.cpp lines 576–2096 (ADD through CONCAT).
+ * Line-by-line transliteration of ops.cpp lines 15–2096 (DUP through CONCAT).
  *
  * Function names use snake_case to match the C++ originals and maximise
  * ast_distance parity.  Public dispatchers are `fun`; type-specific helpers
@@ -25,6 +52,898 @@ import kotlin.math.min
 
 /** Cache-line size in floats (64 bytes / 4 bytes per float). */
 private const val CACHE_LINE_SIZE_F32 = 16
+
+// ============================================================================
+// ggml_compute_forward_dup — ops.cpp lines 15–575
+// ============================================================================
+
+// ops.cpp line 17
+private fun ggml_compute_forward_dup_same_cont(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlNelements(dst) == ggmlNelements(src0))
+    require(ggmlIsContiguous(dst) && ggmlIsContiguous(src0))
+    require(src0.type == dst.type)
+
+    val nb0 = ggmlTypeSize(src0.type).toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    // parallelize by blocks
+    val nk = (ggmlNelements(src0) / ggmlBlckSize(src0.type)).toInt()
+    val dr = (nk + nth - 1) / nth
+    val k0 = dr * ith
+    val k1 = minOf(k0 + dr, nk)
+
+    if (k0 < k1) {
+        val src0Data = src0.data as ByteArray
+        val dstData = dst.data as ByteArray
+        val srcOff = (k0 * nb0).toInt()
+        val len = ((k1 - k0) * nb0).toInt()
+        src0Data.copyInto(dstData, srcOff, srcOff, srcOff + len)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_dup_flt<src_t, dst_t> — template specializations
+// ---------------------------------------------------------------------------
+
+// F16 → F16 (same type)
+private fun ggmlComputeForwardDupFltF16F16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_same_short(params, dst, sizeofType = 2)
+}
+
+// F16 → BF16
+private fun ggmlComputeForwardDupFltF16BF16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 2, dstSizeof = 2,
+        toF32 = { data, off -> ggmlFp16ToFp32(data.getShortLe(off).toUShort()) },
+        fromF32 = { data, off, v -> data.setShortLe(off, ggmlFp32ToBf16(v).bits.toShort()) }
+    )
+}
+
+// F16 → F32
+private fun ggmlComputeForwardDupFltF16F32(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 2, dstSizeof = 4,
+        toF32 = { data, off -> ggmlFp16ToFp32(data.getShortLe(off).toUShort()) },
+        fromF32 = { data, off, v -> data.setFloatLe(off, v) }
+    )
+}
+
+// BF16 → F16
+private fun ggmlComputeForwardDupFltBF16F16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 2, dstSizeof = 2,
+        toF32 = { data, off -> bf16ToF32(GGMLBF16(data.getShortLe(off).toUShort())) },
+        fromF32 = { data, off, v -> data.setShortLe(off, ggmlFp32ToFp16(v).toShort()) }
+    )
+}
+
+// BF16 → BF16 (same type)
+private fun ggmlComputeForwardDupFltBF16BF16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_same_short(params, dst, sizeofType = 2)
+}
+
+// BF16 → F32
+private fun ggmlComputeForwardDupFltBF16F32(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 2, dstSizeof = 4,
+        toF32 = { data, off -> bf16ToF32(GGMLBF16(data.getShortLe(off).toUShort())) },
+        fromF32 = { data, off, v -> data.setFloatLe(off, v) }
+    )
+}
+
+// F32 → F16
+private fun ggmlComputeForwardDupFltF32F16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 4, dstSizeof = 2,
+        toF32 = { data, off -> data.getFloatLe(off) },
+        fromF32 = { data, off, v -> data.setShortLe(off, ggmlFp32ToFp16(v).toShort()) }
+    )
+}
+
+// F32 → BF16
+private fun ggmlComputeForwardDupFltF32BF16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 4, dstSizeof = 2,
+        toF32 = { data, off -> data.getFloatLe(off) },
+        fromF32 = { data, off, v -> data.setShortLe(off, ggmlFp32ToBf16(v).bits.toShort()) }
+    )
+}
+
+// F32 → F32 (same type)
+private fun ggmlComputeForwardDupFltF32F32(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_same(params, dst, sizeofType = 4)
+}
+
+// F32 → I32
+private fun ggmlComputeForwardDupFltF32I32(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 4, dstSizeof = 4,
+        toF32 = { data, off -> data.getFloatLe(off) },
+        fromF32 = { data, off, v -> data.setIntLe(off, v.toRawBits()) }
+    )
+}
+
+// I32 → F32
+private fun ggmlComputeForwardDupFltI32F32(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_flt_conv_short(params, dst,
+        srcSizeof = 4, dstSizeof = 4,
+        toF32 = { data, off -> Float.fromBits(data.getIntLe(off)) },
+        fromF32 = { data, off, v -> data.setFloatLe(off, v) }
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Shared implementation for dup_flt when src_t == dst_t (short element sizes: 2 bytes)
+// Handles the memcpy paths where no conversion is needed
+// ---------------------------------------------------------------------------
+private fun ggml_compute_forward_dup_flt_same_short(
+    params: GGMLComputeParams,
+    dst: GGMLTensor,
+    sizeofType: Int
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlNelements(dst) == ggmlNelements(src0))
+    require(!ggmlIsQuantized(src0.type) && !ggmlIsQuantized(dst.type))
+
+    val u = unaryOpLocals(dst)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nr = u.ne01.toInt()
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    // case: type & row size equal
+    if (src0.type == dst.type &&
+        u.ne00 == u.ne0 &&
+        u.nb00 == ggmlTypeSize(src0.type).toLong() && u.nb0 == ggmlTypeSize(dst.type).toLong()) {
+        val rs = (u.ne00 * u.nb00).toInt()
+        for (i03 in 0 until u.ne03) {
+            for (i02 in 0 until u.ne02) {
+                for (i01 in ir0 until ir1) {
+                    val dstOff = (i01 * u.nb1 + i02 * u.nb2 + i03 * u.nb3).toInt()
+                    val srcOff = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    src0Data.copyInto(dstData, dstOff, srcOff, srcOff + rs)
+                }
+            }
+        }
+        return
+    }
+
+    // case: dst tensor is contiguous
+    if (ggmlIsContiguous(dst)) {
+        if (u.nb00 == sizeofType.toLong()) {
+            // same type → memcpy path
+            var id = 0
+            val rs = (u.ne00 * u.nb00).toInt()
+
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += rs * ir0
+                    for (i01 in ir0 until ir1) {
+                        val srcOff = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                        src0Data.copyInto(dstData, id, srcOff, srcOff + rs)
+                        id += rs
+                    }
+                    id += rs * (u.ne01.toInt() - ir1)
+                }
+            }
+        } else {
+            // not optimal path - element by element memcpy
+            var id = 0
+
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += (u.ne00 * sizeofType).toInt() * ir0
+                    for (i01 in ir0 until ir1) {
+                        for (i00 in 0 until u.ne00) {
+                            val srcOff = (i00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                            src0Data.copyInto(dstData, id, srcOff, srcOff + sizeofType)
+                            id += sizeofType
+                        }
+                    }
+                    id += (u.ne00 * sizeofType).toInt() * (u.ne01.toInt() - ir1)
+                }
+            }
+        }
+        return
+    }
+
+    // dst not contiguous — element-by-element with index tracking
+    var i10 = 0L
+    var i11 = 0L
+    var i12 = 0L
+    var i13 = 0L
+
+    for (i03 in 0 until u.ne03) {
+        for (i02 in 0 until u.ne02) {
+            i10 += u.ne00 * ir0
+            while (i10 >= u.ne0) {
+                i10 -= u.ne0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+            for (i01 in ir0.toLong() until ir1.toLong()) {
+                for (i00 in 0 until u.ne00) {
+                    val srcOff = (i00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    val dstOff = (i10 * u.nb0 + i11 * u.nb1 + i12 * u.nb2 + i13 * u.nb3).toInt()
+                    src0Data.copyInto(dstData, dstOff, srcOff, srcOff + sizeofType)
+
+                    if (++i10 == u.ne00) {
+                        i10 = 0
+                        if (++i11 == u.ne01) {
+                            i11 = 0
+                            if (++i12 == u.ne02) {
+                                i12 = 0
+                                if (++i13 == u.ne03) {
+                                    i13 = 0
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            i10 += u.ne00 * (u.ne01 - ir1)
+            while (i10 >= u.ne0) {
+                i10 -= u.ne0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Same-type dup for 4-byte elements (F32)
+private fun ggml_compute_forward_dup_flt_same(
+    params: GGMLComputeParams,
+    dst: GGMLTensor,
+    sizeofType: Int
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlNelements(dst) == ggmlNelements(src0))
+    require(!ggmlIsQuantized(src0.type) && !ggmlIsQuantized(dst.type))
+
+    val u = unaryOpLocals(dst)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nr = u.ne01.toInt()
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    // case: type & row size equal
+    if (src0.type == dst.type &&
+        u.ne00 == u.ne0 &&
+        u.nb00 == ggmlTypeSize(src0.type).toLong() && u.nb0 == ggmlTypeSize(dst.type).toLong()) {
+        val rs = (u.ne00 * u.nb00).toInt()
+        for (i03 in 0 until u.ne03) {
+            for (i02 in 0 until u.ne02) {
+                for (i01 in ir0 until ir1) {
+                    val dstOff = (i01 * u.nb1 + i02 * u.nb2 + i03 * u.nb3).toInt()
+                    val srcOff = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    src0Data.copyInto(dstData, dstOff, srcOff, srcOff + rs)
+                }
+            }
+        }
+        return
+    }
+
+    // case: dst tensor is contiguous
+    if (ggmlIsContiguous(dst)) {
+        if (u.nb00 == sizeofType.toLong()) {
+            // same type → memcpy path
+            var id = 0
+            val rs = (u.ne00 * u.nb00).toInt()
+
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += rs * ir0
+                    for (i01 in ir0 until ir1) {
+                        val srcOff = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                        src0Data.copyInto(dstData, id, srcOff, srcOff + rs)
+                        id += rs
+                    }
+                    id += rs * (u.ne01.toInt() - ir1)
+                }
+            }
+        } else {
+            // not optimal path - element by element memcpy
+            var id = 0
+
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += (u.ne00 * sizeofType).toInt() * ir0
+                    for (i01 in ir0 until ir1) {
+                        for (i00 in 0 until u.ne00) {
+                            val srcOff = (i00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                            src0Data.copyInto(dstData, id, srcOff, srcOff + sizeofType)
+                            id += sizeofType
+                        }
+                    }
+                    id += (u.ne00 * sizeofType).toInt() * (u.ne01.toInt() - ir1)
+                }
+            }
+        }
+        return
+    }
+
+    // dst not contiguous — element-by-element with index tracking
+    var i10 = 0L
+    var i11 = 0L
+    var i12 = 0L
+    var i13 = 0L
+
+    for (i03 in 0 until u.ne03) {
+        for (i02 in 0 until u.ne02) {
+            i10 += u.ne00 * ir0
+            while (i10 >= u.ne0) {
+                i10 -= u.ne0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+            for (i01 in ir0.toLong() until ir1.toLong()) {
+                for (i00 in 0 until u.ne00) {
+                    val srcOff = (i00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    val dstOff = (i10 * u.nb0 + i11 * u.nb1 + i12 * u.nb2 + i13 * u.nb3).toInt()
+                    src0Data.copyInto(dstData, dstOff, srcOff, srcOff + sizeofType)
+
+                    if (++i10 == u.ne00) {
+                        i10 = 0
+                        if (++i11 == u.ne01) {
+                            i11 = 0
+                            if (++i12 == u.ne02) {
+                                i12 = 0
+                                if (++i13 == u.ne03) {
+                                    i13 = 0
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            i10 += u.ne00 * (u.ne01 - ir1)
+            while (i10 >= u.ne0) {
+                i10 -= u.ne0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared implementation for dup_flt when src_t != dst_t (different types, conversion path)
+// ---------------------------------------------------------------------------
+private fun ggml_compute_forward_dup_flt_conv_short(
+    params: GGMLComputeParams,
+    dst: GGMLTensor,
+    srcSizeof: Int,
+    dstSizeof: Int,
+    toF32: (ByteArray, Int) -> Float,
+    fromF32: (ByteArray, Int, Float) -> Unit
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlNelements(dst) == ggmlNelements(src0))
+    require(!ggmlIsQuantized(src0.type) && !ggmlIsQuantized(dst.type))
+
+    val u = unaryOpLocals(dst)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nr = u.ne01.toInt()
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    // case: type & row size equal — cannot happen when src != dst type, but check anyway
+    if (src0.type == dst.type &&
+        u.ne00 == u.ne0 &&
+        u.nb00 == ggmlTypeSize(src0.type).toLong() && u.nb0 == ggmlTypeSize(dst.type).toLong()) {
+        val rs = (u.ne00 * u.nb00).toInt()
+        for (i03 in 0 until u.ne03) {
+            for (i02 in 0 until u.ne02) {
+                for (i01 in ir0 until ir1) {
+                    val dOff = (i01 * u.nb1 + i02 * u.nb2 + i03 * u.nb3).toInt()
+                    val sOff = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    src0Data.copyInto(dstData, dOff, sOff, sOff + rs)
+                }
+            }
+        }
+        return
+    }
+
+    // case: dst tensor is contiguous
+    if (ggmlIsContiguous(dst)) {
+        if (u.nb00 == srcSizeof.toLong()) {
+            // casting between non-quantized types
+            var id = 0L
+
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += u.ne00 * ir0
+                    for (i01 in ir0 until ir1) {
+                        val src0Off = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                        for (i00 in 0 until u.ne00) {
+                            val tmp = toF32(src0Data, src0Off + i00.toInt() * srcSizeof)
+                            fromF32(dstData, (id * dstSizeof).toInt(), tmp)
+                            id++
+                        }
+                    }
+                    id += u.ne00 * (u.ne01 - ir1)
+                }
+            }
+        } else {
+            var id = 0L
+
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += u.ne00 * ir0
+                    for (i01 in ir0 until ir1) {
+                        for (i00 in 0 until u.ne00) {
+                            val src0Off = (i00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                            val tmp = toF32(src0Data, src0Off)
+                            fromF32(dstData, (id * dstSizeof).toInt(), tmp)
+                            id++
+                        }
+                    }
+                    id += u.ne00 * (u.ne01 - ir1)
+                }
+            }
+        }
+        return
+    }
+
+    // dst not contiguous — element-by-element with conversion and index tracking
+    var i10 = 0L
+    var i11 = 0L
+    var i12 = 0L
+    var i13 = 0L
+
+    for (i03 in 0 until u.ne03) {
+        for (i02 in 0 until u.ne02) {
+            i10 += u.ne00 * ir0
+            while (i10 >= u.ne0) {
+                i10 -= u.ne0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+            for (i01 in ir0.toLong() until ir1.toLong()) {
+                for (i00 in 0 until u.ne00) {
+                    val srcOff = (i00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    val dstOff = (i10 * u.nb0 + i11 * u.nb1 + i12 * u.nb2 + i13 * u.nb3).toInt()
+
+                    val tmp = toF32(src0Data, srcOff)
+                    fromF32(dstData, dstOff, tmp)
+
+                    if (++i10 == u.ne0) {
+                        i10 = 0
+                        if (++i11 == u.ne1) {
+                            i11 = 0
+                            if (++i12 == u.ne2) {
+                                i12 = 0
+                                if (++i13 == u.ne3) {
+                                    i13 = 0
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            i10 += u.ne00 * (u.ne01 - ir1)
+            while (i10 >= u.ne0) {
+                i10 -= u.ne0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_dup_to_q<src_t> — template specializations
+// ---------------------------------------------------------------------------
+
+// F16 → quantized
+private fun ggmlComputeForwardDupToQF16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_to_q_impl(params, dst, srcSizeof = 2) { data, off ->
+        ggmlFp16ToFp32(data.getShortLe(off).toUShort())
+    }
+}
+
+// BF16 → quantized
+private fun ggmlComputeForwardDupToQBF16(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_to_q_impl(params, dst, srcSizeof = 2) { data, off ->
+        bf16ToF32(GGMLBF16(data.getShortLe(off).toUShort()))
+    }
+}
+
+// F32 → quantized
+private fun ggmlComputeForwardDupToQF32(params: GGMLComputeParams, dst: GGMLTensor) {
+    ggml_compute_forward_dup_to_q_impl(params, dst, srcSizeof = 4) { data, off ->
+        data.getFloatLe(off)
+    }
+}
+
+// Shared implementation for dup_to_q
+private fun ggml_compute_forward_dup_to_q_impl(
+    params: GGMLComputeParams,
+    dst: GGMLTensor,
+    srcSizeof: Int,
+    toF32: (ByteArray, Int) -> Float
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlNelements(dst) == ggmlNelements(src0))
+    require(!ggmlIsQuantized(src0.type))
+
+    val u = unaryOpLocals(dst)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nr = u.ne01.toInt()
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    if (ggmlIsContiguous(dst) &&
+        u.nb00 == srcSizeof.toLong() &&
+        hasQuantizeRow(dst.type)) {
+        val quantizeRowQ: GGMLFromFloatFn = ggmlGetTypeTraitsCpu(dst.type).fromFloat
+            ?: error("no fromFloat for ${dst.type}")
+        val src0F32 = FloatArray(u.ne00.toInt() + CACHE_LINE_SIZE_F32)
+
+        var id = 0L
+        val rs = u.nb0 * (u.ne00 / ggmlBlckSize(dst.type))
+        val dstData = dst.data as ByteArray
+        val src0Data = src0.data as ByteArray
+
+        for (i03 in 0 until u.ne03) {
+            for (i02 in 0 until u.ne02) {
+                id += rs * ir0
+                for (i01 in ir0 until ir1) {
+                    val src0Off = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+
+                    for (i00 in 0 until u.ne00.toInt()) {
+                        src0F32[i00] = toF32(src0Data, src0Off + i00 * srcSizeof)
+                    }
+
+                    // Extract the destination slice
+                    val dstSlice = ByteArray(rs.toInt())
+                    quantizeRowQ(src0F32, dstSlice, u.ne00)
+                    dstSlice.copyInto(dstData, id.toInt())
+                    id += rs
+                }
+                id += rs * (u.ne01 - ir1)
+            }
+        }
+    } else {
+        error("not implemented")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_dup_bytes — ops.cpp line 369
+// ---------------------------------------------------------------------------
+private fun ggml_compute_forward_dup_bytes(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlNelements(dst) == ggmlNelements(src0))
+    require(src0.type == dst.type)
+
+    val u = unaryOpLocals(dst)
+
+    if (ggmlIsContiguous(src0) && ggmlIsContiguous(dst)) {
+        ggml_compute_forward_dup_same_cont(params, dst)
+        return
+    }
+
+    val typeSize = ggmlTypeSize(src0.type).toInt()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nr = u.ne01.toInt()
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    if (src0.type == dst.type &&
+        ggmlAreSameShape(src0, dst) &&
+        u.nb00 == typeSize.toLong() && u.nb0 == typeSize.toLong()) {
+        // copy by rows
+        val rs = ggmlRowSize(src0.type, u.ne00).toInt()
+        for (i03 in 0 until u.ne03) {
+            for (i02 in 0 until u.ne02) {
+                for (i01 in ir0 until ir1) {
+                    val dstOff = (i01 * u.nb1 + i02 * u.nb2 + i03 * u.nb3).toInt()
+                    val srcOff = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    src0Data.copyInto(dstData, dstOff, srcOff, srcOff + rs)
+                }
+            }
+        }
+        return
+    }
+
+    if (ggmlIsContiguous(dst)) {
+        var id = 0
+        val rs = (u.ne00 * typeSize).toInt()
+
+        if (u.nb00 == typeSize.toLong()) {
+            // src0 is contiguous on first dimension, copy by rows
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += rs * ir0
+                    for (i01 in ir0 until ir1) {
+                        val srcOff = (i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                        src0Data.copyInto(dstData, id, srcOff, srcOff + rs)
+                        id += rs
+                    }
+                    id += rs * (u.ne01.toInt() - ir1)
+                }
+            }
+        } else {
+            for (i03 in 0 until u.ne03) {
+                for (i02 in 0 until u.ne02) {
+                    id += rs * ir0
+                    for (i01 in ir0 until ir1) {
+                        for (i00 in 0 until u.ne00) {
+                            val srcOff = (i00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                            src0Data.copyInto(dstData, id, srcOff, srcOff + typeSize)
+                            id += typeSize
+                        }
+                    }
+                    id += rs * (u.ne01.toInt() - ir1)
+                }
+            }
+        }
+
+        return
+    }
+
+    // dst not contiguous
+    var k10 = 0L
+    var i11 = 0L
+    var i12 = 0L
+    var i13 = 0L
+
+    val nk00 = u.ne00 / ggmlBlckSize(src0.type)
+    val nk0 = u.ne0 / ggmlBlckSize(dst.type)
+
+    for (i03 in 0 until u.ne03) {
+        for (i02 in 0 until u.ne02) {
+            k10 += nk00 * ir0
+            while (k10 >= nk0) {
+                k10 -= nk0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+            for (i01 in ir0.toLong() until ir1.toLong()) {
+                for (k00 in 0 until nk00) {
+                    val srcOff = (k00 * u.nb00 + i01 * u.nb01 + i02 * u.nb02 + i03 * u.nb03).toInt()
+                    val dstOff = (k10 * u.nb0 + i11 * u.nb1 + i12 * u.nb2 + i13 * u.nb3).toInt()
+
+                    src0Data.copyInto(dstData, dstOff, srcOff, srcOff + typeSize)
+
+                    if (++k10 == nk0) {
+                        k10 = 0
+                        if (++i11 == u.ne1) {
+                            i11 = 0
+                            if (++i12 == u.ne2) {
+                                i12 = 0
+                                if (++i13 == u.ne3) {
+                                    i13 = 0
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            k10 += nk00 * (u.ne01 - ir1)
+            while (k10 >= nk0) {
+                k10 -= nk0
+                if (++i11 == u.ne1) {
+                    i11 = 0
+                    if (++i12 == u.ne2) {
+                        i12 = 0
+                        if (++i13 == u.ne3) {
+                            i13 = 0
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_dup_from_q — ops.cpp line 474
+// ---------------------------------------------------------------------------
+private fun ggml_compute_forward_dup_from_q(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]!!
+
+    val b = binaryOpLocals(dst)
+
+    val type = src0.type
+    val qk = ggmlBlckSize(type)
+    val nr = ggmlNelements(src1) / qk
+
+    // destination must be contiguous in the first dimension
+    require(b.nb10 == ggmlTypeSize(dst.type).toLong())
+    // must either have first dimension large enough to hold a row, or fully contiguous
+    require((b.ne10 % qk) == 0L || ggmlIsContiguous(dst))
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val dr = ((nr + nth - 1) / nth).toInt()
+
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr.toInt())
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    val tmpFloat = FloatArray(qk.toInt())
+
+    for (ir in ir0 until ir1) {
+        val i = ir.toLong() * qk
+
+        val i03 = i / (b.ne00 * b.ne01 * b.ne02)
+        val i02 = (i - i03 * b.ne00 * b.ne01 * b.ne02) / (b.ne00 * b.ne01)
+        val i01 = (i - i03 * b.ne00 * b.ne01 * b.ne02 - i02 * b.ne01 * b.ne00) / b.ne00
+        val i00 = i - i03 * b.ne00 * b.ne01 * b.ne02 - i02 * b.ne01 * b.ne00 - i01 * b.ne00
+        val xOffset = ((i00 / qk) * b.nb00 + i01 * b.nb01 + i02 * b.nb02 + i03 * b.nb03).toInt()
+
+        val i13 = i / (b.ne10 * b.ne11 * b.ne12)
+        val i12 = (i - i13 * b.ne10 * b.ne11 * b.ne12) / (b.ne10 * b.ne11)
+        val i11p = (i - i13 * b.ne10 * b.ne11 * b.ne12 - i12 * b.ne10 * b.ne11) / b.ne10
+        val i10 = i - i13 * b.ne10 * b.ne11 * b.ne12 - i12 * b.ne10 * b.ne11 - i11p * b.ne10
+        val dstOffset = (i10 * b.nb10 + i11p * b.nb11 + i12 * b.nb12 + i13 * b.nb13).toInt()
+
+        dequantize_row(type, src0Data, xOffset, tmpFloat, 0, qk)
+        writeFloatRow(dstData, dstOffset, tmpFloat, 0, qk.toInt())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ggml_compute_forward_dup — main dispatcher — ops.cpp line 530
+// ---------------------------------------------------------------------------
+fun ggml_compute_forward_dup(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    if (src0.type == dst.type) {
+        ggml_compute_forward_dup_bytes(params, dst)
+        return
+    }
+
+    when (src0.type) {
+        GGMLType.F16 -> {
+            when (dst.type) {
+                GGMLType.F16  -> ggmlComputeForwardDupFltF16F16(params, dst)
+                GGMLType.BF16 -> ggmlComputeForwardDupFltF16BF16(params, dst)
+                GGMLType.F32  -> ggmlComputeForwardDupFltF16F32(params, dst)
+                else          -> ggmlComputeForwardDupToQF16(params, dst)
+            }
+        }
+        GGMLType.BF16 -> {
+            when (dst.type) {
+                GGMLType.F16  -> ggmlComputeForwardDupFltBF16F16(params, dst)
+                GGMLType.BF16 -> ggmlComputeForwardDupFltBF16BF16(params, dst)
+                GGMLType.F32  -> ggmlComputeForwardDupFltBF16F32(params, dst)
+                else          -> ggmlComputeForwardDupToQBF16(params, dst)
+            }
+        }
+        GGMLType.F32 -> {
+            when (dst.type) {
+                GGMLType.F16  -> ggmlComputeForwardDupFltF32F16(params, dst)
+                GGMLType.BF16 -> ggmlComputeForwardDupFltF32BF16(params, dst)
+                GGMLType.F32  -> ggmlComputeForwardDupFltF32F32(params, dst)
+                GGMLType.I32  -> ggmlComputeForwardDupFltF32I32(params, dst)
+                else          -> ggmlComputeForwardDupToQF32(params, dst)
+            }
+        }
+        GGMLType.I32 -> {
+            when (dst.type) {
+                GGMLType.F32 -> ggmlComputeForwardDupFltI32F32(params, dst)
+                else -> error("not implemented")
+            }
+        }
+        else -> {
+            if (ggmlIsQuantized(src0.type) && dst.type == GGMLType.F32) {
+                ggml_compute_forward_dup_from_q(params, dst)
+            } else {
+                error("fatal error")
+            }
+        }
+    }
+}
 
 // ============================================================================
 // Vector helper functions — scalar implementations matching C++ vec.h
@@ -2028,5 +2947,1869 @@ fun ggml_compute_forward_concat(
         else -> {
             ggml_compute_forward_concat_any(params, dst)
         }
+    }
+}
+
+// ============================================================================
+// ShortArray (fp16) read/write helpers
+// ============================================================================
+
+/** Read a row of [n] shorts (fp16) from [data] at byte offset [off]. */
+private fun readShortRow(data: ByteArray, off: Int, n: Int): ShortArray {
+    val row = ShortArray(n)
+    for (i in 0 until n) {
+        row[i] = readShort(data, off + i * 2)
+    }
+    return row
+}
+
+/** Write a row of [n] shorts (fp16) into [data] at byte offset [off]. */
+private fun writeShortRow(data: ByteArray, off: Int, src: ShortArray, srcOff: Int, n: Int) {
+    for (i in 0 until n) {
+        writeShort(data, off + i * 2, src[srcOff + i])
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_gelu  — ops.cpp line 2098
+// ============================================================================
+
+// ops.cpp line 2100
+private fun ggml_compute_forward_gelu_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readFloatRow(src0Data, srcOff, nc)
+        val dstRow = FloatArray(nc)
+        ggml_vec_gelu_f32(nc, dstRow, srcRow)
+        writeFloatRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2147
+private fun ggml_compute_forward_gelu_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readShortRow(src0Data, srcOff, nc)
+        val dstRow = ShortArray(nc)
+        ggml_vec_gelu_f16(nc, dstRow, srcRow)
+        writeShortRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2195
+fun ggml_compute_forward_gelu(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_gelu_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_gelu_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_fill  — ops.cpp line 2217
+// ============================================================================
+
+// ops.cpp line 2219
+private fun ggml_compute_forward_fill_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val c = ggml_get_op_params_f32(dst, 0)
+
+    val ne0 = dst.ne[0]
+    val ne1 = dst.ne[1]
+    val ne2 = dst.ne[2]
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val nr = ggmlNrows(dst).toInt()
+    val nth = params.nth
+    val dr = (nr + nth - 1) / nth
+    val ir0 = (dr * params.ith).toLong()
+    val ir1 = minOf(ir0 + dr, nr.toLong())
+
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i03 = ir / (ne2 * ne1)
+        val i02 = (ir - i03 * ne2 * ne1) / ne1
+        val i01 = ir - i03 * ne2 * ne1 - i02 * ne1
+
+        val dstOff = (i03 * nb3 + i02 * nb2 + i01 * nb1).toInt()
+        val dstRow = FloatArray(ne0.toInt()) { c }
+        writeFloatRow(dstData, dstOff, dstRow, 0, ne0.toInt())
+    }
+}
+
+// ops.cpp line 2238
+fun ggml_compute_forward_fill(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    ggml_compute_forward_fill_f32(params, dst)
+}
+
+// ============================================================================
+// ggml_compute_forward_tri  — ops.cpp line 2242
+// ============================================================================
+
+// ops.cpp line 2244
+private fun ggml_compute_forward_tri_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    val ttype = ggml_get_op_params_i32(dst, 0)
+
+    require(ggmlIsContiguous(src0))
+
+    val l = unaryOpLocals(dst)
+
+    val nr = ggmlNrows(src0).toInt()
+    val nth = params.nth
+    val dr = (nr + nth - 1) / nth
+    val ir0 = (dr * params.ith).toLong()
+    val ir1 = minOf(ir0 + dr, nr.toLong())
+
+    val bipred: (Int, Int) -> Boolean = when (ttype) {
+        GGMLTriType.LOWER.value      -> { i, r -> i < r }
+        GGMLTriType.LOWER_DIAG.value -> { i, r -> i <= r }
+        GGMLTriType.UPPER.value      -> { i, r -> i > r }
+        GGMLTriType.UPPER_DIAG.value -> { i, r -> i >= r }
+        else -> error("invalid tri type")
+    }
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i03 = ir / (l.ne02 * l.ne01)
+        val i02 = (ir - i03 * l.ne02 * l.ne01) / l.ne01
+        val i01 = ir - i03 * l.ne02 * l.ne01 - i02 * l.ne01
+
+        val srcOff = (i03 * l.nb03 + i02 * l.nb02 + i01 * l.nb01).toInt()
+        val dstOff = (i03 * l.nb3 + i02 * l.nb2 + i01 * l.nb1).toInt()
+
+        for (i0 in 0 until l.ne0.toInt()) {
+            val srcVal = readFloat(src0Data, srcOff + i0 * 4)
+            writeFloat(dstData, dstOff + i0 * 4, if (bipred(i0, i01.toInt())) srcVal else 0.0f)
+        }
+    }
+}
+
+// ops.cpp line 2279
+fun ggml_compute_forward_tri(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_tri_f32(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_gelu_erf  — ops.cpp line 2294
+// ============================================================================
+
+// ops.cpp line 2296
+private fun ggml_compute_forward_gelu_erf_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readFloatRow(src0Data, srcOff, nc)
+        val dstRow = FloatArray(nc)
+        ggml_vec_gelu_erf_f32(nc, dstRow, srcRow)
+        writeFloatRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2343
+private fun ggml_compute_forward_gelu_erf_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readShortRow(src0Data, srcOff, nc)
+        val dstRow = ShortArray(nc)
+        ggml_vec_gelu_erf_f16(nc, dstRow, srcRow)
+        writeShortRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2391
+fun ggml_compute_forward_gelu_erf(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_gelu_erf_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_gelu_erf_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_gelu_quick  — ops.cpp line 2413
+// ============================================================================
+
+// ops.cpp line 2415
+private fun ggml_compute_forward_gelu_quick_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readFloatRow(src0Data, srcOff, nc)
+        val dstRow = FloatArray(nc)
+        ggml_vec_gelu_quick_f32(nc, dstRow, srcRow)
+        writeFloatRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2462
+private fun ggml_compute_forward_gelu_quick_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readShortRow(src0Data, srcOff, nc)
+        val dstRow = ShortArray(nc)
+        ggml_vec_gelu_quick_f16(nc, dstRow, srcRow)
+        writeShortRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2510
+fun ggml_compute_forward_gelu_quick(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_gelu_quick_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_gelu_quick_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_silu  — ops.cpp line 2532
+// ============================================================================
+
+// ops.cpp line 2534
+private fun ggml_compute_forward_silu_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readFloatRow(src0Data, srcOff, nc)
+        val dstRow = FloatArray(nc)
+        ggml_vec_silu_f32(nc, dstRow, srcRow)
+        writeFloatRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2581
+private fun ggml_compute_forward_silu_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggmlIsContiguousRows(src0))
+    require(ggml_are_same_shape(src0, dst))
+
+    val ne01 = src0.ne[1]
+    val ne02 = src0.ne[2]
+    val nb01 = src0.nb[1].toLong()
+    val nb02 = src0.nb[2].toLong()
+    val nb03 = src0.nb[3].toLong()
+    val nb1 = dst.nb[1].toLong()
+    val nb2 = dst.nb[2].toLong()
+    val nb3 = dst.nb[3].toLong()
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src0.ne[0].toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (ir in ir0 until ir1) {
+        val i3 = ir / (ne02 * ne01).toInt()
+        val i2 = (ir - i3 * (ne02 * ne01).toInt()) / ne01.toInt()
+        val i1 = ir - i3 * (ne02 * ne01).toInt() - i2 * ne01.toInt()
+
+        val dstOff = (i3 * nb3 + i2 * nb2 + i1 * nb1).toInt()
+        val srcOff = (i3 * nb03 + i2 * nb02 + i1 * nb01).toInt()
+
+        val srcRow = readShortRow(src0Data, srcOff, nc)
+        val dstRow = ShortArray(nc)
+        ggml_vec_silu_f16(nc, dstRow, srcRow)
+        writeShortRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2629
+fun ggml_compute_forward_silu(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_silu_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_silu_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_leaky_relu  — ops.cpp line 2650
+// ============================================================================
+
+// ops.cpp line 2652
+private fun ggml_compute_forward_leaky_relu_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    if (params.ith != 0) return
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+    require(ggml_are_same_shape(src0, dst))
+
+    val n = ggmlNrows(src0).toInt()
+    val nc = src0.ne[0].toInt()
+
+    val negativeSlope = ggml_get_op_params_f32(dst, 0)
+
+    require(dst.nb[0].toLong() == 4L)  // sizeof(float)
+    require(src0.nb[0].toLong() == 4L)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i in 0 until n) {
+        val dstOff = (i * dst.nb[1].toLong()).toInt()
+        val srcOff = (i * src0.nb[1].toLong()).toInt()
+
+        val srcRow = readFloatRow(src0Data, srcOff, nc)
+        val dstRow = FloatArray(nc)
+        ggml_vec_leaky_relu_f32(nc, dstRow, srcRow, negativeSlope)
+        writeFloatRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2682
+private fun ggml_compute_forward_leaky_relu_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    if (params.ith != 0) return
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+    require(ggml_are_same_shape(src0, dst))
+
+    val n = ggmlNrows(src0).toInt()
+    val nc = src0.ne[0].toInt()
+
+    val negativeSlope = ggml_get_op_params_f32(dst, 0)
+
+    require(dst.nb[0].toLong() == 2L)  // sizeof(ggml_fp16_t)
+    require(src0.nb[0].toLong() == 2L)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i in 0 until n) {
+        val dstOff = (i * dst.nb[1].toLong()).toInt()
+        val srcOff = (i * src0.nb[1].toLong()).toInt()
+
+        val srcRow = readShortRow(src0Data, srcOff, nc)
+        val dstRow = ShortArray(nc)
+        ggml_vec_leaky_relu_f16(nc, dstRow, srcRow, negativeSlope)
+        writeShortRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2712
+fun ggml_compute_forward_leaky_relu(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_leaky_relu_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_leaky_relu_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_silu_back  — ops.cpp line 2734
+// ============================================================================
+
+// ops.cpp line 2736
+private fun ggml_compute_forward_silu_back_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val grad = dst.src[0]!!
+    val src1 = dst.src[1]!!
+
+    require(ggmlIsContiguous1(grad))
+    require(ggmlIsContiguous1(src1))
+    require(ggmlIsContiguous1(dst))
+    require(ggml_are_same_shape(src1, dst))
+    require(ggml_are_same_shape(src1, grad))
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src1.ne[0].toInt()
+    val nr = ggmlNrows(src1).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val gradData = grad.data as ByteArray
+    val src1Data = src1.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val src1Off = (i1 * src1.nb[1].toLong()).toInt()
+        val gradOff = (i1 * grad.nb[1].toLong()).toInt()
+
+        val src1Row = readFloatRow(src1Data, src1Off, nc)
+        val gradRow = readFloatRow(gradData, gradOff, nc)
+        val dstRow = FloatArray(nc)
+        ggml_vec_silu_backward_f32(nc, dstRow, src1Row, gradRow)
+        writeFloatRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2779
+private fun ggml_compute_forward_silu_back_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val grad = dst.src[0]!!
+    val src1 = dst.src[1]!!
+
+    require(ggmlIsContiguous1(grad))
+    require(ggmlIsContiguous1(src1))
+    require(ggmlIsContiguous1(dst))
+    require(ggml_are_same_shape(src1, dst))
+    require(ggml_are_same_shape(src1, grad))
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = src1.ne[0].toInt()
+    val nr = ggmlNrows(src1).toInt()
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val gradData = grad.data as ByteArray
+    val src1Data = src1.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val src1Off = (i1 * src1.nb[1].toLong()).toInt()
+        val gradOff = (i1 * grad.nb[1].toLong()).toInt()
+
+        val src1Row = readShortRow(src1Data, src1Off, nc)
+        val gradRow = readShortRow(gradData, gradOff, nc)
+        val dstRow = ShortArray(nc)
+        ggml_vec_silu_backward_f16(nc, dstRow, src1Row, gradRow)
+        writeShortRow(dstData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2823
+fun ggml_compute_forward_silu_back(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_silu_back_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_silu_back_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_reglu  — ops.cpp line 2845
+// ============================================================================
+
+// ops.cpp line 2847
+private fun ggml_compute_forward_reglu_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]  // nullable
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 4
+            src1Off += (if (swapped != 0) 0 else nc) * 4
+        }
+
+        val src0Row = readFloatRow(src0Data, src0Off, nc)
+        val src1Row = readFloatRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = FloatArray(nc)
+        ggml_vec_reglu_f32(nc, dstRow, src0Row, src1Row)
+        writeFloatRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2906
+private fun ggml_compute_forward_reglu_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]  // nullable
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 2
+            src1Off += (if (swapped != 0) 0 else nc) * 2
+        }
+
+        val src0Row = readShortRow(src0Data, src0Off, nc)
+        val src1Row = readShortRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = ShortArray(nc)
+        ggml_vec_reglu_f16(nc, dstRow, src0Row, src1Row)
+        writeShortRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 2966
+fun ggml_compute_forward_reglu(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_reglu_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_reglu_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_geglu  — ops.cpp line 2988
+// ============================================================================
+
+// ops.cpp line 2990
+private fun ggml_compute_forward_geglu_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 4
+            src1Off += (if (swapped != 0) 0 else nc) * 4
+        }
+
+        val src0Row = readFloatRow(src0Data, src0Off, nc)
+        val src1Row = readFloatRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = FloatArray(nc)
+        ggml_vec_geglu_f32(nc, dstRow, src0Row, src1Row)
+        writeFloatRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3049
+private fun ggml_compute_forward_geglu_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 2
+            src1Off += (if (swapped != 0) 0 else nc) * 2
+        }
+
+        val src0Row = readShortRow(src0Data, src0Off, nc)
+        val src1Row = readShortRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = ShortArray(nc)
+        ggml_vec_geglu_f16(nc, dstRow, src0Row, src1Row)
+        writeShortRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3109
+fun ggml_compute_forward_geglu(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_geglu_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_geglu_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_swiglu  — ops.cpp line 3131
+// ============================================================================
+
+// ops.cpp line 3133
+private fun ggml_compute_forward_swiglu_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 4
+            src1Off += (if (swapped != 0) 0 else nc) * 4
+        }
+
+        val src0Row = readFloatRow(src0Data, src0Off, nc)
+        val src1Row = readFloatRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = FloatArray(nc)
+        ggml_vec_swiglu_f32(nc, dstRow, src0Row, src1Row)
+        writeFloatRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3192
+private fun ggml_compute_forward_swiglu_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 2
+            src1Off += (if (swapped != 0) 0 else nc) * 2
+        }
+
+        val src0Row = readShortRow(src0Data, src0Off, nc)
+        val src1Row = readShortRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = ShortArray(nc)
+        ggml_vec_swiglu_f16(nc, dstRow, src0Row, src1Row)
+        writeShortRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3252
+fun ggml_compute_forward_swiglu(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_swiglu_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_swiglu_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_swiglu_oai  — ops.cpp line 3274
+// ============================================================================
+
+// ops.cpp line 3276
+private fun ggml_compute_forward_swiglu_oai_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+    val alpha = ggml_get_op_params_f32(dst, 2)
+    val limit = ggml_get_op_params_f32(dst, 3)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 4
+            src1Off += (if (swapped != 0) 0 else nc) * 4
+        }
+
+        val src0Row = readFloatRow(src0Data, src0Off, nc)
+        val src1Row = readFloatRow(src1Data, src1Off, nc)
+
+        for (k in 0 until nc) {
+            val x = min(src0Row[k], limit)
+            val y = src1Row[k].coerceIn(-limit, limit)
+            val outGlu = x / (1.0f + exp(alpha * (-x)))
+            writeFloat(dstByteData, dstOff + k * 4, outGlu * (y + 1.0f))
+        }
+    }
+}
+
+// ops.cpp line 3343
+fun ggml_compute_forward_swiglu_oai(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_swiglu_oai_f32(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_geglu_erf  — ops.cpp line 3361
+// ============================================================================
+
+// ops.cpp line 3363
+private fun ggml_compute_forward_geglu_erf_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 4
+            src1Off += (if (swapped != 0) 0 else nc) * 4
+        }
+
+        val src0Row = readFloatRow(src0Data, src0Off, nc)
+        val src1Row = readFloatRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = FloatArray(nc)
+        ggml_vec_geglu_erf_f32(nc, dstRow, src0Row, src1Row)
+        writeFloatRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3422
+private fun ggml_compute_forward_geglu_erf_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 2
+            src1Off += (if (swapped != 0) 0 else nc) * 2
+        }
+
+        val src0Row = readShortRow(src0Data, src0Off, nc)
+        val src1Row = readShortRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = ShortArray(nc)
+        ggml_vec_geglu_erf_f16(nc, dstRow, src0Row, src1Row)
+        writeShortRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3482
+fun ggml_compute_forward_geglu_erf(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_geglu_erf_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_geglu_erf_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_geglu_quick  — ops.cpp line 3504
+// ============================================================================
+
+// ops.cpp line 3506
+private fun ggml_compute_forward_geglu_quick_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 4
+            src1Off += (if (swapped != 0) 0 else nc) * 4
+        }
+
+        val src0Row = readFloatRow(src0Data, src0Off, nc)
+        val src1Row = readFloatRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = FloatArray(nc)
+        ggml_vec_geglu_quick_f32(nc, dstRow, src0Row, src1Row)
+        writeFloatRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3565
+private fun ggml_compute_forward_geglu_quick_f16(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+    val src1 = dst.src[1]
+    val src0Data = src0.data as ByteArray
+    val src1Data = (if (src1 != null) src1.data else src0.data) as ByteArray
+    val src0o = src0.nb[1].toLong()
+    val src1o = if (src1 != null) src1.nb[1].toLong() else src0.nb[1].toLong()
+
+    require(ggmlIsContiguous1(src0))
+    require(ggmlIsContiguous1(dst))
+
+    if (src1 != null) {
+        require(ggmlIsContiguous1(src1))
+        require(src0.type == src1.type)
+    }
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val nc = if (src1 != null) src0.ne[0].toInt() else (src0.ne[0] / 2).toInt()
+    val nr = ggmlNrows(src0).toInt()
+
+    require(dst.ne[0].toInt() == nc)
+    require(ggmlNrows(dst).toInt() == nr)
+
+    val swapped = ggml_get_op_params_i32(dst, 1)
+
+    val dr = (nr + nth - 1) / nth
+    val ir0 = dr * ith
+    val ir1 = minOf(ir0 + dr, nr)
+
+    val dstByteData = dst.data as ByteArray
+
+    for (i1 in ir0 until ir1) {
+        var src0Off = (i1 * src0o).toInt()
+        var src1Off = (i1 * src1o).toInt()
+
+        if (src1 == null) {
+            src0Off += (if (swapped != 0) nc else 0) * 2
+            src1Off += (if (swapped != 0) 0 else nc) * 2
+        }
+
+        val src0Row = readShortRow(src0Data, src0Off, nc)
+        val src1Row = readShortRow(src1Data, src1Off, nc)
+        val dstOff = (i1 * dst.nb[1].toLong()).toInt()
+        val dstRow = ShortArray(nc)
+        ggml_vec_geglu_quick_f16(nc, dstRow, src0Row, src1Row)
+        writeShortRow(dstByteData, dstOff, dstRow, 0, nc)
+    }
+}
+
+// ops.cpp line 3625
+fun ggml_compute_forward_geglu_quick(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_geglu_quick_f32(params, dst)
+        GGMLType.F16 -> ggml_compute_forward_geglu_quick_f16(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_norm  — ops.cpp line 3647
+// ============================================================================
+
+// ops.cpp line 3649
+private fun ggml_compute_forward_norm_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggml_are_same_shape(src0, dst))
+    require(src0.nb[0].toLong() == 4L) // sizeof(float)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val l = unaryOpLocals(dst)
+
+    val eps = ggml_get_op_params_f32(dst, 0)
+    require(eps >= 0.0f)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i03 in 0 until l.ne03) {
+        for (i02 in 0 until l.ne02) {
+            var i01 = ith.toLong()
+            while (i01 < l.ne01) {
+                val srcOff = (i01 * l.nb01 + i02 * l.nb02 + i03 * l.nb03).toInt()
+                val x = readFloatRow(src0Data, srcOff, l.ne00.toInt())
+
+                var sum = 0.0f
+                for (i in 0 until l.ne00.toInt()) {
+                    sum += x[i]
+                }
+                val mean = sum / l.ne00.toFloat()
+
+                val dstOff = (i01 * l.nb1 + i02 * l.nb2 + i03 * l.nb3).toInt()
+                val y = FloatArray(l.ne00.toInt())
+
+                val variance = ggmlVecCvarF32(l.ne00.toInt(), y, x, mean).toFloat()
+
+                val scale = 1.0f / sqrt(variance + eps)
+                ggml_vec_scale_f32(l.ne00.toInt(), y, scale)
+                writeFloatRow(dstData, dstOff, y, 0, l.ne00.toInt())
+
+                i01 += nth
+            }
+        }
+    }
+}
+
+// ops.cpp line 3696
+fun ggml_compute_forward_norm(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_norm_f32(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_rms_norm  — ops.cpp line 3714
+// ============================================================================
+
+// ops.cpp line 3716
+private fun ggml_compute_forward_rms_norm_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggml_are_same_shape(src0, dst))
+    require(src0.nb[0].toLong() == 4L) // sizeof(float)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val l = unaryOpLocals(dst)
+
+    val eps = ggml_get_op_params_f32(dst, 0)
+    require(eps >= 0.0f)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i03 in 0 until l.ne03) {
+        for (i02 in 0 until l.ne02) {
+            var i01 = ith.toLong()
+            while (i01 < l.ne01) {
+                val srcOff = (i01 * l.nb01 + i02 * l.nb02 + i03 * l.nb03).toInt()
+                val x = readFloatRow(src0Data, srcOff, l.ne00.toInt())
+
+                var sum = 0.0
+                for (i00 in 0 until l.ne00.toInt()) {
+                    sum += (x[i00].toDouble() * x[i00].toDouble())
+                }
+
+                val mean = (sum / l.ne00).toFloat()
+
+                val dstOff = (i01 * l.nb1 + i02 * l.nb2 + i03 * l.nb3).toInt()
+                val y = FloatArray(l.ne00.toInt())
+                x.copyInto(y)
+
+                val scale = 1.0f / sqrt(mean + eps)
+
+                require(scale > 0.0f)
+
+                ggml_vec_scale_f32(l.ne00.toInt(), y, scale)
+                writeFloatRow(dstData, dstOff, y, 0, l.ne00.toInt())
+
+                i01 += nth
+            }
+        }
+    }
+}
+
+// ops.cpp line 3767
+fun ggml_compute_forward_rms_norm(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_rms_norm_f32(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_rms_norm_back  — ops.cpp line 3785
+// ============================================================================
+
+// ops.cpp line 3785
+private fun ggml_compute_forward_rms_norm_back_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!! // gradients from forward pass output
+    val src1 = dst.src[1]!! // src1 from forward pass
+
+    require(ggml_are_same_shape(src0, dst) && ggml_are_same_shape(src0, src1))
+    require(src0.nb[0].toLong() == 4L) // sizeof(float)
+    require(src1.nb[0].toLong() == 4L)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val l = binaryOpLocals(dst)
+
+    val eps = ggml_get_op_params_f32(dst, 0)
+
+    val src0Data = src0.data as ByteArray
+    val src1Data = src1.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i03 in 0 until l.ne03) {
+        for (i02 in 0 until l.ne02) {
+            var i01 = ith.toLong()
+            while (i01 < l.ne01) {
+                val i11 = i01
+                val i12 = i02
+                val i13 = i03
+
+                val dzOff = (i01 * l.nb01 + i02 * l.nb02 + i03 * l.nb03).toInt()
+                val xOff = (i11 * l.nb11 + i12 * l.nb12 + i13 * l.nb13).toInt()
+
+                val dz = readFloatRow(src0Data, dzOff, l.ne00.toInt())
+                val x = readFloatRow(src1Data, xOff, l.ne00.toInt())
+
+                var sumXx = 0.0
+                var sumXdz = 0.0
+
+                for (i00 in 0 until l.ne00.toInt()) {
+                    sumXx += (x[i00].toDouble() * x[i00].toDouble())
+                    sumXdz += (x[i00].toDouble() * dz[i00].toDouble())
+                }
+
+                val meanEps = (sumXx / l.ne00).toFloat() + eps
+                val sumEps = sumXx.toFloat() + eps * l.ne00.toFloat()
+                val rrms = 1.0f / sqrt(meanEps)
+
+                val dstOff = (i01 * l.nb1 + i02 * l.nb2 + i03 * l.nb3).toInt()
+                val dx = FloatArray(l.ne00.toInt())
+                x.copyInto(dx)
+                ggml_vec_scale_f32(l.ne00.toInt(), dx, (-sumXdz / sumEps).toFloat())
+                // dx = dx + dz
+                for (i in 0 until l.ne00.toInt()) {
+                    dx[i] += dz[i]
+                }
+                ggml_vec_scale_f32(l.ne00.toInt(), dx, rrms)
+                writeFloatRow(dstData, dstOff, dx, 0, l.ne00.toInt())
+
+                i01 += nth
+            }
+        }
+    }
+}
+
+// ops.cpp line 3942
+fun ggml_compute_forward_rms_norm_back(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_rms_norm_back_f32(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_group_norm  — ops.cpp line 3960
+// ============================================================================
+
+// ops.cpp line 3962
+private fun ggml_compute_forward_group_norm_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggml_are_same_shape(src0, dst))
+    require(src0.nb[0].toLong() == 4L) // sizeof(float)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val l = unaryOpLocals(dst)
+
+    val eps = ggml_get_op_params_f32(dst, 1)  // op_params + 1 in C++
+
+    val nChannels = src0.ne[2].toInt()
+    val nGroups = ggml_get_op_params_i32(dst, 0)
+    val nChannelsPerGroup = (nChannels + nGroups - 1) / nGroups
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    var i = ith
+    while (i < nGroups) {
+        val start = i * nChannelsPerGroup
+        var end = start + nChannelsPerGroup
+        if (end > nChannels) {
+            end = nChannels
+        }
+        val step = end - start
+
+        for (i03 in 0 until l.ne03) {
+            var sum = 0.0
+            for (i02 in start until end) {
+                for (i01 in 0 until l.ne01.toInt()) {
+                    val srcOff = (i01 * l.nb01 + i02 * l.nb02 + i03 * l.nb03).toInt()
+                    val x = readFloatRow(src0Data, srcOff, l.ne00.toInt())
+
+                    var sumr = 0.0
+                    for (i00 in 0 until l.ne00.toInt()) {
+                        sumr += x[i00].toDouble()
+                    }
+                    sum += sumr
+                }
+            }
+            val mean = (sum / (l.ne00 * l.ne01 * step)).toFloat()
+
+            var sum2 = 0.0
+            for (i02 in start until end) {
+                for (i01 in 0 until l.ne01.toInt()) {
+                    val srcOff = (i01 * l.nb01 + i02 * l.nb02 + i03 * l.nb03).toInt()
+                    val x = readFloatRow(src0Data, srcOff, l.ne00.toInt())
+                    val dstOff = (i01 * l.nb1 + i02 * l.nb2 + i03 * l.nb3).toInt()
+                    val y = FloatArray(l.ne00.toInt())
+
+                    var sumr = 0.0
+                    for (i00 in 0 until l.ne00.toInt()) {
+                        val v = x[i00] - mean
+                        y[i00] = v
+                        sumr += (v.toDouble() * v.toDouble())
+                    }
+                    sum2 += sumr
+                    writeFloatRow(dstData, dstOff, y, 0, l.ne00.toInt())
+                }
+            }
+            val variance = (sum2 / (l.ne00 * l.ne01 * step)).toFloat()
+            val scale = 1.0f / sqrt(variance + eps)
+
+            for (i02 in start until end) {
+                for (i01 in 0 until l.ne01.toInt()) {
+                    val dstOff = (i01 * l.nb1 + i02 * l.nb2 + i03 * l.nb3).toInt()
+                    val y = readFloatRow(dstData, dstOff, l.ne00.toInt())
+                    ggml_vec_scale_f32(l.ne00.toInt(), y, scale)
+                    writeFloatRow(dstData, dstOff, y, 0, l.ne00.toInt())
+                }
+            }
+        }
+        i += nth
+    }
+}
+
+// ops.cpp line 4037
+fun ggml_compute_forward_group_norm(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_group_norm_f32(params, dst)
+        else -> error("fatal error")
+    }
+}
+
+// ============================================================================
+// ggml_compute_forward_l2_norm  — ops.cpp line 4055
+// ============================================================================
+
+// ops.cpp line 4057
+private fun ggml_compute_forward_l2_norm_f32(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    require(ggml_are_same_shape(src0, dst))
+    require(src0.nb[0].toLong() == 4L) // sizeof(float)
+
+    val ith = params.ith
+    val nth = params.nth
+
+    val l = unaryOpLocals(dst)
+
+    val eps = ggml_get_op_params_f32(dst, 0)
+    require(eps >= 0.0f)
+
+    val src0Data = src0.data as ByteArray
+    val dstData = dst.data as ByteArray
+
+    for (i03 in 0 until l.ne03) {
+        for (i02 in 0 until l.ne02) {
+            var i01 = ith.toLong()
+            while (i01 < l.ne01) {
+                val srcOff = (i01 * l.nb01 + i02 * l.nb02 + i03 * l.nb03).toInt()
+                val x = readFloatRow(src0Data, srcOff, l.ne00.toInt())
+
+                var sum = 0.0
+                for (i00 in 0 until l.ne00.toInt()) {
+                    sum += (x[i00].toDouble() * x[i00].toDouble())
+                }
+
+                val dstOff = (i01 * l.nb1 + i02 * l.nb2 + i03 * l.nb3).toInt()
+                val y = FloatArray(l.ne00.toInt())
+                x.copyInto(y)
+
+                val scale = 1.0f / max(sqrt(sum).toFloat(), eps)
+
+                ggml_vec_scale_f32(l.ne00.toInt(), y, scale)
+                writeFloatRow(dstData, dstOff, y, 0, l.ne00.toInt())
+
+                i01 += nth
+            }
+        }
+    }
+}
+
+// ops.cpp line 4100
+fun ggml_compute_forward_l2_norm(
+    params: GGMLComputeParams,
+    dst: GGMLTensor
+) {
+    val src0 = dst.src[0]!!
+
+    when (src0.type) {
+        GGMLType.F32 -> ggml_compute_forward_l2_norm_f32(params, dst)
+        else -> error("fatal error")
     }
 }
