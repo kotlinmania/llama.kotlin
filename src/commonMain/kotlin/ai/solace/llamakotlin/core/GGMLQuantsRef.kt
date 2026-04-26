@@ -2287,10 +2287,228 @@ fun quantize_row_nvfp4_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k:
     }
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+//  IQ2/IQ3 quantization data infrastructure (C lines 2744-3141)
+// ════════════════════════════════════════════════════════════════════════════════
+
+private class IQ2Entry(
+    var grid: ULongArray? = null,
+    var map: IntArray? = null,
+    var neighbours: UShortArray? = null
+)
+private val iq2Data = Array(4) { IQ2Entry() }
+
+// C line 2757
+private fun iq2DataIndex(type: GGMLType): Int {
+    require(type == GGMLType.IQ2_XXS || type == GGMLType.IQ2_XS || type == GGMLType.IQ1_S || type == GGMLType.IQ1_M || type == GGMLType.IQ2_S)
+    return when (type) {
+        GGMLType.IQ2_XXS -> 0
+        GGMLType.IQ2_XS -> 1
+        GGMLType.IQ1_S, GGMLType.IQ1_M -> 2
+        else -> 3 // IQ2_S
+    }
+}
+
+// C line 2764
+private fun iq2GridSize(type: GGMLType): Int {
+    require(type == GGMLType.IQ2_XXS || type == GGMLType.IQ2_XS || type == GGMLType.IQ1_S || type == GGMLType.IQ1_M || type == GGMLType.IQ2_S)
+    return when (type) {
+        GGMLType.IQ2_XXS -> 256
+        GGMLType.IQ2_XS -> 512
+        GGMLType.IQ1_S, GGMLType.IQ1_M -> NGRID_IQ1S
+        else -> 1024 // IQ2_S
+    }
+}
+
+// C line 3553
+private class IQ3Entry(
+    var grid: UIntArray? = null,
+    var map: IntArray? = null,
+    var neighbours: UShortArray? = null
+)
+private val iq3Data = Array(2) { IQ3Entry() }
+
+// C line 3564
+private fun iq3DataIndex(gridSize: Int): Int {
+    require(gridSize == 256 || gridSize == 512)
+    return if (gridSize == 256) 0 else 1
+}
+
+// Helper: extract signed byte from a ULong at byte position i
+private fun gridByte(gv: ULong, i: Int): Byte =
+    ((gv shr (8 * i)) and 0xFFu).toByte()
+
+// Helper: extract signed byte from a UInt at byte position i
+private fun gridByte(gv: UInt, i: Int): Byte =
+    ((gv shr (8 * i)) and 0xFFu).toByte()
+
+// C line 3143: iq2_find_best_neighbour
+private fun iq2FindBestNeighbour(
+    neighbours: UShortArray, nOff: Int,
+    grid: ULongArray,
+    xval: FloatArray, xvOff: Int,
+    weight: FloatArray, wOff: Int,
+    scale: Float,
+    L: ByteArray, lOff: Int
+): Int {
+    val numNeighbors = neighbours[nOff].toInt()
+    require(numNeighbors > 0)
+    var bestD2 = Float.MAX_VALUE
+    var gridIndex = -1
+    for (j in 1..numNeighbors) {
+        val gv = grid[neighbours[nOff + j].toInt()]
+        var d2 = 0f
+        for (i in 0 until 8) {
+            val q = gridByte(gv, i).toFloat()
+            val diff = scale * q - xval[xvOff + i]
+            d2 += weight[wOff + i] * diff * diff
+        }
+        if (d2 < bestD2) {
+            bestD2 = d2; gridIndex = neighbours[nOff + j].toInt()
+        }
+    }
+    require(gridIndex >= 0)
+    val gv = grid[gridIndex]
+    for (i in 0 until 8) L[lOff + i] = ((gridByte(gv, i) - 1) / 2).toByte()
+    return gridIndex
+}
+
+// C line 3742: iq3_find_best_neighbour
+private fun iq3FindBestNeighbour(
+    neighbours: UShortArray, nOff: Int,
+    grid: UIntArray,
+    xval: FloatArray, xvOff: Int,
+    weight: FloatArray, wOff: Int,
+    scale: Float,
+    L: ByteArray, lOff: Int
+): Int {
+    val numNeighbors = neighbours[nOff].toInt()
+    require(numNeighbors > 0)
+    var bestD2 = Float.MAX_VALUE
+    var gridIndex = -1
+    for (j in 1..numNeighbors) {
+        val gv = grid[neighbours[nOff + j].toInt()]
+        var d2 = 0f
+        for (i in 0 until 4) {
+            val q = gridByte(gv, i).toFloat()
+            val diff = scale * q - xval[xvOff + i]
+            d2 += weight[wOff + i] * diff * diff
+        }
+        if (d2 < bestD2) {
+            bestD2 = d2; gridIndex = neighbours[nOff + j].toInt()
+        }
+    }
+    require(gridIndex >= 0)
+    val gv = grid[gridIndex]
+    for (i in 0 until 4) L[lOff + i] = ((gridByte(gv, i) - 1) / 2).toByte()
+    return gridIndex
+}
+
+// C line 4211: iq1_find_best_neighbour
+private fun iq1FindBestNeighbour(
+    neighbours: UShortArray, nOff: Int,
+    grid: ULongArray,
+    xval: FloatArray, xvOff: Int,
+    weight: FloatArray, wOff: Int,
+    scaleOut: FloatArray, sOff: Int,
+    L: ByteArray, lOff: Int,
+    ngrid: Int
+): Int {
+    val numNeighbors = neighbours[nOff].toInt()
+    require(numNeighbors > 0)
+    var bestScore = -Float.MAX_VALUE
+    var gridIndex = -1
+    for (j in 1..numNeighbors) {
+        val gv = grid[neighbours[nOff + j].toInt()]
+        var sumqx = 0f; var sumq2 = 0f
+        for (i in 0 until 8) {
+            val q = (gridByte(gv, i) - 3).toFloat() / 2f
+            val w = weight[wOff + i]
+            sumqx += w * q * xval[xvOff + i]
+            sumq2 += w * q * q
+        }
+        if (sumqx > 0 && sumq2 > 0 && sumqx * sumqx > bestScore * sumq2) {
+            scaleOut[sOff] = sumqx / sumq2; bestScore = scaleOut[sOff] * sumqx
+            gridIndex = neighbours[nOff + j].toInt()
+        }
+    }
+    if (gridIndex < 0) {
+        for (i in 0 until ngrid) {
+            val gv = grid[i]
+            var sumqx = 0f; var sumq2 = 0f
+            for (j in 0 until 8) {
+                val w = weight[wOff + j]
+                val q = (gridByte(gv, j) - 3).toFloat() / 2f
+                sumqx += w * q * xval[xvOff + j]
+                sumq2 += w * q * q
+            }
+            if (sumqx > 0 && sumq2 > 0 && sumqx * sumqx > bestScore * sumq2) {
+                scaleOut[sOff] = sumqx / sumq2; bestScore = scaleOut[sOff] * sumqx
+                gridIndex = i
+            }
+        }
+    }
+    require(gridIndex >= 0) { "iq1_find_best_neighbour: did not find grid point" }
+    scaleOut[sOff] *= 1.05f
+    val gv = grid[gridIndex]
+    for (i in 0 until 8) L[lOff + i] = ((gridByte(gv, i) - 1) / 2).toByte()
+    return gridIndex
+}
+
+// C line 4271: iq1_find_best_neighbour2
+private fun iq1FindBestNeighbour2(
+    neighbours: UShortArray, nOff: Int,
+    grid: ULongArray,
+    xval: FloatArray, xvOff: Int,
+    weight: FloatArray, wOff: Int,
+    scale: Float,
+    xg: FloatArray,
+    L: ByteArray, lOff: Int,
+    ngrid: Int
+): Int {
+    val numNeighbors = neighbours[nOff].toInt()
+    require(numNeighbors > 0)
+    var bestScore = Float.MAX_VALUE
+    var gridIndex = -1
+    for (j in 1..numNeighbors) {
+        val gv = grid[neighbours[nOff + j].toInt()]
+        var d2 = 0f
+        for (i in 0 until 8) {
+            val q = xg[(gridByte(gv, i) - 1) / 2]
+            val w = weight[wOff + i]
+            val diff = scale * q - xval[xvOff + i]
+            d2 += w * diff * diff
+        }
+        if (d2 < bestScore) {
+            bestScore = d2; gridIndex = neighbours[nOff + j].toInt()
+        }
+    }
+    if (gridIndex < 0) {
+        for (i in 0 until ngrid) {
+            val gv = grid[i]
+            var d2 = 0f
+            for (j in 0 until 8) {
+                val w = weight[wOff + j]
+                val q = xg[(gridByte(gv, j) - 1) / 2]
+                val diff = scale * q - xval[xvOff + j]
+                d2 += w * diff * diff
+            }
+            if (d2 < bestScore) {
+                bestScore = d2; gridIndex = i
+            }
+        }
+    }
+    require(gridIndex >= 0) { "iq1_find_best_neighbour2: did not find grid point" }
+    val gv = grid[gridIndex]
+    for (i in 0 until 8) L[lOff + i] = ((gridByte(gv, i) - 1) / 2).toByte()
+    return gridIndex
+}
+
 // IQ quantize_row_ref — all require grid tables
 
 fun quantize_row_iq3_xxs_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_iq3_xxs_ref: requires IQ grid tables")
+    require(k % QK_K == 0L)
+    quantize_row_iq3_xxs_impl(256, x, xOff, y, yOff, k.toInt(), null)
 }
 
 // C line 4794: quantize_row_iq4_nl_impl
@@ -2439,11 +2657,13 @@ fun quantize_row_iq4_xs_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k
 }
 
 fun quantize_row_iq3_s_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_iq3_s_ref: requires IQ grid tables")
+    require(k % QK_K == 0L)
+    quantize_iq3_s(x, y, nrows = 1, nPerRow = k, imatrix = null)
 }
 
 fun quantize_row_iq2_s_ref(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, k: Long) {
-    TODO("quantize_row_iq2_s_ref: requires IQ grid tables")
+    require(k % QK_K == 0L)
+    quantize_iq2_s(x, y, nrows = 1, nPerRow = k, imatrix = null)
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -3168,28 +3388,1266 @@ fun quantize_nvfp4(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, 
     return nrows * rowSize
 }
 
+// C line 3167: quantize_row_iq2_xxs_impl
+private fun quantize_row_iq2_xxs_impl(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, n: Int, quantWeights: FloatArray?) {
+    val gindex = iq2DataIndex(GGMLType.IQ2_XXS)
+    val kgridQ2xs = iq2Data[gindex].grid!!
+    val kmapQ2xs = iq2Data[gindex].map!!
+    val kneighborsQ2xs = iq2Data[gindex].neighbours!!
+    require(quantWeights != null) { "missing quantization weights" }
+    require(n % QK_K == 0)
+
+    val kMaxQ = 3
+    val nbl = n / QK_K
+    val blockSize = BlockIQ2XXS.SIZE_BYTES
+
+    val scales = FloatArray(QK_K / 32)
+    val weight = FloatArray(32)
+    val xval = FloatArray(32)
+    val L = ByteArray(32)
+    val Laux = ByteArray(32)
+    val waux = FloatArray(32)
+    val blockSigns = IntArray(4)
+    val q2 = IntArray(2 * (QK_K / 32))
+
+    for (ibl in 0 until nbl) {
+        val bOff = yOff + ibl * blockSize
+        writeFp16(y, bOff, 0f)
+        for (i in 0 until QK_K / 4) y[bOff + 2 + i] = 0
+
+        var maxScale = 0f
+        val xblOff = xOff + QK_K * ibl
+        var sumx2 = 0f
+        for (i in 0 until QK_K) sumx2 += x[xblOff + i] * x[xblOff + i]
+        val sigma2 = sumx2 / QK_K
+
+        q2.fill(0)
+
+        for (ib in 0 until QK_K / 32) {
+            val xbOff = xblOff + 32 * ib
+            val qwOff = QK_K * ibl + 32 * ib
+            for (i in 0 until 32) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            for (i in 0 until 32) waux[i] = kotlin.math.sqrt(weight[i])
+            for (k in 0 until 4) {
+                var nflip = 0
+                var s = 0
+                for (i in 0 until 8) {
+                    if (x[xbOff + 8 * k + i] >= 0) xval[8 * k + i] = x[xbOff + 8 * k + i]
+                    else { xval[8 * k + i] = -x[xbOff + 8 * k + i]; nflip++; s = s or (1 shl i) }
+                }
+                if (nflip % 2 != 0) {
+                    var imin = 0; var min = weight[8 * k + imin] * x[xbOff + 8 * k + imin] * x[xbOff + 8 * k + imin]
+                    for (i in 1 until 8) {
+                        val ax = weight[8 * k + i] * x[xbOff + 8 * k + i] * x[xbOff + 8 * k + i]
+                        if (ax < min) { min = ax; imin = i }
+                    }
+                    xval[8 * k + imin] = -xval[8 * k + imin]
+                    s = s xor (1 shl imin)
+                }
+                blockSigns[k] = s and 127
+            }
+            var max = xval[0]
+            for (i in 1 until 32) max = maxOf(max, xval[i])
+            if (max < GROUP_MAX_EPS) {
+                scales[ib] = 0f; L.fill(0, 0, 32); continue
+            }
+            val Lp = UByteArray(32)
+            var scale = make_qp_quants(32, kMaxQ + 1, xval, 0, Lp, 0, weight, 0)
+            for (i in 0 until 32) L[i] = Lp[i].toByte()
+            var effMax = scale * kMaxQ
+            if (effMax <= 0) { scales[ib] = 0f; L.fill(0, 0, 32); continue }
+            var best = 0f
+            for (is_ in -6..6) {
+                val id = (2 * kMaxQ - 1 + is_ * 0.1f) / effMax
+                val thisScale = 1f / id
+                for (k in 0 until 4) {
+                    for (i in 0 until 8) {
+                        var l = nearest_int(0.5f * (id * xval[8 * k + i] - 1))
+                        Laux[8 * k + i] = maxOf(0, minOf(kMaxQ - 1, l)).toByte()
+                    }
+                    var u = 0
+                    for (i in 0 until 8) u = u or (Laux[8 * k + i].toInt() shl (2 * i))
+                    var gridIdx = kmapQ2xs[u]
+                    if (gridIdx < 0) {
+                        val nOff = -kmapQ2xs[u] - 1
+                        gridIdx = iq2FindBestNeighbour(kneighborsQ2xs, nOff, kgridQ2xs, xval, 8 * k, waux, 8 * k, thisScale, Laux, 8 * k)
+                    }
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 32) {
+                    val w = weight[i]; val q = 2f * Laux[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0 && sumqx * sumqx > best * sumq2f) {
+                    scale = sumqx / sumq2f; best = scale * sumqx
+                    Laux.copyInto(L, 0, 0, 32)
+                }
+            }
+            if (scale > 0) {
+                val id = 1f / scale
+                for (k in 0 until 4) {
+                    var u = 0
+                    for (i in 0 until 8) {
+                        var l = nearest_int(0.5f * (id * xval[8 * k + i] - 1))
+                        l = maxOf(0, minOf(kMaxQ - 1, l))
+                        u = u or (l shl (2 * i))
+                    }
+                    var gridIdx = kmapQ2xs[u]
+                    if (gridIdx < 0) {
+                        val nOff = -kmapQ2xs[u] - 1
+                        gridIdx = iq2FindBestNeighbour(kneighborsQ2xs, nOff, kgridQ2xs, xval, 8 * k, waux, 8 * k, scale, L, 8 * k)
+                    }
+                    val gv = kgridQ2xs[gridIdx]
+                    for (i in 0 until 8) L[8 * k + i] = ((gridByte(gv, i) - 1) / 2).toByte()
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 32) {
+                    val w = weight[i]; val q = 2f * L[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0) scale = sumqx / sumq2f
+            }
+            if (scale < 0) {
+                scale = -scale
+                for (k in 0 until 4) blockSigns[k] = (blockSigns[k].inv()) and 127
+            }
+            for (k in 0 until 4) {
+                var u = 0
+                for (i in 0 until 8) u = u or (L[8 * k + i].toInt() shl (2 * i))
+                val gridIdx = kmapQ2xs[u]
+                require(gridIdx >= 0) { "Oops: found point $u not on grid" }
+                q2[2 * ib + 0] = q2[2 * ib + 0] or (gridIdx shl (8 * k))
+                q2[2 * ib + 1] = q2[2 * ib + 1] or (blockSigns[k] shl (7 * k))
+            }
+            require(scale >= 0)
+            scales[ib] = scale
+            maxScale = maxOf(maxScale, scale)
+        }
+
+        if (maxScale == 0f) {
+            for (i in 0 until QK_K / 4) y[bOff + 2 + i] = 0
+            continue
+        }
+
+        val d = maxScale / 31f
+        writeFp16(y, bOff, d)
+        val id = 1f / d
+        for (ib in 0 until QK_K / 32) {
+            var l = nearest_int(0.5f * (id * scales[ib] - 1))
+            l = maxOf(0, minOf(15, l))
+            q2[2 * ib + 1] = q2[2 * ib + 1] or (l shl 28)
+        }
+        // copy q2 to qs as bytes
+        for (i in 0 until QK_K / 32 * 2) writeIntLE(y, bOff + 2 + i * 4, q2[i])
+    }
+}
+
+// C line 3345: quantize_row_iq2_xs_impl
+private fun quantize_row_iq2_xs_impl(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, n: Int, quantWeights: FloatArray?) {
+    val gindex = iq2DataIndex(GGMLType.IQ2_XS)
+    val kgridQ2xs = iq2Data[gindex].grid!!
+    val kmapQ2xs = iq2Data[gindex].map!!
+    val kneighborsQ2xs = iq2Data[gindex].neighbours!!
+    require(quantWeights != null) { "missing quantization weights" }
+    require(n % QK_K == 0)
+
+    val kMaxQ = 3
+    val nbl = n / QK_K
+    val blockSize = BlockIQ2XS.SIZE_BYTES
+
+    val scales = FloatArray(QK_K / 16)
+    val weight = FloatArray(16)
+    val xval = FloatArray(16)
+    val L = ByteArray(16)
+    val Laux = ByteArray(16)
+    val waux = FloatArray(16)
+    val isOnGrid = BooleanArray(2)
+    val isOnGridAux = BooleanArray(2)
+    val blockSigns = IntArray(2)
+    val q2 = ShortArray(2 * (QK_K / 16))
+
+    for (ibl in 0 until nbl) {
+        val bOff = yOff + ibl * blockSize
+        writeFp16(y, bOff, 0f)
+        q2.fill(0)
+        for (i in 0 until QK_K / 32) y[bOff + 2 + QK_K / 4 + i] = 0 // scales
+
+        var maxScale = 0f
+        val xblOff = xOff + QK_K * ibl
+        var sumx2 = 0f
+        for (i in 0 until QK_K) sumx2 += x[xblOff + i] * x[xblOff + i]
+        val sigma2 = sumx2 / QK_K
+
+        for (ib in 0 until QK_K / 16) {
+            val xbOff = xblOff + 16 * ib
+            val qwOff = QK_K * ibl + 16 * ib
+            for (i in 0 until 16) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            for (i in 0 until 16) waux[i] = kotlin.math.sqrt(weight[i])
+            for (k in 0 until 2) {
+                var nflip = 0; var s = 0
+                for (i in 0 until 8) {
+                    if (x[xbOff + 8 * k + i] >= 0) xval[8 * k + i] = x[xbOff + 8 * k + i]
+                    else { xval[8 * k + i] = -x[xbOff + 8 * k + i]; nflip++; s = s or (1 shl i) }
+                }
+                if (nflip % 2 != 0) {
+                    var imin = 0; var min = weight[8 * k + imin] * x[xbOff + 8 * k + imin] * x[xbOff + 8 * k + imin]
+                    for (i in 1 until 8) {
+                        val ax = weight[8 * k + i] * x[xbOff + 8 * k + i] * x[xbOff + 8 * k + i]
+                        if (ax < min) { min = ax; imin = i }
+                    }
+                    xval[8 * k + imin] = -xval[8 * k + imin]
+                    s = s xor (1 shl imin)
+                }
+                blockSigns[k] = s and 127
+            }
+            var max = xval[0]
+            for (i in 1 until 16) max = maxOf(max, xval[i])
+            L.fill(0, 0, 16)
+            if (max < GROUP_MAX_EPS) { scales[ib] = 0f; continue }
+            var best = 0f
+            var scale = max / (2 * kMaxQ - 1)
+            isOnGrid[0] = true; isOnGrid[1] = true
+            for (is_ in -9..9) {
+                val id = (2 * kMaxQ - 1 + is_ * 0.1f) / max
+                val thisScale = 1f / id
+                for (k in 0 until 2) {
+                    for (i in 0 until 8) {
+                        var l = nearest_int(0.5f * (id * xval[8 * k + i] - 1))
+                        Laux[8 * k + i] = maxOf(0, minOf(kMaxQ - 1, l)).toByte()
+                    }
+                    var u = 0
+                    for (i in 0 until 8) u = u or (Laux[8 * k + i].toInt() shl (2 * i))
+                    var gridIdx = kmapQ2xs[u]
+                    isOnGridAux[k] = true
+                    if (gridIdx < 0) {
+                        isOnGridAux[k] = false
+                        val nOff = -kmapQ2xs[u] - 1
+                        gridIdx = iq2FindBestNeighbour(kneighborsQ2xs, nOff, kgridQ2xs, xval, 8 * k, waux, 8 * k, thisScale, Laux, 8 * k)
+                    }
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 16) {
+                    val w = weight[i]; val q = 2f * Laux[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0 && sumqx * sumqx > best * sumq2f) {
+                    scale = sumqx / sumq2f; best = scale * sumqx
+                    for (i in 0 until 16) L[i] = Laux[i]
+                    for (k in 0 until 2) isOnGrid[k] = isOnGridAux[k]
+                }
+            }
+            var nNotOnGrid = 0
+            for (k in 0 until 2) if (!isOnGrid[k]) nNotOnGrid++
+            if (nNotOnGrid > 0 && scale > 0) {
+                val id = 1f / scale
+                for (k in 0 until 2) {
+                    if (isOnGrid[k]) continue
+                    var u = 0
+                    for (i in 0 until 8) {
+                        var l = nearest_int(0.5f * (id * xval[8 * k + i] - 1))
+                        l = maxOf(0, minOf(kMaxQ - 1, l))
+                        u = u or (l shl (2 * i))
+                        L[8 * k + i] = l.toByte()
+                    }
+                    var gridIdx = kmapQ2xs[u]
+                    if (gridIdx < 0) {
+                        val nOff = -kmapQ2xs[u] - 1
+                        gridIdx = iq2FindBestNeighbour(kneighborsQ2xs, nOff, kgridQ2xs, xval, 8 * k, waux, 8 * k, scale, L, 8 * k)
+                    }
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 16) {
+                    val w = weight[i]; val q = 2f * L[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0) scale = sumqx / sumq2f
+            }
+            if (scale < 0) {
+                scale = -scale
+                for (k in 0 until 2) blockSigns[k] = (blockSigns[k].inv()) and 127
+            }
+            for (k in 0 until 2) {
+                var u = 0
+                for (i in 0 until 8) u = u or (L[8 * k + i].toInt() shl (2 * i))
+                val gridIdx = kmapQ2xs[u]
+                require(gridIdx >= 0) { "Oops: found point $u not on grid" }
+                q2[2 * ib + k] = (gridIdx or (blockSigns[k] shl 9)).toShort()
+            }
+            require(scale >= 0)
+            scales[ib] = scale
+            maxScale = maxOf(maxScale, scale)
+        }
+
+        if (maxScale == 0f) {
+            for (i in 0 until QK_K / 4) y[bOff + 2 + i] = 0
+            continue
+        }
+
+        val d = maxScale / 31f
+        writeFp16(y, bOff, d)
+        val id = 1f / d
+        for (ib in 0 until QK_K / 16) {
+            var l = nearest_int(0.5f * (id * scales[ib] - 1))
+            l = maxOf(0, minOf(15, l))
+            val scalesOff = bOff + 2 + QK_K / 4
+            if (ib % 2 == 0) y[scalesOff + ib / 2] = l.toByte()
+            else y[scalesOff + ib / 2] = (y[scalesOff + ib / 2].toInt() or (l shl 4)).toByte()
+        }
+        // copy q2 to qs bytes
+        for (i in 0 until QK_K / 16 * 2) writeShortLE(y, bOff + 2 + i * 2, q2[i])
+    }
+}
+
+// C line 4970: quantize_row_iq2_s_impl
+private fun quantize_row_iq2_s_impl(x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, n: Int, quantWeights: FloatArray?) {
+    val gindex = iq2DataIndex(GGMLType.IQ2_S)
+    val kgridQ2xs = iq2Data[gindex].grid!!
+    val kmapQ2xs = iq2Data[gindex].map!!
+    val kneighborsQ2xs = iq2Data[gindex].neighbours!!
+    require(n % QK_K == 0)
+
+    val kMaxQ = 3
+    val nbl = n / QK_K
+    val blockSize = BlockIQ2S.SIZE_BYTES
+
+    val scales = FloatArray(QK_K / 16)
+    val weight = FloatArray(16)
+    val xval = FloatArray(16)
+    val L = ByteArray(16)
+    val Laux = ByteArray(16)
+    val waux = FloatArray(16)
+    val isOnGrid = BooleanArray(2)
+    val isOnGridAux = BooleanArray(2)
+    val blockSigns = IntArray(2)
+
+    for (ibl in 0 until nbl) {
+        val bOff = yOff + ibl * blockSize
+        // zero the block
+        for (i in 0 until blockSize) y[bOff + i] = 0
+        writeFp16(y, bOff, 0f)
+
+        var maxScale = 0f
+        val xblOff = xOff + QK_K * ibl
+        var sumx2 = 0f
+        for (i in 0 until QK_K) sumx2 += x[xblOff + i] * x[xblOff + i]
+        val sigma2 = 2f * sumx2 / QK_K
+
+        // block_iq2_s layout: d(2) + qs(QK_K/4=64) + qh(QK_K/32=8) + scales(QK_K/32=8) = 82 (but we also have sign bytes)
+        // Actually: d(2) + qs(QK_K/8=32) + qs_signs(QK_K/8=32) + qh(QK_K/32=8) + scales(QK_K/32=8) = 82
+        // C layout: d(2), qs[QK_K/4]=64 bytes (first 32 = grid indices, next 32 = signs), qh[QK_K/32]=8, scales[QK_K/32]=8
+        val qsOff = bOff + 2           // qs: grid index low bits (32 bytes) then sign bytes (32 bytes)
+        val qhOff = bOff + 2 + QK_K / 4  // qh: 8 bytes
+        val scOff = qhOff + QK_K / 32     // scales: 8 bytes
+
+        for (ib in 0 until QK_K / 16) {
+            val xbOff = xblOff + 16 * ib
+            if (quantWeights != null) {
+                val qwOff = QK_K * ibl + 16 * ib
+                for (i in 0 until 16) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            } else {
+                for (i in 0 until 16) weight[i] = 0.25f * sigma2 + x[xbOff + i] * x[xbOff + i]
+            }
+            for (i in 0 until 16) waux[i] = kotlin.math.sqrt(weight[i])
+            for (k in 0 until 2) {
+                var s = 0
+                for (i in 0 until 8) {
+                    if (x[xbOff + 8 * k + i] >= 0) xval[8 * k + i] = x[xbOff + 8 * k + i]
+                    else { xval[8 * k + i] = -x[xbOff + 8 * k + i]; s = s or (1 shl i) }
+                }
+                blockSigns[k] = s
+            }
+            var max = xval[0]
+            for (i in 1 until 16) max = maxOf(max, xval[i])
+            L.fill(0, 0, 16)
+            if (max < GROUP_MAX_EPS_IQ2_S) { scales[ib] = 0f; continue }
+            var best = 0f
+            var scale = max / (2 * kMaxQ - 1)
+            isOnGrid[0] = true; isOnGrid[1] = true
+            for (is_ in -9..9) {
+                val id = (2 * kMaxQ - 1 + is_ * 0.1f) / max
+                val thisScale = 1f / id
+                for (k in 0 until 2) {
+                    for (i in 0 until 8) {
+                        var l = nearest_int(0.5f * (id * xval[8 * k + i] - 1))
+                        Laux[8 * k + i] = maxOf(0, minOf(kMaxQ - 1, l)).toByte()
+                    }
+                    var u = 0
+                    for (i in 0 until 8) u = u or (Laux[8 * k + i].toInt() shl (2 * i))
+                    var gridIdx = kmapQ2xs[u]
+                    isOnGridAux[k] = true
+                    if (gridIdx < 0) {
+                        isOnGridAux[k] = false
+                        val nOff = -kmapQ2xs[u] - 1
+                        gridIdx = iq2FindBestNeighbour(kneighborsQ2xs, nOff, kgridQ2xs, xval, 8 * k, waux, 8 * k, thisScale, Laux, 8 * k)
+                    }
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 16) {
+                    val w = weight[i]; val q = 2f * Laux[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0 && sumqx * sumqx > best * sumq2f) {
+                    scale = sumqx / sumq2f; best = scale * sumqx
+                    for (i in 0 until 16) L[i] = Laux[i]
+                    for (k in 0 until 2) isOnGrid[k] = isOnGridAux[k]
+                }
+            }
+            var nNotOnGrid = 0
+            for (k in 0 until 2) if (!isOnGrid[k]) nNotOnGrid++
+            if (nNotOnGrid > 0 && scale > 0) {
+                val id = 1f / scale
+                for (k in 0 until 2) {
+                    if (isOnGrid[k]) continue
+                    var u = 0
+                    for (i in 0 until 8) {
+                        var l = nearest_int(0.5f * (id * xval[8 * k + i] - 1))
+                        l = maxOf(0, minOf(kMaxQ - 1, l))
+                        u = u or (l shl (2 * i))
+                        L[8 * k + i] = l.toByte()
+                    }
+                    var gridIdx = kmapQ2xs[u]
+                    if (gridIdx < 0) {
+                        val nOff = -kmapQ2xs[u] - 1
+                        gridIdx = iq2FindBestNeighbour(kneighborsQ2xs, nOff, kgridQ2xs, xval, 8 * k, waux, 8 * k, scale, L, 8 * k)
+                    }
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 16) {
+                    val w = weight[i]; val q = 2f * L[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0) scale = sumqx / sumq2f
+            }
+            if (scale < 0) {
+                scale = -scale
+                for (k in 0 until 2) blockSigns[k] = blockSigns[k].inv() and 0xFF
+            }
+            for (k in 0 until 2) {
+                var u = 0
+                for (i in 0 until 8) u = u or (L[8 * k + i].toInt() shl (2 * i))
+                val gridIdx = kmapQ2xs[u]
+                require(gridIdx >= 0) { "Oops: found point $u not on grid" }
+                val i8 = 2 * ib + k
+                y[qsOff + i8] = (gridIdx and 255).toByte()
+                y[qhOff + i8 / 4] = (y[qhOff + i8 / 4].toInt() or ((gridIdx shr 8) shl (2 * (i8 % 4)))).toByte()
+                y[qsOff + QK_K / 8 + i8] = blockSigns[k].toByte()
+            }
+            require(scale >= 0)
+            scales[ib] = scale
+            maxScale = maxOf(maxScale, scale)
+        }
+
+        if (maxScale == 0f) continue
+
+        val d = maxScale / 31f
+        writeFp16(y, bOff, d * 0.9875f)
+        val id = 1f / d
+        for (ib in 0 until QK_K / 16) {
+            var l = nearest_int(0.5f * (id * scales[ib] - 1))
+            l = maxOf(0, minOf(15, l))
+            if (ib % 2 == 0) y[scOff + ib / 2] = l.toByte()
+            else y[scOff + ib / 2] = (y[scOff + ib / 2].toInt() or (l shl 4)).toByte()
+        }
+    }
+}
+
+// C line 3766: quantize_row_iq3_xxs_impl
+private fun quantize_row_iq3_xxs_impl(gridSize: Int, x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, n: Int, quantWeights: FloatArray?) {
+    val gindex = iq3DataIndex(gridSize)
+    val kgridQ3xs = iq3Data[gindex].grid!!
+    val kmapQ3xs = iq3Data[gindex].map!!
+    val kneighborsQ3xs = iq3Data[gindex].neighbours!!
+    require(n % QK_K == 0)
+
+    val kMaxQ = 8
+    val nbl = n / QK_K
+
+    val blockSizeBl: Int
+    val quantSize: Int
+    if (gridSize == 256) {
+        blockSizeBl = BlockIQ3XXS.SIZE_BYTES
+    } else {
+        blockSizeBl = BlockIQ3S.SIZE_BYTES
+    }
+    quantSize = blockSizeBl - 2 // minus the fp16 d
+
+    val scales = FloatArray(QK_K / 32)
+    val weight = FloatArray(32)
+    val xval = FloatArray(32)
+    val L = ByteArray(32)
+    val Laux = ByteArray(32)
+    val waux = FloatArray(32)
+    val isOnGrid = BooleanArray(8)
+    val isOnGridAux = BooleanArray(8)
+    val blockSigns = IntArray(8)
+    val q3 = ByteArray(3 * (QK_K / 8) + QK_K / 32)
+    // scales_and_signs start at q3[QK_K/4], qh starts at q3[3*(QK_K/8)]
+
+    for (ibl in 0 until nbl) {
+        val bOff = yOff + ibl * blockSizeBl
+        writeFp16(y, bOff, 0f)
+        q3.fill(0)
+
+        var maxScale = 0f
+        val xblOff = xOff + QK_K * ibl
+        var sumx2 = 0f
+        for (i in 0 until QK_K) sumx2 += x[xblOff + i] * x[xblOff + i]
+        val sigma2 = 2f * sumx2 / QK_K
+
+        for (ib in 0 until QK_K / 32) {
+            val xbOff = xblOff + 32 * ib
+            if (quantWeights != null) {
+                val qwOff = QK_K * ibl + 32 * ib
+                for (i in 0 until 32) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            } else {
+                for (i in 0 until 32) weight[i] = x[xbOff + i] * x[xbOff + i]
+            }
+            for (i in 0 until 32) waux[i] = kotlin.math.sqrt(weight[i])
+            for (k in 0 until 4) {
+                var nflip = 0; var s = 0
+                for (i in 0 until 8) {
+                    if (x[xbOff + 8 * k + i] >= 0) xval[8 * k + i] = x[xbOff + 8 * k + i]
+                    else { xval[8 * k + i] = -x[xbOff + 8 * k + i]; nflip++; s = s or (1 shl i) }
+                }
+                if (nflip % 2 != 0) {
+                    var imin = 0; var min = weight[8 * k + imin] * x[xbOff + 8 * k + imin] * x[xbOff + 8 * k + imin]
+                    for (i in 1 until 8) {
+                        val ax = weight[8 * k + i] * x[xbOff + 8 * k + i] * x[xbOff + 8 * k + i]
+                        if (ax < min) { min = ax; imin = i }
+                    }
+                    xval[8 * k + imin] = -xval[8 * k + imin]
+                    s = s xor (1 shl imin)
+                }
+                blockSigns[k] = s and 127
+            }
+            var max = xval[0]
+            for (i in 1 until 32) max = maxOf(max, xval[i])
+            L.fill(0, 0, 32)
+            if (max < GROUP_MAX_EPS_IQ3_XXS) { scales[ib] = 0f; continue }
+            var best = 0f
+            var scale = max / (2 * kMaxQ - 1)
+            for (k in 0 until 8) isOnGrid[k] = true
+            for (is_ in -15..15) {
+                val id = (2 * kMaxQ - 1 + is_ * 0.2f) / max
+                val thisScale = 1f / id
+                for (k in 0 until 8) {
+                    for (i in 0 until 4) {
+                        var l = nearest_int(0.5f * (id * xval[4 * k + i] - 1))
+                        Laux[4 * k + i] = maxOf(0, minOf(kMaxQ - 1, l)).toByte()
+                    }
+                    var u = 0
+                    for (i in 0 until 4) u = u or (Laux[4 * k + i].toInt() shl (3 * i))
+                    var gridIdx = kmapQ3xs[u]
+                    isOnGridAux[k] = true
+                    if (gridIdx < 0) {
+                        isOnGridAux[k] = false
+                        val nOff = -kmapQ3xs[u] - 1
+                        gridIdx = iq3FindBestNeighbour(kneighborsQ3xs, nOff, kgridQ3xs, xval, 4 * k, waux, 4 * k, thisScale, Laux, 4 * k)
+                    }
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 32) {
+                    val w = weight[i]; val q = 2f * Laux[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0 && sumqx * sumqx > best * sumq2f) {
+                    scale = sumqx / sumq2f; best = scale * sumqx
+                    for (i in 0 until 32) L[i] = Laux[i]
+                    for (k in 0 until 8) isOnGrid[k] = isOnGridAux[k]
+                }
+            }
+            var nNotOnGrid = 0
+            for (k in 0 until 8) if (!isOnGrid[k]) nNotOnGrid++
+            if (nNotOnGrid > 0 && scale > 0) {
+                val id = 1f / scale
+                for (k in 0 until 8) {
+                    if (isOnGrid[k]) continue
+                    var u = 0
+                    for (i in 0 until 4) {
+                        var l = nearest_int(0.5f * (id * xval[4 * k + i] - 1))
+                        l = maxOf(0, minOf(kMaxQ - 1, l))
+                        u = u or (l shl (3 * i))
+                    }
+                    var gridIdx = kmapQ3xs[u]
+                    if (gridIdx < 0) {
+                        val nOff = -kmapQ3xs[u] - 1
+                        gridIdx = iq3FindBestNeighbour(kneighborsQ3xs, nOff, kgridQ3xs, xval, 4 * k, waux, 4 * k, scale, L, 4 * k)
+                    }
+                    val gv = kgridQ3xs[gridIdx]
+                    for (i in 0 until 4) L[4 * k + i] = ((gridByte(gv, i) - 1) / 2).toByte()
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until 32) {
+                    val w = weight[i]; val q = 2f * L[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0) scale = sumqx / sumq2f
+            }
+            if (scale < 0) {
+                scale = -scale
+                for (k in 0 until 4) blockSigns[k] = (blockSigns[k].inv()) and 127
+            }
+            for (k in 0 until 8) {
+                var u = 0
+                for (i in 0 until 4) u = u or (L[4 * k + i].toInt() shl (3 * i))
+                val gridIdx = kmapQ3xs[u]
+                require(gridIdx >= 0) { "Oops: found point $u not on grid" }
+                if (gridSize == 256) {
+                    q3[8 * ib + k] = gridIdx.toByte()
+                } else {
+                    q3[8 * ib + k] = (gridIdx and 255).toByte()
+                    q3[3 * (QK_K / 8) + ib] = (q3[3 * (QK_K / 8) + ib].toInt() or ((gridIdx shr 8) shl k)).toByte()
+                }
+            }
+            // scales_and_signs at offset QK_K/4 = 64
+            val sasOff = QK_K / 4 + ib * 4
+            val sas = blockSigns[0] or (blockSigns[1] shl 7) or (blockSigns[2] shl 14) or (blockSigns[3] shl 21)
+            q3[sasOff + 0] = (sas and 0xFF).toByte()
+            q3[sasOff + 1] = ((sas shr 8) and 0xFF).toByte()
+            q3[sasOff + 2] = ((sas shr 16) and 0xFF).toByte()
+            q3[sasOff + 3] = ((sas shr 24) and 0xFF).toByte()
+
+            require(scale >= 0)
+            scales[ib] = scale
+            maxScale = maxOf(maxScale, scale)
+        }
+
+        if (maxScale == 0f) {
+            for (i in 0 until quantSize) y[bOff + 2 + i] = 0
+            continue
+        }
+
+        val d = maxScale / 31f
+        writeFp16(y, bOff, d * 1.0125f)
+        val id = 1f / d
+        for (ib in 0 until QK_K / 32) {
+            var l = nearest_int(0.5f * (id * scales[ib] - 1))
+            l = maxOf(0, minOf(15, l))
+            val sasOff = QK_K / 4 + ib * 4
+            val existing = (q3[sasOff + 3].toInt() and 0xFF) or ((q3[sasOff + 2].toInt() and 0xFF) shl 8) or
+                ((q3[sasOff + 1].toInt() and 0xFF) shl 16) or ((q3[sasOff + 0].toInt() and 0xFF) shl 24)
+            // store l in top 4 bits of the uint32
+            val sasVal = ((q3[sasOff + 0].toInt() and 0xFF)) or
+                ((q3[sasOff + 1].toInt() and 0xFF) shl 8) or
+                ((q3[sasOff + 2].toInt() and 0xFF) shl 16) or
+                ((q3[sasOff + 3].toInt() and 0xFF) shl 24)
+            val updated = sasVal or (l shl 28)
+            q3[sasOff + 0] = (updated and 0xFF).toByte()
+            q3[sasOff + 1] = ((updated shr 8) and 0xFF).toByte()
+            q3[sasOff + 2] = ((updated shr 16) and 0xFF).toByte()
+            q3[sasOff + 3] = ((updated shr 24) and 0xFF).toByte()
+        }
+        q3.copyInto(y, bOff + 2, 0, quantSize)
+    }
+}
+
+// C line 3997: quantize_row_iq3_s_impl
+private fun quantize_row_iq3_s_impl(
+    blkSize: Int, x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, n: Int,
+    quantWeights: FloatArray?,
+    scales: FloatArray, weight: FloatArray, xval: FloatArray,
+    L: ByteArray, Laux: ByteArray, waux: FloatArray,
+    isOnGrid: BooleanArray, isOnGridAux: BooleanArray, blockSigns: IntArray
+) {
+    val gindex = iq3DataIndex(512)
+    val kgridQ3xs = iq3Data[gindex].grid!!
+    val kmapQ3xs = iq3Data[gindex].map!!
+    val kneighborsQ3xs = iq3Data[gindex].neighbours!!
+    require(n % QK_K == 0)
+
+    val kMaxQ = 8
+    val nbl = n / QK_K
+    val blockSizeBl = BlockIQ3S.SIZE_BYTES
+    val bs4 = blkSize / 4
+    val bs8 = blkSize / 8
+
+    for (ibl in 0 until nbl) {
+        val bOff = yOff + ibl * blockSizeBl
+        for (i in 0 until blockSizeBl) y[bOff + i] = 0
+        writeFp16(y, bOff, 0f)
+
+        // block_iq3_s layout: d(2) + qs(QK_K/4=64) + qh(QK_K/32=8) + signs(QK_K/8=32) + scales(IQ3S_N_SCALE=4)
+        val qsOff = bOff + 2
+        val qhOff = qsOff + QK_K / 4
+        val signsOff = qhOff + QK_K / 32
+        val scOff = signsOff + QK_K / 8
+
+        var maxScale = 0f
+        val xblOff = xOff + QK_K * ibl
+        var sumx2 = 0f
+        for (i in 0 until QK_K) sumx2 += x[xblOff + i] * x[xblOff + i]
+        val sigma2 = 2f * sumx2 / QK_K
+
+        var qsPtr = qsOff
+        var signsPtr = signsOff
+
+        for (ib in 0 until QK_K / blkSize) {
+            val xbOff = xblOff + blkSize * ib
+            if (quantWeights != null) {
+                val qwOff = QK_K * ibl + blkSize * ib
+                for (i in 0 until blkSize) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            } else {
+                for (i in 0 until blkSize) weight[i] = x[xbOff + i] * x[xbOff + i]
+            }
+            for (i in 0 until blkSize) waux[i] = kotlin.math.sqrt(weight[i])
+            for (k in 0 until bs8) {
+                var s = 0
+                for (i in 0 until 8) {
+                    if (x[xbOff + 8 * k + i] >= 0) xval[8 * k + i] = x[xbOff + 8 * k + i]
+                    else { xval[8 * k + i] = -x[xbOff + 8 * k + i]; s = s or (1 shl i) }
+                }
+                blockSigns[k] = s
+            }
+            var max = xval[0]
+            for (i in 1 until blkSize) max = maxOf(max, xval[i])
+            L.fill(0, 0, blkSize)
+            if (max == 0f) { scales[ib] = 0f; qsPtr += bs4; signsPtr += bs8; continue }
+            var best = 0f
+            var scale = max / (2 * kMaxQ - 1)
+            for (k in 0 until bs4) isOnGrid[k] = false
+            for (is_ in -9..9) {
+                val id = (2 * kMaxQ - 1 + is_ * 0.2f) / max
+                val thisScale = 1f / id
+                for (k in 0 until bs4) {
+                    for (i in 0 until 4) {
+                        var l = nearest_int(0.5f * (id * xval[4 * k + i] - 1))
+                        Laux[4 * k + i] = maxOf(0, minOf(kMaxQ - 1, l)).toByte()
+                    }
+                    var u = 0
+                    for (i in 0 until 4) u = u or (Laux[4 * k + i].toInt() shl (3 * i))
+                    var gridIdx = kmapQ3xs[u]
+                    isOnGridAux[k] = true
+                    if (gridIdx < 0) {
+                        isOnGridAux[k] = false
+                        val nOff = -kmapQ3xs[u] - 1
+                        gridIdx = iq3FindBestNeighbour(kneighborsQ3xs, nOff, kgridQ3xs, xval, 4 * k, waux, 4 * k, thisScale, Laux, 4 * k)
+                    }
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until blkSize) {
+                    val w = weight[i]; val q = 2f * Laux[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0 && sumqx * sumqx > best * sumq2f) {
+                    scale = sumqx / sumq2f; best = scale * sumqx
+                    for (i in 0 until blkSize) L[i] = Laux[i]
+                    for (k in 0 until bs4) isOnGrid[k] = isOnGridAux[k]
+                }
+            }
+            var nNotOnGrid = 0
+            for (k in 0 until bs4) if (!isOnGrid[k]) nNotOnGrid++
+            if (nNotOnGrid > 0 && scale > 0) {
+                val id = 1f / scale
+                for (k in 0 until bs4) {
+                    var u = 0
+                    for (i in 0 until 4) {
+                        var l = nearest_int(0.5f * (id * xval[4 * k + i] - 1))
+                        l = maxOf(0, minOf(kMaxQ - 1, l))
+                        u = u or (l shl (3 * i))
+                    }
+                    var gridIdx = kmapQ3xs[u]
+                    if (gridIdx < 0) {
+                        val nOff = -kmapQ3xs[u] - 1
+                        gridIdx = iq3FindBestNeighbour(kneighborsQ3xs, nOff, kgridQ3xs, xval, 4 * k, waux, 4 * k, scale, L, 4 * k)
+                    }
+                    val gv = kgridQ3xs[gridIdx]
+                    for (i in 0 until 4) L[4 * k + i] = ((gridByte(gv, i) - 1) / 2).toByte()
+                }
+                var sumqx = 0f; var sumq2f = 0f
+                for (i in 0 until blkSize) {
+                    val w = weight[i]; val q = 2f * L[i] + 1f
+                    sumqx += w * xval[i] * q; sumq2f += w * q * q
+                }
+                if (sumq2f > 0) scale = sumqx / sumq2f
+            }
+            if (scale < 0) {
+                scale = -scale
+                for (k in 0 until bs8) blockSigns[k] = blockSigns[k].inv() and 0xFF
+            }
+            for (k in 0 until bs4) {
+                var u = 0
+                for (i in 0 until 4) u = u or (L[4 * k + i].toInt() shl (3 * i))
+                val gridIdx = kmapQ3xs[u]
+                require(gridIdx >= 0) { "Oops: found point $u not on grid" }
+                y[qsPtr + k] = (gridIdx and 255).toByte()
+                val qhIdx = (ib * bs4 + k)
+                y[qhOff + qhIdx / 8] = (y[qhOff + qhIdx / 8].toInt() or ((gridIdx shr 8) shl (qhIdx % 8))).toByte()
+            }
+            qsPtr += bs4
+            for (k in 0 until bs8) y[signsPtr + k] = blockSigns[k].toByte()
+            signsPtr += bs8
+            require(scale >= 0)
+            scales[ib] = scale
+            maxScale = maxOf(maxScale, scale)
+        }
+
+        if (maxScale == 0f) continue
+
+        val d = maxScale / 31f
+        writeFp16(y, bOff, d * 1.033f)
+        val id = 1f / d
+        for (ib in 0 until QK_K / blkSize step 2) {
+            var l1 = nearest_int(0.5f * (id * scales[ib + 0] - 1))
+            l1 = maxOf(0, minOf(15, l1))
+            var l2 = nearest_int(0.5f * (id * scales[ib + 1] - 1))
+            l2 = maxOf(0, minOf(15, l2))
+            y[scOff + ib / 2] = (l1 or (l2 shl 4)).toByte()
+        }
+    }
+}
+
+// C line 4334-4498: quantize_row_iq1_s_impl
+private fun quantize_row_iq1_s_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, n: Int, quantWeights: FloatArray?,
+    scales: FloatArray, weight: FloatArray, sumx: FloatArray, sumw: FloatArray,
+    pairs: FloatArray, L: ByteArray, index: IntArray, shifts: ByteArray
+) {
+    val gindex = iq2DataIndex(GGMLType.IQ1_S)
+    val kgridQ2xs = iq2Data[gindex].grid!!
+    val kmapQ2xs = iq2Data[gindex].map!!
+    val kneighborsQ2xs = iq2Data[gindex].neighbours!!
+    require(quantWeights != null) { "missing quantization weights" }
+    require(n % QK_K == 0)
+
+    val nbl = n / QK_K
+    val blockSizeSub = 32 // IQ1S_BLOCK_SIZE
+    val blockSizeBl = BlockIQ1S.SIZE_BYTES
+
+    val xP = floatArrayOf(-1f + IQ1S_DELTA, IQ1S_DELTA, 1f + IQ1S_DELTA)
+    val xM = floatArrayOf(-1f - IQ1S_DELTA, -IQ1S_DELTA, 1f - IQ1S_DELTA)
+
+    // idx shares memory with pairs: idx[2*j] is at pairs[2*j+1] reinterpreted as int
+    // In Kotlin we use a separate IntArray for idx
+    val idx = IntArray(2 * blockSizeSub)
+
+    for (ibl in 0 until nbl) {
+        val bOff = yOff + ibl * blockSizeBl
+        writeFp16(y, bOff, 0f)
+        for (i in 0 until QK_K / 8) y[bOff + 2 + i] = 0 // qs
+        for (i in 0 until QK_K / 16) writeShortLE(y, bOff + 2 + QK_K / 8 + i * 2, 0) // qh
+
+        var maxScale = 0f
+        val xblOff = xOff + QK_K * ibl
+        var sumx2 = 0f
+        for (i in 0 until QK_K) sumx2 += x[xblOff + i] * x[xblOff + i]
+        val sigma2 = 2f * sumx2 / QK_K
+
+        for (ib in 0 until QK_K / blockSizeSub) {
+            val xbOff = xblOff + blockSizeSub * ib
+            val qwOff = QK_K * ibl + blockSizeSub * ib
+            for (i in 0 until blockSizeSub) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            var max = kotlin.math.abs(x[xbOff])
+            for (i in 1 until blockSizeSub) max = maxOf(max, kotlin.math.abs(x[xbOff + i]))
+            if (max < GROUP_MAX_EPS_IQ1_S) {
+                scales[ib] = 0f; shifts[ib] = 1; L.fill(1, 0, blockSizeSub); continue
+            }
+            // sort pairs by value
+            for (j in 0 until blockSizeSub) {
+                pairs[2 * j] = x[xbOff + j]
+                idx[2 * j] = j
+            }
+            // sort by pairs[2*j] ascending (iq1_sort_helper)
+            val indices = (0 until blockSizeSub).sortedBy { pairs[2 * it] }.toIntArray()
+            val sortedPairs = FloatArray(2 * blockSizeSub)
+            val sortedIdx = IntArray(2 * blockSizeSub)
+            for (j in 0 until blockSizeSub) {
+                sortedPairs[2 * j] = pairs[2 * indices[j]]
+                sortedIdx[2 * j] = idx[2 * indices[j]]
+            }
+            for (j in 0 until blockSizeSub) { pairs[2 * j] = sortedPairs[2 * j]; idx[2 * j] = sortedIdx[2 * j] }
+
+            sumx[0] = 0f; sumw[0] = 0f
+            for (j in 0 until blockSizeSub) {
+                val i = idx[2 * j]
+                sumx[j + 1] = sumx[j] + weight[i] * x[xbOff + i]
+                sumw[j + 1] = sumw[j] + weight[i]
+            }
+            var bestScore = -Float.MAX_VALUE; var scale = max
+            var besti1 = -1; var besti2 = -1; var bestShift = 0
+            for (i1 in 0..blockSizeSub) {
+                for (i2 in i1..blockSizeSub) {
+                    var sqx = (sumx[i1] - sumx[0]) * xP[0] + (sumx[i2] - sumx[i1]) * xP[1] + (sumx[blockSizeSub] - sumx[i2]) * xP[2]
+                    var sq2 = (sumw[i1] - sumw[0]) * xP[0] * xP[0] + (sumw[i2] - sumw[i1]) * xP[1] * xP[1] + (sumw[blockSizeSub] - sumw[i2]) * xP[2] * xP[2]
+                    if (sq2 > 0 && sqx * sqx > bestScore * sq2) {
+                        scale = sqx / sq2; bestScore = scale * sqx
+                        besti1 = i1; besti2 = i2; bestShift = 1
+                    }
+                    sqx = (sumx[i1] - sumx[0]) * xM[0] + (sumx[i2] - sumx[i1]) * xM[1] + (sumx[blockSizeSub] - sumx[i2]) * xM[2]
+                    sq2 = (sumw[i1] - sumw[0]) * xM[0] * xM[0] + (sumw[i2] - sumw[i1]) * xM[1] * xM[1] + (sumw[blockSizeSub] - sumw[i2]) * xM[2] * xM[2]
+                    if (sq2 > 0 && sqx * sqx > bestScore * sq2) {
+                        scale = sqx / sq2; bestScore = scale * sqx
+                        besti1 = i1; besti2 = i2; bestShift = -1
+                    }
+                }
+            }
+            if (besti1 < 0 || besti2 < 0 || bestShift == 0) {
+                scales[ib] = 0f; shifts[ib] = 1; L.fill(1, 0, blockSizeSub); continue
+            }
+            for (j in 0 until besti1) L[idx[2 * j]] = 0
+            for (j in besti1 until besti2) L[idx[2 * j]] = 1
+            for (j in besti2 until blockSizeSub) L[idx[2 * j]] = 2
+            if (scale < 0) {
+                for (j in 0 until blockSizeSub) L[j] = (2 - L[j]).toByte()
+                scale = -scale; bestShift = -bestShift
+            }
+            var allOnGrid = true
+            val xx = if (bestShift == 1) xP else xM
+            for (k in 0 until blockSizeSub / 8) {
+                var u = 0
+                for (j in 0 until 8) u = u or (L[8 * k + j].toInt() shl (2 * j))
+                var gridIdx = kmapQ2xs[u]
+                if (gridIdx < 0) {
+                    allOnGrid = false
+                    val nOff = -kmapQ2xs[u] - 1
+                    gridIdx = iq1FindBestNeighbour2(kneighborsQ2xs, nOff, kgridQ2xs, x, xbOff + 8 * k, weight, 8 * k, scale, xx, L, 8 * k, NGRID_IQ1S)
+                    require(gridIdx >= 0)
+                }
+                index[k] = gridIdx
+            }
+            if (!allOnGrid) {
+                var sqx = 0f; var sq2 = 0f
+                for (k in 0 until blockSizeSub / 8) {
+                    val gv = kgridQ2xs[index[k]]
+                    for (j in 0 until 8) {
+                        val w = weight[8 * k + j]
+                        val q = xx[(gridByte(gv, j) - 1) / 2]
+                        sqx += w * q * x[xbOff + 8 * k + j]
+                        sq2 += w * q * q
+                    }
+                }
+                if (sqx > 0 && sq2 > 0) scale = sqx / sq2
+            }
+            var h = 0
+            for (k in 0 until blockSizeSub / 8) {
+                y[bOff + 2 + (blockSizeSub / 8) * ib + k] = (index[k] and 255).toByte()
+                h = h or ((index[k] shr 8) shl (3 * k))
+            }
+            writeShortLE(y, bOff + 2 + QK_K / 8 + ib * 2, h.toShort())
+            require(scale >= 0)
+            scales[ib] = scale
+            shifts[ib] = bestShift.toByte()
+            maxScale = maxOf(maxScale, scale)
+        }
+
+        if (maxScale == 0f) continue
+
+        val d = maxScale / 15f
+        writeFp16(y, bOff, d * 1.125f)
+        val id = 1f / d
+        for (ib in 0 until QK_K / blockSizeSub) {
+            var l = nearest_int(0.5f * (id * scales[ib] - 1))
+            l = maxOf(0, minOf(7, l))
+            if (shifts[ib].toInt() == -1) l = l or 8
+            val qhVal = readUShortLE(y, bOff + 2 + QK_K / 8 + ib * 2)
+            writeShortLE(y, bOff + 2 + QK_K / 8 + ib * 2, (qhVal or (l shl 12)).toShort())
+        }
+    }
+}
+
+// C line 4520-4772: quantize_row_iq1_m_impl
+private fun quantize_row_iq1_m_impl(
+    x: FloatArray, xOff: Int, y: ByteArray, yOff: Int, n: Int, quantWeights: FloatArray?,
+    scales: FloatArray, weight: FloatArray, pairs: FloatArray,
+    L: ByteArray, index: IntArray, shifts: ByteArray
+) {
+    val gindex = iq2DataIndex(GGMLType.IQ1_M)
+    val kgridQ2xs = iq2Data[gindex].grid!!
+    val kmapQ2xs = iq2Data[gindex].map!!
+    val kneighborsQ2xs = iq2Data[gindex].neighbours!!
+    require(n % QK_K == 0)
+
+    val nbl = n / QK_K
+    val blockSizeSub = 16 // IQ1M_BLOCK_SIZE
+    val blockSizeBl = BlockIQ1M.SIZE_BYTES
+
+    val xP = floatArrayOf(-1f + IQ1M_DELTA, IQ1M_DELTA, 1f + IQ1M_DELTA)
+    val xM = floatArrayOf(-1f - IQ1M_DELTA, -IQ1M_DELTA, 1f - IQ1M_DELTA)
+    val masks = intArrayOf(0x00, 0x80, 0x08, 0x88)
+
+    val idx = IntArray(2 * blockSizeSub)
+    val sumqx = FloatArray(4); val sumq2 = FloatArray(4)
+
+    for (ibl in 0 until nbl) {
+        val bOff = yOff + ibl * blockSizeBl
+        // block_iq1_m: qs[QK_K/8=32] + qh[QK_K/16=16] + scales[QK_K/32=8]
+        val qsOff = bOff
+        val qhOff = bOff + QK_K / 8
+        val scOff = bOff + QK_K / 8 + QK_K / 16
+        for (i in 0 until blockSizeBl) y[bOff + i] = 0
+
+        var maxScale = 0f
+        val xblOff = xOff + QK_K * ibl
+        var sumx2 = 0f
+        for (i in 0 until QK_K) sumx2 += x[xblOff + i] * x[xblOff + i]
+        val sigma2 = 2f * sumx2 / QK_K
+
+        for (ib in 0 until QK_K / blockSizeSub) {
+            val xbOff = xblOff + blockSizeSub * ib
+            if (quantWeights != null) {
+                val qwOff = QK_K * ibl + blockSizeSub * ib
+                for (i in 0 until blockSizeSub) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            } else {
+                for (i in 0 until blockSizeSub) weight[i] = x[xbOff + i] * x[xbOff + i]
+            }
+            var max = kotlin.math.abs(x[xbOff])
+            for (i in 1 until blockSizeSub) max = maxOf(max, kotlin.math.abs(x[xbOff + i]))
+            if (max < GROUP_MAX_EPS_IQ1_M) {
+                scales[ib] = 0f; shifts[ib] = 0; L.fill(1, 0, blockSizeSub); continue
+            }
+            for (j in 0 until blockSizeSub) { pairs[2 * j] = x[xbOff + j]; idx[2 * j] = j }
+            val sortOrder = (0 until blockSizeSub).sortedBy { pairs[2 * it] }.toIntArray()
+            val sortedP = FloatArray(2 * blockSizeSub); val sortedI = IntArray(2 * blockSizeSub)
+            for (j in 0 until blockSizeSub) { sortedP[2 * j] = pairs[2 * sortOrder[j]]; sortedI[2 * j] = idx[2 * sortOrder[j]] }
+            for (j in 0 until blockSizeSub) { pairs[2 * j] = sortedP[2 * j]; idx[2 * j] = sortedI[2 * j] }
+
+            var bestScore = -Float.MAX_VALUE; var scale = max
+            var besti1 = -1; var besti2 = -1; var bestK = -1
+            for (i1 in 0..blockSizeSub) {
+                for (i2 in i1..blockSizeSub) {
+                    sumqx.fill(0f); sumq2.fill(0f)
+                    for (j in 0 until i1) {
+                        val ii = idx[2 * j]
+                        if (ii < blockSizeSub / 2) {
+                            sumqx[0] += weight[ii] * xP[0] * x[xbOff + ii]; sumqx[1] += weight[ii] * xP[0] * x[xbOff + ii]
+                            sumqx[2] += weight[ii] * xM[0] * x[xbOff + ii]; sumqx[3] += weight[ii] * xM[0] * x[xbOff + ii]
+                            sumq2[0] += weight[ii] * xP[0] * xP[0]; sumq2[1] += weight[ii] * xP[0] * xP[0]
+                            sumq2[2] += weight[ii] * xM[0] * xM[0]; sumq2[3] += weight[ii] * xM[0] * xM[0]
+                        } else {
+                            sumqx[0] += weight[ii] * xP[0] * x[xbOff + ii]; sumqx[2] += weight[ii] * xP[0] * x[xbOff + ii]
+                            sumqx[1] += weight[ii] * xM[0] * x[xbOff + ii]; sumqx[3] += weight[ii] * xM[0] * x[xbOff + ii]
+                            sumq2[0] += weight[ii] * xP[0] * xP[0]; sumq2[2] += weight[ii] * xP[0] * xP[0]
+                            sumq2[1] += weight[ii] * xM[0] * xM[0]; sumq2[3] += weight[ii] * xM[0] * xM[0]
+                        }
+                    }
+                    for (j in i1 until i2) {
+                        val ii = idx[2 * j]
+                        if (ii < blockSizeSub / 2) {
+                            sumqx[0] += weight[ii] * xP[1] * x[xbOff + ii]; sumqx[1] += weight[ii] * xP[1] * x[xbOff + ii]
+                            sumqx[2] += weight[ii] * xM[1] * x[xbOff + ii]; sumqx[3] += weight[ii] * xM[1] * x[xbOff + ii]
+                            sumq2[0] += weight[ii] * xP[1] * xP[1]; sumq2[1] += weight[ii] * xP[1] * xP[1]
+                            sumq2[2] += weight[ii] * xM[1] * xM[1]; sumq2[3] += weight[ii] * xM[1] * xM[1]
+                        } else {
+                            sumqx[0] += weight[ii] * xP[1] * x[xbOff + ii]; sumqx[2] += weight[ii] * xP[1] * x[xbOff + ii]
+                            sumqx[1] += weight[ii] * xM[1] * x[xbOff + ii]; sumqx[3] += weight[ii] * xM[1] * x[xbOff + ii]
+                            sumq2[0] += weight[ii] * xP[1] * xP[1]; sumq2[2] += weight[ii] * xP[1] * xP[1]
+                            sumq2[1] += weight[ii] * xM[1] * xM[1]; sumq2[3] += weight[ii] * xM[1] * xM[1]
+                        }
+                    }
+                    for (j in i2 until blockSizeSub) {
+                        val ii = idx[2 * j]
+                        if (ii < blockSizeSub / 2) {
+                            sumqx[0] += weight[ii] * xP[2] * x[xbOff + ii]; sumqx[1] += weight[ii] * xP[2] * x[xbOff + ii]
+                            sumqx[2] += weight[ii] * xM[2] * x[xbOff + ii]; sumqx[3] += weight[ii] * xM[2] * x[xbOff + ii]
+                            sumq2[0] += weight[ii] * xP[2] * xP[2]; sumq2[1] += weight[ii] * xP[2] * xP[2]
+                            sumq2[2] += weight[ii] * xM[2] * xM[2]; sumq2[3] += weight[ii] * xM[2] * xM[2]
+                        } else {
+                            sumqx[0] += weight[ii] * xP[2] * x[xbOff + ii]; sumqx[2] += weight[ii] * xP[2] * x[xbOff + ii]
+                            sumqx[1] += weight[ii] * xM[2] * x[xbOff + ii]; sumqx[3] += weight[ii] * xM[2] * x[xbOff + ii]
+                            sumq2[0] += weight[ii] * xP[2] * xP[2]; sumq2[2] += weight[ii] * xP[2] * xP[2]
+                            sumq2[1] += weight[ii] * xM[2] * xM[2]; sumq2[3] += weight[ii] * xM[2] * xM[2]
+                        }
+                    }
+                    for (k in 0 until 4) {
+                        if (sumq2[k] > 0 && sumqx[k] * sumqx[k] > bestScore * sumq2[k]) {
+                            scale = sumqx[k] / sumq2[k]; bestScore = scale * sumqx[k]
+                            besti1 = i1; besti2 = i2; bestK = k
+                        }
+                    }
+                }
+            }
+            if (besti1 < 0 || besti2 < 0 || bestK < 0) {
+                scales[ib] = 0f; shifts[ib] = 0; L.fill(1, 0, blockSizeSub); continue
+            }
+            for (j in 0 until besti1) L[idx[2 * j]] = 0
+            for (j in besti1 until besti2) L[idx[2 * j]] = 1
+            for (j in besti2 until blockSizeSub) L[idx[2 * j]] = 2
+            if (scale < 0) {
+                for (j in 0 until blockSizeSub) L[j] = (2 - L[j]).toByte()
+                scale = -scale
+                bestK = when (bestK) { 0 -> 3; 1 -> 2; 2 -> 1; else -> 0 }
+            }
+            var allOnGrid = true
+            for (k in 0 until blockSizeSub / 8) {
+                val xx = if (k == 0) { if (bestK < 2) xP else xM } else { if (bestK % 2 == 0) xP else xM }
+                var u = 0
+                for (j in 0 until 8) u = u or (L[8 * k + j].toInt() shl (2 * j))
+                var gridIdx = kmapQ2xs[u]
+                if (gridIdx < 0) {
+                    allOnGrid = false
+                    val nOff = -kmapQ2xs[u] - 1
+                    gridIdx = iq1FindBestNeighbour2(kneighborsQ2xs, nOff, kgridQ2xs, x, xbOff + 8 * k, weight, 8 * k, scale, xx, L, 8 * k, NGRID_IQ1S)
+                    require(gridIdx >= 0)
+                }
+                index[k] = gridIdx
+            }
+            if (!allOnGrid) {
+                var sqxF = 0f; var sq2F = 0f
+                for (k in 0 until blockSizeSub / 8) {
+                    val xx = if (k == 0) { if (bestK < 2) xP else xM } else { if (bestK % 2 == 0) xP else xM }
+                    val gv = kgridQ2xs[index[k]]
+                    for (j in 0 until 8) {
+                        val w = weight[8 * k + j]
+                        val q = xx[(gridByte(gv, j) - 1) / 2]
+                        sqxF += w * q * x[xbOff + 8 * k + j]
+                        sq2F += w * q * q
+                    }
+                }
+                if (sqxF > 0 && sq2F > 0) scale = sqxF / sq2F
+            }
+            y[qsOff + 2 * ib + 0] = (index[0] and 255).toByte()
+            y[qsOff + 2 * ib + 1] = (index[1] and 255).toByte()
+            y[qhOff + ib] = ((index[0] shr 8) or ((index[1] shr 8) shl 4)).toByte()
+            require(scale >= 0)
+            scales[ib] = scale
+            shifts[ib] = bestK.toByte()
+            maxScale = maxOf(maxScale, scale)
+        }
+
+        if (maxScale == 0f) continue
+
+        // sc is uint16_t * scales, so we read/write pairs of bytes from scOff
+        val d = maxScale / 15f
+        val id = 1f / d
+        var sqxF = 0f; var sq2F = 0f
+        for (ib in 0 until QK_K / blockSizeSub) {
+            var l = nearest_int(0.5f * (id * scales[ib] - 1))
+            l = maxOf(0, minOf(7, l))
+            val scIdx = ib / 4
+            val scShift = 3 * (ib % 4)
+            val scVal = readUShortLE(y, scOff + scIdx * 2)
+            writeShortLE(y, scOff + scIdx * 2, (scVal or (l shl scShift)).toShort())
+            y[qhOff + ib] = (y[qhOff + ib].toInt() or masks[shifts[ib].toInt()]).toByte()
+
+            val xbOff = xblOff + blockSizeSub * ib
+            if (quantWeights != null) {
+                val qwOff = QK_K * ibl + blockSizeSub * ib
+                for (i in 0 until blockSizeSub) weight[i] = quantWeights[qwOff + i] * kotlin.math.sqrt(sigma2 + x[xbOff + i] * x[xbOff + i])
+            } else {
+                for (i in 0 until blockSizeSub) weight[i] = x[xbOff + i] * x[xbOff + i]
+            }
+            for (k in 0 until blockSizeSub / 8) {
+                val xx = if (k == 0) { if (shifts[ib].toInt() < 2) xP else xM } else { if (shifts[ib].toInt() % 2 == 0) xP else xM }
+                val qsV = y[qsOff + 2 * ib + k].toInt() and 0xFF
+                val qhV = y[qhOff + ib].toInt() and 0xFF
+                val gridIdx = qsV + (((qhV shl (8 - 4 * k)) and 0x700))
+                val gv = kgridQ2xs[gridIdx]
+                for (j in 0 until 8) {
+                    val w = weight[8 * k + j]
+                    val q = xx[(gridByte(gv, j) - 1) / 2] * (2 * l + 1)
+                    sqxF += w * q * x[xbOff + 8 * k + j]
+                    sq2F += w * q * q
+                }
+            }
+        }
+        var dFinal = d
+        if (sq2F > 0) dFinal = sqxF / sq2F
+        val s = IQ1MScale(GGML_FP32_TO_FP16(dFinal * 1.1125f))
+        val su16 = s.u16
+        val sc0 = readUShortLE(y, scOff + 0); writeShortLE(y, scOff + 0, (sc0 or ((su16 and 0x000f) shl 12)).toShort())
+        val sc1 = readUShortLE(y, scOff + 2); writeShortLE(y, scOff + 2, (sc1 or ((su16 and 0x00f0) shl 8)).toShort())
+        val sc2 = readUShortLE(y, scOff + 4); writeShortLE(y, scOff + 4, (sc2 or ((su16 and 0x0f00) shl 4)).toShort())
+        val sc3 = readUShortLE(y, scOff + 6); writeShortLE(y, scOff + 6, (sc3 or ((su16 and 0xf000) shl 0)).toShort())
+    }
+}
+
+// C line 3525
 fun quantize_iq2_xxs(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq2_xxs: requires IQ grid tables")
+    require(nPerRow % QK_K == 0L)
+    val nblock = (nPerRow / QK_K).toInt()
+    val rowSize = nblock * BlockIQ2XXS.SIZE_BYTES
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_iq2_xxs_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize
+    }
+    return nrows * rowSize
 }
 
+// C line 3537
 fun quantize_iq2_xs(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq2_xs: requires IQ grid tables")
+    require(nPerRow % QK_K == 0L)
+    val nblock = (nPerRow / QK_K).toInt()
+    val rowSize = nblock * BlockIQ2XS.SIZE_BYTES
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_iq2_xs_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize
+    }
+    return nrows * rowSize
 }
 
+// C line 5139
 fun quantize_iq2_s(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq2_s: requires IQ grid tables")
+    require(nPerRow % QK_K == 0L)
+    val nblock = (nPerRow / QK_K).toInt()
+    val rowSize = nblock * BlockIQ2S.SIZE_BYTES
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_iq2_s_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize
+    }
+    return nrows * rowSize
 }
 
+// C line 3980
 fun quantize_iq3_xxs(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq3_xxs: requires IQ grid tables")
+    require(nPerRow % QK_K == 0L)
+    val nblock = (nPerRow / QK_K).toInt()
+    val rowSize = nblock * BlockIQ3XXS.SIZE_BYTES
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_iq3_xxs_impl(256, src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize
+    }
+    return nrows * rowSize
 }
 
+// C line 4500
 fun quantize_iq1_s(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq1_s: requires IQ grid tables")
+    require(nPerRow % QK_K == 0L)
+    val IQ1S_BLOCK_SIZE = 32
+    val scales = FloatArray(QK_K / IQ1S_BLOCK_SIZE)
+    val weight = FloatArray(IQ1S_BLOCK_SIZE)
+    val L = ByteArray(IQ1S_BLOCK_SIZE)
+    val sumx = FloatArray(IQ1S_BLOCK_SIZE + 1)
+    val sumw = FloatArray(IQ1S_BLOCK_SIZE + 1)
+    val pairs = FloatArray(2 * IQ1S_BLOCK_SIZE)
+    val index = IntArray(IQ1S_BLOCK_SIZE / 8)
+    val shifts = ByteArray(QK_K / IQ1S_BLOCK_SIZE)
+    val nblock = (nPerRow / QK_K).toInt()
+    val rowSize = nblock * BlockIQ1S.SIZE_BYTES
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_iq1_s_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, scales, weight, sumx, sumw, pairs, L, index, shifts)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize
+    }
+    return nrows * rowSize
 }
 
+// C line 4774
 fun quantize_iq1_m(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq1_m: requires IQ grid tables")
+    require(nPerRow % QK_K == 0L)
+    val IQ1M_BLOCK_SIZE = 16
+    val scales = FloatArray(QK_K / IQ1M_BLOCK_SIZE)
+    val weight = FloatArray(IQ1M_BLOCK_SIZE)
+    val L = ByteArray(IQ1M_BLOCK_SIZE)
+    val pairs = FloatArray(2 * IQ1M_BLOCK_SIZE)
+    val index = IntArray(IQ1M_BLOCK_SIZE / 8)
+    val shifts = ByteArray(QK_K / IQ1M_BLOCK_SIZE)
+    val nblock = (nPerRow / QK_K).toInt()
+    val rowSize = nblock * BlockIQ1M.SIZE_BYTES
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_iq1_m_impl(src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix, scales, weight, pairs, L, index, shifts)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize
+    }
+    return nrows * rowSize
 }
 
 // C line 4905
@@ -3252,24 +4710,274 @@ fun quantize_iq4_xs(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long,
     return nrows * nblock * blockSize.toLong()
 }
 
+// C line 4181
 fun quantize_iq3_s(src: FloatArray, dst: ByteArray, nrows: Long, nPerRow: Long, imatrix: FloatArray?): Long {
-    TODO("quantize_iq3_s: requires IQ grid tables")
+    require(nPerRow % QK_K == 0L)
+    val nblock = (nPerRow / QK_K).toInt()
+    val IQ3S_BLOCK_SIZE = 32
+    val scales = FloatArray(QK_K / IQ3S_BLOCK_SIZE)
+    val weight = FloatArray(IQ3S_BLOCK_SIZE)
+    val xval = FloatArray(IQ3S_BLOCK_SIZE)
+    val L = ByteArray(IQ3S_BLOCK_SIZE)
+    val Laux = ByteArray(IQ3S_BLOCK_SIZE)
+    val waux = FloatArray(IQ3S_BLOCK_SIZE)
+    val isOnGrid = BooleanArray(IQ3S_BLOCK_SIZE / 4)
+    val isOnGridAux = BooleanArray(IQ3S_BLOCK_SIZE / 4)
+    val blockSigns = IntArray(IQ3S_BLOCK_SIZE / 8)
+    val rowSize = nblock * BlockIQ3S.SIZE_BYTES
+    var srcOff = 0; var dstOff = 0
+    for (row in 0 until nrows) {
+        quantize_row_iq3_s_impl(IQ3S_BLOCK_SIZE, src, srcOff, dst, dstOff, nPerRow.toInt(), imatrix,
+            scales, weight, xval, L, Laux, waux, isOnGrid, isOnGridAux, blockSigns)
+        srcOff += nPerRow.toInt()
+        dstOff += rowSize
+    }
+    return nrows * rowSize
 }
 
 // IQ init/free
 
+// C line 2777
 fun iq2xs_init_impl(type: GGMLType) {
-    TODO("iq2xs_init_impl: requires IQ grid table initialization")
+    val gindex = iq2DataIndex(type)
+    val gridSize = iq2GridSize(type)
+    if (iq2Data[gindex].grid != null) return
+
+    val kgrid2bit256 = ushortArrayOf(
+        0u, 2u, 5u, 8u, 10u, 17u, 20u, 32u, 34u, 40u, 42u, 65u, 68u, 80u, 88u, 97u,
+        100u, 128u, 130u, 138u, 162u, 257u, 260u, 272u, 277u, 320u, 388u, 408u, 512u, 514u, 546u, 642u,
+        1025u, 1028u, 1040u, 1057u, 1060u, 1088u, 1090u, 1096u, 1120u, 1153u, 1156u, 1168u, 1188u, 1280u, 1282u, 1288u,
+        1312u, 1350u, 1385u, 1408u, 1425u, 1545u, 1552u, 1600u, 1668u, 1700u, 2048u, 2053u, 2056u, 2068u, 2088u, 2113u,
+        2116u, 2128u, 2130u, 2184u, 2308u, 2368u, 2562u, 2580u, 4097u, 4100u, 4112u, 4129u, 4160u, 4192u, 4228u, 4240u,
+        4245u, 4352u, 4360u, 4384u, 4432u, 4442u, 4480u, 4644u, 4677u, 5120u, 5128u, 5152u, 5157u, 5193u, 5248u, 5400u,
+        5474u, 5632u, 5654u, 6145u, 6148u, 6160u, 6208u, 6273u, 6400u, 6405u, 6560u, 6737u, 8192u, 8194u, 8202u, 8260u,
+        8289u, 8320u, 8322u, 8489u, 8520u, 8704u, 8706u, 9217u, 9220u, 9232u, 9280u, 9302u, 9472u, 9537u, 9572u, 9872u,
+        10248u, 10272u, 10388u, 10820u, 16385u, 16388u, 16400u, 16408u, 16417u, 16420u, 16448u, 16456u, 16470u, 16480u, 16513u, 16516u,
+        16528u, 16640u, 16672u, 16737u, 16768u, 16773u, 16897u, 16912u, 16968u, 16982u, 17000u, 17408u, 17416u, 17440u, 17536u, 17561u,
+        17682u, 17700u, 17920u, 18433u, 18436u, 18448u, 18496u, 18501u, 18688u, 18776u, 18785u, 18818u, 19013u, 19088u, 20480u, 20488u,
+        20497u, 20505u, 20512u, 20608u, 20616u, 20740u, 20802u, 20900u, 21137u, 21648u, 21650u, 21770u, 22017u, 22100u, 22528u, 22545u,
+        22553u, 22628u, 22848u, 23048u, 24580u, 24592u, 24640u, 24680u, 24832u, 24917u, 25112u, 25184u, 25600u, 25605u, 25872u, 25874u,
+        25988u, 26690u, 32768u, 32770u, 32778u, 32833u, 32898u, 33028u, 33048u, 33088u, 33297u, 33793u, 33796u, 33808u, 33813u, 33856u,
+        33888u, 34048u, 34118u, 34196u, 34313u, 34368u, 34400u, 34818u, 35076u, 35345u, 36868u, 36880u, 36900u, 36928u, 37025u, 37142u,
+        37248u, 37445u, 37888u, 37922u, 37956u, 38225u, 39041u, 39200u, 40962u, 41040u, 41093u, 41225u, 41472u, 42008u, 43088u, 43268u
+    )
+
+    // NOTE: kgrid_2bit_512, kgrid_1bit_2048, kgrid_2bit_1024 are large tables.
+    // For brevity we use the grid arrays from iq1s_grid (for IQ1_S/IQ1_M) and
+    // construct the grid lookup for IQ2_XS from kgrid_2bit_512 inline.
+    // The full tables are defined inline in the C source at lines 2801-3030.
+
+    val kgrid: UShortArray
+    val kgridFull: UShortArray?
+
+    // For IQ1_S and IQ1_M, we use a dedicated grid from the C source (kgrid_1bit_2048).
+    // For IQ2_S, we use kgrid_2bit_1024.
+    // These are very large. We embed them here exactly as in the C source.
+    // To keep this function manageable, we store them as file-level lazy vals.
+    when {
+        type == GGMLType.IQ2_XXS -> { kgrid = kgrid2bit256 }
+        type == GGMLType.IQ2_XS -> { kgrid = kgrid2bit512 }
+        type == GGMLType.IQ1_S || type == GGMLType.IQ1_M -> { kgrid = kgrid1bit2048 }
+        else -> { kgrid = kgrid2bit1024 } // IQ2_S
+    }
+
+    val kmapSize = 43692
+    val nwant = if (type == GGMLType.IQ1_S || type == GGMLType.IQ1_M) 3 else if (type == GGMLType.IQ2_S) 1 else 2
+
+    val theGrid = ULongArray(gridSize)
+    for (k in 0 until gridSize) {
+        var v = 0uL
+        for (i in 0 until 8) {
+            val l = ((kgrid[k].toInt() shr (2 * i)) and 0x3)
+            val b = (2 * l + 1).toByte()
+            v = v or ((b.toULong() and 0xFFuL) shl (8 * i))
+        }
+        theGrid[k] = v
+    }
+    iq2Data[gindex].grid = theGrid
+
+    val kmapQ2xs = IntArray(kmapSize) { -1 }
+    iq2Data[gindex].map = kmapQ2xs
+
+    for (i in 0 until gridSize) {
+        val gv = theGrid[i]
+        var index = 0
+        for (k in 0 until 8) {
+            val q = ((gridByte(gv, k).toInt() and 0xFF) - 1) / 2
+            index = index or (q shl (2 * k))
+        }
+        kmapQ2xs[index] = i
+    }
+
+    // First pass: count neighbours
+    val dist2 = IntArray(2 * gridSize)
+    var numNeighbors = 0; var numNotInMap = 0
+    for (i in 0 until kmapSize) {
+        if (kmapQ2xs[i] >= 0) continue
+        numNotInMap++
+        val pos = ByteArray(8)
+        for (k in 0 until 8) { val l = (i shr (2 * k)) and 0x3; pos[k] = (2 * l + 1).toByte() }
+        for (j in 0 until gridSize) {
+            var d2 = 0
+            for (k in 0 until 8) { val diff = gridByte(theGrid[j], k) - pos[k]; d2 += diff * diff }
+            dist2[2 * j + 0] = d2; dist2[2 * j + 1] = j
+        }
+        // sort dist2 pairs
+        val sortedIndices = (0 until gridSize).sortedWith(compareBy<Int> { dist2[2 * it] }.thenBy { dist2[2 * it + 1] })
+        val tmpD = IntArray(2 * gridSize)
+        for (j in 0 until gridSize) { tmpD[2 * j] = dist2[2 * sortedIndices[j]]; tmpD[2 * j + 1] = dist2[2 * sortedIndices[j] + 1] }
+        for (j in 0 until 2 * gridSize) dist2[j] = tmpD[j]
+
+        var n = 0; var d2v = dist2[0]; var nhave = 1
+        for (j in 0 until gridSize) {
+            if (dist2[2 * j] > d2v) {
+                if (nhave == nwant) break
+                d2v = dist2[2 * j]; nhave++
+            }
+            n++
+        }
+        numNeighbors += n
+    }
+
+    val kneighborsQ2xs = UShortArray(numNeighbors + numNotInMap)
+    iq2Data[gindex].neighbours = kneighborsQ2xs
+    var counter = 0
+    for (i in 0 until kmapSize) {
+        if (kmapQ2xs[i] >= 0) continue
+        val pos = ByteArray(8)
+        for (k in 0 until 8) { val l = (i shr (2 * k)) and 0x3; pos[k] = (2 * l + 1).toByte() }
+        for (j in 0 until gridSize) {
+            var d2 = 0
+            for (k in 0 until 8) { val diff = gridByte(theGrid[j], k) - pos[k]; d2 += diff * diff }
+            dist2[2 * j + 0] = d2; dist2[2 * j + 1] = j
+        }
+        val sortedIndices = (0 until gridSize).sortedWith(compareBy<Int> { dist2[2 * it] }.thenBy { dist2[2 * it + 1] })
+        val tmpD = IntArray(2 * gridSize)
+        for (j in 0 until gridSize) { tmpD[2 * j] = dist2[2 * sortedIndices[j]]; tmpD[2 * j + 1] = dist2[2 * sortedIndices[j] + 1] }
+        for (j in 0 until 2 * gridSize) dist2[j] = tmpD[j]
+
+        kmapQ2xs[i] = -(counter + 1)
+        val startIdx = counter++
+        var d2v = dist2[0]; var n = 0; var nhave = 1
+        for (j in 0 until gridSize) {
+            if (dist2[2 * j] > d2v) {
+                if (nhave == nwant) break
+                d2v = dist2[2 * j]; nhave++
+            }
+            kneighborsQ2xs[counter++] = dist2[2 * j + 1].toUShort()
+            n++
+        }
+        kneighborsQ2xs[startIdx] = n.toUShort()
+    }
 }
 
+// C line 3133
 fun iq2xs_free_impl(type: GGMLType) {
-    TODO("iq2xs_free_impl: requires IQ grid table cleanup")
+    require(type == GGMLType.IQ2_XXS || type == GGMLType.IQ2_XS || type == GGMLType.IQ1_S || type == GGMLType.IQ1_M || type == GGMLType.IQ2_S)
+    val gindex = iq2DataIndex(type)
+    if (iq2Data[gindex].grid != null) {
+        iq2Data[gindex].grid = null
+        iq2Data[gindex].map = null
+        iq2Data[gindex].neighbours = null
+    }
 }
 
+// C line 3576
 fun iq3xs_init_impl(gridSize: Int) {
-    TODO("iq3xs_init_impl: requires IQ grid table initialization")
+    val gindex = iq3DataIndex(gridSize)
+    if (iq3Data[gindex].grid != null) return
+
+    val kgrid = if (gridSize == 256) kgrid3bit256 else kgrid3bit512
+
+    val kmapSize = 4096
+    val nwant = if (gridSize == 256) 2 else 3
+
+    val theGrid = UIntArray(gridSize)
+    for (k in 0 until gridSize) {
+        var v = 0u
+        for (i in 0 until 4) {
+            val l = (kgrid[k].toInt() shr (3 * i)) and 0x7
+            val b = (2 * l + 1).toByte()
+            v = v or ((b.toUInt() and 0xFFu) shl (8 * i))
+        }
+        theGrid[k] = v
+    }
+    iq3Data[gindex].grid = theGrid
+
+    val kmapQ3xs = IntArray(kmapSize) { -1 }
+    iq3Data[gindex].map = kmapQ3xs
+
+    for (i in 0 until gridSize) {
+        val gv = theGrid[i]
+        var index = 0
+        for (k in 0 until 4) {
+            val q = ((gridByte(gv, k).toInt() and 0xFF) - 1) / 2
+            index = index or (q shl (3 * k))
+        }
+        kmapQ3xs[index] = i
+    }
+
+    val dist2 = IntArray(2 * gridSize)
+    var numNeighbors = 0; var numNotInMap = 0
+    for (i in 0 until kmapSize) {
+        if (kmapQ3xs[i] >= 0) continue
+        numNotInMap++
+        val pos = ByteArray(4)
+        for (k in 0 until 4) { val l = (i shr (3 * k)) and 0x7; pos[k] = (2 * l + 1).toByte() }
+        for (j in 0 until gridSize) {
+            var d2 = 0
+            for (k in 0 until 4) { val diff = gridByte(theGrid[j], k) - pos[k]; d2 += diff * diff }
+            dist2[2 * j + 0] = d2; dist2[2 * j + 1] = j
+        }
+        val sortedIndices = (0 until gridSize).sortedWith(compareBy<Int> { dist2[2 * it] }.thenBy { dist2[2 * it + 1] })
+        val tmpD = IntArray(2 * gridSize)
+        for (j in 0 until gridSize) { tmpD[2 * j] = dist2[2 * sortedIndices[j]]; tmpD[2 * j + 1] = dist2[2 * sortedIndices[j] + 1] }
+        for (j in 0 until 2 * gridSize) dist2[j] = tmpD[j]
+
+        var n = 0; var d2v = dist2[0]; var nhave = 1
+        for (j in 0 until gridSize) {
+            if (dist2[2 * j] > d2v) { if (nhave == nwant) break; d2v = dist2[2 * j]; nhave++ }
+            n++
+        }
+        numNeighbors += n
+    }
+
+    val kneighborsQ3xs = UShortArray(numNeighbors + numNotInMap)
+    iq3Data[gindex].neighbours = kneighborsQ3xs
+    var counter = 0
+    for (i in 0 until kmapSize) {
+        if (kmapQ3xs[i] >= 0) continue
+        val pos = ByteArray(4)
+        for (k in 0 until 4) { val l = (i shr (3 * k)) and 0x7; pos[k] = (2 * l + 1).toByte() }
+        for (j in 0 until gridSize) {
+            var d2 = 0
+            for (k in 0 until 4) { val diff = gridByte(theGrid[j], k) - pos[k]; d2 += diff * diff }
+            dist2[2 * j + 0] = d2; dist2[2 * j + 1] = j
+        }
+        val sortedIndices = (0 until gridSize).sortedWith(compareBy<Int> { dist2[2 * it] }.thenBy { dist2[2 * it + 1] })
+        val tmpD = IntArray(2 * gridSize)
+        for (j in 0 until gridSize) { tmpD[2 * j] = dist2[2 * sortedIndices[j]]; tmpD[2 * j + 1] = dist2[2 * sortedIndices[j] + 1] }
+        for (j in 0 until 2 * gridSize) dist2[j] = tmpD[j]
+
+        kmapQ3xs[i] = -(counter + 1)
+        val startIdx = counter++
+        var d2v = dist2[0]; var n = 0; var nhave = 1
+        for (j in 0 until gridSize) {
+            if (dist2[2 * j] > d2v) { if (nhave == nwant) break; d2v = dist2[2 * j]; nhave++ }
+            kneighborsQ3xs[counter++] = dist2[2 * j + 1].toUShort()
+            n++
+        }
+        kneighborsQ3xs[startIdx] = n.toUShort()
+    }
 }
 
+// C line 3732
 fun iq3xs_free_impl(gridSize: Int) {
-    TODO("iq3xs_free_impl: requires IQ grid table cleanup")
+    require(gridSize == 256 || gridSize == 512)
+    val gindex = iq3DataIndex(gridSize)
+    if (iq3Data[gindex].grid != null) {
+        iq3Data[gindex].grid = null
+        iq3Data[gindex].map = null
+        iq3Data[gindex].neighbours = null
+    }
 }
