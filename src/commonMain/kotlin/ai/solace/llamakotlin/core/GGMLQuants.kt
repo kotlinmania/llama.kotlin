@@ -74,26 +74,26 @@ fun quantize_row_tq2_0(x: FloatArray, y: ByteArray, k: Long) { require(k % QK_K 
 fun quantize_row_q8_K_generic(x: FloatArray, y: ByteArray, k: Long) { quantize_row_q8_K_ref(x, y, k) }
 fun quantize_row_iq4_nl(x: FloatArray, y: ByteArray, k: Long) { require(k % QK4_NL == 0L); quantize_row_iq4_nl_ref(x, y, k) }
 
-// _ref implementations — real bodies live in ggml-quants.c port (GGMLQuants lower section)
-private fun quantize_row_q1_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q1_0_ref") }
-private fun quantize_row_q4_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q4_0_ref") }
-private fun quantize_row_q4_1_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q4_1_ref") }
-private fun quantize_row_q5_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q5_0_ref") }
-private fun quantize_row_q5_1_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q5_1_ref") }
-private fun quantize_row_q8_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q8_0_ref") }
-private fun quantize_row_q8_1_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q8_1_ref") }
-private fun quantize_row_mxfp4_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_mxfp4_ref") }
-private fun quantize_row_nvfp4_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_nvfp4_ref") }
-private fun quantize_row_q2_K_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q2_K_ref") }
-private fun quantize_row_q3_K_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q3_K_ref") }
-private fun quantize_row_q4_K_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q4_K_ref") }
-private fun quantize_row_q5_K_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q5_K_ref") }
-private fun quantize_row_q6_K_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q6_K_ref") }
-private fun quantize_row_tq1_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_tq1_0_ref") }
-private fun quantize_row_tq2_0_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_tq2_0_ref") }
-private fun quantize_row_q8_K_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_q8_K_ref") }
-private fun quantize_row_iq4_nl_ref(x: FloatArray, y: ByteArray, k: Long) { TODO("quantize_row_iq4_nl_ref") }
-private fun quantize_iq4_xs(x: FloatArray, y: ByteArray, nrow: Int, k: Long, imatrix: FloatArray?) { TODO("quantize_iq4_xs") }
+// _ref implementations — delegate to GGMLQuantsRef top-level functions with offset 0
+private fun quantize_row_q1_0_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q1_0_ref(x, 0, y, 0, k) }
+private fun quantize_row_q4_0_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q4_0_ref(x, 0, y, 0, k) }
+private fun quantize_row_q4_1_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q4_1_ref(x, 0, y, 0, k) }
+private fun quantize_row_q5_0_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q5_0_ref(x, 0, y, 0, k) }
+private fun quantize_row_q5_1_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q5_1_ref(x, 0, y, 0, k) }
+private fun quantize_row_q8_0_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q8_0_ref(x, 0, y, 0, k) }
+private fun quantize_row_q8_1_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q8_1_ref(x, 0, y, 0, k) }
+private fun quantize_row_mxfp4_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_mxfp4_ref(x, 0, y, 0, k) }
+private fun quantize_row_nvfp4_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_nvfp4_ref(x, 0, y, 0, k) }
+private fun quantize_row_q2_K_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q2_K_ref(x, 0, y, 0, k) }
+private fun quantize_row_q3_K_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q3_K_ref(x, 0, y, 0, k) }
+private fun quantize_row_q4_K_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q4_K_ref(x, 0, y, 0, k) }
+private fun quantize_row_q5_K_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q5_K_ref(x, 0, y, 0, k) }
+private fun quantize_row_q6_K_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q6_K_ref(x, 0, y, 0, k) }
+private fun quantize_row_tq1_0_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_tq1_0_ref(x, 0, y, 0, k) }
+private fun quantize_row_tq2_0_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_tq2_0_ref(x, 0, y, 0, k) }
+private fun quantize_row_q8_K_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_q8_K_ref(x, 0, y, 0, k) }
+private fun quantize_row_iq4_nl_ref(x: FloatArray, y: ByteArray, k: Long) { ai.solace.llamakotlin.core.quantize_row_iq4_nl_ref(x, 0, y, 0, k) }
+private fun quantize_iq4_xs(x: FloatArray, y: ByteArray, nrow: Int, k: Long, imatrix: FloatArray?) { ai.solace.llamakotlin.core.quantize_iq4_xs(x, y, nrow.toLong(), k, imatrix) }
 fun quantize_row_iq4_xs(x: FloatArray, y: ByteArray, k: Long) { require(k % QK_K == 0L); quantize_iq4_xs(x, y, 1, k, null) }
 
 // ---------------------------------------------------------------------------
@@ -1084,14 +1084,525 @@ fun ggml_vec_dot_iq4_xs_q8_K_generic(
     s[sOffset] = sumf
 }
 
-// IQ dot products that require grid lookup tables — deferred until grids are ported from ggml-common.h
-fun ggml_vec_dot_iq2_xxs_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq2xxs_grid") }
-fun ggml_vec_dot_iq2_xs_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq2xs_grid") }
-fun ggml_vec_dot_iq2_s_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq2s_grid") }
-fun ggml_vec_dot_iq3_xxs_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq3xxs_grid") }
-fun ggml_vec_dot_iq3_s_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq3s_grid") }
-fun ggml_vec_dot_iq1_s_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq1s_grid") }
-fun ggml_vec_dot_iq1_m_q8_K_generic(n: Int, s: FloatArray, sOffset: Int, vx: ByteArray, vxOffset: Int, vy: ByteArray, vyOffset: Int, nrc: Int) { TODO("requires iq1s_grid") }
+/**
+ * Port of `ggml_vec_dot_iq2_xxs_q8_K_generic` from ggml-cpu/quants.c.
+ */
+fun ggml_vec_dot_iq2_xxs_q8_K_generic(
+    n: Int, s: FloatArray, sOffset: Int,
+    vx: ByteArray, vxOffset: Int,
+    vy: ByteArray, vyOffset: Int, nrc: Int
+) {
+    require(n % QK_K == 0)
+    require(nrc == 1)
+
+    val xBlockSize = BlockIQ2XXS.SIZE_BYTES
+    val yBlockSize = BlockQ8K.SIZE_BYTES
+    val nb = n / QK_K
+
+    val q8dOff = 0
+    val q8QsOff = 4
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val xOff = vxOffset + i * xBlockSize
+        val yOff = vyOffset + i * yBlockSize
+        val d = fp16ToF32(vx.readShortLE(xOff)) * Float.fromBits(vy.readIntLE(yOff + q8dOff))
+
+        // qs starts at xOff + 2 (uint16_t[QK_K/8], read as raw bytes)
+        var q2Pos = xOff + 2
+        var q8Pos = 0
+
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32) {
+            // memcpy(aux32, q2, 2*sizeof(uint32_t))
+            val aux32_0 = vx.readUIntLE(q2Pos)
+            val aux32_1 = vx.readUIntLE(q2Pos + 4)
+            q2Pos += 8
+
+            val ls = (2u * (aux32_1 shr 28) + 1u).toInt()
+            var sumi = 0
+            for (l in 0 until 4) {
+                val gridIdx = ((aux32_0 shr (l * 8)) and 0xFFu).toInt()
+                val gridVal = iq2xxs_grid[gridIdx]
+                val signIdx = ((aux32_1 shr (7 * l)) and 127u).toInt()
+                val signs = ksigns_iq2xs[signIdx]
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal shr (j * 8)) and 0xFFu).toInt()
+                    val q8val = vy[yOff + q8QsOff + q8Pos + j].toInt()
+                    val sign = if ((signs and kmask_iq2xs[j]) != 0.toUByte()) -1 else 1
+                    sumi += gridByte * q8val * sign
+                }
+                q8Pos += 8
+            }
+            bsum += sumi * ls
+        }
+        sumf += d * bsum
+    }
+    s[sOffset] = 0.125f * sumf
+}
+
+/**
+ * Port of `ggml_vec_dot_iq2_xs_q8_K_generic` from ggml-cpu/quants.c.
+ */
+fun ggml_vec_dot_iq2_xs_q8_K_generic(
+    n: Int, s: FloatArray, sOffset: Int,
+    vx: ByteArray, vxOffset: Int,
+    vy: ByteArray, vyOffset: Int, nrc: Int
+) {
+    require(n % QK_K == 0)
+    require(nrc == 1)
+
+    val xBlockSize = BlockIQ2XS.SIZE_BYTES
+    val yBlockSize = BlockQ8K.SIZE_BYTES
+    val nb = n / QK_K
+
+    // BlockIQ2XS: d(2) + qs(uint16_t[32]=64) + scales(8)
+    val xQsOff = 2
+    val xScOff = 2 + (QK_K / 8) * 2  // 66
+
+    val q8dOff = 0
+    val q8QsOff = 4
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val xOff = vxOffset + i * xBlockSize
+        val yOff = vyOffset + i * yBlockSize
+        val d = fp16ToF32(vx.readShortLE(xOff)) * Float.fromBits(vy.readIntLE(yOff + q8dOff))
+
+        var q2Pos = xOff + xQsOff
+        var q8Pos = 0
+
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32) {
+            val scByte = vx[xOff + xScOff + ib32].toInt() and 0xFF
+            val ls1 = 2 * (scByte and 0xf) + 1
+            val ls2 = 2 * (scByte ushr 4) + 1
+
+            var sumi = 0
+            for (l in 0 until 2) {
+                val q2val = (vx[q2Pos + l * 2].toInt() and 0xFF) or
+                    ((vx[q2Pos + l * 2 + 1].toInt() and 0xFF) shl 8)
+                val gridVal = iq2xs_grid[q2val and 511]
+                val signs = ksigns_iq2xs[q2val ushr 9]
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal shr (j * 8)) and 0xFFu).toInt()
+                    val q8val = vy[yOff + q8QsOff + q8Pos + j].toInt()
+                    val sign = if ((signs and kmask_iq2xs[j]) != 0.toUByte()) -1 else 1
+                    sumi += gridByte * q8val * sign
+                }
+                q8Pos += 8
+            }
+            bsum += sumi * ls1
+
+            sumi = 0
+            for (l in 2 until 4) {
+                val q2val = (vx[q2Pos + l * 2].toInt() and 0xFF) or
+                    ((vx[q2Pos + l * 2 + 1].toInt() and 0xFF) shl 8)
+                val gridVal = iq2xs_grid[q2val and 511]
+                val signs = ksigns_iq2xs[q2val ushr 9]
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal shr (j * 8)) and 0xFFu).toInt()
+                    val q8val = vy[yOff + q8QsOff + q8Pos + j].toInt()
+                    val sign = if ((signs and kmask_iq2xs[j]) != 0.toUByte()) -1 else 1
+                    sumi += gridByte * q8val * sign
+                }
+                q8Pos += 8
+            }
+            bsum += sumi * ls2
+            q2Pos += 8  // q2 += 4 uint16_t = 8 bytes
+        }
+        sumf += d * bsum
+    }
+    s[sOffset] = 0.125f * sumf
+}
+
+/**
+ * Port of `ggml_vec_dot_iq2_s_q8_K_generic` from ggml-cpu/quants.c.
+ */
+fun ggml_vec_dot_iq2_s_q8_K_generic(
+    n: Int, s: FloatArray, sOffset: Int,
+    vx: ByteArray, vxOffset: Int,
+    vy: ByteArray, vyOffset: Int, nrc: Int
+) {
+    require(n % QK_K == 0)
+    require(nrc == 1)
+
+    val xBlockSize = BlockIQ2S.SIZE_BYTES
+    val yBlockSize = BlockQ8K.SIZE_BYTES
+    val nb = n / QK_K
+
+    // BlockIQ2S: d(2) + qs[QK_K/4](64) + qh[QK_K/32](8) + scales[QK_K/32](8)
+    val xQsOff = 2
+    val xQhOff = 2 + QK_K / 4          // 66
+    val xScalesOff = 2 + QK_K / 4 + QK_K / 32  // 74
+
+    val q8dOff = 0
+    val q8QsOff = 4
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val xOff = vxOffset + i * xBlockSize
+        val yOff = vyOffset + i * yBlockSize
+        val d = fp16ToF32(vx.readShortLE(xOff)) * Float.fromBits(vy.readIntLE(yOff + q8dOff))
+
+        var qsPos = xOff + xQsOff
+        var signsPos = xOff + xQsOff + QK_K / 8  // signs = qs + QK_K/8
+        var q8Pos = 0
+
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32) {
+            val scByte = vx[xOff + xScalesOff + ib32].toInt() and 0xFF
+            val ls1 = 1 + 2 * (scByte and 0xf)
+            val ls2 = 1 + 2 * (scByte ushr 4)
+            val qhVal = vx[xOff + xQhOff + ib32].toInt() and 0xFF
+
+            var sumi1 = 0
+            var sumi2 = 0
+            for (l in 0 until 2) {
+                val gridIdx = (vx[qsPos + l].toInt() and 0xFF) or (((qhVal shl (8 - 2 * l)) and 0x300))
+                val gridVal = iq2s_grid[gridIdx]
+                val signByte = vx[signsPos + l].toInt() and 0xFF
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal shr (j * 8)) and 0xFFu).toInt()
+                    val q8val = vy[yOff + q8QsOff + q8Pos + j].toInt()
+                    val sign = if ((signByte and kmask_iq2xs[j].toInt()) != 0) -1 else 1
+                    sumi1 += q8val * gridByte * sign
+                }
+                q8Pos += 8
+            }
+            for (l in 2 until 4) {
+                val gridIdx = (vx[qsPos + l].toInt() and 0xFF) or (((qhVal shl (8 - 2 * l)) and 0x300))
+                val gridVal = iq2s_grid[gridIdx]
+                val signByte = vx[signsPos + l].toInt() and 0xFF
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal shr (j * 8)) and 0xFFu).toInt()
+                    val q8val = vy[yOff + q8QsOff + q8Pos + j].toInt()
+                    val sign = if ((signByte and kmask_iq2xs[j].toInt()) != 0) -1 else 1
+                    sumi2 += q8val * gridByte * sign
+                }
+                q8Pos += 8
+            }
+            bsum += ls1 * sumi1 + ls2 * sumi2
+            qsPos += 4
+            signsPos += 4
+        }
+        sumf += d * bsum
+    }
+    s[sOffset] = 0.125f * sumf
+}
+
+/**
+ * Port of `ggml_vec_dot_iq3_xxs_q8_K_generic` from ggml-cpu/quants.c.
+ */
+fun ggml_vec_dot_iq3_xxs_q8_K_generic(
+    n: Int, s: FloatArray, sOffset: Int,
+    vx: ByteArray, vxOffset: Int,
+    vy: ByteArray, vyOffset: Int, nrc: Int
+) {
+    require(n % QK_K == 0)
+    require(nrc == 1)
+
+    val xBlockSize = BlockIQ3XXS.SIZE_BYTES
+    val yBlockSize = BlockQ8K.SIZE_BYTES
+    val nb = n / QK_K
+
+    // BlockIQ3XXS: d(2) + qs[3*QK_K/8](96)
+    // First QK_K/4 = 64 bytes are quant indices (q3), rest is gas (scale+sign aux)
+    val xQsOff = 2
+    val xGasOff = 2 + QK_K / 4  // 66
+
+    val q8dOff = 0
+    val q8QsOff = 4
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val xOff = vxOffset + i * xBlockSize
+        val yOff = vyOffset + i * yBlockSize
+        val d = fp16ToF32(vx.readShortLE(xOff)) * Float.fromBits(vy.readIntLE(yOff + q8dOff))
+
+        var q3Pos = xOff + xQsOff
+        var gasPos = xOff + xGasOff
+        var q8Pos = 0
+
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32) {
+            val aux32 = vx.readUIntLE(gasPos)
+            gasPos += 4
+
+            val ls = (2u * (aux32 shr 28) + 1u).toInt()
+            var sumi = 0
+            for (l in 0 until 4) {
+                val grid1Val = iq3xxs_grid[vx[q3Pos + 2 * l + 0].toInt() and 0xFF]
+                val grid2Val = iq3xxs_grid[vx[q3Pos + 2 * l + 1].toInt() and 0xFF]
+                val signs = ksigns_iq2xs[((aux32 shr (7 * l)) and 127u).toInt()]
+                for (j in 0 until 4) {
+                    val g1byte = ((grid1Val shr (j * 8)) and 0xFFu).toInt()
+                    val g2byte = ((grid2Val shr (j * 8)) and 0xFFu).toInt()
+                    val sign0 = if ((signs and kmask_iq2xs[j + 0]) != 0.toUByte()) -1 else 1
+                    val sign1 = if ((signs and kmask_iq2xs[j + 4]) != 0.toUByte()) -1 else 1
+                    sumi += g1byte * vy[yOff + q8QsOff + q8Pos + j + 0].toInt() * sign0
+                    sumi += g2byte * vy[yOff + q8QsOff + q8Pos + j + 4].toInt() * sign1
+                }
+                q8Pos += 8
+            }
+            q3Pos += 8
+            bsum += sumi * ls
+        }
+        sumf += d * bsum
+    }
+    s[sOffset] = 0.25f * sumf
+}
+
+/**
+ * Port of `ggml_vec_dot_iq3_s_q8_K_generic` from ggml-cpu/quants.c.
+ */
+fun ggml_vec_dot_iq3_s_q8_K_generic(
+    n: Int, s: FloatArray, sOffset: Int,
+    vx: ByteArray, vxOffset: Int,
+    vy: ByteArray, vyOffset: Int, nrc: Int
+) {
+    require(n % QK_K == 0)
+    require(nrc == 1)
+
+    val xBlockSize = BlockIQ3S.SIZE_BYTES
+    val yBlockSize = BlockQ8K.SIZE_BYTES
+    val nb = n / QK_K
+
+    // BlockIQ3S: d(2) + qs[QK_K/4](64) + qh[QK_K/32](8) + signs[QK_K/8](32) + scales[IQ3S_N_SCALE](4)
+    val xQsOff = 2
+    val xQhOff = 2 + QK_K / 4                       // 66
+    val xSignsOff = 2 + QK_K / 4 + QK_K / 32        // 74
+    val xScalesOff = 2 + QK_K / 4 + QK_K / 32 + QK_K / 8  // 106
+
+    val q8dOff = 0
+    val q8QsOff = 4
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val xOff = vxOffset + i * xBlockSize
+        val yOff = vyOffset + i * yBlockSize
+        val d = fp16ToF32(vx.readShortLE(xOff)) * Float.fromBits(vy.readIntLE(yOff + q8dOff))
+
+        var qsPos = xOff + xQsOff
+        var signsPos = xOff + xSignsOff
+        var q8Pos = 0
+
+        var bsum = 0
+        for (ib32 in 0 until QK_K / 32 step 2) {
+            val scByte = vx[xOff + xScalesOff + ib32 / 2].toInt() and 0xFF
+            val ls1 = 2 * (scByte and 0xf) + 1
+            val ls2 = 2 * (scByte ushr 4) + 1
+
+            val qh0 = vx[xOff + xQhOff + ib32 + 0].toInt() and 0xFF
+
+            var sumi = 0
+            for (l in 0 until 4) {
+                val gridIdx1 = (vx[qsPos + 2 * l + 0].toInt() and 0xFF) or (((qh0 shl (8 - 2 * l)) and 256))
+                val gridIdx2 = (vx[qsPos + 2 * l + 1].toInt() and 0xFF) or (((qh0 shl (7 - 2 * l)) and 256))
+                val grid1Val = iq3s_grid[gridIdx1]
+                val grid2Val = iq3s_grid[gridIdx2]
+                val signByte = vx[signsPos + l].toInt() and 0xFF
+                for (j in 0 until 4) {
+                    val g1byte = ((grid1Val shr (j * 8)) and 0xFFu).toInt()
+                    val g2byte = ((grid2Val shr (j * 8)) and 0xFFu).toInt()
+                    val sign0 = if ((signByte and kmask_iq2xs[j + 0].toInt()) != 0) -1 else 1
+                    val sign1 = if ((signByte and kmask_iq2xs[j + 4].toInt()) != 0) -1 else 1
+                    sumi += g1byte * vy[yOff + q8QsOff + q8Pos + j + 0].toInt() * sign0
+                    sumi += g2byte * vy[yOff + q8QsOff + q8Pos + j + 4].toInt() * sign1
+                }
+                q8Pos += 8
+            }
+            qsPos += 8
+            signsPos += 4
+            bsum += sumi * ls1
+
+            val qh1 = vx[xOff + xQhOff + ib32 + 1].toInt() and 0xFF
+
+            sumi = 0
+            for (l in 0 until 4) {
+                val gridIdx1 = (vx[qsPos + 2 * l + 0].toInt() and 0xFF) or (((qh1 shl (8 - 2 * l)) and 256))
+                val gridIdx2 = (vx[qsPos + 2 * l + 1].toInt() and 0xFF) or (((qh1 shl (7 - 2 * l)) and 256))
+                val grid1Val = iq3s_grid[gridIdx1]
+                val grid2Val = iq3s_grid[gridIdx2]
+                val signByte = vx[signsPos + l].toInt() and 0xFF
+                for (j in 0 until 4) {
+                    val g1byte = ((grid1Val shr (j * 8)) and 0xFFu).toInt()
+                    val g2byte = ((grid2Val shr (j * 8)) and 0xFFu).toInt()
+                    val sign0 = if ((signByte and kmask_iq2xs[j + 0].toInt()) != 0) -1 else 1
+                    val sign1 = if ((signByte and kmask_iq2xs[j + 4].toInt()) != 0) -1 else 1
+                    sumi += g1byte * vy[yOff + q8QsOff + q8Pos + j + 0].toInt() * sign0
+                    sumi += g2byte * vy[yOff + q8QsOff + q8Pos + j + 4].toInt() * sign1
+                }
+                q8Pos += 8
+            }
+            qsPos += 8
+            signsPos += 4
+            bsum += sumi * ls2
+        }
+        sumf += d * bsum
+    }
+    s[sOffset] = sumf
+}
+
+/**
+ * Port of `ggml_vec_dot_iq1_s_q8_K_generic` from ggml-cpu/quants.c.
+ */
+fun ggml_vec_dot_iq1_s_q8_K_generic(
+    n: Int, s: FloatArray, sOffset: Int,
+    vx: ByteArray, vxOffset: Int,
+    vy: ByteArray, vyOffset: Int, nrc: Int
+) {
+    require(n % QK_K == 0)
+    require(nrc == 1)
+
+    val xBlockSize = BlockIQ1S.SIZE_BYTES
+    val yBlockSize = BlockQ8K.SIZE_BYTES
+    val nb = n / QK_K
+
+    // BlockIQ1S: d(2) + qs[QK_K/8](32) + qh[QK_K/32] as uint16_t[8](16)
+    val xQsOff = 2
+    val xQhOff = 2 + QK_K / 8  // 34
+
+    val q8dOff = 0
+    val q8QsOff = 4
+    val q8BsumsOff = 4 + QK_K  // 260
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val xOff = vxOffset + i * xBlockSize
+        val yOff = vyOffset + i * yBlockSize
+
+        var qsPos = xOff + xQsOff
+        var q8Pos = 0
+
+        var sumi = 0
+        var sumi1 = 0
+        for (ib in 0 until QK_K / 32) {
+            val qhVal = (vx[xOff + xQhOff + ib * 2].toInt() and 0xFF) or
+                ((vx[xOff + xQhOff + ib * 2 + 1].toInt() and 0xFF) shl 8)
+            val ls = 2 * ((qhVal ushr 12) and 7) + 1
+            val delta = if (qhVal and 0x8000 != 0) -1 else 1
+
+            var lsum = 0
+            for (l in 0 until 4) {
+                val gridIdx = (vx[qsPos + l].toInt() and 0xFF) or ((((qhVal ushr (3 * l)) and 7) shl 8))
+                val gridVal = iq1s_grid[gridIdx]
+                for (j in 0 until 8) {
+                    // iq1s_grid is accessed as int8_t — signed byte extraction
+                    val gridByte = ((gridVal shr (j * 8)) and 0xFFu).toByte().toInt()
+                    lsum += vy[yOff + q8QsOff + q8Pos + j].toInt() * gridByte
+                }
+                q8Pos += 8
+            }
+            sumi += ls * lsum
+            // bsums are int16_t LE
+            val bsum0 = vy.readShortLE(yOff + q8BsumsOff + (2 * ib) * 2).toInt()
+            val bsum1 = vy.readShortLE(yOff + q8BsumsOff + (2 * ib + 1) * 2).toInt()
+            sumi1 += ls * delta * (bsum0 + bsum1)
+            qsPos += 4
+        }
+
+        sumf += fp16ToF32(vx.readShortLE(xOff)) * Float.fromBits(vy.readIntLE(yOff + q8dOff)) *
+            (sumi + IQ1S_DELTA * sumi1)
+    }
+    s[sOffset] = sumf
+}
+
+/**
+ * Port of `ggml_vec_dot_iq1_m_q8_K_generic` from ggml-cpu/quants.c.
+ */
+fun ggml_vec_dot_iq1_m_q8_K_generic(
+    n: Int, s: FloatArray, sOffset: Int,
+    vx: ByteArray, vxOffset: Int,
+    vy: ByteArray, vyOffset: Int, nrc: Int
+) {
+    require(n % QK_K == 0)
+    require(nrc == 1)
+
+    val xBlockSize = BlockIQ1M.SIZE_BYTES
+    val yBlockSize = BlockQ8K.SIZE_BYTES
+    val nb = n / QK_K
+
+    // BlockIQ1M: qs[QK_K/8](32) + qh[QK_K/16](16) + scales[QK_K/32](8)
+    val xQsOff = 0
+    val xQhOff = QK_K / 8              // 32
+    val xScalesOff = QK_K / 8 + QK_K / 16  // 48
+
+    val q8dOff = 0
+    val q8QsOff = 4
+
+    val sum1 = IntArray(2)
+    val sum2 = IntArray(2)
+    val delta = IntArray(4)
+
+    var sumf = 0.0f
+    for (i in 0 until nb) {
+        val xOff = vxOffset + i * xBlockSize
+        val yOff = vyOffset + i * yBlockSize
+
+        var qsPos = xOff + xQsOff
+        var qhPos = xOff + xQhOff
+
+        // Read scales as uint16_t[4]
+        val sc0 = (vx[xOff + xScalesOff + 0].toInt() and 0xFF) or
+            ((vx[xOff + xScalesOff + 1].toInt() and 0xFF) shl 8)
+        val sc1 = (vx[xOff + xScalesOff + 2].toInt() and 0xFF) or
+            ((vx[xOff + xScalesOff + 3].toInt() and 0xFF) shl 8)
+        val sc2 = (vx[xOff + xScalesOff + 4].toInt() and 0xFF) or
+            ((vx[xOff + xScalesOff + 5].toInt() and 0xFF) shl 8)
+        val sc3 = (vx[xOff + xScalesOff + 6].toInt() and 0xFF) or
+            ((vx[xOff + xScalesOff + 7].toInt() and 0xFF) shl 8)
+        val sc = intArrayOf(sc0, sc1, sc2, sc3)
+
+        // scale.u16 = (sc[0] >> 12) | ((sc[1] >> 8) & 0x00f0) | ((sc[2] >> 4) & 0x0f00) | (sc[3] & 0xf000)
+        val scaleU16 = (sc[0] ushr 12) or ((sc[1] ushr 8) and 0x00f0) or
+            ((sc[2] ushr 4) and 0x0f00) or (sc[3] and 0xf000)
+
+        var q8Pos = 0
+        var sumi1 = 0
+        var sumi2 = 0
+
+        for (ib in 0 until QK_K / 32) {
+            val qh0 = vx[qhPos + 0].toInt() and 0xFF
+            val qh1 = vx[qhPos + 1].toInt() and 0xFF
+            delta[0] = if (qh0 and 0x08 != 0) -1 else 1
+            delta[1] = if (qh0 and 0x80 != 0) -1 else 1
+            delta[2] = if (qh1 and 0x08 != 0) -1 else 1
+            delta[3] = if (qh1 and 0x80 != 0) -1 else 1
+
+            sum1[0] = 0; sum1[1] = 0; sum2[0] = 0; sum2[1] = 0
+            for (l in 0 until 4) {
+                val qhByte = vx[qhPos + l / 2].toInt() and 0xFF
+                val gridIdx = (vx[qsPos + l].toInt() and 0xFF) or
+                    (((qhByte shl (8 - 4 * (l % 2))) and 0x700))
+                val gridVal = iq1s_grid[gridIdx]
+                var lsum1 = 0
+                var lsum2 = 0
+                for (j in 0 until 8) {
+                    val gridByte = ((gridVal shr (j * 8)) and 0xFFu).toByte().toInt()
+                    val q8val = vy[yOff + q8QsOff + q8Pos + j].toInt()
+                    lsum1 += q8val * gridByte
+                    lsum2 += q8val
+                }
+                q8Pos += 8
+                sum1[l / 2] += lsum1
+                sum2[l / 2] += lsum2 * delta[l]
+            }
+
+            val ls1 = 2 * ((sc[ib / 2] ushr (6 * (ib % 2) + 0)) and 0x7) + 1
+            val ls2 = 2 * ((sc[ib / 2] ushr (6 * (ib % 2) + 3)) and 0x7) + 1
+
+            sumi1 += sum1[0] * ls1 + sum1[1] * ls2
+            sumi2 += sum2[0] * ls1 + sum2[1] * ls2
+            qsPos += 4
+            qhPos += 2
+        }
+
+        sumf += fp16ToF32(scaleU16.toShort()) * Float.fromBits(vy.readIntLE(yOff + q8dOff)) *
+            (sumi1 + IQ1M_DELTA * sumi2)
+    }
+    s[sOffset] = sumf
+}
 
 // ---------------------------------------------------------------------------
 // Original quantization helper functions (from ggml-quants.c ref implementations)
