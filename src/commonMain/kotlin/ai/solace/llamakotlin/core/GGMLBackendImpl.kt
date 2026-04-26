@@ -696,10 +696,4 @@ fun ggmlBackendBufferIsMultiBuffer(buffer: GGMLBackendBuffer): Boolean {
     return buffer is GGMLBackendMultiBufferWrapper
 }
 
-/**
- * ggml_backend_multi_buffer_set_usage — ggml-backend-impl.h line 85 / ggml-backend.cpp line 728.
- * Sets usage flag on every sub-buffer inside a multi-buffer.
- */
-fun ggmlBackendMultiBufferSetUsage(buffer: GGMLBackendBuffer, usage: GGMLBackendBufferUsage) {
-    buffer.setUsage(usage)
-}
+// ggmlBackendMultiBufferSetUsage moved to GGMLBackendUtils.kt

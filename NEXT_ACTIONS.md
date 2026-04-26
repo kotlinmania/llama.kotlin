@@ -4,107 +4,56 @@ Based on AST analysis, here are the concrete next steps.
 
 ## Summary
 
-- **Current Progress:** 7.2% (22/277 files)
-- **Matched Files:** 20
-- **Average Similarity:** 0.20
-- **Critical Issues:** 18 files with <0.60 similarity
+- **Current Progress:** 2.5% (48/277 files)
+- **Matched Files:** 7
+- **Average Similarity:** 0.00
+- **Critical Issues:** 7 files with <0.60 similarity
 
 ## Priority 1: Fix Incomplete High-Dependency Files
-
-### 1. include.ggml
-- **Similarity:** 0.46 (needs 39% improvement)
-- **Dependencies:** 68
-- **Priority Score:** 547.1
-- **Symbol Deficit:** 29 (functions: 17, types: 12)
-- **Action:** Deep review - likely missing major functionality
-
-### 2. ggml-cpu.simd-mappings
-- **Similarity:** 0.00 (needs 85% improvement)
-- **Dependencies:** 10
-- **Priority Score:** 307.9
-- **Symbol Deficit:** 20 (functions: 20, types: 0)
-- **Action:** Deep review - likely missing major functionality
-
-### 3. ggml-backend-impl
-- **Similarity:** 0.63 (needs 22% improvement)
-- **Dependencies:** 47
-- **Priority Score:** 291.0
-- **Symbol Deficit:** 16 (functions: 0, types: 16)
-- **Action:** Review and complete missing sections
-
-### 4. ggml-impl
-- **Similarity:** 0.52 (needs 33% improvement)
-- **Dependencies:** 58
-- **Priority Score:** 191.4
-- **Symbol Deficit:** 10 (functions: 4, types: 6)
-- **Action:** Deep review - likely missing major functionality
-
-### 5. include.ggml-backend
-- **Similarity:** 0.33 (needs 52% improvement)
-- **Dependencies:** 38
-- **Priority Score:** 133.6
-- **Symbol Deficit:** 7 (functions: 0, types: 7)
-- **Action:** Deep review - likely missing major functionality
-
-### 6. include.ggml-cpu
-- **Similarity:** 0.25 (needs 60% improvement)
-- **Dependencies:** 13
-- **Priority Score:** 116.9
-- **Symbol Deficit:** 7 (functions: 1, types: 6)
-- **Action:** Deep review - likely missing major functionality
-
-### 7. ggml-cpu.ggml-cpu-impl
-- **Similarity:** 0.25 (needs 60% improvement)
-- **Dependencies:** 11
-- **Priority Score:** 99.2
-- **Symbol Deficit:** 6 (functions: 1, types: 5)
-- **Action:** Deep review - likely missing major functionality
-
-### 8. ggml-common
-- **Similarity:** 0.00 (needs 85% improvement)
-- **Dependencies:** 16
-- **Priority Score:** 45.5
-- **Symbol Deficit:** 2 (functions: 2, types: 0)
-- **Action:** Deep review - likely missing major functionality
-
-### 9. ggml-cpu.common
-- **Similarity:** 0.56 (needs 29% improvement)
-- **Dependencies:** 47
-- **Priority Score:** 43.9
-- **Symbol Deficit:** 2 (functions: 0, types: 2)
-- **Action:** Deep review - likely missing major functionality
 
 ## Priority 2: Port Missing High-Value Files
 
 Critical missing files (>10 dependencies):
 
-1. **ggml-sycl.fattn-vec** (37 deps)
+1. **include.ggml** (68 deps)
+   - Path: `include/ggml.h`
+   - Essential for 68 other files
+
+2. **ggml-impl** (58 deps)
+   - Path: `src/ggml-impl.h`
+   - Essential for 58 other files
+
+3. **ggml-backend-impl** (47 deps)
+   - Path: `src/ggml-backend-impl.h`
+   - Essential for 47 other files
+
+4. **ggml-cpu.common** (47 deps)
+   - Path: `src/ggml-cpu/common.h`
+   - Essential for 47 other files
+
+5. **include.ggml-backend** (38 deps)
+   - Path: `include/ggml-backend.h`
+   - Essential for 38 other files
+
+6. **ggml-sycl.fattn-vec** (37 deps)
    - Path: `src/ggml-sycl/fattn-vec.hpp`
    - Essential for 37 other files
 
-2. **ggml-zdnn.utils** (23 deps)
+7. **ggml-zdnn.utils** (23 deps)
    - Path: `src/ggml-zdnn/utils.hpp`
    - Essential for 23 other files
 
-3. **openvino.node_context** (19 deps)
+8. **openvino.node_context** (19 deps)
    - Path: `src/ggml-openvino/openvino/node_context.h`
    - Essential for 19 other files
 
-4. **openvino.op_table** (18 deps)
+9. **openvino.op_table** (18 deps)
    - Path: `src/ggml-openvino/openvino/op_table.h`
    - Essential for 18 other files
 
-5. **ggml-sycl.convert** (17 deps)
+10. **ggml-sycl.convert** (17 deps)
    - Path: `src/ggml-sycl/convert.hpp`
    - Essential for 17 other files
-
-6. **htp.hvx-base** (11 deps)
-   - Path: `src/ggml-hexagon/htp/hvx-base.h`
-   - Essential for 11 other files
-
-7. **ggml-sycl.fattn-tile** (11 deps)
-   - Path: `src/ggml-sycl/fattn-tile.hpp`
-   - Essential for 11 other files
 
 ## Success Criteria
 
@@ -120,7 +69,7 @@ For each file to be considered "complete":
 ```bash
 # Initialize task queue for systematic porting
 cd tools/ast_distance
-./ast_distance --init-tasks ../../tmp/llama.cpp/ggml cpp ../../src/commonMain/kotlin/ai/solace/llamakotlin kotlin tasks.json ../../AGENTS.md
+./ast_distance --init-tasks ../../tmp/llama.cpp/ggml cpp ../../src/nativeMain/kotlin/ai/solace/llamakotlin kotlin tasks.json ../../AGENTS.md
 
 # Get next high-priority task
 ./ast_distance --assign tasks.json <agent-id>
