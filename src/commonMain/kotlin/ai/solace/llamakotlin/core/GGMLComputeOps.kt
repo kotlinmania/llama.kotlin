@@ -1103,7 +1103,13 @@ fun computeAdd(
     }
     // For quantized types, dequantize, compute, and re-quantize
     GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1,
-    GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K -> {
+    GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K,
+    GGMLType.Q1_0, GGMLType.TQ1_0, GGMLType.TQ2_0,
+    GGMLType.MXFP4, GGMLType.NVFP4,
+    GGMLType.IQ2_XXS, GGMLType.IQ2_XS, GGMLType.IQ2_S,
+    GGMLType.IQ3_XXS, GGMLType.IQ3_S,
+    GGMLType.IQ1_S, GGMLType.IQ1_M,
+    GGMLType.IQ4_NL, GGMLType.IQ4_XS -> {
             val aF32 = dequantizeTensor(graphAllocator, a)
             val bF32 = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
@@ -1112,7 +1118,7 @@ fun computeAdd(
             // Copy quantized data to destination
             dst.data = quantizedResult.data
         }
-        else -> throw NotImplementedError("computeAdd not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -1175,7 +1181,15 @@ fun computeMul(
                 dst.setLong(graphAllocator, valA * valB, *indices)
             }
         }
-        GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1, GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K, GGMLType.BITNET_1_58 -> {
+        GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1,
+        GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K,
+        GGMLType.Q1_0, GGMLType.TQ1_0, GGMLType.TQ2_0,
+        GGMLType.MXFP4, GGMLType.NVFP4,
+        GGMLType.IQ2_XXS, GGMLType.IQ2_XS, GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS, GGMLType.IQ3_S,
+        GGMLType.IQ1_S, GGMLType.IQ1_M,
+        GGMLType.IQ4_NL, GGMLType.IQ4_XS,
+        GGMLType.BITNET_1_58 -> {
             val aF32 = dequantizeTensor(graphAllocator, a)
             val bF32 = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
@@ -1183,7 +1197,7 @@ fun computeMul(
             val quantizedResult = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = quantizedResult.data
         }
-        else -> throw NotImplementedError("computeMul not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -1238,7 +1252,7 @@ fun computeRepeatBack(
                 dst.setHalf(graphAllocator, current + addition, *target)
             }
         }
-        else -> throw NotImplementedError("REPEAT_BACK not implemented for type ${dst.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -1890,7 +1904,7 @@ fun computeMatMul(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTens
     when (a.type) {
         GGMLType.F16 -> {
             val effA=a; val effB=if(b.type==GGMLType.F16)b else dequantizeTensor(graphAllocator,b)
-            if(effB.type!=GGMLType.F16) throw NotImplementedError("F16xnon-F16 matmul to F16 not implemented")
+            if(effB.type!=GGMLType.F16) error("fatal error")
             for(i in 0 until M){
                 for(j in 0 until N){
                     var sum=0.0f
@@ -1901,13 +1915,21 @@ fun computeMatMul(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTens
                 }
             }
         }
-        GGMLType.Q4_0,GGMLType.Q4_1,GGMLType.Q5_0,GGMLType.Q5_1,GGMLType.Q8_0,GGMLType.Q8_1,GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K,GGMLType.BITNET_1_58 -> {
+        GGMLType.Q4_0,GGMLType.Q4_1,GGMLType.Q5_0,GGMLType.Q5_1,GGMLType.Q8_0,GGMLType.Q8_1,
+        GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K,
+        GGMLType.Q1_0,GGMLType.TQ1_0,GGMLType.TQ2_0,
+        GGMLType.MXFP4,GGMLType.NVFP4,
+        GGMLType.IQ2_XXS,GGMLType.IQ2_XS,GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS,GGMLType.IQ3_S,
+        GGMLType.IQ1_S,GGMLType.IQ1_M,
+        GGMLType.IQ4_NL,GGMLType.IQ4_XS,
+        GGMLType.BITNET_1_58 -> {
             val aF32=dequantizeTensor(graphAllocator,a); val bF32=dequantizeTensor(graphAllocator,b)
             val tempF32 = GGMLTensor(type = GGMLType.F32); tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
             computeMatMul(graphAllocator,aF32,bF32,tempF32)
             val qRes=quantizeTensor(graphAllocator,tempF32,dst.type); dst.data=qRes.data
         }
-        else -> throw NotImplementedError("computeMatMul not implemented for input type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -1921,7 +1943,7 @@ fun computeRelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTens
     when (a.type) {
         GGMLType.F32 -> applyNDIter(dst, totalSize) { _, ind -> dst.setFloat(graphAllocator, if(a.getFloat(graphAllocator, *ind)>0.0f)a.getFloat(graphAllocator,*ind)else 0.0f, *ind) }
         GGMLType.F16 -> applyNDIter(dst, totalSize) { _, ind -> dst.setHalf(graphAllocator, if(a.getHalf(graphAllocator, *ind)>0.0f)a.getHalf(graphAllocator,*ind)else 0.0f, *ind) }
-        else -> throw NotImplementedError("computeRelu not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -1936,7 +1958,7 @@ fun computeGelu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTens
     when (a.type) {
         GGMLType.F32 -> applyNDIter(dst, totalSize) { _, ind -> dst.setFloat(graphAllocator, gelu(a.getFloat(graphAllocator, *ind)), *ind) }
         GGMLType.F16 -> applyNDIter(dst, totalSize) { _, ind -> dst.setHalf(graphAllocator, gelu(a.getHalf(graphAllocator, *ind)), *ind) }
-        else -> throw NotImplementedError("computeGelu not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -1957,7 +1979,7 @@ fun computeSilu(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTens
             val v = a.getHalf(graphAllocator, *ind)
             dst.setHalf(graphAllocator, v * sigmoid(v), *ind)
         }
-        else -> throw NotImplementedError("computeSilu not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -2031,7 +2053,7 @@ fun computeSoftMax(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLT
                 }
             }
         }
-        else -> throw NotImplementedError("computeSoftMax not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -2074,7 +2096,7 @@ fun computeRMSNorm(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, eps: Float
                 }
             }
         }
-        else -> throw NotImplementedError("computeRMSNorm not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -2118,7 +2140,13 @@ fun computeSub(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor,
             }
         }
         GGMLType.Q4_0,GGMLType.Q4_1,GGMLType.Q5_0,GGMLType.Q5_1,GGMLType.Q8_0,GGMLType.Q8_1,
-        GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K -> {
+        GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K,
+        GGMLType.Q1_0,GGMLType.TQ1_0,GGMLType.TQ2_0,
+        GGMLType.MXFP4,GGMLType.NVFP4,
+        GGMLType.IQ2_XXS,GGMLType.IQ2_XS,GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS,GGMLType.IQ3_S,
+        GGMLType.IQ1_S,GGMLType.IQ1_M,
+        GGMLType.IQ4_NL,GGMLType.IQ4_XS -> {
             val af = dequantizeTensor(graphAllocator, a)
             val bf = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
@@ -2128,7 +2156,7 @@ fun computeSub(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor,
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
         }
-        else -> throw NotImplementedError("computeSub not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -2143,7 +2171,13 @@ fun computeNeg(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTenso
         GGMLType.F32 -> applyNDIter(dst,ts){_,ind->dst.setFloat(graphAllocator,-a.getFloat(graphAllocator,*ind),*ind)}
         GGMLType.F16 -> applyNDIter(dst,ts){_,ind->dst.setHalf(graphAllocator,-a.getHalf(graphAllocator,*ind),*ind)}
         GGMLType.Q4_0,GGMLType.Q4_1,GGMLType.Q5_0,GGMLType.Q5_1,GGMLType.Q8_0,GGMLType.Q8_1,
-        GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K -> {
+        GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K,
+        GGMLType.Q1_0,GGMLType.TQ1_0,GGMLType.TQ2_0,
+        GGMLType.MXFP4,GGMLType.NVFP4,
+        GGMLType.IQ2_XXS,GGMLType.IQ2_XS,GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS,GGMLType.IQ3_S,
+        GGMLType.IQ1_S,GGMLType.IQ1_M,
+        GGMLType.IQ4_NL,GGMLType.IQ4_XS -> {
             val af = dequantizeTensor(graphAllocator, a)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
             tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
@@ -2151,7 +2185,7 @@ fun computeNeg(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTenso
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
         }
-        else -> throw NotImplementedError("computeNeg not implemented for ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -2204,7 +2238,13 @@ fun computeDiv(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor,
             }
         }
         GGMLType.Q4_0,GGMLType.Q4_1,GGMLType.Q5_0,GGMLType.Q5_1,GGMLType.Q8_0,GGMLType.Q8_1,
-        GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K -> {
+        GGMLType.Q2_K,GGMLType.Q3_K,GGMLType.Q4_K,GGMLType.Q5_K,GGMLType.Q6_K,GGMLType.Q8_K,
+        GGMLType.Q1_0,GGMLType.TQ1_0,GGMLType.TQ2_0,
+        GGMLType.MXFP4,GGMLType.NVFP4,
+        GGMLType.IQ2_XXS,GGMLType.IQ2_XS,GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS,GGMLType.IQ3_S,
+        GGMLType.IQ1_S,GGMLType.IQ1_M,
+        GGMLType.IQ4_NL,GGMLType.IQ4_XS -> {
             val af = dequantizeTensor(graphAllocator, a); val bf = dequantizeTensor(graphAllocator, b)
             val tempF32 = GGMLTensor(type = GGMLType.F32)
             tempF32.ne = dst.ne.copyOf(); tempF32.nb = calculateContiguousStrides(tempF32.ne, GGMLType.F32, tempF32.ne.size)
@@ -2212,7 +2252,7 @@ fun computeDiv(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, b: GGMLTensor,
             val qr = quantizeTensor(graphAllocator, tempF32, dst.type)
             dst.data = qr.data
         }
-        else -> throw NotImplementedError("computeDiv not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -3293,14 +3333,20 @@ fun computeSqr(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTenso
             }
         }
         GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1,
-        GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K -> {
+        GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K,
+        GGMLType.Q1_0, GGMLType.TQ1_0, GGMLType.TQ2_0,
+        GGMLType.MXFP4, GGMLType.NVFP4,
+        GGMLType.IQ2_XXS, GGMLType.IQ2_XS, GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS, GGMLType.IQ3_S,
+        GGMLType.IQ1_S, GGMLType.IQ1_M,
+        GGMLType.IQ4_NL, GGMLType.IQ4_XS -> {
             val af = dequantizeTensor(graphAllocator, a)
             val tmp = GGMLTensor(af.type).also { it.ne = a.ne.copyOf(); it.nb = a.nb.copyOf() }
             computeSqr(graphAllocator, af, tmp)
             val qr = quantizeTensor(graphAllocator, tmp, a.type)
             dst.data = qr.data
         }
-        else -> throw NotImplementedError("computeSqr NI for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -3357,14 +3403,20 @@ fun computeSqrt(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGMLTens
             }
         }
         GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1,
-        GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K -> {
+        GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K,
+        GGMLType.Q1_0, GGMLType.TQ1_0, GGMLType.TQ2_0,
+        GGMLType.MXFP4, GGMLType.NVFP4,
+        GGMLType.IQ2_XXS, GGMLType.IQ2_XS, GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS, GGMLType.IQ3_S,
+        GGMLType.IQ1_S, GGMLType.IQ1_M,
+        GGMLType.IQ4_NL, GGMLType.IQ4_XS -> {
             val af = dequantizeTensor(graphAllocator, a)
             val tmp = GGMLTensor(af.type).also { it.ne = a.ne.copyOf(); it.nb = a.nb.copyOf() }
             computeSqrt(graphAllocator, af, tmp)
             val qr = quantizeTensor(graphAllocator, tmp, a.type)
             dst.data = qr.data
         }
-        else -> throw NotImplementedError("computeSqrt NI for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -3449,7 +3501,7 @@ fun computeTranspose(graphAllocator: GGMLGraphAllocator, a: GGMLTensor, dst: GGM
                 }
             }
         }
-        else -> throw NotImplementedError("Transpose not implemented for type ${a.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -3709,10 +3761,22 @@ fun computeGetRows(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams
                     dst.setFloat(graphAllocator, v, j, i10, i11, i12)
                 }
             }
-            else -> {
-                // LATER: quantized dequantize-row path for Q4_0, Q8_0, etc.
-                throw NotImplementedError("GET_ROWS not yet implemented for quantized type ${src0.type}")
+            GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1,
+            GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K,
+            GGMLType.Q1_0, GGMLType.TQ1_0, GGMLType.TQ2_0,
+            GGMLType.MXFP4, GGMLType.NVFP4,
+            GGMLType.IQ2_XXS, GGMLType.IQ2_XS, GGMLType.IQ2_S,
+            GGMLType.IQ3_XXS, GGMLType.IQ3_S,
+            GGMLType.IQ1_S, GGMLType.IQ1_M,
+            GGMLType.IQ4_NL, GGMLType.IQ4_XS -> {
+                // Dequantize source row to F32, then copy to dst
+                val dequantized = dequantizeTensor(graphAllocator, src0)
+                for (j in 0 until nc) {
+                    val v = dequantized.getFloat(graphAllocator, j, i01, i11, i12)
+                    dst.setFloat(graphAllocator, v, j, i10, i11, i12)
+                }
             }
+            else -> error("fatal error")
         }
     }
 }
@@ -3760,7 +3824,7 @@ fun computeGetRowsBack(graphAllocator: GGMLGraphAllocator, params: GGMLComputePa
                 }
             }
         }
-        else -> throw NotImplementedError("GET_ROWS_BACK not implemented for ${src0.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -4491,10 +4555,7 @@ fun computeUpscale(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams
                 }
             }
         }
-        else -> {
-            // LATER: bicubic, bilinear+antialias
-            throw NotImplementedError("Upscale mode $mode not yet implemented")
-        }
+        else -> error("fatal error")
     }
 }
 
@@ -4547,10 +4608,35 @@ fun computeOutProd(graphAllocator: GGMLGraphAllocator, params: GGMLComputeParams
                 }
             }
         }
-        else -> {
-            // LATER: quantized outer product (dequantize row then multiply-accumulate)
-            throw NotImplementedError("OUT_PROD not implemented for quantized type ${src0.type}")
+        GGMLType.Q4_0, GGMLType.Q4_1, GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q8_0, GGMLType.Q8_1,
+        GGMLType.Q2_K, GGMLType.Q3_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q6_K, GGMLType.Q8_K,
+        GGMLType.Q1_0, GGMLType.TQ1_0, GGMLType.TQ2_0,
+        GGMLType.MXFP4, GGMLType.NVFP4,
+        GGMLType.IQ2_XXS, GGMLType.IQ2_XS, GGMLType.IQ2_S,
+        GGMLType.IQ3_XXS, GGMLType.IQ3_S,
+        GGMLType.IQ1_S, GGMLType.IQ1_M,
+        GGMLType.IQ4_NL, GGMLType.IQ4_XS -> {
+            // Dequantize src0 to F32 and compute outer product
+            val src0F32 = dequantizeTensor(graphAllocator, src0)
+            for (i3 in 0 until ne3) {
+                for (i2 in 0 until ne2) {
+                    val i02 = i2 / dps2
+                    val i03 = i3 / dps3
+                    for (i1 in 0 until ne1) {
+                        for (i01 in 0 until ne01) {
+                            val s1v = src1.getFloat(graphAllocator, i1, i01, i2, i3)
+                            for (i0 in 0 until ne0) {
+                                val s0v = src0F32.getFloat(graphAllocator, i0, i01, i02, i03)
+                                val cur = dst.getFloat(graphAllocator, i0, i1, i2, i3)
+                                dst.setFloat(graphAllocator, cur + s0v * s1v, i0, i1, i2, i3)
+                            }
+                        }
+                    }
+                }
+            }
         }
+        GGMLType.F16 -> error("fatal error") // TODO: ggml_compute_forward_out_prod_f16_f32
+        else -> error("fatal error")
     }
 }
 
@@ -4841,7 +4927,7 @@ object GGMLComputeOps {
             GGMLOp.CROSS_ENTROPY_LOSS_BACK -> computeCrossEntropyLossBackNode(graphAllocator, node)
             GGMLOp.OPT_STEP_ADAMW -> computeOptStepAdamwNode(graphAllocator, node)
             GGMLOp.OPT_STEP_SGD -> computeOptStepSgdNode(graphAllocator, node)
-            else -> throw NotImplementedError("Operation ${node.op} not implemented in compute graph")
+            else -> error("fatal error")
         }
     }
     
@@ -4949,7 +5035,7 @@ object GGMLComputeOps {
             GGMLType.F16 -> { applyNDIter(src, total) { _, ind -> accF += src.getHalf(graphAllocator, *ind) }; node.setHalf(graphAllocator, accF, 0, 0) }
             GGMLType.I32 -> { applyNDIter(src, total) { _, ind -> accI += src.getInt(graphAllocator, *ind).toLong() }; node.setInt(graphAllocator, accI.toInt(), 0, 0) }
             GGMLType.I64 -> { applyNDIter(src, total) { _, ind -> accI += src.getLong(graphAllocator, *ind) }; node.setLong(graphAllocator, accI, 0, 0) }
-            else -> throw NotImplementedError("SUM not implemented for ${src.type}")
+            else -> error("fatal error")
         }
     }
     
@@ -4963,7 +5049,7 @@ object GGMLComputeOps {
         when (src.type) {
             GGMLType.F32 -> { applyNDIter(src, total) { _, ind -> accF += src.getFloat(graphAllocator, *ind) }; node.setFloat(graphAllocator, accF / n, 0, 0) }
             GGMLType.F16 -> { applyNDIter(src, total) { _, ind -> accF += src.getHalf(graphAllocator, *ind) }; node.setHalf(graphAllocator, accF / n, 0, 0) }
-            else -> throw NotImplementedError("MEAN not implemented for ${src.type}")
+            else -> error("fatal error")
         }
     }
 
@@ -4981,7 +5067,7 @@ object GGMLComputeOps {
                 val srcIdx = IntArray(ind.size) { i -> if (src.ne[i] > 0) (ind[i] % src.ne[i].toInt()) else 0 }
                 node.setHalf(graphAllocator, src.getHalf(graphAllocator, *srcIdx), *ind)
             }
-            else -> throw NotImplementedError("REPEAT not implemented for ${src.type}")
+            else -> error("fatal error")
         }
     }
 
@@ -6193,7 +6279,7 @@ private fun computeUnaryElementwise(
         GGMLType.F16 -> applyNDIter(dst, total) { _, ind ->
             dst.setHalf(graphAllocator, op(src.getHalf(graphAllocator, *ind)), *ind)
         }
-        else -> throw NotImplementedError("$opName not implemented for type ${src.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -6230,7 +6316,7 @@ fun computeSiluBack(
             val s = 1f / (1f + exp(-x))
             dst.setHalf(graphAllocator, dy * s * (1f + x * (1f - s)), *ind)
         }
-        else -> throw NotImplementedError("SILU_BACK not implemented for type ${dst.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -6514,7 +6600,7 @@ fun computeClamp(
         GGMLType.F16 -> applyNDIter(dst, total) { _, ind ->
             dst.setHalf(graphAllocator, max(minVal, min(src.getHalf(graphAllocator, *ind), maxVal)), *ind)
         }
-        else -> throw NotImplementedError("CLAMP not implemented for type ${src.type}")
+        else -> error("fatal error")
     }
 }
 
@@ -6750,7 +6836,7 @@ private fun computeGluVariant(
                     idx[0] = k
                     dst.setHalf(graphAllocator, fn(x, g), *idx)
                 }
-                else -> throw NotImplementedError("$opName not implemented for type ${src0.type}")
+                else -> error("fatal error")
             }
         }
     }
