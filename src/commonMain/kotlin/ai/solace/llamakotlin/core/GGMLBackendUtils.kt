@@ -1162,7 +1162,6 @@ fun ggmlBackendSchedAllocSplits(sched: GGMLBackendSched): Boolean {
         // ggmlGallocrReserveN(sched.galloc, sched.graph, sched.nodeBackendIds, sched.leafBackendIds)
         // if (!ggmlGallocrAllocGraph(sched.galloc, sched.graph)) {
         //     return false
-        // }
     }
 
     return true
@@ -2027,4 +2026,3 @@ fun ggmlBackendCpuBufferFromPtr(ptr: ByteArray, size: ULong): GGMLBackendBuffer 
 
 /** `ggml_backend_cpu_buffer_type` — C line 2328. Returns the CPU buffer type. */
 fun ggmlBackendCpuBufferType(): GGMLBackendBufferType = createDefaultCpuBufferType()
-

@@ -497,7 +497,6 @@ object Float32Math {
             if (bAbs == 0) return aRep
         }
 
-        // Ensure |a| >= |b|
         if (bAbs > aAbs) {
             val t = aRep; aRep = bRep; bRep = t
         }

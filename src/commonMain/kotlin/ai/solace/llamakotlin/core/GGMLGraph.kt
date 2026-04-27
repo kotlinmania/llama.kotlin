@@ -1971,8 +1971,6 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
             }
         }
         GGMLOp.NORM -> {
-            // For NORM operation C = x / ||x||:
-            // grad_x = grad_C * (I - C ⊗ C) / ||x||
             // where ⊗ is the outer product and I is the identity matrix
 
             if (src0?.grad != null) {
@@ -2043,7 +2041,6 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                         val derivativeData = FloatArray(totalSize)
                         val normalizedData = FloatArray(totalSize)
 
-                        // First compute the normalized values (C = x / ||x||)
                         for (i in 0 until totalSize) {
                             normalizedData[i] = srcData[i] / norm
                         }
@@ -2055,7 +2052,6 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                                 // Compute the outer product term: C_i * C_j * grad_C_j
                                 outerProductSum += normalizedData[i] * normalizedData[j] * (tensor.grad!!.data as FloatArray)[j]
                             }
-                            // Derivative: (grad_C_i - outerProductSum) / ||x||
                             derivativeData[i] = ((tensor.grad!!.data as FloatArray)[i] - outerProductSum) / norm
                         }
 
@@ -2072,7 +2068,6 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                             gradData[i] = (tensor.grad!!.data as ShortArray)[i].toFloat() / 32768.0f
                         }
 
-                        // First compute the normalized values (C = x / ||x||)
                         for (i in 0 until totalSize) {
                             normalizedData[i] = (srcData[i].toFloat() / 32768.0f) / norm
                         }
@@ -2084,7 +2079,6 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                                 // Compute the outer product term: C_i * C_j * grad_C_j
                                 outerProductSum += normalizedData[i] * normalizedData[j] * gradData[j]
                             }
-                            // Derivative: (grad_C_i - outerProductSum) / ||x||
                             val derivValue = (gradData[i] - outerProductSum) / norm
                             derivativeData[i] = (derivValue * 32768.0f).toInt().toShort()
                         }
@@ -2143,7 +2137,6 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                             else -> {} // Should not happen due to the when condition
                         }
 
-                        // First compute the normalized values (C = x / ||x||)
                         for (i in 0 until totalSize) {
                             normalizedData[i] = srcFloatData[i] / norm
                         }
@@ -2155,7 +2148,6 @@ private fun computeBackward(context: GGMLContext, tensor: GGMLTensor, zeroTable:
                                 // Compute the outer product term: C_i * C_j * grad_C_j
                                 outerProductSum += normalizedData[i] * normalizedData[j] * gradFloatData[j]
                             }
-                            // Derivative: (grad_C_i - outerProductSum) / ||x||
                             derivativeFloatData[i] = (gradFloatData[i] - outerProductSum) / norm
                         }
 

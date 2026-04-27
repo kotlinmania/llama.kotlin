@@ -517,7 +517,6 @@ class GGMLTensor(
         // val rank = ne.count { it > 1L }
         // if (indices.size != rank && !(rank == 0 && indices.isEmpty())) {
         //    throw IllegalArgumentException("Number of indices (${indices.size}) must match tensor rank ($rank). Tensor shape: ${ne.joinToString()}. Indices: ${indices.joinToString()}")
-        // }
         // The above rank check might be too strict if ne contains trailing 1s for lower rank tensors.
         // Example: A 2D tensor might have ne = [10, 20, 1, 1]. Rank is 2. indices.size should be 2.
 
@@ -1513,7 +1512,6 @@ internal fun calculateTensorByteSize(tensor: GGMLTensor): ULong {
         println("Warning: Tensor ${tensor.name} of type ${tensor.type} has $numElements elements but type.byteSize is 0. Effective byte size will be 0.")
         return 0uL
     }
-
 
     return when (tensor.type) {
         // Explicitly list block-quantized types. Their type.byteSize is "bytes per block".

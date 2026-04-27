@@ -1494,7 +1494,6 @@ fun quantizeTensor(graphAllocator: GGMLGraphAllocator, tensorF32: GGMLTensor, ta
                     //    val itemInBlk = curIdx % QK_K; f32Blk[itemInBlk] = tensorF32.getFloat(graphAllocator, *ind)
                     //    if (itemInBlk == QK_K - 1) { process block }
                     //    curIdx++
-                    // }
                     // result.data = resArr
                     // This is the pattern to follow.
                 }
@@ -2453,7 +2452,6 @@ private fun quantizeQ2KBlock(values: FloatArray, dest: ByteArray, destOffset: In
         }
     }
 }
-
 
 /**
  * Quantizes a block of QK_K float values to Q3_K format.

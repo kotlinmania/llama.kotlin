@@ -1327,7 +1327,6 @@ class LlamaVocab {
         val attr = tokenGetAttr(token)
         if (!special && (attr and attrSpecial) != 0) return ""
 
-        // use cache when available
         if (cacheTokenToPiece.isNotEmpty()) {
             var result = cacheTokenToPiece[token]
             if (lstrip > 0) {
