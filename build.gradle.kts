@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "ai.solace.llamakotlin"
-version = "0.1.0"
+version = "0.1.1"
 
 val hostOs = System.getProperty("os.name")
 val hostArch = System.getProperty("os.arch")
