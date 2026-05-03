@@ -4,6 +4,7 @@ import org.jetbrains.kotlin.gradle.tasks.CInteropProcess
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
 import org.jetbrains.kotlin.konan.target.KonanTarget
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
+import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension
 
 plugins {
     kotlin("multiplatform") version "2.3.20"
@@ -122,6 +123,10 @@ tasks.withType<KotlinNativeTest>().configureEach {
 // Kotlin/Native is the primary focus; pause JVM test execution for now.
 tasks.named("jvmTest").configure {
     enabled = false
+}
+
+rootProject.extensions.configure<YarnRootExtension>("kotlinYarn") {
+    resolution("flatted", "3.4.2")
 }
 
 
