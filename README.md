@@ -143,7 +143,6 @@ This project uses **Kotlin Multiplatform** with **Gradle** as the build system.
 ./gradlew allTests  # Run all tests for available targets
 # Or run tests for specific target:
 ./gradlew linuxX64Test  # Linux tests
-./gradlew macosX64Test  # macOS tests (when on macOS)
 ```
 
 *Note: Legacy llama.cpp C/C++ and Python examples were removed in October 2025; only files required by the Kotlin/Native port remain. Expect ggml headers to live under `external/`, `spm-headers/`, and `src/nativeInterop/`.*

@@ -19,7 +19,6 @@ version = "0.1.1"
 val hostOs = System.getProperty("os.name")
 val hostArch = System.getProperty("os.arch")
 
-
 kotlin {
     applyDefaultHierarchyTemplate()
     jvmToolchain(21)
@@ -119,7 +118,6 @@ rootProject.extensions.configure<YarnRootExtension>("kotlinYarn") {
     resolution("flatted", "3.4.2")
 }
 
-
 publishing {
     publications {
         withType<MavenPublication> {
@@ -197,7 +195,6 @@ tasks.register<DisasmSummaryTask>("disasmSummaryMacosArm64") {
     outFile.set(disasmDir.get().file("bench-macosArm64.summary.txt"))
 }
 
-
 tasks.register<DisasmSummaryTask>("disasmSummaryLinuxX64") {
     group = "bench"
     description = "Summarize vector ops from Linux x64 disassembly"
@@ -208,7 +205,7 @@ tasks.register<DisasmSummaryTask>("disasmSummaryLinuxX64") {
 
 val swarBenchTarget = when {
     hostOs == "Mac OS X" && hostArch == "aarch64" -> "macosArm64"
-    hostOs == "Mac OS X" -> "macosX64"
+    hostOs == "Mac OS X" -> null
     hostOs.startsWith("Linux") -> "linuxX64"
     hostOs.startsWith("Windows") -> "mingwX64"
     else -> null
