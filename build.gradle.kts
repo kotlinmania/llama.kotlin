@@ -7,8 +7,8 @@ import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension
 
 plugins {
-    kotlin("multiplatform") version "2.3.20"
-    kotlin("plugin.serialization") version "2.3.20"
+    kotlin("multiplatform") version "2.3.21"
+    kotlin("plugin.serialization") version "2.3.21"
     id("com.github.ben-manes.versions") version "0.51.0"
     id("maven-publish")
 }
@@ -26,16 +26,6 @@ kotlin {
 
     jvm()
     linuxX64 {
-        binaries {
-            executable {
-                entryPoint = "ai.solace.llamakotlin.main"
-            }
-            executable("bench") {
-                entryPoint = "ai.solace.bench.main"
-            }
-        }
-    }
-    macosX64 {
         binaries {
             executable {
                 entryPoint = "ai.solace.llamakotlin.main"
@@ -94,7 +84,7 @@ kotlin {
             implementation(kotlin("stdlib"))
             implementation("org.jetbrains.kotlinx:atomicfu:0.23.1")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
             implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.0")
             implementation("co.touchlab:kermit:2.0.8")
             implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
