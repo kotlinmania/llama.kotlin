@@ -87,6 +87,7 @@ kotlin {
             implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.0")
             implementation("co.touchlab:kermit:2.0.8")
             implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
+            implementation("io.github.kotlinmania:threadlocal-kotlin:0.3.1")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
