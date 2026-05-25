@@ -89,7 +89,7 @@ Read the KOTLIN_PORT_CHECKLIST.md to understand the current project state, then 
 1. **Fix klang integration** - Choose one approach:
    - Option A: Publish klang as Maven/Gradle library and add as dependency
    - Option B: Fix package naming in vendored klang sources
-   - Option C: Use git submodule for klang repository
+   - Option C: Use submodule vendoring for klang repository
 
 2. **Re-enable klang sources** in build.gradle.kts once fixed
 

@@ -56,7 +56,7 @@ Based on code inspection (without successful build), the following sections need
 1. **Immediate**: Fix klang integration
    - Option A: Publish klang as separate library and add as dependency
    - Option B: Fix package naming in vendored klang sources
-   - Option C: Use git submodule for klang
+   - Option C: Use submodule vendoring for klang
 
 2. **Short-term**: Validate checklist completion claims
    - Build project successfully
