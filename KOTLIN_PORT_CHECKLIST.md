@@ -200,7 +200,7 @@ of llama.cpp C++ to Kotlin, using Kotlin/Native cinterop for C API validation.
   - Current: Vendored sources in `external/klangnative/` with package naming conflicts
   - Options: 
     1. Publish klang as Maven/Gradle library
-    2. Use git submodule
+    2. Use submodule vendoring
     3. Fix vendored source package names
 - [ ] **BLOCKED**: Fix package naming inconsistencies
   - llama.kotlin imports `ai.solace.klangnative.*`

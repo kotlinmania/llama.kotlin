@@ -295,9 +295,8 @@ println("Model validation: ${if (success) "PASSED" else "FAILED"}")
 
 ### Development Setup
 
-1. **Clone the repository**:
+1. **Open a prepared checkout**:
    ```bash
-   git clone https://github.com/KotlinMania/llama.kotlin.git
    cd llama.kotlin
    ```
 
