@@ -1,27 +1,27 @@
 @file:OptIn(ExperimentalUnsignedTypes::class)
 
-package io.github.kotlinmania.llama.zlib.common
+package io.github.kotlinmania.llama.lib.common
 
 // Usage notes: this file declares a wide set of canonical zlib constants and tables.
 // To help IDE/linters that only see in-module references, here are verified usages
 // within this repository (as of 2025-09):
 //
 // - MAX_WBITS: used in tests and samples
-//   • src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/test/MaxWBitsImportTest.kt
+//   • src/commonTest/kotlin/io.github.kotlinmania.llama.lib/test/MaxWBitsImportTest.kt
 //   • test_no_compression.kt
 // - Adler32 constants:
 //   • ADLER_BASE, ADLER_NMAX: used by
-//     - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/bitwise/checksum/Adler32Utils.kt
-//     - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/deflate/Adler32.kt
+//     - src/commonMain/kotlin/io.github.kotlinmania.llama.lib/bitwise/checksum/Adler32Utils.kt
+//     - src/commonMain/kotlin/io.github.kotlinmania.llama.lib/deflate/Adler32.kt
 //     - tests under src/commonTest/.../Adler32*.kt
 // - Canonical DEFLATE tables used by encoder/decoder:
 //   • TREE_BASE_LENGTH, TREE_BASE_DIST: used by
-//     - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/deflate/DeflateStream.kt
-//     - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/inflate/InflateStream.kt
+//     - src/commonMain/kotlin/io.github.kotlinmania.llama.lib/deflate/DeflateStream.kt
+//     - src/commonMain/kotlin/io.github.kotlinmania.llama.lib/inflate/InflateStream.kt
 //   • TREE_DIST_CODE, TREE_LENGTH_CODE: not referenced internally as of 2025-09; kept for API parity.
 //   • IBLK_INFLATE_MASK: not referenced internally as of 2025-09; kept for API parity.
 // - Inflate/Deflate method and header:
-//   • Z_DEFLATED: used by src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/inflate/InflateStream.kt
+//   • Z_DEFLATED: used by src/commonMain/kotlin/io.github.kotlinmania.llama.lib/inflate/InflateStream.kt
 // - Flush/level/strategy constants:
 //   • Z_NO_FLUSH, Z_PARTIAL_FLUSH, Z_SYNC_FLUSH, Z_FULL_FLUSH, Z_FINISH
 //   • Z_NO_COMPRESSION, Z_BEST_SPEED, Z_BEST_COMPRESSION, Z_DEFAULT_COMPRESSION

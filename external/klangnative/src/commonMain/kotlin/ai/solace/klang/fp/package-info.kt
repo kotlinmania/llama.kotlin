@@ -18,4 +18,4 @@
  * - Where platform shifts differ (esp. 8/16-bit), the bitwise package provides arithmetic-only
  *   operations ensuring cross-platform determinism (see ArithmeticBitwiseOps, ArrayBitShifts).
  */
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp

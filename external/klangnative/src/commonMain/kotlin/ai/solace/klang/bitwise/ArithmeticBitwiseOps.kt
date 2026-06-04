@@ -1,7 +1,7 @@
 @file:Suppress("unused", "UNUSED_PARAMETER")
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
-import io.github.kotlinmania.llama.klang.common.ZlibLogger
+import io.github.kotlinmania.llama.lang.common.ZlibLogger
 
 /**
  * ArithmeticBitwiseOps: Pure arithmetic bitwise operations for cross-platform determinism.

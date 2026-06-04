@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftConfig
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftConfig
 
 /**
  * CBF16: bfloat16 (1 sign, 8 exp, 7 frac, bias = 127) stored in 16 bits.

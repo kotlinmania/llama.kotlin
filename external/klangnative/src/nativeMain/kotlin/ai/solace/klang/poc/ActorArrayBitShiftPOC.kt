@@ -1,11 +1,11 @@
-package io.github.kotlinmania.llama.klang.poc
+package io.github.kotlinmania.llama.lang.poc
 
-import io.github.kotlinmania.llama.klang.bitwise.ArrayBitShifts
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftConfig
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftMode
-import io.github.kotlinmania.llama.klang.int.SwAR128
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.bitwise.ArrayBitShifts
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftConfig
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.lang.int.SwAR128
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

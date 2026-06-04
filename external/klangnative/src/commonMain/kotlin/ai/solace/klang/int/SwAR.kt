@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.int
+package io.github.kotlinmania.llama.lang.int
 
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftMode
 
 /**
  * SWAR (SIMD Within A Register) helpers for per-lane unsigned averages.

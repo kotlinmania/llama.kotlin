@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
 /**
  * VectorOps: Deterministic floating-point vector operations.

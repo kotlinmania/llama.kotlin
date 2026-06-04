@@ -1,11 +1,11 @@
-package io.github.kotlinmania.llama.core
+package io.github.kotlinmania.llama.ore
 
-import io.github.kotlinmania.llama.threadlocal.ThreadLocal
+import io.github.kotlinmania.threadlocal.ThreadLocal
 
 /**
  * Thread-local compute context for GGML operations.
  *
- * Provides thread-local storage for [io.github.kotlinmania.llama.core.GGMLComputeParams] to eliminate parameter passing
+ * Provides thread-local storage for [io.github.kotlinmania.llama.ore.GGMLComputeParams] to eliminate parameter passing
  * through deep call stacks in the compute graph. Each thread maintains its own compute
  * parameters (thread ID, thread count, etc.) without contention.
  *
@@ -203,7 +203,7 @@ import io.github.kotlinmania.llama.threadlocal.ThreadLocal
  *
  * ## Implementation Notes
  *
- * Uses threadlocal-kotlin (io.github.kotlinmania.llama.threadlocal-kotlin:0.3.1) which provides
+ * Uses threadlocal-kotlin (io.github.kotlinmania.llama.hreadlocal-kotlin:0.3.1) which provides
  * true thread-local storage across all Kotlin Multiplatform targets:
  * - JVM: java.lang.ThreadLocal
  * - Native: pthread_key_t / Windows TLS
@@ -218,14 +218,14 @@ import io.github.kotlinmania.llama.threadlocal.ThreadLocal
  * - Debug mode to track context lifetime
  * - Statistics on context usage
  *
- * @see io.github.kotlinmania.llama.core.GGMLComputeParams For the compute parameters stored
+ * @see io.github.kotlinmania.llama.ore.GGMLComputeParams For the compute parameters stored
  * @since 0.3.1 (requires threadlocal-kotlin:0.3.1)
  */
 object GGMLThreadLocalContext {
     /**
      * Thread-local mutable cell holding compute parameters.
      */
-    private data class ParamsCell(var value: io.github.kotlinmania.llama.core.GGMLComputeParams? = null)
+    private data class ParamsCell(var value: GGMLComputeParams? = null)
 
     /**
      * Thread-local compute parameters holder.
@@ -245,7 +245,7 @@ object GGMLThreadLocalContext {
      *
      * @param params The compute parameters to associate with this thread
      */
-    fun setCurrentParams(params: io.github.kotlinmania.llama.core.GGMLComputeParams) {
+    fun setCurrentParams(params: GGMLComputeParams) {
         getCell().value = params
     }
 
@@ -254,7 +254,7 @@ object GGMLThreadLocalContext {
      *
      * @return The compute parameters, or null if not set for this thread
      */
-    fun getCurrentParams(): io.github.kotlinmania.llama.core.GGMLComputeParams? {
+    fun getCurrentParams(): GGMLComputeParams? {
         return getCell().value
     }
 
@@ -264,7 +264,7 @@ object GGMLThreadLocalContext {
      * @param default The default parameters to return if none are set
      * @return The compute parameters for this thread, or the default
      */
-    fun getCurrentParamsOr(default: () -> io.github.kotlinmania.llama.core.GGMLComputeParams): io.github.kotlinmania.llama.core.GGMLComputeParams {
+    fun getCurrentParamsOr(default: () -> GGMLComputeParams): GGMLComputeParams {
         return getCell().value ?: default()
     }
 
@@ -274,7 +274,7 @@ object GGMLThreadLocalContext {
      * @return The compute parameters for this thread
      * @throws IllegalStateException if no parameters are set
      */
-    fun requireCurrentParams(): io.github.kotlinmania.llama.core.GGMLComputeParams {
+    fun requireCurrentParams(): GGMLComputeParams {
         return getCell().value
             ?: error("No compute params set for current thread. Call setCurrentParams() first.")
     }
@@ -296,7 +296,7 @@ object GGMLThreadLocalContext {
      * @param block The code to execute with these parameters
      * @return The result of the block
      */
-    inline fun <T> withParams(params: io.github.kotlinmania.llama.core.GGMLComputeParams, block: () -> T): T {
+    inline fun <T> withParams(params: GGMLComputeParams, block: () -> T): T {
         setCurrentParams(params)
         try {
             return block()

@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.stringshift
+package io.github.kotlinmania.llama.lang.stringshift
 
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftConfig
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftConfig
 import kotlin.math.min
 
 /**

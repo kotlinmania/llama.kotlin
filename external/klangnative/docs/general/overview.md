@@ -23,11 +23,11 @@ Key Ideas
 - CLib: A minimal libc surface (strlen/strcmp/mem* etc.) runs over the heap with fast word-at-a-time loops.
 
 Repo Highlights
-- Heap: src/commonMain/kotlin/io.github.kotlinmania.llama.klang/mem/GlobalArrayHeap.kt
-- Allocator: src/commonMain/kotlin/io.github.kotlinmania.llama.klang/mem/KMalloc.kt
-- Bit shifts: src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/*, esp. BitShiftEngine.kt, ArrayBitShifts.kt
-- 128‑bit: src/commonMain/kotlin/io.github.kotlinmania.llama.klang/int/hpc/HeapUInt128.kt
-- Floating: src/commonMain/kotlin/io.github.kotlinmania.llama.klang/fp/CDouble.kt, CLongDouble.kt, CFloat128.kt
-- libc: src/commonMain/kotlin/io.github.kotlinmania.llama.klang/mem/CLib.kt, CString.kt, FastMem.kt, FastStringMem.kt
-- POC bench: src/nativeMain/kotlin/io.github.kotlinmania.llama.klang/poc/ActorArrayBitShiftPOC.kt
+- Heap: src/commonMain/kotlin/io.github.kotlinmania.llama.lang/mem/GlobalArrayHeap.kt
+- Allocator: src/commonMain/kotlin/io.github.kotlinmania.llama.lang/mem/KMalloc.kt
+- Bit shifts: src/commonMain/kotlin/io.github.kotlinmania.llama.lang/bitwise/*, esp. BitShiftEngine.kt, ArrayBitShifts.kt
+- 128‑bit: src/commonMain/kotlin/io.github.kotlinmania.llama.lang/int/hpc/HeapUInt128.kt
+- Floating: src/commonMain/kotlin/io.github.kotlinmania.llama.lang/fp/CDouble.kt, CLongDouble.kt, CFloat128.kt
+- libc: src/commonMain/kotlin/io.github.kotlinmania.llama.lang/mem/CLib.kt, CString.kt, FastMem.kt, FastStringMem.kt
+- POC bench: src/nativeMain/kotlin/io.github.kotlinmania.llama.lang/poc/ActorArrayBitShiftPOC.kt
 

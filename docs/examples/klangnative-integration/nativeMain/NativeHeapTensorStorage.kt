@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.ember.backend.klang
+package io.github.kotlinmania.llama.mber.backend.klang
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer

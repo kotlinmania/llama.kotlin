@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.stringshift
+package io.github.kotlinmania.llama.lang.stringshift
 
 private data class NibbleShift(val out: Char, val carry: Int)
 

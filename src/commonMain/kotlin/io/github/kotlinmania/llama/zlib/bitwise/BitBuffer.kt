@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.zlib.bitwise
+package io.github.kotlinmania.llama.lib.bitwise
 
 /**
  * BitBuffer - A class for managing bit-level operations on a buffer

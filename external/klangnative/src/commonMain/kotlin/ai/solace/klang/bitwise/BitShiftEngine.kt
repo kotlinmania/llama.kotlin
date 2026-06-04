@@ -1,5 +1,5 @@
 @file:Suppress("unused", "UNUSED_PARAMETER")
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 /**
  * @native-bitshift-allowed This is a core BitShift implementation file.

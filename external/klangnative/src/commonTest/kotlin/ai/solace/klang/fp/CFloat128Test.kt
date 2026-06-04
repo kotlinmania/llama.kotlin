@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

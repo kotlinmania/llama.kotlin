@@ -1,13 +1,13 @@
-package io.github.kotlinmania.llama.zlib.zip
+package io.github.kotlinmania.llama.lib.zip
 
-import io.github.kotlinmania.llama.zlib.inflate.InflateStream
-import kotlinx.io.Buffer
-import kotlinx.io.Sink
-import kotlinx.io.Source
-import kotlinx.io.buffered
-import kotlinx.io.readByteArray
-import kotlinx.io.files.FileSystem
-import kotlinx.io.files.Path
+import io.github.kotlinmania.llama.lib.inflate.InflateStream
+import io.github.kotlinmania.io.Buffer
+import io.github.kotlinmania.io.Sink
+import io.github.kotlinmania.io.Source
+import io.github.kotlinmania.io.buffered
+import io.github.kotlinmania.io.files.FileSystem
+import io.github.kotlinmania.io.files.Path
+import io.github.kotlinmania.io.readByteArray
 
 /** Minimal ZIP reader (Central Directory + Local File Header) supporting STORE (0) and DEFLATE (8, raw). */
 object ZipReader {

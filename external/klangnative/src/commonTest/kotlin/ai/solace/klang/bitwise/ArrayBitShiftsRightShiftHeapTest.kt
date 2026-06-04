@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 import kotlin.random.Random
 import kotlin.test.BeforeTest
 import kotlin.test.Test

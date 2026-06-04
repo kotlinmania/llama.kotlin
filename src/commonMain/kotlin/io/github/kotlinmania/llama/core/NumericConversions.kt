@@ -1,5 +1,5 @@
 // port-lint: source ggml/src/ggml-impl.h
-package io.github.kotlinmania.llama.core
+package io.github.kotlinmania.llama.ore
 
 import kotlin.math.abs
 import kotlin.math.exp
@@ -18,13 +18,13 @@ const val TENSOR_ALIGNMENT: Int = 32
 // ============================================================================
 
 /** Round [n] up to the next multiple of 32. */
-inline fun ggml_up32(n: Int): Int = (n + 31) and 31.inv()
+fun ggml_up32(n: Int): Int = (n + 31) and 31.inv()
 
 /**
  * Round [n] up to the next multiple of [m].
  * [m] **must** be a power of two.
  */
-inline fun ggml_up(n: Int, m: Int): Int {
+fun ggml_up(n: Int, m: Int): Int {
     require((m and (m - 1)) == 0) { "m must be a power of 2, got $m" }
     return (n + m - 1) and (m - 1).inv()
 }
@@ -33,12 +33,12 @@ inline fun ggml_up(n: Int, m: Int): Int {
  * Pad [n] up to the next multiple of [m] (general, not limited to power-of-two).
  * Equivalent to the C macro `GGML_PAD(n, m)`.
  */
-inline fun ggml_pad(n: Int, m: Int): Int {
+fun ggml_pad(n: Int, m: Int): Int {
     return ((n + m - 1) / m) * m
 }
 
 /** ULong overload for sizes. */
-inline fun ggml_pad(n: ULong, m: ULong): ULong {
+fun ggml_pad(n: ULong, m: ULong): ULong {
     return ((n + m - 1u) / m) * m
 }
 
@@ -50,12 +50,12 @@ inline fun ggml_pad(n: ULong, m: ULong): ULong {
 /**
  * Reinterpret a raw 32-bit pattern as a Float (equivalent to C `fp32_from_bits`).
  */
-inline fun fp32_from_bits(w: Int): Float = Float.fromBits(w)
+fun fp32_from_bits(w: Int): Float = Float.fromBits(w)
 
 /**
  * Reinterpret a Float as its raw 32-bit pattern (equivalent to C `fp32_to_bits`).
  */
-inline fun fp32_to_bits(f: Float): Int = f.toRawBits()
+fun fp32_to_bits(f: Float): Int = f.toRawBits()
 
 /**
  * Converts a 16-bit half-precision float (ggml_fp16_t) to a 32-bit single-precision float.
@@ -65,25 +65,25 @@ inline fun fp32_to_bits(f: Float): Int = f.toRawBits()
  */
 fun ggml_compute_fp16_to_fp32(h: Short): Float {
     val w = (h.toInt() and 0xFFFF) shl 16
-    val sign = w and 0x80000000.toInt()
+    val sign = w and 0x80000000
     val two_w = w + w
 
     val exp_offset = 0xE0 shl 23
     // 0x1.0p-112f == 2^(-112) == Float.fromBits(0x07800000)
-    val exp_scale = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_from_bits(0x07800000)
-    val normalized_value = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_from_bits(((two_w ushr 4) + exp_offset)) * exp_scale
+    val exp_scale = io.github.kotlinmania.llama.ore.fp32_from_bits(0x07800000)
+    val normalized_value = io.github.kotlinmania.llama.ore.fp32_from_bits(((two_w ushr 4) + exp_offset)) * exp_scale
 
     val magic_mask = 126 shl 23
     val magic_bias = 0.5f
-    val denormalized_value = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_from_bits((two_w ushr 17) or magic_mask) - magic_bias
+    val denormalized_value = io.github.kotlinmania.llama.ore.fp32_from_bits((two_w ushr 17) or magic_mask) - magic_bias
 
     val denormalized_cutoff = 1 shl 27
     val result = sign or
         if ((two_w ushr 0).toLong() and 0xFFFFFFFFL < (denormalized_cutoff.toLong() and 0xFFFFFFFFL))
-            _root_ide_package_.io.github.kotlinmania.llama.core.fp32_to_bits(denormalized_value)
+            io.github.kotlinmania.llama.ore.fp32_to_bits(denormalized_value)
         else
-            _root_ide_package_.io.github.kotlinmania.llama.core.fp32_to_bits(normalized_value)
-    return _root_ide_package_.io.github.kotlinmania.llama.core.fp32_from_bits(result)
+            io.github.kotlinmania.llama.ore.fp32_to_bits(normalized_value)
+    return io.github.kotlinmania.llama.ore.fp32_from_bits(result)
 }
 
 /**
@@ -93,21 +93,21 @@ fun ggml_compute_fp16_to_fp32(h: Short): Float {
  */
 fun ggml_compute_fp32_to_fp16(f: Float): Short {
     // scale_to_inf  = 0x1.0p+112f = Float.fromBits(0x77800000)
-    val scale_to_inf = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_from_bits(0x77800000)
+    val scale_to_inf = io.github.kotlinmania.llama.ore.fp32_from_bits(0x77800000)
     // scale_to_zero = 0x1.0p-110f = Float.fromBits(0x08800000)
-    val scale_to_zero = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_from_bits(0x08800000)
+    val scale_to_zero = io.github.kotlinmania.llama.ore.fp32_from_bits(0x08800000)
     var base = (abs(f) * scale_to_inf) * scale_to_zero
 
-    val w = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_to_bits(f)
+    val w = io.github.kotlinmania.llama.ore.fp32_to_bits(f)
     val shl1_w = w + w
-    val sign = w and 0x80000000.toInt()
-    var bias = shl1_w and 0xFF000000.toInt()
+    val sign = w and 0x80000000
+    var bias = shl1_w and 0xFF000000
     if ((bias.toLong() and 0xFFFFFFFFL) < (0x71000000L)) {
-        bias = 0x71000000.toInt()
+        bias = 0x71000000
     }
 
-    base = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_from_bits((bias ushr 1) + 0x07800000) + base
-    val bits = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_to_bits(base)
+    base = io.github.kotlinmania.llama.ore.fp32_from_bits((bias ushr 1) + 0x07800000) + base
+    val bits = io.github.kotlinmania.llama.ore.fp32_to_bits(base)
     val exp_bits = (bits ushr 13) and 0x00007C00
     val mantissa_bits = bits and 0x00000FFF
     val nonsign = exp_bits + mantissa_bits
@@ -117,12 +117,12 @@ fun ggml_compute_fp32_to_fp16(f: Float): Short {
 }
 
 // Convenience aliases matching C macros
-/** Alias for [io.github.kotlinmania.llama.core.ggml_compute_fp16_to_fp32]. */
-inline fun GGML_FP16_TO_FP32(x: Short): Float =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggml_compute_fp16_to_fp32(x)
-/** Alias for [io.github.kotlinmania.llama.core.ggml_compute_fp32_to_fp16]. */
-inline fun GGML_FP32_TO_FP16(x: Float): Short =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggml_compute_fp32_to_fp16(x)
+/** Alias for [io.github.kotlinmania.llama.ore.ggml_compute_fp16_to_fp32]. */
+fun GGML_FP16_TO_FP32(x: Short): Float =
+    io.github.kotlinmania.llama.ore.ggml_compute_fp16_to_fp32(x)
+/** Alias for [io.github.kotlinmania.llama.ore.ggml_compute_fp32_to_fp16]. */
+fun GGML_FP32_TO_FP16(x: Float): Short =
+    io.github.kotlinmania.llama.ore.ggml_compute_fp32_to_fp16(x)
 
 // ============================================================================
 // Legacy half ↔ float helpers (kept for backward compatibility)
@@ -270,7 +270,7 @@ fun ggml_e8m0_to_fp32(x: UByte): Float {
 }
 
 /**
- * Equal to [io.github.kotlinmania.llama.core.ggml_e8m0_to_fp32] / 2.
+ * Equal to [io.github.kotlinmania.llama.ore.ggml_e8m0_to_fp32] / 2.
  * Useful with MXFP4 quantization since the E0M2 values are doubled.
  */
 fun ggml_e8m0_to_fp32_half(x: UByte): Float {
@@ -284,11 +284,11 @@ fun ggml_e8m0_to_fp32_half(x: UByte): Float {
     return Float.fromBits(bits)
 }
 
-/** Alias for [io.github.kotlinmania.llama.core.ggml_e8m0_to_fp32]. */
-inline fun GGML_E8M0_TO_FP32(x: UByte): Float = _root_ide_package_.io.github.kotlinmania.llama.core.ggml_e8m0_to_fp32(x)
-/** Alias for [io.github.kotlinmania.llama.core.ggml_e8m0_to_fp32_half]. */
-inline fun GGML_E8M0_TO_FP32_HALF(x: UByte): Float =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggml_e8m0_to_fp32_half(x)
+/** Alias for [io.github.kotlinmania.llama.ore.ggml_e8m0_to_fp32]. */
+fun GGML_E8M0_TO_FP32(x: UByte): Float = io.github.kotlinmania.llama.ore.ggml_e8m0_to_fp32(x)
+/** Alias for [io.github.kotlinmania.llama.ore.ggml_e8m0_to_fp32_half]. */
+fun GGML_E8M0_TO_FP32_HALF(x: UByte): Float =
+    io.github.kotlinmania.llama.ore.ggml_e8m0_to_fp32_half(x)
 
 // ============================================================================
 // UE4M3 conversion helpers (unsigned, 4 exp bits bias=7, 3 mantissa bits)
@@ -309,7 +309,7 @@ fun ggml_ue4m3_to_fp32(x: UByte): Float {
         man.toFloat() * (1.0f / 512.0f)
     } else {
         // normalized: (1 + man/8) * 2^(exp-7)
-        (1.0f + man.toFloat() / 8.0f) * _root_ide_package_.io.github.kotlinmania.llama.core.twoToThe(exp - 7)
+        (1.0f + man.toFloat() / 8.0f) * io.github.kotlinmania.llama.ore.twoToThe(exp - 7)
     }
     return raw * 0.5f
 }
@@ -322,7 +322,7 @@ fun ggml_fp32_to_ue4m3(x: Float): UByte {
     if (!(x > 0.0f)) return 0u
     if (x > 448.0f) x = 448.0f
 
-    val bits = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_to_bits(x)
+    val bits = io.github.kotlinmania.llama.ore.fp32_to_bits(x)
     val fp32_exp = ((bits ushr 23) and 0xFF) - 127
     val fp32_man = (bits ushr 20) and 0x7
     var ue4m3_exp = fp32_exp + 7
@@ -388,9 +388,9 @@ private fun twoToThe(n: Int): Float {
  *       │┌──┴───┐┌─┴───────────────────┐
  *     0b00000000000000000000000000000000 IEEE binary32
  *
- * @see [io.github.kotlinmania.llama.core.GGMLBF16] defined in GGMLTypes.kt
+ * @see [io.github.kotlinmania.llama.ore.GGMLBF16] defined in GGMLTypes.kt
  */
-fun ggml_compute_bf16_to_fp32(h: io.github.kotlinmania.llama.core.GGMLBF16): Float {
+fun ggml_compute_bf16_to_fp32(h: io.github.kotlinmania.llama.ore.GGMLBF16): Float {
     return Float.fromBits(h.bits.toInt() shl 16)
 }
 
@@ -401,22 +401,22 @@ fun ggml_compute_bf16_to_fp32(h: io.github.kotlinmania.llama.core.GGMLBF16): Flo
  * Floats shall round to nearest even, and NANs shall be quiet.
  * Subnormals aren't flushed to zero, except perhaps when used.
  */
-fun ggml_compute_fp32_to_bf16(s: Float): io.github.kotlinmania.llama.core.GGMLBF16 {
-    val i = _root_ide_package_.io.github.kotlinmania.llama.core.fp32_to_bits(s)
+fun ggml_compute_fp32_to_bf16(s: Float): io.github.kotlinmania.llama.ore.GGMLBF16 {
+    val i = io.github.kotlinmania.llama.ore.fp32_to_bits(s)
     if (((i and 0x7fffffff).toLong() and 0xFFFFFFFFL) > 0x7f800000L) {
         // NaN → force to quiet
-        return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBF16(((i ushr 16) or 64).toUShort())
+        return io.github.kotlinmania.llama.ore.GGMLBF16(((i ushr 16) or 64).toUShort())
     }
     val rounded = i + (0x7fff + ((i ushr 16) and 1))
-    return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBF16((rounded ushr 16).toUShort())
+    return io.github.kotlinmania.llama.ore.GGMLBF16((rounded ushr 16).toUShort())
 }
 
-/** Alias for [io.github.kotlinmania.llama.core.ggml_compute_fp32_to_bf16]. */
-inline fun GGML_FP32_TO_BF16(x: Float): io.github.kotlinmania.llama.core.GGMLBF16 =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggml_compute_fp32_to_bf16(x)
-/** Alias for [io.github.kotlinmania.llama.core.ggml_compute_bf16_to_fp32]. */
-inline fun GGML_BF16_TO_FP32(x: io.github.kotlinmania.llama.core.GGMLBF16): Float =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggml_compute_bf16_to_fp32(x)
+/** Alias for [io.github.kotlinmania.llama.ore.ggml_compute_fp32_to_bf16]. */
+fun GGML_FP32_TO_BF16(x: Float): io.github.kotlinmania.llama.ore.GGMLBF16 =
+    io.github.kotlinmania.llama.ore.ggml_compute_fp32_to_bf16(x)
+/** Alias for [io.github.kotlinmania.llama.ore.ggml_compute_bf16_to_fp32]. */
+fun GGML_BF16_TO_FP32(x: io.github.kotlinmania.llama.ore.GGMLBF16): Float =
+    io.github.kotlinmania.llama.ore.ggml_compute_bf16_to_fp32(x)
 
 // ============================================================================
 // Softplus helper
@@ -426,7 +426,7 @@ inline fun GGML_BF16_TO_FP32(x: io.github.kotlinmania.llama.core.GGMLBF16): Floa
  * Computes softplus: log(1 + exp(input)).
  * For large [input] (> 20), returns [input] directly to avoid overflow.
  */
-inline fun ggml_compute_softplus_f32(input: Float): Float {
+fun ggml_compute_softplus_f32(input: Float): Float {
     return if (input > 20.0f) input else ln(1.0f + exp(input))
 }
 
@@ -440,9 +440,9 @@ inline fun ggml_compute_softplus_f32(input: Float): Float {
  *
  * Port of `ggml_are_same_layout` from ggml-impl.h.
  */
-fun ggml_are_same_layout(a: io.github.kotlinmania.llama.core.GGMLTensor, b: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
+fun ggml_are_same_layout(a: io.github.kotlinmania.llama.ore.GGMLTensor, b: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
     if (a.type != b.type) return false
-    for (i in 0 until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) {
+    for (i in 0 until io.github.kotlinmania.llama.ore.GGML_MAX_DIMS) {
         if (a.ne[i] != b.ne[i]) return false
         if (a.nb[i] != b.nb[i]) return false
     }
@@ -453,13 +453,13 @@ fun ggml_are_same_layout(a: io.github.kotlinmania.llama.core.GGMLTensor, b: io.g
  * Returns `true` if the given [op] is an "empty" operation that doesn't
  * perform actual computation (metadata-only reshaping / viewing).
  */
-fun ggml_op_is_empty(op: io.github.kotlinmania.llama.core.GGMLOp): Boolean {
+fun ggml_op_is_empty(op: io.github.kotlinmania.llama.ore.GGMLOp): Boolean {
     return when (op) {
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.NONE,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RESHAPE,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.TRANSPOSE,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.VIEW,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.PERMUTE -> true
+        io.github.kotlinmania.llama.ore.GGMLOp.NONE,
+        io.github.kotlinmania.llama.ore.GGMLOp.RESHAPE,
+        io.github.kotlinmania.llama.ore.GGMLOp.TRANSPOSE,
+        io.github.kotlinmania.llama.ore.GGMLOp.VIEW,
+        io.github.kotlinmania.llama.ore.GGMLOp.PERMUTE -> true
         else -> false
     }
 }
@@ -467,7 +467,7 @@ fun ggml_op_is_empty(op: io.github.kotlinmania.llama.core.GGMLOp): Boolean {
 /**
  * Returns `true` if tensor [t] is a view of another tensor.
  */
-inline fun ggml_impl_is_view(t: io.github.kotlinmania.llama.core.GGMLTensor): Boolean = t.viewSrc != null
+fun ggml_impl_is_view(t: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean = t.viewSrc != null
 
 // ============================================================================
 // Op-params accessors
@@ -477,9 +477,9 @@ inline fun ggml_impl_is_view(t: io.github.kotlinmania.llama.core.GGMLTensor): Bo
  * Copies [paramsSize] bytes from [params] into [tensor]'s opParams.
  * [params] is interpreted as an IntArray where each Int occupies 4 bytes.
  */
-fun ggml_set_op_params(tensor: io.github.kotlinmania.llama.core.GGMLTensor, params: IntArray, paramsSize: Int) {
-    require(paramsSize <= _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_OP_PARAMS) {
-        "paramsSize ($paramsSize) exceeds GGML_MAX_OP_PARAMS (${_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_OP_PARAMS})"
+fun ggml_set_op_params(tensor: io.github.kotlinmania.llama.ore.GGMLTensor, params: IntArray, paramsSize: Int) {
+    require(paramsSize <= io.github.kotlinmania.llama.ore.GGML_MAX_OP_PARAMS) {
+        "paramsSize ($paramsSize) exceeds GGML_MAX_OP_PARAMS (${io.github.kotlinmania.llama.ore.GGML_MAX_OP_PARAMS})"
     }
     val intCount = paramsSize / Int.SIZE_BYTES
     for (j in 0 until intCount) {
@@ -488,26 +488,26 @@ fun ggml_set_op_params(tensor: io.github.kotlinmania.llama.core.GGMLTensor, para
 }
 
 /** Reads the [i]-th Int32 from [tensor]'s op_params. */
-fun ggml_get_op_params_i32(tensor: io.github.kotlinmania.llama.core.GGMLTensor, i: Int): Int {
-    require(i < _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+fun ggml_get_op_params_i32(tensor: io.github.kotlinmania.llama.ore.GGMLTensor, i: Int): Int {
+    require(i < io.github.kotlinmania.llama.ore.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
     return tensor.opParams[i]
 }
 
 /** Reads the [i]-th Float from [tensor]'s op_params (reinterpreted from Int bits). */
-fun ggml_get_op_params_f32(tensor: io.github.kotlinmania.llama.core.GGMLTensor, i: Int): Float {
-    require(i < _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+fun ggml_get_op_params_f32(tensor: io.github.kotlinmania.llama.ore.GGMLTensor, i: Int): Float {
+    require(i < io.github.kotlinmania.llama.ore.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
     return Float.fromBits(tensor.opParams[i])
 }
 
 /** Writes an Int32 [value] at position [i] in [tensor]'s op_params. */
-fun ggml_set_op_params_i32(tensor: io.github.kotlinmania.llama.core.GGMLTensor, i: Int, value: Int) {
-    require(i < _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+fun ggml_set_op_params_i32(tensor: io.github.kotlinmania.llama.ore.GGMLTensor, i: Int, value: Int) {
+    require(i < io.github.kotlinmania.llama.ore.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
     tensor.opParams[i] = value
 }
 
 /** Writes a Float [value] at position [i] in [tensor]'s op_params (stored as raw bits). */
-fun ggml_set_op_params_f32(tensor: io.github.kotlinmania.llama.core.GGMLTensor, i: Int, value: Float) {
-    require(i < _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
+fun ggml_set_op_params_f32(tensor: io.github.kotlinmania.llama.ore.GGMLTensor, i: Int, value: Float) {
+    require(i < io.github.kotlinmania.llama.ore.GGML_MAX_OP_PARAMS / Int.SIZE_BYTES) { "i ($i) out of range" }
     tensor.opParams[i] = value.toRawBits()
 }
 
@@ -521,7 +521,7 @@ fun ggml_set_op_params_f32(tensor: io.github.kotlinmania.llama.core.GGMLTensor, 
  * Port of `struct ggml_map_custom1_op_params`.
  */
 class GGMLMapCustom1OpParams(
-    val fun_: ((io.github.kotlinmania.llama.core.GGMLTensor, io.github.kotlinmania.llama.core.GGMLTensor, Int, Any?) -> Unit)? = null,
+    val fun_: ((io.github.kotlinmania.llama.ore.GGMLTensor, io.github.kotlinmania.llama.ore.GGMLTensor, Int, Any?) -> Unit)? = null,
     val nTasks: Int = 1,
     val userdata: Any? = null
 )
@@ -532,7 +532,7 @@ class GGMLMapCustom1OpParams(
  * Port of `struct ggml_map_custom2_op_params`.
  */
 class GGMLMapCustom2OpParams(
-    val fun_: ((io.github.kotlinmania.llama.core.GGMLTensor, io.github.kotlinmania.llama.core.GGMLTensor, io.github.kotlinmania.llama.core.GGMLTensor, Int, Any?) -> Unit)? = null,
+    val fun_: ((io.github.kotlinmania.llama.ore.GGMLTensor, io.github.kotlinmania.llama.ore.GGMLTensor, io.github.kotlinmania.llama.ore.GGMLTensor, Int, Any?) -> Unit)? = null,
     val nTasks: Int = 1,
     val userdata: Any? = null
 )
@@ -543,7 +543,7 @@ class GGMLMapCustom2OpParams(
  * Port of `struct ggml_map_custom3_op_params`.
  */
 class GGMLMapCustom3OpParams(
-    val fun_: ((io.github.kotlinmania.llama.core.GGMLTensor, io.github.kotlinmania.llama.core.GGMLTensor, io.github.kotlinmania.llama.core.GGMLTensor, io.github.kotlinmania.llama.core.GGMLTensor, Int, Any?) -> Unit)? = null,
+    val fun_: ((io.github.kotlinmania.llama.ore.GGMLTensor, io.github.kotlinmania.llama.ore.GGMLTensor, io.github.kotlinmania.llama.ore.GGMLTensor, io.github.kotlinmania.llama.ore.GGMLTensor, Int, Any?) -> Unit)? = null,
     val nTasks: Int = 1,
     val userdata: Any? = null
 )
@@ -554,7 +554,7 @@ class GGMLMapCustom3OpParams(
  * Port of `struct ggml_custom_op_params`.
  */
 class GGMLCustomOpParams(
-    val fun_: ((io.github.kotlinmania.llama.core.GGMLTensor, Int, Any?) -> Unit)? = null,
+    val fun_: ((io.github.kotlinmania.llama.ore.GGMLTensor, Int, Any?) -> Unit)? = null,
     val nTasks: Int = 1,
     val userdata: Any? = null
 )
@@ -580,17 +580,17 @@ class GGMLBitset(private val data: IntArray) {
 
     /** Returns `true` if bit [i] is set. */
     fun get(i: Int): Boolean {
-        return (data[i ushr _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_SHR] and (1 shl (i and _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_MASK))) != 0
+        return (data[i ushr io.github.kotlinmania.llama.ore.BITSET_SHR] and (1 shl (i and io.github.kotlinmania.llama.ore.BITSET_MASK))) != 0
     }
 
     /** Sets bit [i] to 1. */
     fun set(i: Int) {
-        data[i ushr _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_SHR] = data[i ushr _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_SHR] or (1 shl (i and _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_MASK))
+        data[i ushr io.github.kotlinmania.llama.ore.BITSET_SHR] = data[i ushr io.github.kotlinmania.llama.ore.BITSET_SHR] or (1 shl (i and io.github.kotlinmania.llama.ore.BITSET_MASK))
     }
 
     /** Clears bit [i] to 0. */
     fun clear(i: Int) {
-        data[i ushr _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_SHR] = data[i ushr _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_SHR] and (1 shl (i and _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_MASK)).inv()
+        data[i ushr io.github.kotlinmania.llama.ore.BITSET_SHR] = data[i ushr io.github.kotlinmania.llama.ore.BITSET_SHR] and (1 shl (i and io.github.kotlinmania.llama.ore.BITSET_MASK)).inv()
     }
 
     /** Resets every bit to 0. */
@@ -603,7 +603,7 @@ class GGMLBitset(private val data: IntArray) {
          * Returns the number of 32-bit words needed to hold [n] bits.
          * Equivalent to the C function `ggml_bitset_size`.
          */
-        fun wordsForBits(n: Int): Int = (n + _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_MASK) ushr _root_ide_package_.io.github.kotlinmania.llama.core.BITSET_SHR
+        fun wordsForBits(n: Int): Int = (n + io.github.kotlinmania.llama.ore.BITSET_MASK) ushr io.github.kotlinmania.llama.ore.BITSET_SHR
 
         /** Creates a new bitset large enough to hold [n] bits, all initialized to 0. */
         fun create(n: Int): GGMLBitset = GGMLBitset(IntArray(wordsForBits(n)))
@@ -620,7 +620,7 @@ const val GGML_HASHSET_FULL: Int = -1
 const val GGML_HASHSET_ALREADY_EXISTS: Int = -2
 
 /**
- * Open-addressed hash set keyed by [io.github.kotlinmania.llama.core.GGMLTensor] identity (reference equality).
+ * Open-addressed hash set keyed by [io.github.kotlinmania.llama.ore.GGMLTensor] identity (reference equality).
  *
  * Port of `struct ggml_hash_set` from ggml-impl.h.
  * Uses linear probing. The slot capacity is stored in [size]; actual occupancy
@@ -632,8 +632,8 @@ const val GGML_HASHSET_ALREADY_EXISTS: Int = -2
  */
 class GGMLHashSet(
     val size: Int,
-    val used: io.github.kotlinmania.llama.core.GGMLBitset = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBitset.create(size),
-    val keys: Array<io.github.kotlinmania.llama.core.GGMLTensor?> = arrayOfNulls(size)
+    val used: io.github.kotlinmania.llama.ore.GGMLBitset = io.github.kotlinmania.llama.ore.GGMLBitset.create(size),
+    val keys: Array<io.github.kotlinmania.llama.ore.GGMLTensor?> = arrayOfNulls(size)
 ) {
     /** Removes all elements from the hash set. */
     fun reset() {
@@ -679,7 +679,7 @@ class GGMLHashSet(
  * In C this is `(uintptr_t)p >> 4`. Since Kotlin doesn't expose raw addresses,
  * we use [System.identityHashCode] (or its equivalent) as a proxy.
  */
-fun ggml_hash(p: io.github.kotlinmania.llama.core.GGMLTensor): Int {
+fun ggml_hash(p: io.github.kotlinmania.llama.ore.GGMLTensor): Int {
     // identityHashCode is the closest Kotlin analogue to address-based hashing
     return p.hashCode() ushr 4
 }
@@ -687,14 +687,14 @@ fun ggml_hash(p: io.github.kotlinmania.llama.core.GGMLTensor): Int {
 /**
  * Finds the slot for [key] in [hashSet] using linear probing.
  *
- * @return the slot index, or [io.github.kotlinmania.llama.core.GGML_HASHSET_FULL] if the table is full.
+ * @return the slot index, or [io.github.kotlinmania.llama.ore.GGML_HASHSET_FULL] if the table is full.
  */
-fun ggml_hash_find(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet, key: io.github.kotlinmania.llama.core.GGMLTensor): Int {
-    val h = (_root_ide_package_.io.github.kotlinmania.llama.core.ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
+fun ggml_hash_find(hashSet: io.github.kotlinmania.llama.ore.GGMLHashSet, key: io.github.kotlinmania.llama.ore.GGMLTensor): Int {
+    val h = (io.github.kotlinmania.llama.ore.ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
     var i = h
     while (hashSet.used.get(i) && hashSet.keys[i] !== key) {
         i = (i + 1) % hashSet.size
-        if (i == h) return _root_ide_package_.io.github.kotlinmania.llama.core.GGML_HASHSET_FULL
+        if (i == h) return io.github.kotlinmania.llama.ore.GGML_HASHSET_FULL
     }
     return i
 }
@@ -702,19 +702,19 @@ fun ggml_hash_find(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet, key: i
 /**
  * Returns `true` if [key] is present in [hashSet].
  */
-fun ggml_hash_contains(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet, key: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
-    val i = _root_ide_package_.io.github.kotlinmania.llama.core.ggml_hash_find(hashSet, key)
-    return i != _root_ide_package_.io.github.kotlinmania.llama.core.GGML_HASHSET_FULL && hashSet.used.get(i)
+fun ggml_hash_contains(hashSet: io.github.kotlinmania.llama.ore.GGMLHashSet, key: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
+    val i = io.github.kotlinmania.llama.ore.ggml_hash_find(hashSet, key)
+    return i != io.github.kotlinmania.llama.ore.GGML_HASHSET_FULL && hashSet.used.get(i)
 }
 
 /**
  * Inserts [key] into [hashSet].
  *
- * @return the slot index, or [io.github.kotlinmania.llama.core.GGML_HASHSET_ALREADY_EXISTS] if the key was already present.
+ * @return the slot index, or [io.github.kotlinmania.llama.ore.GGML_HASHSET_ALREADY_EXISTS] if the key was already present.
  * @throws IllegalStateException if the table is completely full.
  */
-fun ggml_hash_insert(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet, key: io.github.kotlinmania.llama.core.GGMLTensor): Int {
-    val h = (_root_ide_package_.io.github.kotlinmania.llama.core.ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
+fun ggml_hash_insert(hashSet: io.github.kotlinmania.llama.ore.GGMLHashSet, key: io.github.kotlinmania.llama.ore.GGMLTensor): Int {
+    val h = (io.github.kotlinmania.llama.ore.ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
     var i = h
     do {
         if (!hashSet.used.get(i)) {
@@ -723,7 +723,7 @@ fun ggml_hash_insert(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet, key:
             return i
         }
         if (hashSet.keys[i] === key) {
-            return _root_ide_package_.io.github.kotlinmania.llama.core.GGML_HASHSET_ALREADY_EXISTS
+            return io.github.kotlinmania.llama.ore.GGML_HASHSET_ALREADY_EXISTS
         }
         i = (i + 1) % hashSet.size
     } while (i != h)
@@ -737,8 +737,8 @@ fun ggml_hash_insert(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet, key:
  * @return the slot index (whether newly inserted or already present).
  * @throws IllegalStateException if the table is completely full.
  */
-fun ggml_hash_find_or_insert(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet, key: io.github.kotlinmania.llama.core.GGMLTensor): Int {
-    val h = (_root_ide_package_.io.github.kotlinmania.llama.core.ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
+fun ggml_hash_find_or_insert(hashSet: io.github.kotlinmania.llama.ore.GGMLHashSet, key: io.github.kotlinmania.llama.ore.GGMLTensor): Int {
+    val h = (io.github.kotlinmania.llama.ore.ggml_hash(key) and 0x7FFFFFFF) % hashSet.size
     var i = h
     do {
         if (!hashSet.used.get(i)) {
@@ -764,13 +764,13 @@ fun ggml_hash_find_or_insert(hashSet: io.github.kotlinmania.llama.core.GGMLHashS
  *
  * Port of `ggml_node_get_use_count` from ggml-impl.h.
  */
-fun ggml_node_get_use_count(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, nodeIdx: Int): Int {
+fun ggml_node_get_use_count(cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph, nodeIdx: Int): Int {
     val node = cgraph.nodes[nodeIdx] ?: return 0
-    val hashSet = cgraph.visitedHashSet as? io.github.kotlinmania.llama.core.GGMLHashSet ?: return 0
+    val hashSet = cgraph.visitedHashSet as? io.github.kotlinmania.llama.ore.GGMLHashSet ?: return 0
     val useCounts = cgraph.useCounts ?: return 0
 
-    val hashPos = _root_ide_package_.io.github.kotlinmania.llama.core.ggml_hash_find(hashSet, node)
-    if (hashPos == _root_ide_package_.io.github.kotlinmania.llama.core.GGML_HASHSET_FULL || !hashSet.used.get(hashPos)) {
+    val hashPos = io.github.kotlinmania.llama.ore.ggml_hash_find(hashSet, node)
+    if (hashPos == io.github.kotlinmania.llama.ore.GGML_HASHSET_FULL || !hashSet.used.get(hashPos)) {
         return 0
     }
     return useCounts[hashPos]
@@ -782,17 +782,17 @@ fun ggml_node_get_use_count(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph,
  *
  * Port of `ggml_node_has_n_uses` from ggml-impl.h.
  */
-fun ggml_node_has_n_uses(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, nodeIdx: Int, nUses: Int): Boolean {
+fun ggml_node_has_n_uses(cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph, nodeIdx: Int, nUses: Int): Boolean {
     val node = cgraph.nodes[nodeIdx] ?: return false
 
-    if (_root_ide_package_.io.github.kotlinmania.llama.core.ggml_node_get_use_count(cgraph, nodeIdx) != nUses) return false
+    if (io.github.kotlinmania.llama.ore.ggml_node_get_use_count(cgraph, nodeIdx) != nUses) return false
 
     // If node is a view, some other node might be using the intermediate result
     // via the view source.
     if (node.viewSrc != null) return false
 
     // If the user requested output for the node, can't fuse
-    if (node.flags and _root_ide_package_.io.github.kotlinmania.llama.core.GGML_TENSOR_FLAG_OUTPUT != 0) return false
+    if (node.flags and io.github.kotlinmania.llama.ore.GGML_TENSOR_FLAG_OUTPUT != 0) return false
 
     return true
 }
@@ -803,13 +803,13 @@ fun ggml_node_has_n_uses(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, no
  *
  * Port of `ggml_can_fuse_ext` from ggml-impl.h.
  */
-fun ggml_can_fuse_ext(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, nodeIdxs: IntArray, ops: Array<io.github.kotlinmania.llama.core.GGMLOp>, numOps: Int): Boolean {
+fun ggml_can_fuse_ext(cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph, nodeIdxs: IntArray, ops: Array<io.github.kotlinmania.llama.ore.GGMLOp>, numOps: Int): Boolean {
     for (i in 0 until numOps) {
         if (nodeIdxs[i] >= cgraph.nNodes) return false
 
         val node = cgraph.nodes[nodeIdxs[i]] ?: return false
         if (node.op != ops[i]) return false
-        if (i < numOps - 1 && !_root_ide_package_.io.github.kotlinmania.llama.core.ggml_node_has_n_uses(
+        if (i < numOps - 1 && !io.github.kotlinmania.llama.ore.ggml_node_has_n_uses(
                 cgraph,
                 nodeIdxs[i],
                 1
@@ -819,7 +819,7 @@ fun ggml_can_fuse_ext(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, nodeI
             val prev = cgraph.nodes[nodeIdxs[i - 1]] ?: return false
             if (node.src[0] !== prev && node.src[1] !== prev) return false
             // Same shape check
-            if (!_root_ide_package_.io.github.kotlinmania.llama.core.ggml_are_same_shape(node, prev)) return false
+            if (!io.github.kotlinmania.llama.ore.ggml_are_same_shape(node, prev)) return false
         }
     }
     return true
@@ -830,19 +830,19 @@ fun ggml_can_fuse_ext(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, nodeI
  *
  * Port of `ggml_can_fuse` from ggml-impl.h.
  */
-fun ggml_can_fuse(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, nodeIdx: Int, ops: Array<io.github.kotlinmania.llama.core.GGMLOp>, numOps: Int): Boolean {
+fun ggml_can_fuse(cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph, nodeIdx: Int, ops: Array<io.github.kotlinmania.llama.ore.GGMLOp>, numOps: Int): Boolean {
     require(numOps < 32)
     if (nodeIdx + numOps > cgraph.nNodes) return false
 
     val idxs = IntArray(numOps) { nodeIdx + it }
-    return _root_ide_package_.io.github.kotlinmania.llama.core.ggml_can_fuse_ext(cgraph, idxs, ops, numOps)
+    return io.github.kotlinmania.llama.ore.ggml_can_fuse_ext(cgraph, idxs, ops, numOps)
 }
 
 /**
  * Returns `true` if two tensors have the same shape (element counts in every dimension).
  */
-fun ggml_are_same_shape(a: io.github.kotlinmania.llama.core.GGMLTensor, b: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
-    for (i in 0 until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) {
+fun ggml_are_same_shape(a: io.github.kotlinmania.llama.ore.GGMLTensor, b: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
+    for (i in 0 until io.github.kotlinmania.llama.ore.GGML_MAX_DIMS) {
         if (a.ne[i] != b.ne[i]) return false
     }
     return true
@@ -854,10 +854,10 @@ fun ggml_are_same_shape(a: io.github.kotlinmania.llama.core.GGMLTensor, b: io.gi
  *
  * Port of `ggml_graph_view` from ggml-impl.h.
  */
-fun ggml_graph_view(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, i0: Int, i1: Int): io.github.kotlinmania.llama.core.GGMLCGraph {
+fun ggml_graph_view(cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph, i0: Int, i1: Int): io.github.kotlinmania.llama.ore.GGMLCGraph {
     require(i0 in 0..i1 && i1 <= cgraph.nNodes)
     val sliceNodes = cgraph.nodes.sliceArray(i0 until i1)
-    return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCGraph(
+    return io.github.kotlinmania.llama.ore.GGMLCGraph(
         size = i1 - i0,
         nNodes = i1 - i0,
         nLeafs = 0,
@@ -879,7 +879,7 @@ private var _ggml_graph_uid_counter: Long = 0L
  * Returns the next unique ID for a computation graph.
  * Port of `ggml_graph_next_uid`.
  */
-fun ggml_graph_next_uid(): Long = ++_root_ide_package_.io.github.kotlinmania.llama.core._ggml_graph_uid_counter
+fun ggml_graph_next_uid(): Long = ++io.github.kotlinmania.llama.ore._ggml_graph_uid_counter
 
 // ============================================================================
 // Logging level enum
@@ -911,7 +911,7 @@ enum class GGMLLogLevel {
  * Replaces repeated float-to-half conversion loops
  */
 fun convertFloatArrayToHalf(floatArray: FloatArray): ShortArray {
-    return ShortArray(floatArray.size) { i -> _root_ide_package_.io.github.kotlinmania.llama.core.floatToHalf(floatArray[i]) }
+    return ShortArray(floatArray.size) { i -> io.github.kotlinmania.llama.ore.floatToHalf(floatArray[i]) }
 }
 
 /**
@@ -919,7 +919,7 @@ fun convertFloatArrayToHalf(floatArray: FloatArray): ShortArray {
  * Replaces repeated half-to-float conversion loops
  */
 fun convertHalfArrayToFloat(halfArray: ShortArray): FloatArray {
-    return FloatArray(halfArray.size) { i -> _root_ide_package_.io.github.kotlinmania.llama.core.halfToFloat(halfArray[i]) }
+    return FloatArray(halfArray.size) { i -> io.github.kotlinmania.llama.ore.halfToFloat(halfArray[i]) }
 }
 
 /**
@@ -953,10 +953,10 @@ fun clampFloatArray(array: FloatArray, minValue: Float, maxValue: Float): FloatA
  * Returns true if the subgraph formed by [nodeIdxs] can be fused.
  */
 fun ggml_can_fuse_subgraph_ext(
-    cgraph: io.github.kotlinmania.llama.core.GGMLCGraph,
+    cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph,
     nodeIdxs: IntArray,
     count: Int,
-    ops: Array<io.github.kotlinmania.llama.core.GGMLOp>,
+    ops: Array<io.github.kotlinmania.llama.ore.GGMLOp>,
     outputs: IntArray,
     numOutputs: Int
 ): Boolean {
@@ -967,17 +967,17 @@ fun ggml_can_fuse_subgraph_ext(
  * Port of `ggml_can_fuse_subgraph` — convenience wrapper for sequential node indices.
  */
 fun ggml_can_fuse_subgraph(
-    cgraph: io.github.kotlinmania.llama.core.GGMLCGraph,
+    cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph,
     nodeIdx: Int,
     count: Int,
-    ops: Array<io.github.kotlinmania.llama.core.GGMLOp>,
+    ops: Array<io.github.kotlinmania.llama.ore.GGMLOp>,
     outputs: IntArray = intArrayOf(),
     numOutputs: Int = outputs.size
 ): Boolean {
     require(count < 32) { "count must be < 32" }
     if (nodeIdx + count > cgraph.nNodes) return false
     val idxs = IntArray(count) { nodeIdx + it }
-    return _root_ide_package_.io.github.kotlinmania.llama.core.ggml_can_fuse_subgraph_ext(
+    return io.github.kotlinmania.llama.ore.ggml_can_fuse_subgraph_ext(
         cgraph,
         idxs,
         count,
@@ -990,16 +990,16 @@ fun ggml_can_fuse_subgraph(
 /**
  * Vararg convenience overloads (C++ initializer_list equivalents).
  */
-fun ggml_can_fuse(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, nodeIdx: Int, vararg ops: io.github.kotlinmania.llama.core.GGMLOp): Boolean =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggml_can_fuse(cgraph, nodeIdx, arrayOf(*ops), ops.size)
+fun ggml_can_fuse(cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph, nodeIdx: Int, vararg ops: io.github.kotlinmania.llama.ore.GGMLOp): Boolean =
+    io.github.kotlinmania.llama.ore.ggml_can_fuse(cgraph, nodeIdx, arrayOf(*ops), ops.size)
 
 fun ggml_can_fuse_subgraph(
-    cgraph: io.github.kotlinmania.llama.core.GGMLCGraph,
+    cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph,
     startIdx: Int,
-    ops: List<io.github.kotlinmania.llama.core.GGMLOp>,
+    ops: List<io.github.kotlinmania.llama.ore.GGMLOp>,
     outputs: List<Int> = emptyList()
 ): Boolean =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggml_can_fuse_subgraph(
+    io.github.kotlinmania.llama.ore.ggml_can_fuse_subgraph(
         cgraph,
         startIdx,
         ops.size,
@@ -1012,7 +1012,7 @@ fun ggml_can_fuse_subgraph(
  * Port of `ggml_check_edges` — validates graph edge connectivity.
  * Each edge is [dstNode, srcIdx, srcNode] relative to [startIdx].
  */
-fun ggml_check_edges(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, startIdx: Int, edges: List<Triple<Int, Int, Int>>): Boolean {
+fun ggml_check_edges(cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph, startIdx: Int, edges: List<Triple<Int, Int, Int>>): Boolean {
     for ((dstNode, srcIdx, srcNode) in edges) {
         val dstTensor = cgraph.nodes[startIdx + dstNode] ?: return false
         val srcTensor = cgraph.nodes[startIdx + srcNode] ?: return false
@@ -1028,60 +1028,60 @@ fun ggml_check_edges(cgraph: io.github.kotlinmania.llama.core.GGMLCGraph, startI
 // ============================================================================
 
 /** Port of `ggml_bitset_size(n)` from ggml-impl.h. */
-inline fun ggml_bitset_size(n: Int): Int = (n + 31) / 32
+fun ggml_bitset_size(n: Int): Int = (n + 31) / 32
 
 /** Port of `ggml_bitset_get(bitset, i)` from ggml-impl.h line 209. */
-inline fun ggml_bitset_get(bitset: io.github.kotlinmania.llama.core.GGMLBitset, i: Int): Boolean = bitset.get(i)
+fun ggml_bitset_get(bitset: io.github.kotlinmania.llama.ore.GGMLBitset, i: Int): Boolean = bitset.get(i)
 
 /** Port of `ggml_bitset_set(bitset, i)` from ggml-impl.h line 213. */
-inline fun ggml_bitset_set(bitset: io.github.kotlinmania.llama.core.GGMLBitset, i: Int) = bitset.set(i)
+fun ggml_bitset_set(bitset: io.github.kotlinmania.llama.ore.GGMLBitset, i: Int) = bitset.set(i)
 
 /** Port of `ggml_bitset_clear(bitset, i)` from ggml-impl.h line 217. */
-inline fun ggml_bitset_clear(bitset: io.github.kotlinmania.llama.core.GGMLBitset, i: Int) = bitset.clear(i)
+fun ggml_bitset_clear(bitset: io.github.kotlinmania.llama.ore.GGMLBitset, i: Int) = bitset.clear(i)
 
 // ============================================================================
 // Standalone hash set functions — match C signatures from ggml-impl.h
 // ============================================================================
 
 /** Port of `ggml_hash_set_new(size)` from ggml-impl.h line 232. */
-fun ggml_hash_set_new(size: Int): io.github.kotlinmania.llama.core.GGMLHashSet = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLHashSet.new(size)
+fun ggml_hash_set_new(size: Int): io.github.kotlinmania.llama.ore.GGMLHashSet = io.github.kotlinmania.llama.ore.GGMLHashSet.new(size)
 
 /** Port of `ggml_hash_set_free(hash_set)` from ggml-impl.h line 233. */
-fun ggml_hash_set_free(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet) {
+fun ggml_hash_set_free(hashSet: io.github.kotlinmania.llama.ore.GGMLHashSet) {
     // In Kotlin, GC handles deallocation. Reset to release tensor references.
     hashSet.reset()
 }
 
 /** Port of `ggml_hash_set_reset(hash_set)` from ggml-impl.h line 239. */
-fun ggml_hash_set_reset(hashSet: io.github.kotlinmania.llama.core.GGMLHashSet) = hashSet.reset()
+fun ggml_hash_set_reset(hashSet: io.github.kotlinmania.llama.ore.GGMLHashSet) = hashSet.reset()
 
 // ============================================================================
 // ggml_op_can_inplace — port from ggml-alloc.c (declared in ggml-impl.h line 355)
 // ============================================================================
 
-fun ggml_op_can_inplace(op: io.github.kotlinmania.llama.core.GGMLOp): Boolean {
+fun ggml_op_can_inplace(op: io.github.kotlinmania.llama.ore.GGMLOp): Boolean {
     return when (op) {
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.FILL,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SCALE,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.DIAG_MASK_ZERO,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.DIAG_MASK_INF,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ADD,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ADD_ID,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ADD1,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SUB,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MUL,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.DIV,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SQR,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SQRT,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.LOG,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.UNARY,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ROPE,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ROPE_BACK,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SILU_BACK,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RMS_NORM,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RMS_NORM_BACK,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SOFT_MAX,
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SOFT_MAX_BACK -> true
+        io.github.kotlinmania.llama.ore.GGMLOp.FILL,
+        io.github.kotlinmania.llama.ore.GGMLOp.SCALE,
+        io.github.kotlinmania.llama.ore.GGMLOp.DIAG_MASK_ZERO,
+        io.github.kotlinmania.llama.ore.GGMLOp.DIAG_MASK_INF,
+        io.github.kotlinmania.llama.ore.GGMLOp.ADD,
+        io.github.kotlinmania.llama.ore.GGMLOp.ADD_ID,
+        io.github.kotlinmania.llama.ore.GGMLOp.ADD1,
+        io.github.kotlinmania.llama.ore.GGMLOp.SUB,
+        io.github.kotlinmania.llama.ore.GGMLOp.MUL,
+        io.github.kotlinmania.llama.ore.GGMLOp.DIV,
+        io.github.kotlinmania.llama.ore.GGMLOp.SQR,
+        io.github.kotlinmania.llama.ore.GGMLOp.SQRT,
+        io.github.kotlinmania.llama.ore.GGMLOp.LOG,
+        io.github.kotlinmania.llama.ore.GGMLOp.UNARY,
+        io.github.kotlinmania.llama.ore.GGMLOp.ROPE,
+        io.github.kotlinmania.llama.ore.GGMLOp.ROPE_BACK,
+        io.github.kotlinmania.llama.ore.GGMLOp.SILU_BACK,
+        io.github.kotlinmania.llama.ore.GGMLOp.RMS_NORM,
+        io.github.kotlinmania.llama.ore.GGMLOp.RMS_NORM_BACK,
+        io.github.kotlinmania.llama.ore.GGMLOp.SOFT_MAX,
+        io.github.kotlinmania.llama.ore.GGMLOp.SOFT_MAX_BACK -> true
         else -> false
     }
 }
@@ -1091,17 +1091,17 @@ fun ggml_op_can_inplace(op: io.github.kotlinmania.llama.core.GGMLOp): Boolean {
 // ============================================================================
 
 /** Callback signature for logging. Mirrors `ggml_log_callback`. */
-typealias GGMLLogCallback = (level: io.github.kotlinmania.llama.core.GGMLLogLevel, message: String) -> Unit
+typealias GGMLLogCallback = (level: io.github.kotlinmania.llama.ore.GGMLLogLevel, message: String) -> Unit
 
 /** Default callback: prints to stdout. Port of `ggml_log_callback_default`. */
-val ggmlLogCallbackDefault: io.github.kotlinmania.llama.core.GGMLLogCallback = { _, msg -> print(msg) }
+val ggmlLogCallbackDefault: io.github.kotlinmania.llama.ore.GGMLLogCallback = { _, msg -> print(msg) }
 
-internal var gLogCallback: io.github.kotlinmania.llama.core.GGMLLogCallback =
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggmlLogCallbackDefault
+internal var gLogCallback: io.github.kotlinmania.llama.ore.GGMLLogCallback =
+    io.github.kotlinmania.llama.ore.ggmlLogCallbackDefault
 
 /** `ggml_log_internal` — C: ggml-impl.h line 115 / ggml.c line 301. */
-fun ggmlLogInternal(level: io.github.kotlinmania.llama.core.GGMLLogLevel, message: String) {
-    _root_ide_package_.io.github.kotlinmania.llama.core.gLogCallback(level, message)
+fun ggmlLogInternal(level: io.github.kotlinmania.llama.ore.GGMLLogLevel, message: String) {
+    io.github.kotlinmania.llama.ore.gLogCallback(level, message)
 }
 
 // ggmlLogSet moved to GGMLOps.kt (ggml.h line 2729)
@@ -1109,20 +1109,20 @@ fun ggmlLogInternal(level: io.github.kotlinmania.llama.core.GGMLLogLevel, messag
 /**
  * Port of `ggml_log_callback_default` from ggml.c line 308.
  */
-fun ggml_log_callback_default(level: io.github.kotlinmania.llama.core.GGMLLogLevel, text: String, userData: Any? = null) {
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggmlLogCallbackDefault(level, text)
+fun ggml_log_callback_default(level: io.github.kotlinmania.llama.ore.GGMLLogLevel, text: String, userData: Any? = null) {
+    io.github.kotlinmania.llama.ore.ggmlLogCallbackDefault(level, text)
 }
 
 /**
  * Port of `ggml_log_internal` from ggml.c line 301 (snake_case alias).
  */
-fun ggml_log_internal(level: io.github.kotlinmania.llama.core.GGMLLogLevel, text: String) {
-    _root_ide_package_.io.github.kotlinmania.llama.core.ggmlLogInternal(level, text)
+fun ggml_log_internal(level: io.github.kotlinmania.llama.ore.GGMLLogLevel, text: String) {
+    io.github.kotlinmania.llama.ore.ggmlLogInternal(level, text)
 }
 
 /** Set the global log callback (snake_case alias). */
-fun ggml_log_set(callback: io.github.kotlinmania.llama.core.GGMLLogCallback?, userData: Any? = null) {
-    _root_ide_package_.io.github.kotlinmania.llama.core.gLogCallback = callback ?: _root_ide_package_.io.github.kotlinmania.llama.core.ggmlLogCallbackDefault
+fun ggml_log_set(callback: io.github.kotlinmania.llama.ore.GGMLLogCallback?, userData: Any? = null) {
+    io.github.kotlinmania.llama.ore.gLogCallback = callback ?: io.github.kotlinmania.llama.ore.ggmlLogCallbackDefault
 }
 
 // ============================================================================
@@ -1152,13 +1152,13 @@ expect fun ggml_aligned_free(ptr: Any?, size: Long)
 // On jvm/js returns GGMLCpuBufferType (ByteArray-backed).
 // ============================================================================
 
-expect fun createDefaultCpuBufferType(): io.github.kotlinmania.llama.core.GGMLBackendBufferType
+expect fun createDefaultCpuBufferType(): io.github.kotlinmania.llama.ore.GGMLBackendBufferType
 
 // ============================================================================
 // ggml_up64 — commented out in ggml-impl.h line 64-66, but included for parity
 // ============================================================================
 
-inline fun ggml_up64(n: Int): Int = (n + 63) and 63.inv()
+fun ggml_up64(n: Int): Int = (n + 63) and 63.inv()
 
 // ---- Utility extensions (not from ggml-impl.h, part of original Kotlin port) ----
 

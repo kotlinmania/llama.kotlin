@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.zlib.deflate
+package io.github.kotlinmania.llama.lib.deflate
 
-import io.github.kotlinmania.llama.zlib.bitwise.checksum.Adler32Utils
+import io.github.kotlinmania.llama.lib.bitwise.checksum.Adler32Utils
 
 /**
  * Adler-32 checksum algorithm implementation.

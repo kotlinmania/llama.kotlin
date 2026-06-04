@@ -9,7 +9,7 @@ KLang employs a comprehensive multiplatform testing strategy using Kotlin.test, 
 ### Directory Structure
 
 ```
-src/commonTest/kotlin/io.github.kotlinmania.llama.klang/
+src/commonTest/kotlin/io.github.kotlinmania.llama.lang/
 ├── bitwise/              # Bitwise operation tests (138 tests)
 │   ├── ArrayBitShiftsHeapTest.kt
 │   ├── ArrayBitShiftsRightShiftHeapTest.kt
@@ -110,10 +110,10 @@ src/commonTest/kotlin/io.github.kotlinmania.llama.klang/
 ### Standard Test Template
 
 ```kotlin
-package io.github.kotlinmania.llama.klang.{module}
+package io.github.kotlinmania.llama.lang.{module}
 
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

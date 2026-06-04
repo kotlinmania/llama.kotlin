@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
-import io.github.kotlinmania.llama.klang.bitwise.Float32Math
+import io.github.kotlinmania.llama.lang.bitwise.Float32Math
 
 /**
  * CBF16: bfloat16 (1 sign, 8 exp, 7 frac, bias = 127) stored in 16 bits.

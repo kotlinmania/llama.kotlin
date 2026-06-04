@@ -1,11 +1,11 @@
-package io.github.kotlinmania.llama.klang.int.hpc
+package io.github.kotlinmania.llama.lang.int.hpc
 
-import io.github.kotlinmania.llama.klang.bitwise.ArithmeticBitwiseOps
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftMode
-import io.github.kotlinmania.llama.klang.int.SwAR128
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.bitwise.ArithmeticBitwiseOps
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.lang.int.SwAR128
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 
 /**
  * HeapUInt128: Zero-copy 128-bit unsigned integer with direct heap manipulation.

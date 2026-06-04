@@ -1,8 +1,8 @@
-package io.github.kotlinmania.llama.klang.int
+package io.github.kotlinmania.llama.lang.int
 
-import io.github.kotlinmania.llama.klang.int.hpc.HeapUInt128
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.int.hpc.HeapUInt128
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

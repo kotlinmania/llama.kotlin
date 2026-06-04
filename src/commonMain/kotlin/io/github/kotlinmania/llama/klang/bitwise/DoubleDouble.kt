@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 data class DoubleDouble(val hi: Double, val lo: Double) {
     operator fun plus(other: DoubleDouble): DoubleDouble {

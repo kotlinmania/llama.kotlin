@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.mem
+package io.github.kotlinmania.llama.lang.mem
 
-import io.github.kotlinmania.llama.klang.fp.CDouble
+import io.github.kotlinmania.llama.lang.fp.CDouble
 
 /**
  * CVar: Base interface for C-style scalar variables stored in heap memory.

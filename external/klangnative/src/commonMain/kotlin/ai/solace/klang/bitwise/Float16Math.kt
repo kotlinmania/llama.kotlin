@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
-import io.github.kotlinmania.llama.klang.fp.Float32Math
+import io.github.kotlinmania.llama.lang.fp.Float32Math
 
 /**
  * Float16Math - IEEE-754 binary16 (half precision) arithmetic operations.

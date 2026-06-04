@@ -1,8 +1,8 @@
-package io.github.kotlinmania.llama..examples.quantization
+package io.github.kotlinmania.llama.examples.quantization
 
-import io.github.kotlinmania.llama.klang.fp.CFloat32
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KAligned
+import io.github.kotlinmania.llama.lang.fp.CFloat32
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KAligned
 
 /**
  * Example demonstrating heap-based quantization for maximum performance.

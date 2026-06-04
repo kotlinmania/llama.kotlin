@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
-import io.github.kotlinmania.llama.klang.bitwise.CFloatTrace
+import io.github.kotlinmania.llama.lang.bitwise.CFloatTrace
 import kotlin.math.abs
 
 /**

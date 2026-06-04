@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.zlib.inflate
+package io.github.kotlinmania.llama.lib.inflate
 
-import io.github.kotlinmania.llama.zlib.bitwise.ArithmeticBitwiseOps
+import io.github.kotlinmania.llama.lib.bitwise.ArithmeticBitwiseOps
 
 /**
  * Canonical Huffman utilities (full table) for fast decoding.

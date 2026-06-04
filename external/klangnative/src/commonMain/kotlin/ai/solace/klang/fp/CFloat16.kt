@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
-import io.github.kotlinmania.llama.klang.bitwise.Float16Math
+import io.github.kotlinmania.llama.lang.bitwise.Float16Math
 
 /**
  * CFloat16: IEEE-754 binary16 (half-precision) floating-point with deterministic behavior.

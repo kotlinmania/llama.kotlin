@@ -510,7 +510,7 @@ dependency is often a `*-kotlin/` sibling away. Order of attack:
    KotlinMania/<crate>-kotlin`). If yes, declare the Gradle dep:
    ```kotlin
    commonMain.dependencies {
-       implementation("io.github.kotlinmania.llama.<crate>-kotlin:<version>")
+       implementation("io.github.kotlinmania.llama.crate>-kotlin:<version>")
    }
    ```
 3. **If the sibling exists but isn't on Maven Central**, that's the

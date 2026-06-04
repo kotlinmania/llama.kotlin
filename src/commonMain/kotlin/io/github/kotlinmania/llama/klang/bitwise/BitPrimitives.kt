@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 /**
  * Low-level helpers that mirror common C bit-manipulation intrinsics. These

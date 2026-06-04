@@ -12,7 +12,7 @@ KLang follows a clear organizational structure that separates public packages fr
 ## Package Organization
 
 ```
-io.github.kotlinmania.llama.klang/
+io.github.kotlinmania.llama.lang/
 ├── bitwise/               # PUBLIC - Bit manipulation and shift operations
 │   ├── BitShiftEngine.kt  # Arithmetic-mode bit shifting
 │   ├── CFloat32.kt        # 32-bit IEEE-754 float
@@ -65,11 +65,11 @@ io.github.kotlinmania.llama.klang/
 Users import directly from component packages:
 
 ```kotlin
-import io.github.kotlinmania.llama.klang.bitwise.CFloat32
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.fp.CDouble
-import io.github.kotlinmania.llama.klang.int.C_UInt128
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.bitwise.CFloat32
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.fp.CDouble
+import io.github.kotlinmania.llama.lang.int.C_UInt128
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
 
 // Use the types
 val x = CFloat32.fromFloat(3.14f)
@@ -79,25 +79,25 @@ val ptr = GlobalHeap.mallocBytes(100)
 
 ### Public Packages
 
-**io.github.kotlinmania.llama.klang.bitwise**
+**io.github.kotlinmania.llama.lang.bitwise**
 - `CFloat32`, `BitShiftEngine`, `BitShiftConfig`, `BitwiseOps`
 - `BitPrimitives`, `Float32Math`, `Float64Math`
 - `SwAR`, `SwAR128`, `DoubleDouble`
 
-**io.github.kotlinmania.llama.klang.fp**
+**io.github.kotlinmania.llama.lang.fp**
 - `CDouble`, `CFloat16`, `CBF16`, `CFloat128`, `CLongDouble`
 
-**io.github.kotlinmania.llama.klang.int**
+**io.github.kotlinmania.llama.lang.int**
 - `C_UInt128`, `C_Int128`
 
-**io.github.kotlinmania.llama.klang.mem**
+**io.github.kotlinmania.llama.lang.mem**
 - `CPointer<T>`, `GlobalHeap`, `KMalloc`, `CLib`, `CString`
 - `CByteVar`, `CShortVar`, `CIntVar`, `CLongVar`, `CFloatVar`, `CDoubleVar`
 
-**io.github.kotlinmania.llama.klang.common**
+**io.github.kotlinmania.llama.lang.common**
 - `StatOps`, `StructLayout`, `ZlibLogger`
 
-**io.github.kotlinmania.llama.klang.stringshift**
+**io.github.kotlinmania.llama.lang.stringshift**
 - `HexShift`
 
 ## Internal Implementation
@@ -115,8 +115,8 @@ Internal packages are for:
 If you must use internal APIs (not recommended):
 
 ```kotlin
-import io.github.kotlinmania.llama.klang.internal.runtime.AbstractRuntime
-import io.github.kotlinmania.llama.klang.internal.symbols.strdupCString
+import io.github.kotlinmania.llama.lang.internal.runtime.AbstractRuntime
+import io.github.kotlinmania.llama.lang.internal.symbols.strdupCString
 ```
 
 **Warning**: Internal APIs may change at any time without notice.
@@ -159,14 +159,14 @@ Previously, KLang used an `api` package with type aliases. The new structure use
 
 ### Before
 ```kotlin
-import io.github.kotlinmania.llama.klang.api.CFloat32
-import io.github.kotlinmania.llama.klang.api.GlobalHeap
+import io.github.kotlinmania.llama.lang.api.CFloat32
+import io.github.kotlinmania.llama.lang.api.GlobalHeap
 ```
 
 ### After
 ```kotlin
-import io.github.kotlinmania.llama.klang.bitwise.CFloat32
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.bitwise.CFloat32
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
 ```
 
 ## Adding New Public Types

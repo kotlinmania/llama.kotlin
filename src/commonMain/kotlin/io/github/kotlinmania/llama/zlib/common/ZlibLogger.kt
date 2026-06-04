@@ -1,5 +1,5 @@
 
-package io.github.kotlinmania.llama.zlib.common
+package io.github.kotlinmania.llama.lib.common
 
 object ZlibLogger {
     // Logging flags (configurable via CLI/env)

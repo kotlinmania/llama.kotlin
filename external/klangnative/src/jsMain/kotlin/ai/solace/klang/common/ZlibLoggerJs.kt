@@ -1,6 +1,6 @@
 @file:Suppress("ktlint:standard:property-naming")
 
-package io.github.kotlinmania.llama.klang.common
+package io.github.kotlinmania.llama.lang.common
 
 import kotlin.js.Date
 

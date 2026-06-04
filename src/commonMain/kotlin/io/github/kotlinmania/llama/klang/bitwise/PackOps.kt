@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 /**
  * Helpers for compact packing/unpacking of small-width lanes (nibbles, bitplanes,

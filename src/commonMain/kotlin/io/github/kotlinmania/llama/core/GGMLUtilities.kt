@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.core
+package io.github.kotlinmania.llama.ore
 
 import kotlin.math.round
 import kotlin.Short.Companion.SIZE_BYTES
@@ -215,10 +215,10 @@ object DemoTextUtilities {
         statusIcon: String = "✅"
     ): String {
         return buildString {
-            append(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLUtilities.createSectionHeader(sectionTitle, emoji))
-            appendLine(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLUtilities.createStatusLine("", "", statusIcon))
+            append(io.github.kotlinmania.llama.ore.GGMLUtilities.createSectionHeader(sectionTitle, emoji))
+            appendLine(io.github.kotlinmania.llama.ore.GGMLUtilities.createStatusLine("", "", statusIcon))
             features.forEach { feature ->
-                appendLine(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLUtilities.createBulletPoint(feature))
+                appendLine(io.github.kotlinmania.llama.ore.GGMLUtilities.createBulletPoint(feature))
             }
         }
     }

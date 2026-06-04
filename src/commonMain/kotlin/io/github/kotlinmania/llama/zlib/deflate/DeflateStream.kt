@@ -1,17 +1,17 @@
 
-package io.github.kotlinmania.llama.zlib.deflate
+package io.github.kotlinmania.llama.lib.deflate
 
-import io.github.kotlinmania.llama.zlib.bitwise.checksum.Adler32Utils
-import io.github.kotlinmania.llama.zlib.common.TREE_BASE_DIST
-import io.github.kotlinmania.llama.zlib.common.TREE_BASE_LENGTH
-import io.github.kotlinmania.llama.zlib.common.TREE_EXTRA_DBITS
-import io.github.kotlinmania.llama.zlib.common.TREE_EXTRA_LBITS
-import io.github.kotlinmania.llama.zlib.inflate.CanonicalHuffman
-import io.github.kotlinmania.llama.zlib.inflate.StreamingBitWriter
-import kotlinx.io.Sink
-import kotlinx.io.Source
-import io.github.kotlinmania.llama.zlib.common.Z_OK
-import io.github.kotlinmania.llama.zlib.common.Z_STREAM_ERROR
+import io.github.kotlinmania.llama.lib.bitwise.checksum.Adler32Utils
+import io.github.kotlinmania.llama.lib.common.TREE_BASE_DIST
+import io.github.kotlinmania.llama.lib.common.TREE_BASE_LENGTH
+import io.github.kotlinmania.llama.lib.common.TREE_EXTRA_DBITS
+import io.github.kotlinmania.llama.lib.common.TREE_EXTRA_LBITS
+import io.github.kotlinmania.llama.lib.inflate.CanonicalHuffman
+import io.github.kotlinmania.llama.lib.inflate.StreamingBitWriter
+import io.github.kotlinmania.io.Sink
+import io.github.kotlinmania.io.Source
+import io.github.kotlinmania.llama.lib.common.Z_OK
+import io.github.kotlinmania.llama.lib.common.Z_STREAM_ERROR
 
 /**
  * Streaming zlib compressor (stored blocks only, no Huffman) for correctness and portability.
@@ -897,7 +897,7 @@ object DeflateStream {
             val clFreq = IntArray(19)
             for (c in clSeq) clFreq[c.sym]++
             val blLens = HuffmanBuilder.buildLengths(clFreq, 7, ensureSymbol = 0)
-            val bitLengthOrder = io.github.kotlinmania.llama.zlib.common.TREE_BL_ORDER
+            val bitLengthOrder = io.github.kotlinmania.llama.lib.common.TREE_BL_ORDER
             var hclen = 19
             while (hclen > 4 && blLens[bitLengthOrder[hclen - 1]] == 0) hclen--
             val hclenOffset = hclen - 4

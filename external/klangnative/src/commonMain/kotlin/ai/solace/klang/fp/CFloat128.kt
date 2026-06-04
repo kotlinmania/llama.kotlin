@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
 /**
  * CFloat128: Quad-precision (128-bit) floating-point using double-double arithmetic.

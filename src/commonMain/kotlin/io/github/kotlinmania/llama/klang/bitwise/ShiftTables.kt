@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 // Precomputed constants for 16-bit limb shifts
 internal object ShiftTables16 {

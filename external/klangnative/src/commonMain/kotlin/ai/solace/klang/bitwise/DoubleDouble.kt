@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 /**
  * DoubleDouble: Extended-precision floating-point arithmetic using double-double representation.

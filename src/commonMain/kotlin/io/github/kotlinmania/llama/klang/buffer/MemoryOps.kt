@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.buffer
+package io.github.kotlinmania.llama.lang.buffer
 
 /** Portable equivalents of common C memory primitives. */
 object MemoryOps {

@@ -1,21 +1,21 @@
-package io.github.kotlinmania.llama.zlib.inflate
+package io.github.kotlinmania.llama.lib.inflate
 
-import io.github.kotlinmania.llama.zlib.common.TREE_BASE_DIST
-import io.github.kotlinmania.llama.zlib.common.TREE_BASE_LENGTH
-import io.github.kotlinmania.llama.zlib.common.TREE_BL_ORDER
-import io.github.kotlinmania.llama.zlib.common.TREE_EXTRA_DBITS
-import io.github.kotlinmania.llama.zlib.common.TREE_EXTRA_LBITS
-import io.github.kotlinmania.llama.zlib.common.Z_BUF_ERROR
-import io.github.kotlinmania.llama.zlib.common.Z_DATA_ERROR
-import io.github.kotlinmania.llama.zlib.common.Z_DEFLATED
-import io.github.kotlinmania.llama.zlib.common.Z_ERRNO
-import io.github.kotlinmania.llama.zlib.common.Z_NEED_DICT
-import io.github.kotlinmania.llama.zlib.common.Z_OK
-import io.github.kotlinmania.llama.zlib.common.Z_STREAM_END
-import io.github.kotlinmania.llama.zlib.common.ZlibLogger
-import kotlinx.io.IOException
-import kotlinx.io.Sink
-import kotlinx.io.Source
+import io.github.kotlinmania.llama.lib.common.TREE_BASE_DIST
+import io.github.kotlinmania.llama.lib.common.TREE_BASE_LENGTH
+import io.github.kotlinmania.llama.lib.common.TREE_BL_ORDER
+import io.github.kotlinmania.llama.lib.common.TREE_EXTRA_DBITS
+import io.github.kotlinmania.llama.lib.common.TREE_EXTRA_LBITS
+import io.github.kotlinmania.llama.lib.common.Z_BUF_ERROR
+import io.github.kotlinmania.llama.lib.common.Z_DATA_ERROR
+import io.github.kotlinmania.llama.lib.common.Z_DEFLATED
+import io.github.kotlinmania.llama.lib.common.Z_ERRNO
+import io.github.kotlinmania.llama.lib.common.Z_NEED_DICT
+import io.github.kotlinmania.llama.lib.common.Z_OK
+import io.github.kotlinmania.llama.lib.common.Z_STREAM_END
+import io.github.kotlinmania.llama.lib.common.ZlibLogger
+import io.github.kotlinmania.io.IOException
+import io.github.kotlinmania.io.Sink
+import io.github.kotlinmania.io.Source
 import kotlin.math.min
 
 /**

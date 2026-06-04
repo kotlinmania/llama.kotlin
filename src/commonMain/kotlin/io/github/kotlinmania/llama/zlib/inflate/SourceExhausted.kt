@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.zlib.inflate
+package io.github.kotlinmania.llama.lib.inflate
 
 /**
  * Indicates that the underlying source was exhausted before enough bits/bytes

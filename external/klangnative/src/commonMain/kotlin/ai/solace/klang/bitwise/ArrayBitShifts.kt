@@ -1,5 +1,5 @@
-package io.github.kotlinmania.llama.klang.bitwise
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+package io.github.kotlinmania.llama.lang.bitwise
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope

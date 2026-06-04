@@ -1,5 +1,5 @@
 
-package io.github.kotlinmania.llama.zlib.bitwise
+package io.github.kotlinmania.llama.lib.bitwise
 
 /**
  * BitwiseOps - A library for efficient bitwise operations in Kotlin Multiplatform

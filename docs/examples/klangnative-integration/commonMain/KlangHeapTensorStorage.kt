@@ -1,9 +1,9 @@
-package io.github.kotlinmania.llama.ember.backend.klang
+package io.github.kotlinmania.llama.mber.backend.klang
 
-import io.github.kotlinmania.llama.klang.fp.CFloat32
-import io.github.kotlinmania.llama.klang.mem.CIntVar
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KAligned
+import io.github.kotlinmania.llama.lang.fp.CFloat32
+import io.github.kotlinmania.llama.lang.mem.CIntVar
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KAligned
 import kotlin.math.max
 
 /**

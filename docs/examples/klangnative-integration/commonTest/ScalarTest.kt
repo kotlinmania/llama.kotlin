@@ -1,9 +1,9 @@
-package io.github.kotlinmania.llama.ember.scalar
+package io.github.kotlinmania.llama.mber.scalar
 
-import io.github.kotlinmania.llama.ember.dtype.DType
-import io.github.kotlinmania.llama.klang.fp.CDouble
-import io.github.kotlinmania.llama.klang.fp.CFloat16
-import io.github.kotlinmania.llama.klang.fp.CFloat32
+import io.github.kotlinmania.llama.mber.dtype.DType
+import io.github.kotlinmania.llama.lang.fp.CDouble
+import io.github.kotlinmania.llama.lang.fp.CFloat16
+import io.github.kotlinmania.llama.lang.fp.CFloat32
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

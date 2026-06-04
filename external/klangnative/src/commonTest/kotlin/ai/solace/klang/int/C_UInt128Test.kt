@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.int
+package io.github.kotlinmania.llama.lang.int
 
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

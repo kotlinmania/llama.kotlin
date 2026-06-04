@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.int.hpc
+package io.github.kotlinmania.llama.lang.int.hpc
 
 /**
  * HPC16x8: 128-bit unsigned integer stored as 8 little-endian 16-bit limbs.
@@ -49,9 +49,9 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
     fun shlBits(k: Int): Pair<HPC16x8, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val buf = io.github.kotlinmania.llama.klang.buffer.LimbBuffer.allocate(8)
+        val buf = io.github.kotlinmania.llama.lang.buffer.LimbBuffer.allocate(8)
         for (i in 0..7) buf.setU16(i, limb(i).toInt() and 0xFFFF)
-        val res = io.github.kotlinmania.llama.klang.bitwise.ArrayBitShifts.shl16LEInPlace(buf, 0, 8, k)
+        val res = io.github.kotlinmania.llama.lang.bitwise.ArrayBitShifts.shl16LEInPlace(buf, 0, 8, k)
         val out = UShortArray(8) { i -> buf.getU16(i).toUShort() }
         return HPC16x8(out) to (res.carryOut and 0xFFFF).toUShort()
     }
@@ -59,9 +59,9 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
     fun shrBits(k: Int): Pair<HPC16x8, UShort> {
         require(k in 0..15)
         if (k == 0) return this.copy() to 0u
-        val buf = io.github.kotlinmania.llama.klang.buffer.LimbBuffer.allocate(8)
+        val buf = io.github.kotlinmania.llama.lang.buffer.LimbBuffer.allocate(8)
         for (i in 0..7) buf.setU16(i, limb(i).toInt() and 0xFFFF)
-        val res = io.github.kotlinmania.llama.klang.bitwise.ArrayBitShifts.rsh16LEInPlace(buf, 0, 8, k)
+        val res = io.github.kotlinmania.llama.lang.bitwise.ArrayBitShifts.rsh16LEInPlace(buf, 0, 8, k)
         val out = UShortArray(8) { i -> buf.getU16(i).toUShort() }
         return HPC16x8(out) to (res.carryOut and 0xFFFF).toUShort()
     }
@@ -153,8 +153,8 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
             }
             val s = clz16_arith(V[n - 1]).coerceIn(0, 15)
             if (s > 0) {
-                val uRes = io.github.kotlinmania.llama.klang.bitwise.ArrayBitShifts.shl16LEInPlace(U, 0, m + n, s)
-                io.github.kotlinmania.llama.klang.bitwise.ArrayBitShifts.shl16LEInPlace(V, 0, n, s)
+                val uRes = io.github.kotlinmania.llama.lang.bitwise.ArrayBitShifts.shl16LEInPlace(U, 0, m + n, s)
+                io.github.kotlinmania.llama.lang.bitwise.ArrayBitShifts.shl16LEInPlace(V, 0, n, s)
                 U[m + n] = uRes.carryOut and 0xFFFF
             }
 
@@ -207,7 +207,7 @@ class HPC16x8 private constructor(private val limbs: UShortArray) {
             }
 
             val R = IntArray(n) { U[it] }
-            if (s > 0) io.github.kotlinmania.llama.klang.bitwise.ArrayBitShifts.rsh16LEInPlace(R, 0, n, s)
+            if (s > 0) io.github.kotlinmania.llama.lang.bitwise.ArrayBitShifts.rsh16LEInPlace(R, 0, n, s)
 
             val qOut = UShortArray(4) { i -> ((if (i < m) Q[i] else 0) and 0xFFFF).toUShort() }
             if (m > 4) {

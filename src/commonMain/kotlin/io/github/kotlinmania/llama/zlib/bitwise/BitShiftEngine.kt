@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.zlib.bitwise
+package io.github.kotlinmania.llama.lib.bitwise
 
 /**
  * BitShiftEngine - Unified interface for bit shift operations with configurable implementation
@@ -165,7 +165,7 @@ class BitShiftEngine(
                 }
 
                 val result = arithmeticOps.rightShift(normalize(value), bits)
-                ShiftResult(result, 0L, false)
+                ShiftResult(result, 0L)
             }
         }
     }

@@ -1,8 +1,8 @@
-package io.github.kotlinmania.llama.klang.float128
+package io.github.kotlinmania.llama.lang.float128
 
-import io.github.kotlinmania.llama.klang.bitwise.Float128Math
-import io.github.kotlinmania.llama.klang.int.SwAR128
-import io.github.kotlinmania.llama.klang.int.hpc.HeapUInt128
+import io.github.kotlinmania.llama.lang.bitwise.Float128Math
+import io.github.kotlinmania.llama.lang.int.SwAR128
+import io.github.kotlinmania.llama.lang.int.hpc.HeapUInt128
 
 /**
  * Float128 – IEEE-754 binary128 placeholder backed by limb arithmetic.

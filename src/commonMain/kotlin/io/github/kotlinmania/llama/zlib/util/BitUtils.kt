@@ -1,8 +1,8 @@
-package io.github.kotlinmania.llama.zlib.util
+package io.github.kotlinmania.llama.lib.util
 
-import io.github.kotlinmania.llama.zlib.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.zlib.bitwise.BitShiftMode
-import io.github.kotlinmania.llama.zlib.bitwise.BitwiseOps
+import io.github.kotlinmania.llama.lib.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lib.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.lib.bitwise.BitwiseOps
 
 /**
  * Utility functions for bit manipulation operations.

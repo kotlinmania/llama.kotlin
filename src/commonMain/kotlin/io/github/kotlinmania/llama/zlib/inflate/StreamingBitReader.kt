@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.zlib.inflate
+package io.github.kotlinmania.llama.lib.inflate
 
-import kotlinx.io.Source
+import io.github.kotlinmania.io.Source
 
 /**
  * StreamingBitReader - LSB-first bit reader over a streaming source.

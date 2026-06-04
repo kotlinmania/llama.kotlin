@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.mem
+package io.github.kotlinmania.llama.lang.mem
 
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftConfig
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftConfig
 
 /**
  * Typed views over [GlobalHeap] memory with little-endian semantics.

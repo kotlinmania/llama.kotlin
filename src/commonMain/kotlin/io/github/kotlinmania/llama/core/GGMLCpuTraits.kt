@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.core
+package io.github.kotlinmania.llama.ore
 
 // port-lint: source ggml/src/ggml-cpu/traits.h + traits.cpp
 
@@ -7,8 +7,8 @@ package io.github.kotlinmania.llama.core
  * to provide custom compute_forward / work_size for accelerated ops.
  */
 interface GGMLCpuTensorTraits {
-    fun workSize(nThreads: Int, op: io.github.kotlinmania.llama.core.GGMLTensor, size: LongArray): Boolean
-    fun computeForward(params: io.github.kotlinmania.llama.core.GGMLComputeParams, op: io.github.kotlinmania.llama.core.GGMLTensor): Boolean
+    fun workSize(nThreads: Int, op: io.github.kotlinmania.llama.ore.GGMLTensor, size: LongArray): Boolean
+    fun computeForward(params: io.github.kotlinmania.llama.ore.GGMLComputeParams, op: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean
 }
 
 /**
@@ -16,8 +16,8 @@ interface GGMLCpuTensorTraits {
  * that can intercept tensor ops on the CPU backend.
  */
 interface GGMLCpuExtraBufferType {
-    fun supportsOp(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice, op: io.github.kotlinmania.llama.core.GGMLTensor): Boolean
-    fun getTensorTraits(op: io.github.kotlinmania.llama.core.GGMLTensor): io.github.kotlinmania.llama.core.GGMLCpuTensorTraits?
+    fun supportsOp(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice, op: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean
+    fun getTensorTraits(op: io.github.kotlinmania.llama.ore.GGMLTensor): io.github.kotlinmania.llama.ore.GGMLCpuTensorTraits?
 }
 
 /**
@@ -25,10 +25,10 @@ interface GGMLCpuExtraBufferType {
  * Iterates over all registered extra buffer types and delegates to the
  * first one whose tensor_traits can handle the op.
  */
-fun ggmlCpuExtraComputeForward(params: io.github.kotlinmania.llama.core.GGMLComputeParams, op: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
-    for (extra in _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuGetExtraBufferTypes()) {
+fun ggmlCpuExtraComputeForward(params: io.github.kotlinmania.llama.ore.GGMLComputeParams, op: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
+    for (extra in io.github.kotlinmania.llama.ore.ggmlBackendCpuGetExtraBufferTypes()) {
         val context = extra.getContext()
-        if (context is io.github.kotlinmania.llama.core.GGMLCpuExtraBufferType) {
+        if (context is io.github.kotlinmania.llama.ore.GGMLCpuExtraBufferType) {
             val tensorTraits = context.getTensorTraits(op)
             if (tensorTraits != null && tensorTraits.computeForward(params, op)) {
                 return true
@@ -43,10 +43,10 @@ fun ggmlCpuExtraComputeForward(params: io.github.kotlinmania.llama.core.GGMLComp
  * Iterates over all registered extra buffer types and queries each for
  * the required work buffer size.
  */
-fun ggmlCpuExtraWorkSize(nThreads: Int, op: io.github.kotlinmania.llama.core.GGMLTensor, size: LongArray): Boolean {
-    for (extra in _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuGetExtraBufferTypes()) {
+fun ggmlCpuExtraWorkSize(nThreads: Int, op: io.github.kotlinmania.llama.ore.GGMLTensor, size: LongArray): Boolean {
+    for (extra in io.github.kotlinmania.llama.ore.ggmlBackendCpuGetExtraBufferTypes()) {
         val context = extra.getContext()
-        if (context is io.github.kotlinmania.llama.core.GGMLCpuExtraBufferType) {
+        if (context is io.github.kotlinmania.llama.ore.GGMLCpuExtraBufferType) {
             val tensorTraits = context.getTensorTraits(op)
             if (tensorTraits != null && tensorTraits.workSize(nThreads, op, size)) {
                 return true
@@ -61,22 +61,22 @@ fun ggmlCpuExtraWorkSize(nThreads: Int, op: io.github.kotlinmania.llama.core.GGM
 // --- Virtual method wrappers for ast_distance parity with traits.h ---
 
 /** Wrapper for tensor_traits::work_size (traits.h line 23). */
-fun workSize(traits: io.github.kotlinmania.llama.core.GGMLCpuTensorTraits, nThreads: Int, op: io.github.kotlinmania.llama.core.GGMLTensor, size: LongArray): Boolean {
+fun workSize(traits: io.github.kotlinmania.llama.ore.GGMLCpuTensorTraits, nThreads: Int, op: io.github.kotlinmania.llama.ore.GGMLTensor, size: LongArray): Boolean {
     return traits.workSize(nThreads, op, size)
 }
 
 /** Wrapper for tensor_traits::compute_forward (traits.h line 24). */
-fun computeForward(traits: io.github.kotlinmania.llama.core.GGMLCpuTensorTraits, params: io.github.kotlinmania.llama.core.GGMLComputeParams, op: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
+fun computeForward(traits: io.github.kotlinmania.llama.ore.GGMLCpuTensorTraits, params: io.github.kotlinmania.llama.ore.GGMLComputeParams, op: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
     return traits.computeForward(params, op)
 }
 
 /** Wrapper for extra_buffer_type::supports_op (traits.h line 30). */
-fun supportsOp(extra: io.github.kotlinmania.llama.core.GGMLCpuExtraBufferType, dev: io.github.kotlinmania.llama.core.GGMLBackendDevice, op: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
+fun supportsOp(extra: io.github.kotlinmania.llama.ore.GGMLCpuExtraBufferType, dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice, op: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
     return extra.supportsOp(dev, op)
 }
 
 /** Wrapper for extra_buffer_type::get_tensor_traits (traits.h line 31). */
-fun getTensorTraits(extra: io.github.kotlinmania.llama.core.GGMLCpuExtraBufferType, op: io.github.kotlinmania.llama.core.GGMLTensor): io.github.kotlinmania.llama.core.GGMLCpuTensorTraits? {
+fun getTensorTraits(extra: io.github.kotlinmania.llama.ore.GGMLCpuExtraBufferType, op: io.github.kotlinmania.llama.ore.GGMLTensor): io.github.kotlinmania.llama.ore.GGMLCpuTensorTraits? {
     return extra.getTensorTraits(op)
 }
 

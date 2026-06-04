@@ -1,10 +1,10 @@
-package io.github.kotlinmania.llama.klang.int
+package io.github.kotlinmania.llama.lang.int
 
-import io.github.kotlinmania.llama.klang.bitwise.ArithmeticBitwiseOps
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftMode
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KMalloc
+import io.github.kotlinmania.llama.lang.bitwise.ArithmeticBitwiseOps
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KMalloc
 
 /**
  * C_Int128: C-compatible `__int128` type with zero-copy heap operations.

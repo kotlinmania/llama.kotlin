@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 /** Global configuration for BitShiftEngine defaults. */
 object BitShiftConfig {

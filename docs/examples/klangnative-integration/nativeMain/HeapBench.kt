@@ -1,10 +1,10 @@
-package io.github.kotlinmania.llama.ember.bench
+package io.github.kotlinmania.llama.mber.bench
 
-import io.github.kotlinmania.llama.ember.backend.klang.KlangHeapTensorStorage
-import io.github.kotlinmania.llama.ember.backend.klang.NativeHeapTensorStorage
-import io.github.kotlinmania.llama.klang.fp.CFloat32
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
-import io.github.kotlinmania.llama.klang.mem.KAligned
+import io.github.kotlinmania.llama.mber.backend.klang.KlangHeapTensorStorage
+import io.github.kotlinmania.llama.mber.backend.klang.NativeHeapTensorStorage
+import io.github.kotlinmania.llama.lang.fp.CFloat32
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.KAligned
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.reinterpret

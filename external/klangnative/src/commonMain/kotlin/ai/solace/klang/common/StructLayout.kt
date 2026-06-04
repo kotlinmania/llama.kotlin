@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.common
+package io.github.kotlinmania.llama.lang.common
 
-import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+import io.github.kotlinmania.llama.lang.mem.GlobalHeap
 
 /**
  * StructLayout: C-style struct/union layout computation with natural alignment.

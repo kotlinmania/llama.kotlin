@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.mem
+package io.github.kotlinmania.llama.lang.mem
 
 /**
  * KMalloc: A production-grade memory allocator built on [GlobalHeap].

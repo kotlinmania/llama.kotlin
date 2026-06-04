@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.zlib.deflate
+package io.github.kotlinmania.llama.lib.deflate
 
 /**
  * Length-limited code-length generator using a Shannon–Fano style partitioning.

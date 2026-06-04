@@ -20,7 +20,7 @@ import ProcMacro
 //      architecture arm64".
 //
 //   3. The Kotlin `swiftExport { moduleName = "ProcMacro" }` and
-//      `flattenPackage = "io.github.kotlinmania.llama.procmacro"` configuration in
+//      `flattenPackage = "io.github.kotlinmania.llama.rocmacro"` configuration in
 //      build.gradle.kts produced a module name that's both syntactically
 //      valid as a Swift identifier and reachable from this Package.swift
 //      via the `ProcMacroLibrary` product.

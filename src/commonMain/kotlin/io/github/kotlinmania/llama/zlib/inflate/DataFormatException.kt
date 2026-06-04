@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.zlib.inflate
+package io.github.kotlinmania.llama.lib.inflate
 
 /**
  * Signals invalid or corrupt DEFLATE/zlib data encountered during decoding.

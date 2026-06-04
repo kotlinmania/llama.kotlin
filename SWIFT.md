@@ -432,7 +432,7 @@ Then stop. A human will pick it up.
    expose a concrete facade.
 
    ```kotlin
-   package io.github.kotlinmania.llama.example
+   package io.github.kotlinmania.llama.xample
 
    public sealed class ParseOutcome {
        public data class Ok(public val value: Value) : ParseOutcome()
@@ -543,7 +543,7 @@ become deletable.
    emits:
 
    ```kotlin
-   val ____self = dereferenceExternalRCRef(self) as io.github.kotlinmania.llama.<pkg>.ZipEq<kotlin.Any?, kotlin.Any?>
+   val ____self = dereferenceExternalRCRef(self) as io.github.kotlinmania.llama.pkg>.ZipEq<kotlin.Any?, kotlin.Any?>
    // w: Unchecked cast: 'Any?' to 'ZipEq<Any?, Any?>'.
    ```
 
@@ -673,7 +673,7 @@ become deletable.
 
    Every match in a `kotlin.FunctionN<...>` is trigger 8b (function
    type in public surface); every match in
-   `io.github.kotlinmania.llama.<pkg>.<Type><kotlin.Any` is trigger 8a
+   `io.github.kotlinmania.llama.pkg>.<Type><kotlin.Any` is trigger 8a
    (unconstrained generic). Both are fixable per-repo via the
    recipes below. If grep returns no results, gap #8 doesn't apply to
    this repo and no API change is needed.
@@ -897,7 +897,7 @@ interface return type.
 ### Before
 
 ```kotlin
-package io.github.kotlinmania.llama.itertools
+package io.github.kotlinmania.llama.tertools
 
 class ZipEq<A, B>(
     private val left: Iterator<A>,
@@ -916,7 +916,7 @@ Plugin-generated bridge file (`build/SwiftExport/.../Itertools.kt`) ends up with
 ```kotlin
 @ExportedBridge
 fun __root___ZipEq_next(self: kotlin.native.internal.NativePtr): kotlin.native.internal.NativePtr {
-    val ____self = dereferenceExternalRCRef(self) as io.github.kotlinmania.llama.itertools.ZipEq<kotlin.Any?, kotlin.Any?>
+    val ____self = dereferenceExternalRCRef(self) as io.github.kotlinmania.llama.tertools.ZipEq<kotlin.Any?, kotlin.Any?>
     // ^^^ Unchecked cast: 'Any?' to 'ZipEq<Any?, Any?>'
     ...
 }
@@ -928,7 +928,7 @@ and `compileSwiftExportMainKotlin<Target>` fails.
 ### After
 
 ```kotlin
-package io.github.kotlinmania.llama.itertools
+package io.github.kotlinmania.llama.tertools
 
 internal class ZipEq<A, B>(
     private val left: Iterator<A>,
@@ -1032,7 +1032,7 @@ call sites unchanged.
 ### Before
 
 ```kotlin
-package io.github.kotlinmania.llama.treesitterlanguage
+package io.github.kotlinmania.llama.reesitterlanguage
 
 class LanguageFn private constructor(private val raw: () -> Long) {
     companion object {
@@ -1060,7 +1060,7 @@ and `compileSwiftExportMainKotlin<Target>` fails.
 ### After
 
 ```kotlin
-package io.github.kotlinmania.llama.treesitterlanguage
+package io.github.kotlinmania.llama.reesitterlanguage
 
 /**
  * Single-abstract-method interface that stands in for the upstream
@@ -1130,7 +1130,7 @@ boundary because the published API is now a bridgeable nominal type
 instead of an erased `FunctionN`.
 
 ```kotlin
-package io.github.kotlinmania.llama.treesitter
+package io.github.kotlinmania.llama.reesitter
 
 fun interface ParseProgressCallback {
     fun invoke(
@@ -1271,7 +1271,7 @@ side alone.
 ### 9. Public `internal expect fun` symbols leak into the Swift Export bridge
 
 **Symptom.** `swift test` link fails with `Undefined symbols for
-architecture arm64: _io.github.kotlinmania.llama.<pkg>_<symbol>` for a
+architecture arm64: _io.github.kotlinmania.llama.pkg>_<symbol>` for a
 function that *is* declared `internal` in commonMain but is also the
 `actual` implementation of an `expect fun` that was itself `internal`.
 
@@ -1320,7 +1320,7 @@ a strongly-typed bridgeable declaration.
 **Symptom.** `compileAndroidMain` (or `jvmMainClasses`) fails with:
 
 ```
-Duplicate JVM class name 'io.github.kotlinmania.llama.<pkg>/FooKt'
+Duplicate JVM class name 'io.github.kotlinmania.llama.pkg>/FooKt'
 generated from: FooKt, FooKt
 ```
 

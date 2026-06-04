@@ -1,5 +1,5 @@
 @file:Suppress("unused")
-package io.github.kotlinmania.llama.klangnative
+package io.github.kotlinmania.llama.langnative
 
 /**
  * KLang: Kotlin Language Numeric Core
@@ -28,11 +28,11 @@ package io.github.kotlinmania.llama.klangnative
  * Import types directly from their respective packages:
  *
  * ```kotlin
- * import io.github.kotlinmania.llama.klang.fp.CFloat32
- * import io.github.kotlinmania.llama.klang.fp.CDouble
- * import io.github.kotlinmania.llama.klang.int.C_UInt128
- * import io.github.kotlinmania.llama.klang.mem.GlobalHeap
- * import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
+ * import io.github.kotlinmania.llama.lang.fp.CFloat32
+ * import io.github.kotlinmania.llama.lang.fp.CDouble
+ * import io.github.kotlinmania.llama.lang.int.C_UInt128
+ * import io.github.kotlinmania.llama.lang.mem.GlobalHeap
+ * import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
  *
  * // Create C-compatible floats
  * val x = CFloat32.fromFloat(3.14f)
@@ -52,10 +52,10 @@ package io.github.kotlinmania.llama.klangnative
  *
  * ## Package Structure
  *
- * - [io.github.kotlinmania.llama.klang.bitwise]: Bit shift engine and bitwise operations
- * - [io.github.kotlinmania.llama.klang.fp]: Floating point types (CDouble, CFloat16, CFloat128, etc.)
- * - [io.github.kotlinmania.llama.klang.int]: Extended precision integers (C_UInt128, C_Int128)
- * - [io.github.kotlinmania.llama.klang.mem]: Memory management, heap, malloc/free, pointers
- * - [io.github.kotlinmania.llama.klang.common]: Common utilities and logging
- * - [io.github.kotlinmania.llama.klang.internal]: Internal implementation (unstable, do not use directly)
+ * - [io.github.kotlinmania.llama.lang.bitwise]: Bit shift engine and bitwise operations
+ * - [io.github.kotlinmania.llama.lang.fp]: Floating point types (CDouble, CFloat16, CFloat128, etc.)
+ * - [io.github.kotlinmania.llama.lang.int]: Extended precision integers (C_UInt128, C_Int128)
+ * - [io.github.kotlinmania.llama.lang.mem]: Memory management, heap, malloc/free, pointers
+ * - [io.github.kotlinmania.llama.lang.common]: Common utilities and logging
+ * - [io.github.kotlinmania.llama.lang.internal]: Internal implementation (unstable, do not use directly)
  */

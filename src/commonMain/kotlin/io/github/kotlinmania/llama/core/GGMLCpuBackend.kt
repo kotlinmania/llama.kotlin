@@ -1,14 +1,14 @@
 // port-lint: source ggml/src/ggml-cpu/ggml-cpu.cpp
-package io.github.kotlinmania.llama.core
+package io.github.kotlinmania.llama.ore
 
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.getFloatLe
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.getIntLe
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.getLongLe
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.getShortLe
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.setFloatLe
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.setIntLe
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.setLongLe
-import io.github.kotlinmania.llama.core.ByteArrayExtensions.setShortLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.getFloatLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.getIntLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.getLongLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.getShortLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.setFloatLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.setIntLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.setLongLe
+import io.github.kotlinmania.llama.ore.ByteArrayExtensions.setShortLe
 
 /**
  * CPU backend implementation for GGML operations.
@@ -35,7 +35,7 @@ import io.github.kotlinmania.llama.core.ByteArrayExtensions.setShortLe
  *
  * Mirrors `ggml_backend_cpu_get_extra_buffer_types()`.
  */
-fun ggmlBackendCpuGetExtraBufferTypes(): MutableList<io.github.kotlinmania.llama.core.GGMLBackendBufferType> {
+fun ggmlBackendCpuGetExtraBufferTypes(): MutableList<io.github.kotlinmania.llama.ore.GGMLBackendBufferType> {
     // Empty — add extra buffer types here when accelerator extensions are ported
     return mutableListOf()
 }
@@ -46,8 +46,8 @@ fun ggmlBackendCpuGetExtraBufferTypes(): MutableList<io.github.kotlinmania.llama
  *
  * Mirrors `ggml_backend_cpu_device_get_extra_buffers_type()`.
  */
-private fun ggmlBackendCpuDeviceGetExtraBufferTypes(): List<io.github.kotlinmania.llama.core.GGMLBackendBufferType> {
-    return _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuGetExtraBufferTypes()
+private fun ggmlBackendCpuDeviceGetExtraBufferTypes(): List<io.github.kotlinmania.llama.ore.GGMLBackendBufferType> {
+    return io.github.kotlinmania.llama.ore.ggmlBackendCpuGetExtraBufferTypes()
 }
 
 /**
@@ -56,8 +56,8 @@ private fun ggmlBackendCpuDeviceGetExtraBufferTypes(): List<io.github.kotlinmani
  *
  * Mirrors `ggml_backend_cpu_is_extra_buffer_type()`.
  */
-fun ggmlBackendCpuIsExtraBufferType(buft: io.github.kotlinmania.llama.core.GGMLBackendBufferType): Boolean {
-    return _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuGetExtraBufferTypes().any { it === buft }
+fun ggmlBackendCpuIsExtraBufferType(buft: io.github.kotlinmania.llama.ore.GGMLBackendBufferType): Boolean {
+    return io.github.kotlinmania.llama.ore.ggmlBackendCpuGetExtraBufferTypes().any { it === buft }
 }
 
 // ============================================================================
@@ -69,7 +69,7 @@ fun ggmlBackendCpuIsExtraBufferType(buft: io.github.kotlinmania.llama.core.GGMLB
  *
  * Mirrors the buffer-type vtable wired into `ggml_backend_cpu_buffer_type()`.
  */
-class GGMLCpuBufferType : io.github.kotlinmania.llama.core.GGMLBackendBufferType {
+class GGMLCpuBufferType : io.github.kotlinmania.llama.ore.GGMLBackendBufferType {
     companion object {
         private const val TENSOR_ALIGNMENT = 32u // 32-byte alignment as in C++ implementation
         private const val MAX_BUFFER_SIZE = ULong.MAX_VALUE // No practical limit for CPU
@@ -77,14 +77,14 @@ class GGMLCpuBufferType : io.github.kotlinmania.llama.core.GGMLBackendBufferType
 
     override fun getName(): String = "CPU"
 
-    override fun allocBuffer(size: ULong): io.github.kotlinmania.llama.core.GGMLBackendBuffer? {
+    override fun allocBuffer(size: ULong): io.github.kotlinmania.llama.ore.GGMLBackendBuffer? {
         if (size == 0uL) return null
 
         return try {
             // Allocate with extra space for alignment
             val alignedSize = (size + TENSOR_ALIGNMENT).toInt()
             val data = ByteArray(alignedSize) { 0 }
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBuffer(this, data, size)
+            io.github.kotlinmania.llama.ore.GGMLCpuBuffer(this, data, size)
         } catch (t: Throwable) {
             println("GGMLCpuBufferType: Failed to allocate buffer of size $size (${t.message})")
             null
@@ -108,12 +108,12 @@ class GGMLCpuBufferType : io.github.kotlinmania.llama.core.GGMLBackendBufferType
  * Mirrors the buffer vtable wired into `ggml_backend_cpu_buffer_type_alloc_buffer`.
  */
 class GGMLCpuBuffer(
-    private val bufferType: io.github.kotlinmania.llama.core.GGMLCpuBufferType,
+    private val bufferType: io.github.kotlinmania.llama.ore.GGMLCpuBufferType,
     private val data: ByteArray,
     private val size: ULong
-) : io.github.kotlinmania.llama.core.GGMLBackendBuffer {
+) : io.github.kotlinmania.llama.ore.GGMLBackendBuffer {
 
-    override fun getType(): io.github.kotlinmania.llama.core.GGMLBackendBufferType = bufferType
+    override fun getType(): io.github.kotlinmania.llama.ore.GGMLBackendBufferType = bufferType
 
     override fun getName(): String = "CPU"
 
@@ -125,13 +125,13 @@ class GGMLCpuBuffer(
         // ByteArray will be garbage collected, nothing to do explicitly
     }
 
-    override fun initTensor(tensor: io.github.kotlinmania.llama.core.GGMLTensor): io.github.kotlinmania.llama.core.GGMLStatus {
+    override fun initTensor(tensor: io.github.kotlinmania.llama.ore.GGMLTensor): io.github.kotlinmania.llama.ore.GGMLStatus {
         // CPU tensors don't need special initialization
         tensor.buffer = this
-        return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLStatus.SUCCESS
+        return io.github.kotlinmania.llama.ore.GGMLStatus.SUCCESS
     }
 
-    override fun setTensor(tensor: io.github.kotlinmania.llama.core.GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+    override fun setTensor(tensor: io.github.kotlinmania.llama.ore.GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
         val tensorData = getBase() as ByteArray
         val srcStart = offset.toInt()
         val srcEnd = (offset + size).toInt()
@@ -148,7 +148,7 @@ class GGMLCpuBuffer(
         data.copyInto(tensorData, dstStart, srcStart, srcEnd)
     }
 
-    override fun getTensor(tensor: io.github.kotlinmania.llama.core.GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
+    override fun getTensor(tensor: io.github.kotlinmania.llama.ore.GGMLTensor, data: ByteArray, offset: ULong, size: ULong) {
         val tensorData = getBase() as ByteArray
         val srcStart = tensor.dataOffset.toInt()
         val srcEnd = srcStart + size.toInt()
@@ -165,7 +165,7 @@ class GGMLCpuBuffer(
         tensorData.copyInto(data, dstStart, srcStart, srcEnd)
     }
 
-    override fun copyTensor(src: io.github.kotlinmania.llama.core.GGMLTensor, dst: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
+    override fun copyTensor(src: io.github.kotlinmania.llama.ore.GGMLTensor, dst: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
         // Check if source is from a host buffer (CPU or compatible)
         val srcBuffer = src.buffer
         if (srcBuffer == null || !srcBuffer.getType().isHost()) {
@@ -175,8 +175,8 @@ class GGMLCpuBuffer(
         val srcData = srcBuffer.getBase() as? ByteArray ?: return false
         val dstData = getBase() as ByteArray
 
-        val srcByteSize = _root_ide_package_.io.github.kotlinmania.llama.core.calculateTensorByteSize(src)
-        val dstByteSize = _root_ide_package_.io.github.kotlinmania.llama.core.calculateTensorByteSize(dst)
+        val srcByteSize = io.github.kotlinmania.llama.ore.calculateTensorByteSize(src)
+        val dstByteSize = io.github.kotlinmania.llama.ore.calculateTensorByteSize(dst)
 
         if (srcByteSize != dstByteSize) {
             return false
@@ -215,7 +215,7 @@ class GGMLCpuBuffer(
 // ============================================================================
 
 /**
- * Internal mutable context carried by every [io.github.kotlinmania.llama.core.GGMLCpuBackend] instance.
+ * Internal mutable context carried by every [io.github.kotlinmania.llama.ore.GGMLCpuBackend] instance.
  *
  * Mirrors `struct ggml_backend_cpu_context` (lines 99-110 in ggml-cpu.cpp).
  *
@@ -223,7 +223,7 @@ class GGMLCpuBuffer(
  * @property threadpool   Optional threadpool; when non-null, compute uses it
  *                        instead of spawning ad-hoc threads.
  * @property workData     Scratch buffer re-used across consecutive
- *                        [io.github.kotlinmania.llama.core.GGMLCpuBackend.graphCompute] calls.
+ *                        [io.github.kotlinmania.llama.ore.GGMLCpuBackend.graphCompute] calls.
  * @property workSize     Current size (in bytes) of [workData].
  * @property abortCallback If non-null, checked between compute steps;
  *                          returning `true` aborts the run.
@@ -232,8 +232,8 @@ class GGMLCpuBuffer(
  *                        implementations are used.
  */
 class GGMLCpuBackendContext(
-    var nThreads: Int = _root_ide_package_.io.github.kotlinmania.llama.core.GGML_DEFAULT_N_THREADS,
-    var threadpool: io.github.kotlinmania.llama.core.GGMLThreadpool? = null,
+    var nThreads: Int = io.github.kotlinmania.llama.ore.GGML_DEFAULT_N_THREADS,
+    var threadpool: io.github.kotlinmania.llama.ore.GGMLThreadpool? = null,
     var workData: Any? = null,
     var workSize: ULong = 0uL,
     var abortCallback: ((data: Any?) -> Boolean)? = null,
@@ -254,8 +254,8 @@ class GGMLCpuBackendContext(
  * @property cgraph A snapshot of the computation graph at plan-creation time.
  */
 class GGMLCpuGraphPlan(
-    val cplan: io.github.kotlinmania.llama.core.GGMLCPlan,
-    val cgraph: io.github.kotlinmania.llama.core.GGMLCGraph
+    val cplan: io.github.kotlinmania.llama.ore.GGMLCPlan,
+    val cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph
 )
 
 // ============================================================================
@@ -281,15 +281,15 @@ private const val GGML_BACKEND_CPU_GUID = "CPU-KOTLIN-NATIVE"
  * Mirrors the vtable `ggml_backend_cpu_i` and the factory function
  * `ggml_backend_cpu_init()` (lines 193-247 in ggml-cpu.cpp).
  */
-class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
+class GGMLCpuBackend : io.github.kotlinmania.llama.ore.GGMLBackend {
     companion object {
-        private const val BACKEND_GUID = _root_ide_package_.io.github.kotlinmania.llama.core.GGML_BACKEND_CPU_GUID
+        private const val BACKEND_GUID = io.github.kotlinmania.llama.ore.GGML_BACKEND_CPU_GUID
     }
 
     /** Internal CPU context — mirrors `ggml_backend_cpu_context`. */
-    internal val cpuCtx = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackendContext()
+    internal val cpuCtx = io.github.kotlinmania.llama.ore.GGMLCpuBackendContext()
 
-    private val bufferType = _root_ide_package_.io.github.kotlinmania.llama.core.createDefaultCpuBufferType()
+    private val bufferType = io.github.kotlinmania.llama.ore.createDefaultCpuBufferType()
     // -- GGMLBackend interface ------------------------------------------------
 
     override fun getGuid(): String = BACKEND_GUID
@@ -303,27 +303,27 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
         cpuCtx.workSize = 0uL
     }
 
-    override fun getDefaultBufferType(): io.github.kotlinmania.llama.core.GGMLBackendBufferType = bufferType
+    override fun getDefaultBufferType(): io.github.kotlinmania.llama.ore.GGMLBackendBufferType = bufferType
 
     /**
      * Create an execution plan for [graph].
      *
      * Mirrors `ggml_backend_cpu_graph_plan_create()` (lines 130-151).
      */
-    override fun graphPlanCreate(graph: io.github.kotlinmania.llama.core.GGMLCGraph): Any? {
+    override fun graphPlanCreate(graph: io.github.kotlinmania.llama.ore.GGMLCGraph): Any? {
         val cplan =
-            _root_ide_package_.io.github.kotlinmania.llama.core.ggmlGraphPlan(graph, cpuCtx.nThreads, cpuCtx.threadpool)
+            io.github.kotlinmania.llama.ore.ggmlGraphPlan(graph, cpuCtx.nThreads, cpuCtx.threadpool)
 
         if (cplan.workSize > 0uL) {
             cplan.workData =
-                _root_ide_package_.io.github.kotlinmania.llama.core.ggml_aligned_malloc(cplan.workSize.toLong())
+                io.github.kotlinmania.llama.ore.ggml_aligned_malloc(cplan.workSize.toLong())
         }
 
         cplan.abortCallback = cpuCtx.abortCallback
         cplan.abortCallbackData = cpuCtx.abortCallbackData
         cplan.useRef = cpuCtx.useRef
 
-        return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuGraphPlan(cplan, graph)
+        return io.github.kotlinmania.llama.ore.GGMLCpuGraphPlan(cplan, graph)
     }
 
     /**
@@ -332,8 +332,8 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
      * Mirrors `ggml_backend_cpu_graph_plan_free()` (lines 153-160).
      */
     override fun graphPlanFree(plan: Any?) {
-        if (plan is io.github.kotlinmania.llama.core.GGMLCpuGraphPlan) {
-            _root_ide_package_.io.github.kotlinmania.llama.core.ggml_aligned_free(
+        if (plan is io.github.kotlinmania.llama.ore.GGMLCpuGraphPlan) {
+            io.github.kotlinmania.llama.ore.ggml_aligned_free(
                 plan.cplan.workData,
                 plan.cplan.workSize.toLong()
             )
@@ -346,9 +346,9 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
      *
      * Mirrors `ggml_backend_cpu_graph_plan_compute()` (lines 162-168).
      */
-    override fun graphPlanCompute(plan: Any?): io.github.kotlinmania.llama.core.GGMLStatus {
-        require(plan is io.github.kotlinmania.llama.core.GGMLCpuGraphPlan) { "Expected GGMLCpuGraphPlan" }
-        return _root_ide_package_.io.github.kotlinmania.llama.core.ggmlGraphCompute(plan.cgraph, plan.cplan)
+    override fun graphPlanCompute(plan: Any?): io.github.kotlinmania.llama.ore.GGMLStatus {
+        require(plan is io.github.kotlinmania.llama.ore.GGMLCpuGraphPlan) { "Expected GGMLCpuGraphPlan" }
+        return io.github.kotlinmania.llama.ore.ggmlGraphCompute(plan.cgraph, plan.cplan)
     }
 
     /**
@@ -357,23 +357,23 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
      *
      * Mirrors `ggml_backend_cpu_graph_compute()` (lines 170-191).
      */
-    override fun graphCompute(graph: io.github.kotlinmania.llama.core.GGMLCGraph): io.github.kotlinmania.llama.core.GGMLStatus {
+    override fun graphCompute(graph: io.github.kotlinmania.llama.ore.GGMLCGraph): io.github.kotlinmania.llama.ore.GGMLStatus {
         val cplan =
-            _root_ide_package_.io.github.kotlinmania.llama.core.ggmlGraphPlan(graph, cpuCtx.nThreads, cpuCtx.threadpool)
+            io.github.kotlinmania.llama.ore.ggmlGraphPlan(graph, cpuCtx.nThreads, cpuCtx.threadpool)
 
         // Grow the work buffer if necessary
         if (cpuCtx.workSize < cplan.workSize) {
             // Free old work buffer if it was native-allocated
-            _root_ide_package_.io.github.kotlinmania.llama.core.ggml_aligned_free(
+            io.github.kotlinmania.llama.ore.ggml_aligned_free(
                 cpuCtx.workData,
                 cpuCtx.workSize.toLong()
             )
             val newBuf =
-                _root_ide_package_.io.github.kotlinmania.llama.core.ggml_aligned_malloc(cplan.workSize.toLong())
+                io.github.kotlinmania.llama.ore.ggml_aligned_malloc(cplan.workSize.toLong())
             if (newBuf == null) {
                 cpuCtx.workSize = 0uL
                 cpuCtx.workData = null
-                return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLStatus.ALLOC_FAILED
+                return io.github.kotlinmania.llama.ore.GGMLStatus.ALLOC_FAILED
             }
             cpuCtx.workData = newBuf
             cpuCtx.workSize = cplan.workSize
@@ -384,7 +384,7 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
         cplan.abortCallbackData = cpuCtx.abortCallbackData
         cplan.useRef = cpuCtx.useRef
 
-        return _root_ide_package_.io.github.kotlinmania.llama.core.ggmlGraphCompute(graph, cplan)
+        return io.github.kotlinmania.llama.ore.ggmlGraphCompute(graph, cplan)
     }
 
     /**
@@ -395,54 +395,54 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
      * constraints; here we check the known supported op set and delegate
      * shape-ops unconditionally.
      */
-    override fun supportsOp(tensor: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
+    override fun supportsOp(tensor: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
         // Shape-only ops are always supported
-        if (tensor.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.NONE || tensor.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RESHAPE ||
-            tensor.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.VIEW || tensor.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.PERMUTE ||
-            tensor.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.TRANSPOSE
+        if (tensor.op == io.github.kotlinmania.llama.ore.GGMLOp.NONE || tensor.op == io.github.kotlinmania.llama.ore.GGMLOp.RESHAPE ||
+            tensor.op == io.github.kotlinmania.llama.ore.GGMLOp.VIEW || tensor.op == io.github.kotlinmania.llama.ore.GGMLOp.PERMUTE ||
+            tensor.op == io.github.kotlinmania.llama.ore.GGMLOp.TRANSPOSE
         ) {
             return true
         }
 
         return when (tensor.op) {
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.DUP -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ADD -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ADD1 -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SUB -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MUL -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.DIV -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SQR -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SQRT -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.LOG -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.NEG -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ABS -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SGN -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RELU -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.GELU -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.GELU_QUICK -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SILU -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SILU_BACK -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.NORM -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RMS_NORM -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RMS_NORM_BACK -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MUL_MAT -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.REPEAT -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.REPEAT_BACK -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.CONCAT -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SUM -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SUM_ROWS -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MEAN -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ARGMAX -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.CPY -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RESHAPE -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.VIEW -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.PERMUTE -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.TRANSPOSE -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.GET_ROWS -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.DIAG_MASK_INF -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SOFT_MAX -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ROPE -> true
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.COUNT -> false
+            io.github.kotlinmania.llama.ore.GGMLOp.DUP -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.ADD -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.ADD1 -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SUB -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.MUL -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.DIV -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SQR -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SQRT -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.LOG -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.NEG -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.ABS -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SGN -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.RELU -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.GELU -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.GELU_QUICK -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SILU -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SILU_BACK -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.NORM -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.RMS_NORM -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.RMS_NORM_BACK -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.MUL_MAT -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.REPEAT -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.REPEAT_BACK -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.CONCAT -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SUM -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SUM_ROWS -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.MEAN -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.ARGMAX -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.CPY -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.RESHAPE -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.VIEW -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.PERMUTE -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.TRANSPOSE -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.GET_ROWS -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.DIAG_MASK_INF -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.SOFT_MAX -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.ROPE -> true
+            io.github.kotlinmania.llama.ore.GGMLOp.COUNT -> false
             else -> false
         }
     }
@@ -450,8 +450,8 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
     /**
      * Mirrors `ggml_backend_cpu_device_supports_buft()` (line 476).
      */
-    override fun supportsBufferType(bufferType: io.github.kotlinmania.llama.core.GGMLBackendBufferType): Boolean {
-        return bufferType.isHost() || _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuIsExtraBufferType(
+    override fun supportsBufferType(bufferType: io.github.kotlinmania.llama.ore.GGMLBackendBufferType): Boolean {
+        return bufferType.isHost() || io.github.kotlinmania.llama.ore.ggmlBackendCpuIsExtraBufferType(
             bufferType
         )
     }
@@ -461,7 +461,7 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
      *
      * Mirrors the `NULL` offload_op in `ggml_backend_cpu_device_i`.
      */
-    override fun offloadOp(tensor: io.github.kotlinmania.llama.core.GGMLTensor): Boolean = false
+    override fun offloadOp(tensor: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean = false
 
     // -- Thread management (mirrors free functions in ggml-cpu.cpp) -----------
 
@@ -481,7 +481,7 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
      *
      * Mirrors `ggml_backend_cpu_set_threadpool()` (lines 260-270).
      */
-    fun setThreadpool(threadpool: io.github.kotlinmania.llama.core.GGMLThreadpool?) {
+    fun setThreadpool(threadpool: io.github.kotlinmania.llama.ore.GGMLThreadpool?) {
         val prev = cpuCtx.threadpool
         if (prev != null && prev !== threadpool) {
             // Already had a different threadpool — pause it before switching
@@ -519,8 +519,8 @@ class GGMLCpuBackend : io.github.kotlinmania.llama.core.GGMLBackend {
 // ============================================================================
 
 /** `ggml_backend_is_cpu` — C: ggml-cpu.cpp lines 249-251. */
-fun ggmlBackendIsCpu(backend: io.github.kotlinmania.llama.core.GGMLBackend): Boolean {
-    return backend is io.github.kotlinmania.llama.core.GGMLCpuBackend
+fun ggmlBackendIsCpu(backend: io.github.kotlinmania.llama.ore.GGMLBackend): Boolean {
+    return backend is io.github.kotlinmania.llama.ore.GGMLCpuBackend
 }
 
 // ============================================================================
@@ -557,10 +557,10 @@ class GGMLCpuDeviceContext {
  * device instance created inside `ggml_backend_cpu_reg_get_device()`.
  */
 class GGMLCpuDevice(
-    private val reg: io.github.kotlinmania.llama.core.GGMLBackendReg? = null
-) : io.github.kotlinmania.llama.core.GGMLBackendDevice {
+    private val reg: io.github.kotlinmania.llama.ore.GGMLBackendReg? = null
+) : io.github.kotlinmania.llama.ore.GGMLBackendDevice {
 
-    private val ctx = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuDeviceContext()
+    private val ctx = io.github.kotlinmania.llama.ore.GGMLCpuDeviceContext()
 
     /** Mirrors `ggml_backend_cpu_device_get_name()` (line 353). */
     override fun getName(): String = "CPU"
@@ -584,20 +584,20 @@ class GGMLCpuDevice(
     }
 
     /** Mirrors `ggml_backend_cpu_device_get_type()` (line 384). */
-    override fun getType(): io.github.kotlinmania.llama.core.GGMLBackendDeviceType = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendDeviceType.CPU
+    override fun getType(): io.github.kotlinmania.llama.ore.GGMLBackendDeviceType = io.github.kotlinmania.llama.ore.GGMLBackendDeviceType.CPU
 
     /**
      * Mirrors `ggml_backend_cpu_device_get_props()` (lines 390-401).
      */
-    override fun getProps(): io.github.kotlinmania.llama.core.GGMLBackendDeviceProps {
+    override fun getProps(): io.github.kotlinmania.llama.ore.GGMLBackendDeviceProps {
         val (free, total) = getMemory()
-        return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendDeviceProps(
+        return io.github.kotlinmania.llama.ore.GGMLBackendDeviceProps(
             name = getName(),
             description = getDescription(),
             memoryFree = free,
             memoryTotal = total,
             type = getType(),
-            caps = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendDeviceCaps(
+            caps = io.github.kotlinmania.llama.ore.GGMLBackendDeviceCaps(
                 async = false,
                 hostBuffer = false,
                 bufferFromHostPtr = true,
@@ -607,15 +607,15 @@ class GGMLCpuDevice(
     }
 
     /** Mirrors `ggml_backend_cpu_reg()` accessor. */
-    override fun getBackendReg(): io.github.kotlinmania.llama.core.GGMLBackendReg? = reg
+    override fun getBackendReg(): io.github.kotlinmania.llama.ore.GGMLBackendReg? = reg
 
     /**
      * Create a new CPU backend instance.
      *
      * Mirrors `ggml_backend_cpu_device_init_backend()` (lines 403-408).
      */
-    override fun initBackend(params: String?): io.github.kotlinmania.llama.core.GGMLBackend {
-        return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackend()
+    override fun initBackend(params: String?): io.github.kotlinmania.llama.ore.GGMLBackend {
+        return io.github.kotlinmania.llama.ore.GGMLCpuBackend()
     }
 
     /**
@@ -623,8 +623,8 @@ class GGMLCpuDevice(
      *
      * Mirrors `ggml_backend_cpu_device_get_buffer_type()` (lines 410-414).
      */
-    override fun getBufferType(): io.github.kotlinmania.llama.core.GGMLBackendBufferType =
-        _root_ide_package_.io.github.kotlinmania.llama.core.createDefaultCpuBufferType()
+    override fun getBufferType(): io.github.kotlinmania.llama.ore.GGMLBackendBufferType =
+        io.github.kotlinmania.llama.ore.createDefaultCpuBufferType()
 
     /**
      * Create a CPU buffer wrapping an existing host [ptr].
@@ -635,9 +635,9 @@ class GGMLCpuDevice(
         ptr: ByteArray,
         size: ULong,
         maxTensorSize: ULong
-    ): io.github.kotlinmania.llama.core.GGMLBackendBuffer {
-        return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBuffer(
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBufferType(),
+    ): io.github.kotlinmania.llama.ore.GGMLBackendBuffer {
+        return io.github.kotlinmania.llama.ore.GGMLCpuBuffer(
+            io.github.kotlinmania.llama.ore.GGMLCpuBufferType(),
             ptr,
             size
         )
@@ -648,11 +648,11 @@ class GGMLCpuDevice(
      *
      * Mirrors `ggml_backend_cpu_device_supports_op()` (lines 423-474).
      */
-    override fun supportsOp(op: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
+    override fun supportsOp(op: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
         // Shape-only ops are always supported
-        if (op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.NONE || op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RESHAPE ||
-            op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.VIEW || op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.PERMUTE ||
-            op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.TRANSPOSE
+        if (op.op == io.github.kotlinmania.llama.ore.GGMLOp.NONE || op.op == io.github.kotlinmania.llama.ore.GGMLOp.RESHAPE ||
+            op.op == io.github.kotlinmania.llama.ore.GGMLOp.VIEW || op.op == io.github.kotlinmania.llama.ore.GGMLOp.PERMUTE ||
+            op.op == io.github.kotlinmania.llama.ore.GGMLOp.TRANSPOSE
         ) {
             return true
         }
@@ -662,16 +662,16 @@ class GGMLCpuDevice(
             val src = op.src[i] ?: continue
             val srcBuf = src.buffer ?: continue
             val srcBuft = srcBuf.getType()
-            if (_root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuIsExtraBufferType(srcBuft)) {
+            if (io.github.kotlinmania.llama.ore.ggmlBackendCpuIsExtraBufferType(srcBuft)) {
                 // Extra buffer type would handle the op — delegate to it
             }
         }
 
         // Per-op type constraints (simplified from C++ switch)
         return when (op.op) {
-            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MUL_MAT -> {
+            io.github.kotlinmania.llama.ore.GGMLOp.MUL_MAT -> {
                 val src1 = op.src.getOrNull(1)
-                src1 != null && (src1.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 || src1.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16)
+                src1 != null && (src1.type == io.github.kotlinmania.llama.ore.GGMLType.F32 || src1.type == io.github.kotlinmania.llama.ore.GGMLType.F16)
             }
             else -> true
         }
@@ -680,8 +680,8 @@ class GGMLCpuDevice(
     /**
      * Mirrors `ggml_backend_cpu_device_supports_buft()` (line 476).
      */
-    override fun supportsBufferType(buft: io.github.kotlinmania.llama.core.GGMLBackendBufferType): Boolean {
-        return buft.isHost() || _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuIsExtraBufferType(buft)
+    override fun supportsBufferType(buft: io.github.kotlinmania.llama.ore.GGMLBackendBufferType): Boolean {
+        return buft.isHost() || io.github.kotlinmania.llama.ore.ggmlBackendCpuIsExtraBufferType(buft)
     }
 }
 
@@ -694,10 +694,10 @@ class GGMLCpuDevice(
  *
  * Mirrors `ggml_backend_cpu_get_features()` (lines 528-640). The C++ version
  * probes for SSE3, AVX, NEON, SVE etc. The Kotlin port delegates to
- * [io.github.kotlinmania.llama.core.ggmlCpuDetectFeatures] (defined in GGMLCpuExecutor.kt) and converts the
- * result into the [io.github.kotlinmania.llama.core.GGMLBackendFeature] list format.
+ * [io.github.kotlinmania.llama.ore.ggmlCpuDetectFeatures] (defined in GGMLCpuExecutor.kt) and converts the
+ * result into the [io.github.kotlinmania.llama.ore.GGMLBackendFeature] list format.
  */
-fun ggmlBackendCpuGetFeatures(): List<io.github.kotlinmania.llama.core.GGMLBackendFeature> {
+fun ggmlBackendCpuGetFeatures(): List<io.github.kotlinmania.llama.ore.GGMLBackendFeature> {
     // C++: returns detected CPU features — empty until ggmlCpuDetectFeatures() is ported
     return emptyList()
 }
@@ -718,43 +718,43 @@ fun ggmlBackendCpuGetProcAddress(name: String): Any? {
     // uniform type. Callers must cast back to the expected function type.
     val result: Any? = when (name) {
         "ggml_backend_set_n_threads" -> object : Any() {
-            fun invoke(backend: io.github.kotlinmania.llama.core.GGMLBackend, nThreads: Int) {
-                require(backend is io.github.kotlinmania.llama.core.GGMLCpuBackend); backend.setThreadCount(nThreads)
+            fun invoke(backend: io.github.kotlinmania.llama.ore.GGMLBackend, nThreads: Int) {
+                require(backend is io.github.kotlinmania.llama.ore.GGMLCpuBackend); backend.setThreadCount(nThreads)
             }
         }
         "ggml_backend_get_features" -> object : Any() {
-            fun invoke(): List<io.github.kotlinmania.llama.core.GGMLBackendFeature> =
-                _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuGetFeatures()
+            fun invoke(): List<io.github.kotlinmania.llama.ore.GGMLBackendFeature> =
+                io.github.kotlinmania.llama.ore.ggmlBackendCpuGetFeatures()
         }
         "ggml_backend_set_abort_callback" -> object : Any() {
-            fun invoke(backend: io.github.kotlinmania.llama.core.GGMLBackend, cb: ((Any?) -> Boolean)?, data: Any?) {
-                require(backend is io.github.kotlinmania.llama.core.GGMLCpuBackend); backend.setAbortCallback(cb, data)
+            fun invoke(backend: io.github.kotlinmania.llama.ore.GGMLBackend, cb: ((Any?) -> Boolean)?, data: Any?) {
+                require(backend is io.github.kotlinmania.llama.ore.GGMLCpuBackend); backend.setAbortCallback(cb, data)
             }
         }
         "ggml_backend_cpu_set_use_ref" -> object : Any() {
-            fun invoke(backend: io.github.kotlinmania.llama.core.GGMLBackend, useRef: Boolean) {
-                require(backend is io.github.kotlinmania.llama.core.GGMLCpuBackend); backend.setUseRef(useRef)
+            fun invoke(backend: io.github.kotlinmania.llama.ore.GGMLBackend, useRef: Boolean) {
+                require(backend is io.github.kotlinmania.llama.ore.GGMLCpuBackend); backend.setUseRef(useRef)
             }
         }
         "ggml_backend_cpu_set_threadpool" -> object : Any() {
-            fun invoke(backend: io.github.kotlinmania.llama.core.GGMLBackend, tp: io.github.kotlinmania.llama.core.GGMLThreadpool) {
-                require(backend is io.github.kotlinmania.llama.core.GGMLCpuBackend); backend.setThreadpool(tp)
+            fun invoke(backend: io.github.kotlinmania.llama.ore.GGMLBackend, tp: io.github.kotlinmania.llama.ore.GGMLThreadpool) {
+                require(backend is io.github.kotlinmania.llama.ore.GGMLCpuBackend); backend.setThreadpool(tp)
             }
         }
         "ggml_threadpool_new" -> object : Any() {
-            fun invoke(params: io.github.kotlinmania.llama.core.GGMLThreadpoolParams): io.github.kotlinmania.llama.core.GGMLThreadpool =
-                _root_ide_package_.io.github.kotlinmania.llama.core.ggmlThreadpoolNew(params)
+            fun invoke(params: io.github.kotlinmania.llama.ore.GGMLThreadpoolParams): io.github.kotlinmania.llama.ore.GGMLThreadpool =
+                io.github.kotlinmania.llama.ore.ggmlThreadpoolNew(params)
         }
         "ggml_threadpool_free" -> object : Any() {
-            fun invoke(tp: io.github.kotlinmania.llama.core.GGMLThreadpool) =
-                _root_ide_package_.io.github.kotlinmania.llama.core.ggmlThreadpoolFree(tp)
+            fun invoke(tp: io.github.kotlinmania.llama.ore.GGMLThreadpool) =
+                io.github.kotlinmania.llama.ore.ggmlThreadpoolFree(tp)
         }
         "ggml_backend_cpu_numa_init" -> object : Any() {
-            fun invoke(strategy: io.github.kotlinmania.llama.core.GGMLNumaStrategy) =
-                _root_ide_package_.io.github.kotlinmania.llama.core.ggmlNumaInit(strategy)
+            fun invoke(strategy: io.github.kotlinmania.llama.ore.GGMLNumaStrategy) =
+                io.github.kotlinmania.llama.ore.ggmlNumaInit(strategy)
         }
         "ggml_backend_cpu_is_numa" -> object : Any() {
-            fun invoke(): Boolean = _root_ide_package_.io.github.kotlinmania.llama.core.ggmlIsNuma()
+            fun invoke(): Boolean = io.github.kotlinmania.llama.ore.ggmlIsNuma()
         }
         else -> null
     }
@@ -771,7 +771,7 @@ fun ggmlBackendCpuGetProcAddress(name: String): Any? {
  * Mirrors `ggml_backend_cpu_reg()` (lines 690-701) and the static
  * `ggml_backend_cpu_reg_i` vtable (lines 683-688).
  */
-class GGMLCpuBackendReg private constructor() : io.github.kotlinmania.llama.core.GGMLBackendReg {
+class GGMLCpuBackendReg private constructor() : io.github.kotlinmania.llama.ore.GGMLBackendReg {
 
     companion object {
         /** Lazy singleton mirroring the C static local. */
@@ -779,8 +779,8 @@ class GGMLCpuBackendReg private constructor() : io.github.kotlinmania.llama.core
     }
 
     /** The single CPU device. */
-    private val device: io.github.kotlinmania.llama.core.GGMLCpuDevice by lazy {
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuDevice(
+    private val device: io.github.kotlinmania.llama.ore.GGMLCpuDevice by lazy {
+        io.github.kotlinmania.llama.ore.GGMLCpuDevice(
             reg = this
         )
     }
@@ -794,7 +794,7 @@ class GGMLCpuBackendReg private constructor() : io.github.kotlinmania.llama.core
     /**
      * Mirrors `ggml_backend_cpu_reg_get_device()` (lines 513-524).
      */
-    override fun getDevice(index: ULong): io.github.kotlinmania.llama.core.GGMLBackendDevice {
+    override fun getDevice(index: ULong): io.github.kotlinmania.llama.ore.GGMLBackendDevice {
         require(index == 0uL) { "CPU backend has exactly one device (index must be 0)" }
         return device
     }
@@ -803,14 +803,14 @@ class GGMLCpuBackendReg private constructor() : io.github.kotlinmania.llama.core
      * Mirrors `ggml_backend_cpu_get_proc_address()` (lines 642-681).
      */
     override fun getProcAddress(name: String): Any? {
-        return _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuGetProcAddress(name)
+        return io.github.kotlinmania.llama.ore.ggmlBackendCpuGetProcAddress(name)
     }
 
     /**
      * Mirrors `ggml_backend_cpu_get_features()`.
      */
-    override fun getFeatures(): List<io.github.kotlinmania.llama.core.GGMLBackendFeature> {
-        return _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuGetFeatures()
+    override fun getFeatures(): List<io.github.kotlinmania.llama.ore.GGMLBackendFeature> {
+        return io.github.kotlinmania.llama.ore.ggmlBackendCpuGetFeatures()
     }
 }
 
@@ -819,39 +819,39 @@ class GGMLCpuBackendReg private constructor() : io.github.kotlinmania.llama.core
  *
  * Mirrors `ggml_backend_cpu_reg()` (lines 690-701).
  */
-fun ggmlBackendCpuRegSingleton(): io.github.kotlinmania.llama.core.GGMLBackendReg = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackendReg.instance
+fun ggmlBackendCpuRegSingleton(): io.github.kotlinmania.llama.ore.GGMLBackendReg = io.github.kotlinmania.llama.ore.GGMLCpuBackendReg.instance
 
 // ============================================================================
 // Free-standing function wrappers (match C++ ggml-cpu.cpp function names)
 // ============================================================================
 
 // C++: ggml_backend_cpu_get_name (line 112)
-fun ggmlBackendCpuGetName(backend: io.github.kotlinmania.llama.core.GGMLBackend): String {
+fun ggmlBackendCpuGetName(backend: io.github.kotlinmania.llama.ore.GGMLBackend): String {
     return "CPU"
 }
 
 // C++: ggml_backend_cpu_free (line 118)
-fun ggmlBackendCpuFree(backend: io.github.kotlinmania.llama.core.GGMLCpuBackend) {
+fun ggmlBackendCpuFree(backend: io.github.kotlinmania.llama.ore.GGMLCpuBackend) {
     backend.free()
 }
 
 // C++: ggml_backend_cpu_graph_plan_create (line 130)
-fun ggmlBackendCpuGraphPlanCreate(backend: io.github.kotlinmania.llama.core.GGMLCpuBackend, cgraph: io.github.kotlinmania.llama.core.GGMLCGraph): Any? {
+fun ggmlBackendCpuGraphPlanCreate(backend: io.github.kotlinmania.llama.ore.GGMLCpuBackend, cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph): Any? {
     return backend.graphPlanCreate(cgraph)
 }
 
 // C++: ggml_backend_cpu_graph_plan_free (line 153)
-fun ggmlBackendCpuGraphPlanFree(backend: io.github.kotlinmania.llama.core.GGMLCpuBackend, plan: Any?) {
+fun ggmlBackendCpuGraphPlanFree(backend: io.github.kotlinmania.llama.ore.GGMLCpuBackend, plan: Any?) {
     backend.graphPlanFree(plan)
 }
 
 // C++: ggml_backend_cpu_graph_plan_compute (line 162)
-fun ggmlBackendCpuGraphPlanCompute(backend: io.github.kotlinmania.llama.core.GGMLCpuBackend, plan: Any?): io.github.kotlinmania.llama.core.GGMLStatus {
+fun ggmlBackendCpuGraphPlanCompute(backend: io.github.kotlinmania.llama.ore.GGMLCpuBackend, plan: Any?): io.github.kotlinmania.llama.ore.GGMLStatus {
     return backend.graphPlanCompute(plan)
 }
 
 // C++: ggml_backend_cpu_graph_compute (line 170)
-fun ggmlBackendCpuGraphCompute(backend: io.github.kotlinmania.llama.core.GGMLCpuBackend, cgraph: io.github.kotlinmania.llama.core.GGMLCGraph): io.github.kotlinmania.llama.core.GGMLStatus {
+fun ggmlBackendCpuGraphCompute(backend: io.github.kotlinmania.llama.ore.GGMLCpuBackend, cgraph: io.github.kotlinmania.llama.ore.GGMLCGraph): io.github.kotlinmania.llama.ore.GGMLStatus {
     return backend.graphCompute(cgraph)
 }
 
@@ -865,56 +865,56 @@ fun ggmlBackendCpuGuid(): ByteArray {
 }
 
 // C++: ggml_backend_cpu_device_get_name (line 353)
-fun ggmlBackendCpuDeviceGetName(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice): String {
+fun ggmlBackendCpuDeviceGetName(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice): String {
     return "CPU"
 }
 
 // C++: ggml_backend_cpu_device_get_description (line 359)
-fun ggmlBackendCpuDeviceGetDescription(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice): String {
+fun ggmlBackendCpuDeviceGetDescription(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice): String {
     return dev.getDescription()
 }
 
 // C++: ggml_backend_cpu_device_get_memory (line 365)
-fun ggmlBackendCpuDeviceGetMemory(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice): Pair<ULong, ULong> {
+fun ggmlBackendCpuDeviceGetMemory(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice): Pair<ULong, ULong> {
     return dev.getMemory()
 }
 
 // C++: ggml_backend_cpu_device_get_type (line 384)
-fun ggmlBackendCpuDeviceGetType(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice): io.github.kotlinmania.llama.core.GGMLBackendDeviceType {
-    return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendDeviceType.CPU
+fun ggmlBackendCpuDeviceGetType(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice): io.github.kotlinmania.llama.ore.GGMLBackendDeviceType {
+    return io.github.kotlinmania.llama.ore.GGMLBackendDeviceType.CPU
 }
 
 // C++: ggml_backend_cpu_device_get_props (line 390)
-fun ggmlBackendCpuDeviceGetProps(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice): Any {
+fun ggmlBackendCpuDeviceGetProps(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice): Any {
     return dev.getProps()
 }
 
 // C++: ggml_backend_cpu_device_init_backend (line 403)
-fun ggmlBackendCpuDeviceInitBackend(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice, params: String?): io.github.kotlinmania.llama.core.GGMLBackend {
-    return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackend()
+fun ggmlBackendCpuDeviceInitBackend(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice, params: String?): io.github.kotlinmania.llama.ore.GGMLBackend {
+    return io.github.kotlinmania.llama.ore.GGMLCpuBackend()
 }
 
 // C++: ggml_backend_cpu_device_get_buffer_type (line 410)
-fun ggmlBackendCpuDeviceGetBufferType(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice): io.github.kotlinmania.llama.core.GGMLBackendBufferType {
-    return _root_ide_package_.io.github.kotlinmania.llama.core.createDefaultCpuBufferType()
+fun ggmlBackendCpuDeviceGetBufferType(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice): io.github.kotlinmania.llama.ore.GGMLBackendBufferType {
+    return io.github.kotlinmania.llama.ore.createDefaultCpuBufferType()
 }
 
 // C++: ggml_backend_cpu_device_buffer_from_host_ptr (line 416)
-fun ggmlBackendCpuDeviceBufferFromHostPtr(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice, data: ByteArray, size: ULong, maxTensorSize: ULong): io.github.kotlinmania.llama.core.GGMLBackendBuffer {
-    return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBuffer(
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBufferType(),
+fun ggmlBackendCpuDeviceBufferFromHostPtr(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice, data: ByteArray, size: ULong, maxTensorSize: ULong): io.github.kotlinmania.llama.ore.GGMLBackendBuffer {
+    return io.github.kotlinmania.llama.ore.GGMLCpuBuffer(
+        io.github.kotlinmania.llama.ore.GGMLCpuBufferType(),
         data,
         size
     )
 }
 
 // C++: ggml_backend_cpu_device_supports_op (line 423)
-fun ggmlBackendCpuDeviceSupportsOp(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice, op: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
+fun ggmlBackendCpuDeviceSupportsOp(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice, op: io.github.kotlinmania.llama.ore.GGMLTensor): Boolean {
     val src0 = op.src.getOrNull(0)
     val src1 = op.src.getOrNull(1)
 
-    if (op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.NONE || op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.RESHAPE || op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.VIEW ||
-        op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.PERMUTE || op.op == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.TRANSPOSE) {
+    if (op.op == io.github.kotlinmania.llama.ore.GGMLOp.NONE || op.op == io.github.kotlinmania.llama.ore.GGMLOp.RESHAPE || op.op == io.github.kotlinmania.llama.ore.GGMLOp.VIEW ||
+        op.op == io.github.kotlinmania.llama.ore.GGMLOp.PERMUTE || op.op == io.github.kotlinmania.llama.ore.GGMLOp.TRANSPOSE) {
         return true
     }
 
@@ -922,58 +922,58 @@ fun ggmlBackendCpuDeviceSupportsOp(dev: io.github.kotlinmania.llama.core.GGMLBac
     for (i in 0 until minOf(4, op.src.size)) {
         val srcI = op.src[i] ?: continue
         val srcBuf = srcI.buffer ?: continue
-        if (_root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuIsExtraBufferType(srcBuf.getType())) {
+        if (io.github.kotlinmania.llama.ore.ggmlBackendCpuIsExtraBufferType(srcBuf.getType())) {
             return true
         }
     }
 
     return when (op.op) {
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.CPY, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SET_ROWS ->
-            op.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.IQ3_XXS && op.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.IQ3_S &&
-            op.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.IQ2_XXS && op.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.IQ2_XS &&
-            op.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.IQ2_S && op.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.IQ1_S &&
-            op.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.IQ1_M
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MUL_MAT -> {
-            src1 != null && (src1.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 || src0 != null)
+        io.github.kotlinmania.llama.ore.GGMLOp.CPY, io.github.kotlinmania.llama.ore.GGMLOp.SET_ROWS ->
+            op.type != io.github.kotlinmania.llama.ore.GGMLType.IQ3_XXS && op.type != io.github.kotlinmania.llama.ore.GGMLType.IQ3_S &&
+            op.type != io.github.kotlinmania.llama.ore.GGMLType.IQ2_XXS && op.type != io.github.kotlinmania.llama.ore.GGMLType.IQ2_XS &&
+            op.type != io.github.kotlinmania.llama.ore.GGMLType.IQ2_S && op.type != io.github.kotlinmania.llama.ore.GGMLType.IQ1_S &&
+            op.type != io.github.kotlinmania.llama.ore.GGMLType.IQ1_M
+        io.github.kotlinmania.llama.ore.GGMLOp.MUL_MAT -> {
+            src1 != null && (src1.type == io.github.kotlinmania.llama.ore.GGMLType.F32 || src0 != null)
         }
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.SOFT_MAX_BACK -> {
-            if (op.src.getOrNull(0)?.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 || op.src.getOrNull(1)?.type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32) {
+        io.github.kotlinmania.llama.ore.GGMLOp.SOFT_MAX_BACK -> {
+            if (op.src.getOrNull(0)?.type != io.github.kotlinmania.llama.ore.GGMLType.F32 || op.src.getOrNull(1)?.type != io.github.kotlinmania.llama.ore.GGMLType.F32) {
                 false
             } else {
                 val maxBias = op.opParams.getOrNull(1) ?: 0
                 maxBias == 0
             }
         }
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.IM2COL_BACK -> src0?.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 && src1?.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.GET_ROWS_BACK -> src0?.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 || src0?.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16
-        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.OUT_PROD -> {
-            val quantizedOk = src0 != null && _root_ide_package_.io.github.kotlinmania.llama.core.ggmlIsQuantized(src0.type) &&
+        io.github.kotlinmania.llama.ore.GGMLOp.IM2COL_BACK -> src0?.type == io.github.kotlinmania.llama.ore.GGMLType.F32 && src1?.type == io.github.kotlinmania.llama.ore.GGMLType.F32
+        io.github.kotlinmania.llama.ore.GGMLOp.GET_ROWS_BACK -> src0?.type == io.github.kotlinmania.llama.ore.GGMLType.F32 || src0?.type == io.github.kotlinmania.llama.ore.GGMLType.F16
+        io.github.kotlinmania.llama.ore.GGMLOp.OUT_PROD -> {
+            val quantizedOk = src0 != null && io.github.kotlinmania.llama.ore.ggmlIsQuantized(src0.type) &&
                 src0.ne[2] == (src1?.ne?.getOrNull(2) ?: 0L) &&
                 src0.ne[3] == (src1?.ne?.getOrNull(3) ?: 0L)
-            (src0?.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 || quantizedOk) &&
-            src1?.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 && op.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32
+            (src0?.type == io.github.kotlinmania.llama.ore.GGMLType.F32 || quantizedOk) &&
+            src1?.type == io.github.kotlinmania.llama.ore.GGMLType.F32 && op.type == io.github.kotlinmania.llama.ore.GGMLType.F32
         }
         else -> true
     }
 }
 
 // C++: ggml_backend_cpu_device_supports_buft (line 476)
-fun ggmlBackendCpuDeviceSupportsBuft(dev: io.github.kotlinmania.llama.core.GGMLBackendDevice, buft: io.github.kotlinmania.llama.core.GGMLBackendBufferType): Boolean {
-    return buft.isHost() || _root_ide_package_.io.github.kotlinmania.llama.core.ggmlBackendCpuIsExtraBufferType(buft)
+fun ggmlBackendCpuDeviceSupportsBuft(dev: io.github.kotlinmania.llama.ore.GGMLBackendDevice, buft: io.github.kotlinmania.llama.ore.GGMLBackendBufferType): Boolean {
+    return buft.isHost() || io.github.kotlinmania.llama.ore.ggmlBackendCpuIsExtraBufferType(buft)
 }
 
 // C++: ggml_backend_cpu_reg_get_name (line 501)
-fun ggmlBackendCpuRegGetName(reg: io.github.kotlinmania.llama.core.GGMLBackendReg): String {
+fun ggmlBackendCpuRegGetName(reg: io.github.kotlinmania.llama.ore.GGMLBackendReg): String {
     return "CPU"
 }
 
 // C++: ggml_backend_cpu_reg_get_device_count (line 507)
-fun ggmlBackendCpuRegGetDeviceCount(reg: io.github.kotlinmania.llama.core.GGMLBackendReg): Long {
+fun ggmlBackendCpuRegGetDeviceCount(reg: io.github.kotlinmania.llama.ore.GGMLBackendReg): Long {
     return 1L
 }
 
 // C++: ggml_backend_cpu_reg_get_device (line 513)
-fun ggmlBackendCpuRegGetDevice(reg: io.github.kotlinmania.llama.core.GGMLBackendReg, index: Long): io.github.kotlinmania.llama.core.GGMLBackendDevice {
+fun ggmlBackendCpuRegGetDevice(reg: io.github.kotlinmania.llama.ore.GGMLBackendReg, index: Long): io.github.kotlinmania.llama.ore.GGMLBackendDevice {
     require(index == 0L)
-    return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuDevice(reg)
+    return io.github.kotlinmania.llama.ore.GGMLCpuDevice(reg)
 }

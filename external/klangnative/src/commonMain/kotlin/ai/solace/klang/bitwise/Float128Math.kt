@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
-import io.github.kotlinmania.llama.klang.int.SwAR128
-import io.github.kotlinmania.llama.klang.int.hpc.HeapUInt128
+import io.github.kotlinmania.llama.lang.int.SwAR128
+import io.github.kotlinmania.llama.lang.int.hpc.HeapUInt128
 import kotlin.math.abs
 
 /**

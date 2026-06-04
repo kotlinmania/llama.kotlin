@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 import kotlin.math.floor
 
@@ -7,14 +7,14 @@ import kotlin.math.floor
  * round-to-nearest, ties-to-even. Handles zeros, subnormals, infinities, NaNs.
  */
 object Float32Math {
-    private const val SIGN_MASK = 0x80000000.toInt()
-    private const val EXP_MASK  = 0x7F800000.toInt()
+    private const val SIGN_MASK = 0x80000000
+    private const val EXP_MASK  = 0x7F800000
     private const val FRAC_MASK = 0x007FFFFF
     private const val EXP_BIAS  = 127
     private const val IMPLICIT_BIT = 1 shl 23
     private const val TYPE_WIDTH = 24 + 3 // 24 significand bits plus R/G/S
 
-    private const val CANONICAL_NAN = 0x7FC00000.toInt()
+    private const val CANONICAL_NAN = 0x7FC00000
     private val SHIFT64 = BitShiftEngine(BitShiftMode.ARITHMETIC, 64)
 
     fun mul(a: Float, b: Float): Float = Float.fromBits(mulBits(a.toRawBits(), b.toRawBits()))
@@ -101,7 +101,7 @@ object Float32Math {
     fun floatToUInt(a: Float): UInt = floatToUIntBits(a.toRawBits()).toUInt()
 
     fun floatToIntBits(aBits: Int): Int {
-        val aAbs = aBits and 0x7FFFFFFF.toInt()
+        val aAbs = aBits and 0x7FFFFFFF
         val e = ((aAbs ushr 23) and 0xFF) - EXP_BIAS
         if (e < 0) return 0
         var r = ((aAbs and FRAC_MASK) or IMPLICIT_BIT).toLong()
@@ -113,7 +113,7 @@ object Float32Math {
     // __fixunssfsi: float32 -> unsigned int32 (round toward zero), negatives become 0; no range checking
     fun floatToUIntBits(aBits: Int): Int {
         if ((aBits and SIGN_MASK) != 0) return 0
-        val aAbs = aBits and 0x7FFFFFFF.toInt()
+        val aAbs = aBits and 0x7FFFFFFF
         val e = ((aAbs ushr 23) and 0xFF) - EXP_BIAS
         if (e < 0) return 0
         var r = ((aAbs and FRAC_MASK) or IMPLICIT_BIT).toLong()
@@ -257,7 +257,7 @@ object Float32Math {
             }
         }
         // Zeros: preserve sign of zero
-        if ((aBits and 0x7FFFFFFF.toInt()) == 0) return aBits
+        if ((aBits and 0x7FFFFFFF) == 0) return aBits
         // Negative inputs (non-zero): NaN
         if (sign != 0) return CANONICAL_NAN
 
@@ -334,14 +334,14 @@ object Float32Math {
         // Special-case ladder (compiler-rt style)
         val maxExpMinus1 = (0xFF - 1).toUInt()
         if ((aExponent - 1).toUInt() >= maxExpMinus1 || (bExponent - 1).toUInt() >= maxExpMinus1) {
-            val aAbs = aBits and 0x7FFFFFFF.toInt()
-            val bAbs = bBits and 0x7FFFFFFF.toInt()
+            val aAbs = aBits and 0x7FFFFFFF
+            val bAbs = bBits and 0x7FFFFFFF
             // NaNs
             if (aAbs > EXP_MASK) return aBits or 0x00400000
             if (bAbs > EXP_MASK) return bBits or 0x00400000
             // Infinities
-            if (aAbs == EXP_MASK) return if (bAbs != 0) productSign or EXP_MASK else 0x7FC00000.toInt()
-            if (bAbs == EXP_MASK) return if (aAbs != 0) productSign or EXP_MASK else 0x7FC00000.toInt()
+            if (aAbs == EXP_MASK) return if (bAbs != 0) productSign or EXP_MASK else 0x7FC00000
+            if (bAbs == EXP_MASK) return if (aAbs != 0) productSign or EXP_MASK else 0x7FC00000
             // Zeros
             if (aAbs == 0) return productSign
             if (bAbs == 0) return productSign
@@ -474,8 +474,8 @@ object Float32Math {
     fun addBits(aBitsIn: Int, bBitsIn: Int): Int {
         var aRep = aBitsIn
         var bRep = bBitsIn
-        val aAbs = aRep and 0x7FFFFFFF.toInt()
-        val bAbs = bRep and 0x7FFFFFFF.toInt()
+        val aAbs = aRep and 0x7FFFFFFF
+        val bAbs = bRep and 0x7FFFFFFF
 
         // Detect zero/inf/NaN ranges quickly like LLVM (abs - 1 >= inf - 1)
         if ((aAbs - 1 >= EXP_MASK - 1) || (bAbs - 1 >= EXP_MASK - 1)) {
@@ -484,7 +484,7 @@ object Float32Math {
             if (bAbs > EXP_MASK) return bRep or 0x00400000
             // Infinities
             if (aAbs == EXP_MASK) {
-                if ((aRep xor bRep) == SIGN_MASK) return 0x7FC00000.toInt() // qNaN
+                if ((aRep xor bRep) == SIGN_MASK) return 0x7FC00000 // qNaN
                 return aRep
             }
             if (bAbs == EXP_MASK) return bRep
@@ -597,8 +597,8 @@ object Float32Math {
         val bSign = bBits and SIGN_MASK
         val sign = aSign xor bSign
 
-        val aAbs = aBits and 0x7FFFFFFF.toInt()
-        val bAbs = bBits and 0x7FFFFFFF.toInt()
+        val aAbs = aBits and 0x7FFFFFFF
+        val bAbs = bBits and 0x7FFFFFFF
 
         val aExp = (aBits ushr 23) and 0xFF
         val bExp = (bBits ushr 23) and 0xFF
@@ -709,7 +709,7 @@ object Float32Math {
 
     fun isInfBits(bits: Int): Boolean = (bits and EXP_MASK) == EXP_MASK && (bits and FRAC_MASK) == 0
 
-    fun isZeroBits(bits: Int): Boolean = (bits and 0x7FFFFFFF.toInt()) == 0
+    fun isZeroBits(bits: Int): Boolean = (bits and 0x7FFFFFFF) == 0
 
     fun isNegativeBits(bits: Int): Boolean = (bits and SIGN_MASK) != 0
 
@@ -733,7 +733,7 @@ object Float32Math {
 
     fun copysign(a: Float, b: Float): Float = Float.fromBits(copysignBits(a.toRawBits(), b.toRawBits()))
 
-    fun copysignBits(aBits: Int, bBits: Int): Int = (aBits and 0x7FFFFFFF.toInt()) or (bBits and SIGN_MASK)
+    fun copysignBits(aBits: Int, bBits: Int): Int = (aBits and 0x7FFFFFFF) or (bBits and SIGN_MASK)
 
     fun fmin(a: Float, b: Float): Float = Float.fromBits(fminBits(a.toRawBits(), b.toRawBits()))
     fun fmax(a: Float, b: Float): Float = Float.fromBits(fmaxBits(a.toRawBits(), b.toRawBits()))

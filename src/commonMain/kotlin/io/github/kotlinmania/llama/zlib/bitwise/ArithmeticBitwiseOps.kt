@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.zlib.bitwise
+package io.github.kotlinmania.llama.lib.bitwise
 
-import io.github.kotlinmania.llama.zlib.common.ZlibLogger
+import io.github.kotlinmania.llama.lib.common.ZlibLogger
 
 /**
  * ArithmeticBitwiseOps - Configurable arithmetic-only bitwise operations for cross-platform compatibility

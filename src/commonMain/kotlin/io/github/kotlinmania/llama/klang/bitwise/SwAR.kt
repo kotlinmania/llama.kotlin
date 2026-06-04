@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
 /**
  * SWAR (SIMD Within A Register) helpers for per-lane unsigned averages.
@@ -7,8 +7,8 @@ package io.github.kotlinmania.llama.klang.bitwise
  */
 object SwAR {
     // 4×u8 lanes in a 32-bit Int
-    private const val U8_LSB_CLEAR = 0xFEFEFEFE.toInt() // ~LSB_per_lane
-    private const val U8_LSB_MASK  = 0x01010101.toInt() //  LSB_per_lane
+    private const val U8_LSB_CLEAR = 0xFEFEFEFE // ~LSB_per_lane
+    private const val U8_LSB_MASK  = 0x01010101 //  LSB_per_lane
 
     /** Returns per-lane floor((a+b)/2) for 4×u8 lanes (0..255). */
     fun avgU8Trunc(a: Int, b: Int): Int {
@@ -27,8 +27,8 @@ object SwAR {
     }
 
     // Strict arithmetic helpers (no &, ^, <<, >>) -----------------------------------------
-    private inline fun udiv(x: UInt, d: UInt): UInt = x / d
-    private inline fun umod(x: UInt, d: UInt): UInt = x - d * (x / d)
+    private fun udiv(x: UInt, d: UInt): UInt = x / d
+    private fun umod(x: UInt, d: UInt): UInt = x - d * (x / d)
 
     // Fast arithmetic-only helpers using exact FP reciprocals for powers of two (no bitwise).
     // Double has a 53-bit mantissa; multiplying a 32-bit unsigned value by these reciprocals
@@ -36,17 +36,17 @@ object SwAR {
     private const val INV_256 = 1.0 / 256.0
     private const val INV_65536 = 1.0 / 65536.0
 
-    private inline fun div256(u: UInt): UInt {
+    private fun div256(u: UInt): UInt {
         val q = (u.toDouble() * INV_256).toUInt() // trunc toward zero == floor for positive
         return q
     }
-    private inline fun rem256(u: UInt, q: UInt): UInt = u - q * 256u
+    private fun rem256(u: UInt, q: UInt): UInt = u - q * 256u
 
-    private inline fun div65536(u: UInt): UInt {
+    private fun div65536(u: UInt): UInt {
         val q = (u.toDouble() * INV_65536).toUInt()
         return q
     }
-    private inline fun rem65536(u: UInt, q: UInt): UInt = u - q * 65536u
+    private fun rem65536(u: UInt, q: UInt): UInt = u - q * 65536u
 
     private fun getU8Lane(u: UInt, lane: Int): UInt {
         val pow = when (lane) {
@@ -100,8 +100,8 @@ object SwAR {
     }
 
     // 2×u16 lanes in a 32-bit Int
-    private const val U16_LSB_CLEAR = 0xFFFEFFFE.toInt()
-    private const val U16_LSB_MASK  = 0x00010001.toInt()
+    private const val U16_LSB_CLEAR = 0xFFFEFFFE
+    private const val U16_LSB_MASK  = 0x00010001
 
     /** Returns per-lane floor((a+b)/2) for 2×u16 lanes (0..65535). */
     fun avgU16Trunc(a: Int, b: Int): Int {

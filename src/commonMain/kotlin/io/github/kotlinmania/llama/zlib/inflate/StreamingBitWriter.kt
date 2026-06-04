@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.zlib.inflate
+package io.github.kotlinmania.llama.lib.inflate
 
-import io.github.kotlinmania.llama.zlib.bitwise.ArithmeticBitwiseOps
-import kotlinx.io.Sink
+import io.github.kotlinmania.llama.lib.bitwise.ArithmeticBitwiseOps
+import io.github.kotlinmania.io.Sink
 
 /**
  * StreamingBitWriter - LSB-first bit writer to a streaming sink.

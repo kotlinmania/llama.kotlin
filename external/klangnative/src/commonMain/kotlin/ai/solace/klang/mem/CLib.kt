@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.mem
+package io.github.kotlinmania.llama.lang.mem
 
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
-import io.github.kotlinmania.llama.klang.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.lang.bitwise.BitShiftMode
 
 /**
  * CLib: Standard C library string and memory functions for [GlobalHeap].

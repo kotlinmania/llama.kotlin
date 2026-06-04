@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.buffer
+package io.github.kotlinmania.llama.lang.buffer
 
-import io.github.kotlinmania.llama.klang.bitwise.ArithmeticBitwiseOps
+import io.github.kotlinmania.llama.lang.bitwise.ArithmeticBitwiseOps
 
 /**
  * LimbBuffer: packed little-endian 16-bit limb storage over a ByteArray.

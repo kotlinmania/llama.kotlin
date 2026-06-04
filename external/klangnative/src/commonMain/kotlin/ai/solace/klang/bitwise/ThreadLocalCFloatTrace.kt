@@ -1,6 +1,6 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
-import io.github.kotlinmania.llama.threadlocal.ThreadLocal
+import io.github.kotlinmania.llama.hreadlocal.ThreadLocal
 
 /**
  * Thread-local CFloat32 operation tracer.

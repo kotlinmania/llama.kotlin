@@ -1,4 +1,4 @@
-package io.github.kotlinmania.llama.klang.fp
+package io.github.kotlinmania.llama.lang.fp
 
 /**
  * CLongDouble: Cross-platform representation of C's `long double` with explicit precision control.

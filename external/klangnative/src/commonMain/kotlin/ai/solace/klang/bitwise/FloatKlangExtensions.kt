@@ -1,7 +1,7 @@
-package io.github.kotlinmania.llama.klang.bitwise
+package io.github.kotlinmania.llama.lang.bitwise
 
-import io.github.kotlinmania.llama.klang.fp.CFloat32
-import io.github.kotlinmania.llama.klang.fp.Float32Math
+import io.github.kotlinmania.llama.lang.fp.CFloat32
+import io.github.kotlinmania.llama.lang.fp.Float32Math
 
 /**
  * Float operator extensions for symmetric CFloat32 arithmetic.
