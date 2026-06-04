@@ -1225,8 +1225,8 @@ private fun ggml_compute_forward_get_rows_back_f32_f16(
     val nc = src0.ne[0].toInt()
     val nr = io.github.kotlinmania.llama.ore.ggmlNelements(src1).toInt()
 
-    require(dst.ne[0].toLong() == nc.toLong())
-    require(src0.nb[0].toLong() == 2L) // sizeof(ggml_fp16_t)
+    require(dst.ne[0] == nc.toLong())
+    require(src0.nb[0] == 2uL) // sizeof(ggml_fp16_t)
 
     for (i in 0 until nr) {
         val r = io.github.kotlinmania.llama.ore.readInt2(src1Data, i * 4)
@@ -1270,8 +1270,8 @@ private fun ggml_compute_forward_get_rows_back_f32(
     val nc = src0.ne[0].toInt()
     val nr = io.github.kotlinmania.llama.ore.ggmlNelements(src1).toInt()
 
-    require(dst.ne[0].toLong() == nc.toLong())
-    require(src0.nb[0].toLong() == 4L) // sizeof(float)
+    require(dst.ne[0] == nc.toLong())
+    require(src0.nb[0] == 4uL) // sizeof(float)
 
     for (i in 0 until nr) {
         val r = io.github.kotlinmania.llama.ore.readInt2(src1Data, i * 4)

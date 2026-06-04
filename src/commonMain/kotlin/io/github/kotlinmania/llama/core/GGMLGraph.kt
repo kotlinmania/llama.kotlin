@@ -215,7 +215,7 @@ private fun computeBackward(context: io.github.kotlinmania.llama.ore.GGMLContext
                 // Compute grad_B = -grad_C * A / (B * B)
 
                 // First compute B * B
-                val bSquared = io.github.kotlinmania.llama.ore.ggmlMul(context, src1!!, src1)
+                val bSquared = io.github.kotlinmania.llama.ore.ggmlMul(context, src1, src1)
 
                 // Then compute A / (B * B)
                 val aDivBSquared =
@@ -1391,11 +1391,11 @@ private fun computeBackward(context: io.github.kotlinmania.llama.ore.GGMLContext
 
             val src0 = tensor.src[0]
             // Ensure opParams is an IntArray of expected size (4 for axes)
-            if (src0?.grad != null && tensor.grad != null &&
-                tensor.opParams is IntArray && (tensor.opParams as IntArray).size == 4) {
+            val opParams = tensor.opParams
+            if (src0?.grad != null && tensor.grad != null && opParams.size == 4) {
 
                 val gradC = tensor.grad!!
-                val originalAxes = tensor.opParams as IntArray // Cast to IntArray
+                val originalAxes = opParams
 
                 // Calculate inverse permutation axes
                 // If P = [ax0, ax1, ax2, ax3], then P_inv is such that P_inv[ax_i] = i.
@@ -1432,11 +1432,11 @@ private fun computeBackward(context: io.github.kotlinmania.llama.ore.GGMLContext
 
             val src0 = tensor.src[0]
             // Ensure opParams is an IntArray of expected size (2 for axes)
-            if (src0?.grad != null && tensor.grad != null &&
-                tensor.opParams is IntArray && (tensor.opParams as IntArray).size == 2) {
+            val opParams = tensor.opParams
+            if (src0?.grad != null && tensor.grad != null && opParams.size == 2) {
 
                 val gradC = tensor.grad!!
-                val axes = tensor.opParams as IntArray // Cast to IntArray
+                val axes = opParams
 
                 // Transpose grad_C back using the same axes
                 val gradCTransposedBack = io.github.kotlinmania.llama.ore.transpose(

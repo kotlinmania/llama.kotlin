@@ -1438,13 +1438,14 @@ fun graphCopyDupTensor(
 
     val ctx = if (src.data != null && src.viewSrc == null) ctxAllocated else ctxUnallocated
     val dst = io.github.kotlinmania.llama.ore.ggmlDupTensorLayout(ctx, src)
-    if (src.viewSrc != null) {
-        dst.viewSrc = graphCopyDupTensor(hashSet, nodeCopies, ctxAllocated, ctxUnallocated, src.viewSrc!!)
+    val viewSrc = src.viewSrc
+    if (viewSrc != null) {
+        dst.viewSrc = graphCopyDupTensor(hashSet, nodeCopies, ctxAllocated, ctxUnallocated, viewSrc)
         dst.viewOffs = src.viewOffs
     }
     dst.op = src.op
     dst.flags = src.flags
-    src.opParams?.let { dst.opParams = it.copyOf() }
+    dst.opParams = src.opParams.copyOf()
     dst.name = src.name
 
     for (i in 0 until io.github.kotlinmania.llama.ore.GGML_MAX_SRC) {
@@ -2025,7 +2026,7 @@ fun ggmlBackendSchedSplitGraph(sched: io.github.kotlinmania.llama.ore.GGMLBacken
                                     tensorCopy,
                                     "%s#%s#%d",
                                     io.github.kotlinmania.llama.ore.ggmlBackendName(backend),
-                                    src.name ?: "",
+                                    src.name,
                                     c
                                 )
                             }
@@ -2056,7 +2057,7 @@ fun ggmlBackendSchedSplitGraph(sched: io.github.kotlinmania.llama.ore.GGMLBacken
                                 tensorCopy,
                                 "%s#%s#%d",
                                 io.github.kotlinmania.llama.ore.ggmlBackendName(backend),
-                                src.name ?: "",
+                                src.name,
                                 c
                             )
                             if (sched.nCopies > 1) {

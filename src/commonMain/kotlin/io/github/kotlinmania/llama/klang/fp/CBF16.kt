@@ -7,6 +7,7 @@ import io.github.kotlinmania.llama.lang.bitwise.Float32Math
  * Arithmetic is defined as: upconvert to float32, compute via Float32Math (bit‑exact),
  * then round back to bf16 (nearest, ties‑to‑even).
  */
+@ConsistentCopyVisibility
 data class CBF16 private constructor(private val bits: Short) {
     // --- basic access ---
     fun toBits(): Short = bits

@@ -65,7 +65,7 @@ fun fp32_to_bits(f: Float): Int = f.toRawBits()
  */
 fun ggml_compute_fp16_to_fp32(h: Short): Float {
     val w = (h.toInt() and 0xFFFF) shl 16
-    val sign = w and 0x80000000
+    val sign = w and Int.MIN_VALUE
     val two_w = w + w
 
     val exp_offset = 0xE0 shl 23
@@ -100,8 +100,8 @@ fun ggml_compute_fp32_to_fp16(f: Float): Short {
 
     val w = io.github.kotlinmania.llama.ore.fp32_to_bits(f)
     val shl1_w = w + w
-    val sign = w and 0x80000000
-    var bias = shl1_w and 0xFF000000
+    val sign = w and Int.MIN_VALUE
+    var bias = shl1_w and -0x01000000
     if ((bias.toLong() and 0xFFFFFFFFL) < (0x71000000L)) {
         bias = 0x71000000
     }
@@ -135,7 +135,7 @@ fun GGML_FP32_TO_FP16(x: Float): Short =
 internal fun halfToFloat(h_bits: Short): Float {
     val h = h_bits.toInt() and 0xFFFF // Ensure we're working with 16 bits, unsigned
 
-    val signMaskF32 = 0x80000000
+    val signMaskF32 = Int.MIN_VALUE
     val f32Infinity = 0x7F800000 // Positive infinity in F32
 
     val hSign = (h ushr 15)

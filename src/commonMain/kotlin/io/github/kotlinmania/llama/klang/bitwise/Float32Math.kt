@@ -7,7 +7,7 @@ import kotlin.math.floor
  * round-to-nearest, ties-to-even. Handles zeros, subnormals, infinities, NaNs.
  */
 object Float32Math {
-    private const val SIGN_MASK = 0x80000000
+    private const val SIGN_MASK = Int.MIN_VALUE
     private const val EXP_MASK  = 0x7F800000
     private const val FRAC_MASK = 0x007FFFFF
     private const val EXP_BIAS  = 127

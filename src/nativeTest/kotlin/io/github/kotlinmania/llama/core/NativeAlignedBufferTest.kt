@@ -2,24 +2,15 @@
 
 package io.github.kotlinmania.llama.ore
 
-import kotlinx.cinterop.ByteVar
-import kotlinx.cinterop.CPointer
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.reinterpret
+import io.github.kotlinmania.llama.platform.nativeAlignedAlloc
+import io.github.kotlinmania.llama.platform.nativeAlignedFree
 import kotlinx.cinterop.toLong
-import kotlinx.cinterop.value
-import kotlinx.cinterop.COpaquePointerVar
-import platform.posix.free
-import platform.posix.posix_memalign
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.assertContentEquals
 
 /**
  * Tests for [NativeAlignedBuffer].
@@ -341,32 +332,26 @@ class NativeAlignedBufferTest {
 
     @Test
     fun fromPointerWrapsExternalMemory() {
-        // Allocate memory externally via posix_memalign, wrap it, verify access.
+        // Allocate memory externally, wrap it, verify access.
         val size = 256L
-        memScoped {
-            val ptrVar = alloc<COpaquePointerVar>()
-            val rc = posix_memalign(ptrVar.ptr, 64.convert(), size.convert())
-            assertEquals(0, rc, "posix_memalign must succeed")
+        val rawPtr = nativeAlignedAlloc(size, NativeAlignedBuffer.MALLOC_ALIGNMENT)
+        assertNotNull(rawPtr, "native aligned allocation must succeed")
+        val buf = NativeAlignedBuffer.fromPointer(rawPtr, size)
 
-            val rawPtr = ptrVar.value!!.reinterpret<ByteVar>()
-            val buf = NativeAlignedBuffer.fromPointer(rawPtr, size)
+        // Write through the wrapper
+        buf.setByte(0, 99)
+        buf.setFloat(4, 1.5f)
+        assertEquals(99.toByte(), buf.getByte(0))
+        assertEquals(1.5f, buf.getFloat(4))
 
-            // Write through the wrapper
-            buf.setByte(0, 99)
-            buf.setFloat(4, 1.5f)
-            assertEquals(99.toByte(), buf.getByte(0))
-            assertEquals(1.5f, buf.getFloat(4))
+        // free does NOT release because the pointer is externally owned.
+        buf.free()
 
-            // free does NOT release — we own the pointer
-            buf.free()
+        // The pointer is still valid (we own it), write again to prove no crash.
+        buf.setByte(0, 1)
+        assertEquals(1.toByte(), buf.getByte(0))
 
-            // The pointer is still valid (we own it), write again to prove no crash
-            buf.setByte(0, 1)
-            assertEquals(1.toByte(), buf.getByte(0))
-
-            // Clean up our own allocation
-            free(rawPtr)
-        }
+        nativeAlignedFree(rawPtr)
     }
 
     // ========================================================================

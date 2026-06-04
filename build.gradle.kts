@@ -1,3 +1,5 @@
+@file:Suppress("UnstableApiUsage")
+
 import groovy.json.JsonSlurper
 import io.gitlab.arturbosch.detekt.Detekt
 import org.gradle.api.GradleException
@@ -349,6 +351,19 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+        }
+        listOf(
+            "macosArm64Main",
+            "iosArm64Main",
+            "iosSimulatorArm64Main",
+            "iosX64Main",
+            "tvosArm64Main",
+            "tvosSimulatorArm64Main",
+            "watchosArm64Main",
+            "watchosDeviceArm64Main",
+            "watchosSimulatorArm64Main",
+        ).forEach { sourceSetName ->
+            getByName(sourceSetName).kotlin.srcDir("src/appleLeafMain/kotlin")
         }
     }
 }

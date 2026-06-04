@@ -19,7 +19,7 @@ class GGMLBackendTest {
     fun cpuBackendIsRegistered() {
         val index = io.github.kotlinmania.llama.ore.GGMLBackendRegistry.findByName("CPU")
         assertNotNull(index, "CPU backend should be registered")
-        assertEquals("CPU", io.github.kotlinmania.llama.ore.GGMLBackendRegistry.getName(index!!))
+        assertEquals("CPU", io.github.kotlinmania.llama.ore.GGMLBackendRegistry.getName(index))
         assertEquals(1, io.github.kotlinmania.llama.ore.GGMLBackendRegistry.getCount(), "Only CPU backend expected")
     }
 
@@ -28,7 +28,7 @@ class GGMLBackendTest {
         val cpuIndex = io.github.kotlinmania.llama.ore.GGMLBackendRegistry.findByName("CPU")
         assertNotNull(cpuIndex)
 
-        val backend = io.github.kotlinmania.llama.ore.GGMLBackendRegistry.initBackend(cpuIndex!!)
+        val backend = io.github.kotlinmania.llama.ore.GGMLBackendRegistry.initBackend(cpuIndex)
         assertTrue(backend is io.github.kotlinmania.llama.ore.GGMLCpuBackend)
         assertEquals("CPU", backend.getName())
         assertTrue(backend.getGuid().isNotEmpty())

@@ -182,7 +182,7 @@ class GGMLComputeOpsDestinationTest {
         val expVals = testValues.map { exp(it - max) }
         val sum = expVals.sum()
         for (i in testValues.indices) {
-            val expected = (expVals[i] / sum).toFloat()
+            val expected = expVals[i] / sum
             val actual = dst.getFloat(graphAllocator, i)
             assertEquals(expected, actual, 1e-5f, "SoftMax result mismatch at index $i")
         }

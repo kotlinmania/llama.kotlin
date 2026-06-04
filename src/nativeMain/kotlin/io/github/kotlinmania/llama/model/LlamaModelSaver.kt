@@ -2,13 +2,7 @@
 package io.github.kotlinmania.llama.model
 
 import io.github.kotlinmania.llama.ore.GGMLTensor
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.usePinned
-import platform.posix.fclose
-import platform.posix.fopen
-import platform.posix.fwrite
+import io.github.kotlinmania.llama.platform.nativeWriteBytesToFile
 
 // =============================================================================
 // LlamaModelSaver – write a model back to GGUF
@@ -846,22 +840,8 @@ object GGUFFileWriter {
         return if (remainder == 0) offset else offset + (alignment - remainder)
     }
 
-    @OptIn(ExperimentalForeignApi::class)
     private fun writeBytesToFile(bytes: ByteArray, path: String) {
-        val file = fopen(path, "wb")
-            ?: error("Failed to open file for writing: $path")
-        try {
-            bytes.usePinned { pinned ->
-                fwrite(
-                    pinned.addressOf(0),
-                    1.convert(),
-                    bytes.size.convert(),
-                    file
-                )
-            }
-        } finally {
-            fclose(file)
-        }
+        nativeWriteBytesToFile(bytes, path)
     }
 }
 

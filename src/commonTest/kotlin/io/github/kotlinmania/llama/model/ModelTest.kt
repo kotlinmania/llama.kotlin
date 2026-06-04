@@ -1,5 +1,9 @@
 package io.github.kotlinmania.llama.model
 
+import io.github.kotlinmania.llama.core.GGMLTestUtils
+import io.github.kotlinmania.llama.core.allocateTensorData
+import io.github.kotlinmania.llama.core.calculateTensorByteSize
+import io.github.kotlinmania.llama.core.resetAllocatorTracking
 import io.github.kotlinmania.llama.ore.*
 import kotlin.math.*
 import kotlin.test.*

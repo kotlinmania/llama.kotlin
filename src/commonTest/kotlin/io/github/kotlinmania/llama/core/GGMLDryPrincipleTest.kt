@@ -37,7 +37,7 @@ class GGMLDryPrincipleTest {
         // Test find differences utility
         val diff = GGMLTestUtils.TensorComparison.findFirstDifference(tensor1, tensor3, graphAllocator)
         assertNotNull(diff)
-        assertTrue(diff!!.contains("Types differ"))
+        assertTrue(diff.contains("Types differ"))
     }
 
     @Test

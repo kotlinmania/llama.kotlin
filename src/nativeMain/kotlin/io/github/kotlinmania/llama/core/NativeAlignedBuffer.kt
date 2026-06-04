@@ -3,33 +3,26 @@
 
 package io.github.kotlinmania.llama.ore
 
+import io.github.kotlinmania.llama.platform.nativeAlignedAlloc
+import io.github.kotlinmania.llama.platform.nativeAlignedFree
+import io.github.kotlinmania.llama.platform.nativeMemcpy
+import io.github.kotlinmania.llama.platform.nativeMemset
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
-import kotlinx.cinterop.COpaquePointerVar
 import kotlinx.cinterop.FloatVar
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.ShortVar
 import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.get
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.pointed
-import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
 import kotlinx.cinterop.toLong
 import kotlinx.cinterop.usePinned
-import kotlinx.cinterop.get
 import kotlinx.cinterop.value
-import platform.posix.EINVAL
-import platform.posix.ENOMEM
-import platform.posix.free
-import platform.posix.memcpy
-import platform.posix.memset
-import platform.posix.posix_memalign
 
 /**
  * Native aligned memory buffer.
@@ -76,28 +69,20 @@ class NativeAlignedBuffer private constructor(
                 println("NativeAlignedBuffer.alloc: behavior may be unexpected when allocating 0 bytes")
                 return null
             }
-            memScoped {
-                val ptrVar = alloc<COpaquePointerVar>()
-                val result = posix_memalign(
-                    ptrVar.ptr,
-                    alignment.convert(),
-                    size.convert()
-                )
-                if (result != 0) {
-                    val desc = when (result) {
-                        EINVAL -> "invalid alignment value"
-                        ENOMEM -> "insufficient memory"
-                        else -> "unknown allocation error"
-                    }
-                    println(
-                        "NativeAlignedBuffer.alloc: $desc " +
-                            "(attempted to allocate ${size / (1024.0 * 1024.0)} MB)"
-                    )
-                    return null
+            val ptr = nativeAlignedAlloc(size, alignment)
+            if (ptr == null) {
+                val desc = when {
+                    alignment <= 0 || alignment and (alignment - 1) != 0 -> "invalid alignment value"
+                    size < 0 -> "invalid allocation size"
+                    else -> "insufficient memory"
                 }
-                val ptr = ptrVar.value?.reinterpret<ByteVar>() ?: return null
-                return NativeAlignedBuffer(ptr, size)
+                println(
+                    "NativeAlignedBuffer.alloc: $desc " +
+                        "(attempted to allocate ${size / (1024.0 * 1024.0)} MB)"
+                )
+                return null
             }
+            return NativeAlignedBuffer(ptr, size)
         }
 
         /**
@@ -196,10 +181,10 @@ class NativeAlignedBuffer private constructor(
      */
     fun copyFromByteArray(src: ByteArray, srcOffset: Int, dstOffset: Long, length: Int) {
         src.usePinned { pinned ->
-            memcpy(
+            nativeMemcpy(
                 (pointer + dstOffset)!!,
                 pinned.addressOf(srcOffset),
-                length.convert()
+                length.toLong(),
             )
         }
     }
@@ -215,10 +200,10 @@ class NativeAlignedBuffer private constructor(
      */
     fun copyToByteArray(dst: ByteArray, srcOffset: Long, dstOffset: Int, length: Int) {
         dst.usePinned { pinned ->
-            memcpy(
+            nativeMemcpy(
                 pinned.addressOf(dstOffset),
                 (pointer + srcOffset)!!,
-                length.convert()
+                length.toLong(),
             )
         }
     }
@@ -232,10 +217,10 @@ class NativeAlignedBuffer private constructor(
      * ```
      */
     fun copyFrom(src: NativeAlignedBuffer, srcOffset: Long, dstOffset: Long, length: Long) {
-        memcpy(
+        nativeMemcpy(
             (pointer + dstOffset)!!,
             (src.pointer + srcOffset)!!,
-            length.convert()
+            length,
         )
     }
 
@@ -252,7 +237,7 @@ class NativeAlignedBuffer private constructor(
      * ```
      */
     fun fill(value: UByte, offset: Long = 0, length: Long = sizeBytes) {
-        memset((pointer + offset)!!, value.toInt(), length.convert())
+        nativeMemset((pointer + offset)!!, value.toInt(), length)
     }
 
     /**
@@ -264,7 +249,7 @@ class NativeAlignedBuffer private constructor(
      * ```
      */
     fun memsetRegion(value: UByte, offset: Long, length: Long) {
-        memset((pointer + offset)!!, value.toInt(), length.convert())
+        nativeMemset((pointer + offset)!!, value.toInt(), length)
     }
 
     // ========================================================================
@@ -280,7 +265,7 @@ class NativeAlignedBuffer private constructor(
      */
     fun free() {
         if (ownsMemory) {
-            free(pointer)
+            nativeAlignedFree(pointer)
         }
     }
 

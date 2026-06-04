@@ -3,11 +3,10 @@ package io.github.kotlinmania.llama.model
 
 import io.github.kotlinmania.llama.ore.*
 import io.github.kotlinmania.llama.gguf.ModelLoader
+import io.github.kotlinmania.llama.platform.nativePageSize
+import io.github.kotlinmania.llama.platform.nativePhysicalPages
 import kotlin.math.max
 import kotlin.math.min
-import platform.posix.sysconf
-import platform.posix._SC_PHYS_PAGES
-import platform.posix._SC_PAGESIZE
 
 // =============================================================================
 // Public API — Main entry points for the llama.kotlin library.
@@ -395,8 +394,8 @@ internal fun llamaGetDeviceMemoryData(
     //   4. Query device free/total memory
     //
     // For now, return a single host entry with a rough estimate.
-    val pageSize = sysconf(_SC_PAGESIZE).toLong()
-    val totalPages = sysconf(_SC_PHYS_PAGES).toLong()
+    val pageSize = nativePageSize()
+    val totalPages = nativePhysicalPages()
     val totalMem = if (pageSize > 0 && totalPages > 0) pageSize * totalPages else 0L
     val host = LlamaDeviceMemoryData(
         total = totalMem,

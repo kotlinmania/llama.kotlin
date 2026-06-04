@@ -773,7 +773,7 @@ class GGMLComputeOpsTest {
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SoftMax F32")
 
         val max = srcData.maxOrNull()!!
-        val expVals = srcData.map { exp(it - max).toFloat() }
+        val expVals = srcData.map { exp(it - max) }
         val sum = expVals.sum()
         val expected = expVals.map { it / sum }.toFloatArray()
         val resultData = getTensorDataAsFloatArray(resultTensor, graphAllocator)
@@ -797,7 +797,7 @@ class GGMLComputeOpsTest {
         assertTrue(srcTensor.ne.contentEquals(resultTensor.ne), "Dimensions should match for SoftMax F16")
 
         val max = srcDataF32.maxOrNull()!!
-        val expVals = srcDataF32.map { exp(it - max).toFloat() }
+        val expVals = srcDataF32.map { exp(it - max) }
         val sum = expVals.sum()
         val expectedF32 = expVals.map { it / sum }.toFloatArray()
         val resultDataF16AsF32 = getTensorDataAsFloatArray(resultTensor, graphAllocator)

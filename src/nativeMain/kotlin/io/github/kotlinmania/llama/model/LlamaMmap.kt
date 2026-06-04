@@ -3,6 +3,17 @@
 
 package io.github.kotlinmania.llama.model
 
+import io.github.kotlinmania.llama.platform.nativeFileSize
+import io.github.kotlinmania.llama.platform.nativeMlock
+import io.github.kotlinmania.llama.platform.nativeMlockSupported
+import io.github.kotlinmania.llama.platform.nativeMmapReadOnly
+import io.github.kotlinmania.llama.platform.nativeMmapSupported
+import io.github.kotlinmania.llama.platform.nativeMunlock
+import io.github.kotlinmania.llama.platform.nativeMunmap
+import io.github.kotlinmania.llama.platform.nativePageSize
+import io.github.kotlinmania.llama.platform.nativeRead
+import io.github.kotlinmania.llama.platform.nativeSeek
+import io.github.kotlinmania.llama.platform.nativeWrite
 import kotlinx.cinterop.*
 import platform.posix.*
 
@@ -23,13 +34,7 @@ class LlamaFile private constructor(val path: String, private var fd: Int) {
     private var position: Long = 0
     private var fileSize: Long = computeFileSize()
 
-    private fun computeFileSize(): Long = memScoped {
-        val st = alloc<stat>()
-        if (fstat(fd, st.ptr) != 0) {
-            throw IllegalStateException("fstat failed for '$path': ${strerror(errno)?.toKString()}")
-        }
-        st.st_size
-    }
+    private fun computeFileSize(): Long = nativeFileSize(fd)
 
     /** Current read/write position in bytes. */
     fun tell(): Long = position
@@ -42,8 +47,8 @@ class LlamaFile private constructor(val path: String, private var fd: Int) {
 
     /** Seek to an absolute [offset]. */
     fun seek(offset: Long) {
-        val result = lseek(fd, offset.convert(), SEEK_SET)
-        if (result.toLong() == -1L) {
+        val result = nativeSeek(fd, offset)
+        if (result == -1L) {
             throw IllegalStateException("lseek failed for '$path': ${strerror(errno)?.toKString()}")
         }
         position = offset
@@ -58,15 +63,18 @@ class LlamaFile private constructor(val path: String, private var fd: Int) {
         var totalRead = 0
         dst.usePinned { pinned ->
             while (totalRead < len) {
-                val n = read(fd, pinned.addressOf(dstOffset + totalRead), (len - totalRead).toLong().convert())
-                    .toInt()
+                val n = nativeRead(
+                    fd,
+                    pinned.addressOf(dstOffset + totalRead),
+                    (len - totalRead).toLong(),
+                )
                 if (n <= 0) {
                     throw IllegalStateException(
                         "read failed for '$path': expected $len bytes, got $totalRead" +
                             " (errno: ${strerror(errno)?.toKString()})"
                     )
                 }
-                totalRead += n
+                totalRead += n.toInt()
             }
         }
         position += totalRead
@@ -87,15 +95,18 @@ class LlamaFile private constructor(val path: String, private var fd: Int) {
         var totalWritten = 0
         src.usePinned { pinned ->
             while (totalWritten < len) {
-                val n = write(fd, pinned.addressOf(srcOffset + totalWritten), (len - totalWritten).toLong().convert())
-                    .toInt()
+                val n = nativeWrite(
+                    fd,
+                    pinned.addressOf(srcOffset + totalWritten),
+                    (len - totalWritten).toLong(),
+                )
                 if (n <= 0) {
                     throw IllegalStateException(
                         "write failed for '$path': expected $len bytes, wrote $totalWritten" +
                             " (errno: ${strerror(errno)?.toKString()})"
                     )
                 }
-                totalWritten += n
+                totalWritten += n.toInt()
             }
         }
         position += totalWritten
@@ -182,7 +193,7 @@ class LlamaMmap private constructor(
      * Offsets are page-aligned internally.
      */
     fun unmapFragment(first: Long, last: Long) {
-        val pageSize = sysconf(_SC_PAGESIZE)
+        val pageSize = nativePageSize()
         if (pageSize <= 0 || first >= last) return
 
         // Align first up to page boundary, last down to page boundary
@@ -193,14 +204,14 @@ class LlamaMmap private constructor(
 
         val basePtr = mappedPtr ?: return
         val fragmentPtr = interpretCPointer<ByteVar>(basePtr.rawValue + alignedFirst) ?: return
-        munmap(fragmentPtr, (alignedLast - alignedFirst).convert())
+        nativeMunmap(fragmentPtr, alignedLast - alignedFirst)
     }
 
     /** Unmap the entire region. */
     fun close() {
         val ptr = mappedPtr
         if (ptr != null && mappedSize > 0) {
-            munmap(ptr, mappedSize.convert())
+            nativeMunmap(ptr, mappedSize)
             mappedPtr = null
             mappedSize = 0
         }
@@ -208,7 +219,7 @@ class LlamaMmap private constructor(
 
     companion object {
         /** Whether memory-mapping is supported on the current platform. */
-        val SUPPORTED: Boolean = true  // macOS and Linux always support mmap
+        val SUPPORTED: Boolean = nativeMmapSupported
 
         /**
          * Create a new memory-mapping of [file].
@@ -223,15 +234,8 @@ class LlamaMmap private constructor(
                 throw IllegalStateException("Cannot mmap empty file '${file.path}'")
             }
 
-            val ptr = mmap(
-                null,
-                size.convert(),
-                PROT_READ,
-                MAP_PRIVATE,
-                file.fileno(),
-                0
-            )
-            if (ptr == MAP_FAILED) {
+            val ptr = nativeMmapReadOnly(file.fileno(), size)
+            if (ptr == null) {
                 throw IllegalStateException(
                     "mmap failed for '${file.path}': ${strerror(errno)?.toKString()}"
                 )
@@ -277,7 +281,7 @@ class LlamaMlock {
         val lockFrom = interpretCPointer<ByteVar>(ptr.rawValue + lockedSize) ?: return
         val lockLen = targetSize - lockedSize
 
-        val result = mlock(lockFrom, lockLen.convert())
+        val result = nativeMlock(lockFrom, lockLen)
         if (result != 0) {
             // mlock can fail due to resource limits — log but don't throw
             // (matches llama.cpp behavior which warns but continues)
@@ -289,14 +293,14 @@ class LlamaMlock {
     fun close() {
         val ptr = basePtr
         if (ptr != null && lockedSize > 0) {
-            munlock(ptr, lockedSize.convert())
+            nativeMunlock(ptr, lockedSize)
             lockedSize = 0
         }
     }
 
     companion object {
         /** Whether memory locking is supported on the current platform. */
-        val SUPPORTED: Boolean = true  // macOS and Linux support mlock
+        val SUPPORTED: Boolean = nativeMlockSupported
     }
 }
 

@@ -446,7 +446,7 @@ fun ggmlComputeForwardRopeFltF32(
         require(src2.type == io.github.kotlinmania.llama.ore.GGMLType.F32)
         require(src2.ne[0] >= nDims / 2)
         val src2Data = src2.data as ByteArray
-        FloatArray((nDims / 2).toInt()) { i ->
+        FloatArray(nDims / 2) { i ->
             io.github.kotlinmania.llama.ore.readFloat3(
                 src2Data,
                 i * 4
@@ -635,7 +635,7 @@ fun ggmlComputeForwardRopeFltF16(
         require(src2.type == io.github.kotlinmania.llama.ore.GGMLType.F32)
         require(src2.ne[0] >= nDims / 2)
         val src2Data = src2.data as ByteArray
-        FloatArray((nDims / 2).toInt()) { i ->
+        FloatArray(nDims / 2) { i ->
             io.github.kotlinmania.llama.ore.readFloat3(
                 src2Data,
                 i * 4
@@ -1638,6 +1638,7 @@ private fun ggmlComputeForwardConv2dImpl(
     require(patchesPerBatch > 0 && batchSize >= 1)
 
     val tmp = params.wdata as ByteArray
+    val threadpool = params.threadpool ?: return
 
     for (batchI in 0 until batchN) {
         val patchStartBatch = batchI * patchesPerBatch
@@ -1688,7 +1689,7 @@ private fun ggmlComputeForwardConv2dImpl(
             }
         }
 
-        io.github.kotlinmania.llama.ore.ggmlBarrier(params.threadpool!!)
+        io.github.kotlinmania.llama.ore.ggmlBarrier(threadpool)
 
         val gemmOutputOff = (patchesPerBatch * knlN * typeSizeBytes).toInt()
 
@@ -1736,7 +1737,7 @@ private fun ggmlComputeForwardConv2dImpl(
             }
         }
 
-        io.github.kotlinmania.llama.ore.ggmlBarrier(params.threadpool!!)
+        io.github.kotlinmania.llama.ore.ggmlBarrier(threadpool)
 
         // permute back
         val permutePerThread = (patchN + params.nth - 1) / params.nth
@@ -1871,7 +1872,8 @@ private fun ggmlComputeForwardConv3dImpl(
             }
         }
 
-        io.github.kotlinmania.llama.ore.ggmlBarrier(params.threadpool!!)
+        val threadpool = params.threadpool ?: return
+        io.github.kotlinmania.llama.ore.ggmlBarrier(threadpool)
 
         val gemmOutputOff = (patchesPerBatch * knlNTotal * typeSizeBytes).toInt()
 
@@ -1916,7 +1918,7 @@ private fun ggmlComputeForwardConv3dImpl(
             }
         }
 
-        io.github.kotlinmania.llama.ore.ggmlBarrier(params.threadpool!!)
+        io.github.kotlinmania.llama.ore.ggmlBarrier(threadpool)
 
         val permutePerThread = (patchNInBatch + params.nth - 1) / params.nth
         val permuteStart = params.ith * permutePerThread

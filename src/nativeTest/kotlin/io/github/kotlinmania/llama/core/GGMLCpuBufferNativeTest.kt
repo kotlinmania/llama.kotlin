@@ -450,7 +450,7 @@ class GGMLCpuBufferNativeTest {
         assertNotNull(ptr)
         assertTrue(ptr is NativeAlignedBuffer)
 
-        val nab = ptr as NativeAlignedBuffer
+        val nab = ptr
         assertEquals(512L, nab.sizeBytes)
 
         // Verify alignment

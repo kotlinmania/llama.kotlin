@@ -82,7 +82,7 @@ class GGMLAllocTest {
         // So, calculatePaddedSize should be alignedOffset(requestedSize, alignment) from the perspective of block size needed.
         // Let's re-verify GGMLDynTensorAllocator.allocate internal logic for size padding.
         // It does: `val alignedSize = alignedOffset(size, alignment)`
-        return alignedOffset(requestedSize, alignment.toUInt()) // Use the actual alignedOffset function
+        return alignedOffset(requestedSize, alignment) // Use the actual alignedOffset function
     }
 
     // Actual alignedOffset function as defined in GGMLAlloc.kt for testing purposes

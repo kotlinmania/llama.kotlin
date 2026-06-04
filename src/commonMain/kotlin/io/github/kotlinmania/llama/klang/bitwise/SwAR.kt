@@ -7,7 +7,7 @@ package io.github.kotlinmania.llama.lang.bitwise
  */
 object SwAR {
     // 4×u8 lanes in a 32-bit Int
-    private const val U8_LSB_CLEAR = 0xFEFEFEFE // ~LSB_per_lane
+    private const val U8_LSB_CLEAR = -16843010 // ~LSB_per_lane
     private const val U8_LSB_MASK  = 0x01010101 //  LSB_per_lane
 
     /** Returns per-lane floor((a+b)/2) for 4×u8 lanes (0..255). */
@@ -100,7 +100,7 @@ object SwAR {
     }
 
     // 2×u16 lanes in a 32-bit Int
-    private const val U16_LSB_CLEAR = 0xFFFEFFFE
+    private const val U16_LSB_CLEAR = -65538
     private const val U16_LSB_MASK  = 0x00010001
 
     /** Returns per-lane floor((a+b)/2) for 2×u16 lanes (0..65535). */
@@ -166,10 +166,10 @@ object SwAR {
         val qb1 = qb / 256u; val b1 = qb - qb1 * 256u
         val qb2 = qb1 / 256u; val b2 = qb1 - qb2 * 256u
         val b3 = qb2
-        val r0 = LUT_U8_TRUNC[(a0 * 256u + b0).toInt()].toUInt()
-        val r1 = LUT_U8_TRUNC[(a1 * 256u + b1).toInt()].toUInt()
-        val r2 = LUT_U8_TRUNC[(a2 * 256u + b2).toInt()].toUInt()
-        val r3 = LUT_U8_TRUNC[(a3 * 256u + b3).toInt()].toUInt()
+        val r0 = LUT_U8_TRUNC[(a0 * 256u + b0).toInt()]
+        val r1 = LUT_U8_TRUNC[(a1 * 256u + b1).toInt()]
+        val r2 = LUT_U8_TRUNC[(a2 * 256u + b2).toInt()]
+        val r3 = LUT_U8_TRUNC[(a3 * 256u + b3).toInt()]
         return packU8(r0, r1, r2, r3).toInt()
     }
 
@@ -183,10 +183,10 @@ object SwAR {
         val qb1 = qb / 256u; val b1 = qb - qb1 * 256u
         val qb2 = qb1 / 256u; val b2 = qb1 - qb2 * 256u
         val b3 = qb2
-        val r0 = LUT_U8_ROUND[(a0 * 256u + b0).toInt()].toUInt()
-        val r1 = LUT_U8_ROUND[(a1 * 256u + b1).toInt()].toUInt()
-        val r2 = LUT_U8_ROUND[(a2 * 256u + b2).toInt()].toUInt()
-        val r3 = LUT_U8_ROUND[(a3 * 256u + b3).toInt()].toUInt()
+        val r0 = LUT_U8_ROUND[(a0 * 256u + b0).toInt()]
+        val r1 = LUT_U8_ROUND[(a1 * 256u + b1).toInt()]
+        val r2 = LUT_U8_ROUND[(a2 * 256u + b2).toInt()]
+        val r3 = LUT_U8_ROUND[(a3 * 256u + b3).toInt()]
         return packU8(r0, r1, r2, r3).toInt()
     }
 

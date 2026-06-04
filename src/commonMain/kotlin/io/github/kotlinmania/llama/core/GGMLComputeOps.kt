@@ -6374,7 +6374,6 @@ object GGMLComputeOps {
                     when (poolOp) {
                         io.github.kotlinmania.llama.ore.GGMLOpPool.AVG -> res += v
                         io.github.kotlinmania.llama.ore.GGMLOpPool.MAX -> if (v > res) res = v
-                        else -> {}
                     }
                     count++
                 }
