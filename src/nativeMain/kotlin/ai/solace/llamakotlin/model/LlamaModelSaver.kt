@@ -1,9 +1,9 @@
 // port-lint: source llama.cpp/src/llama-model-saver.h llama.cpp/src/llama-model-saver.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.GGMLTensor
-import ai.solace.llamakotlin.core.GGML_MAX_DIMS
-import ai.solace.llamakotlin.gguf.GGUFType
+import io.github.kotlinmania.llama.llamakotlin.core.GGMLTensor
+import io.github.kotlinmania.llama.llamakotlin.core.GGML_MAX_DIMS
+import io.github.kotlinmania.llama.llamakotlin.gguf.GGUFType
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -54,7 +54,7 @@ data class GGUFTensorEntry(
     val name: String,
     val nDims: Int,
     val ne: LongArray,
-    val type: ai.solace.llamakotlin.core.GGMLType,
+    val type: io.github.kotlinmania.llama.llamakotlin.core.GGMLType,
     val dataBytes: ByteArray,
 ) {
     override fun equals(other: Any?): Boolean {

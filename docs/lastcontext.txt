@@ -19,7 +19,7 @@
   1. Add kotlinx-io
 
   - Add kotlinx-io core + files to commonMain (Native-first; leave JVM if needed later).
-  - Create ai.solace.zlib.io facade (expect/actual or pure common if APIs are uniform):
+  - Create io.github.kotlinmania.llama.zlib.io facade (expect/actual or pure common if APIs are uniform):
       - interfaces: ZSource, ZSink, ZFileSystem, ZPath with the minimal methods we use
   (readByte, readFully, write, skip, size, open).
       - kotlinx-io impl in commonMain (SystemFileSystem, Path, buffered).
@@ -49,7 +49,7 @@
   1. Remove Okio dep added earlier (we’ll use the upstream I/O facade via ZLib.kotlin).
   2. Add NPZ/NPY loaders (Native)
 
-  - ai.solace.embersimd.io:
+  - io.github.kotlinmania.llama.embersimd.io:
       - Npz.list(), Npz.open(name) → ZSource
       - Npy.read(source) (header: magic/version/dtype/shape; payload as ZSource)
   - Feed 4×4/2×2 recipes from NPZ/NPY directly (no staging, no pre-decompress).
@@ -400,9 +400,9 @@
   Here's a compact summary of the components across projects:
 
   For llama.kotlin, we have core bitwise and SIMD benchmarks in src/commonMain/kotlin/ai/
-  solace/klang/bitwise, and benches in src/nativeMain/kotlin/ai/solace/bench. There's also
-  a Metal SWAR bench and vendored ZLib files in src/commonMain/kotlin/ai/solace/zlib. We
-  added the ZipReader test in src/commonTest/kotlin/ai/solace/zlib/zip, along with tools
+  solace/klang/bitwise, and benches in src/nativeMain/kotlin/io.github.kotlinmania.llama.bench. There's also
+  a Metal SWAR bench and vendored ZLib files in src/commonMain/kotlin/io.github.kotlinmania.llama.zlib. We
+  added the ZipReader test in src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/zip, along with tools
   for alphatensor-codegen and alphatensor-scripts.
 
   In ZLib.kotlin, the files include InflateStream.kt, ZipReader.kt, and ZLibCli.kt.
@@ -417,25 +417,25 @@
   llama.kotlin (/Volumes/stuff/Projects/llama.kotlin)
 
   - Core bitwise + engine
-      - src/commonMain/kotlin/ai/solace/klang/bitwise/BitShiftEngine.kt
-      - src/commonMain/kotlin/ai/solace/klang/bitwise/BitShiftConfig.kt
-      - src/commonMain/kotlin/ai/solace/klang/bitwise/ArrayBitShifts.kt
-      - src/commonMain/kotlin/ai/solace/klang/bitwise/BitwiseOps.kt
-      - src/commonMain/kotlin/ai/solace/klang/bitwise/ArithmeticBitwiseOps.kt
-      - src/commonMain/kotlin/ai/solace/klang/bitwise/SwAR.kt
-      - src/commonMain/kotlin/ai/solace/klang/bitwise/ShiftTables.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/BitShiftEngine.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/BitShiftConfig.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/ArrayBitShifts.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/BitwiseOps.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/ArithmeticBitwiseOps.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/SwAR.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/ShiftTables.kt
   - Benches (CPU)
-      - src/nativeMain/kotlin/ai/solace/bench/BenchMain.kt
-      - src/nativeMain/kotlin/ai/solace/bench/SwARBench.kt
-      - src/nativeMain/kotlin/ai/solace/bench/HexStringShiftBench.kt
-      - src/nativeMain/kotlin/ai/solace/bench/MaskKernelsBench.kt
+      - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/BenchMain.kt
+      - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/SwARBench.kt
+      - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/HexStringShiftBench.kt
+      - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/MaskKernelsBench.kt
   - Metal SWAR bench (Swift/Metal)
       - metal-swar-avg/ (Package.swift, Sources/main.swift)
   - Vendored ZLib.kotlin sources used by llama.kotlin (separate from upstream)
-      - src/commonMain/kotlin/ai/solace/zlib/** (inflate/deflate/common/bitwise/util)
-      - src/nativeMain/kotlin/ai/solace/zlib/cli/ZLibCli.kt (native CLI copy used by our
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/** (inflate/deflate/common/bitwise/util)
+      - src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/cli/ZLibCli.kt (native CLI copy used by our
   benches)
-      - Tests we added locally: src/commonTest/kotlin/ai/solace/zlib/zip/ZipReaderTest.kt
+      - Tests we added locally: src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/zip/ZipReaderTest.kt
   - Tools (reference only; not built)
       - tools/alphatensor-codegen/ (Cargo.toml, README.md)
       - tools/alphatensor-scripts/ (print_equations_v2.py)
@@ -444,17 +444,17 @@
   /Volumes/stuff/Projects/ZLib.kotlin
 
   - Inflate/Deflate core (arithmetic)
-      - src/commonMain/kotlin/ai/solace/zlib/inflate/InflateStream.kt (includes
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/inflate/InflateStream.kt (includes
   inflateRaw)
-      - src/commonMain/kotlin/ai/solace/zlib/deflate/DeflateStream.kt
-      - src/commonMain/kotlin/ai/solace/zlib/inflate/{StreamingBitReader,
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/deflate/DeflateStream.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/inflate/{StreamingBitReader,
   CanonicalHuffman}.kt
   - ZIP reader (will be refactored to kotlinx-io; Native/KMP)
-      - src/commonMain/kotlin/ai/solace/zlib/zip/ZipReader.kt
+      - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/zip/ZipReader.kt
   - Native CLI (no JVM)
-      - src/nativeMain/kotlin/ai/solace/zlib/cli/ZLibCli.kt (compress|decompress|unzip)
+      - src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/cli/ZLibCli.kt (compress|decompress|unzip)
   - Tests
-      - src/commonTest/kotlin/ai/solace/zlib/** (inflate/zip tests)
+      - src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/** (inflate/zip tests)
 
   simd-alphatensor-kotlin (reference only)
   /Volumes/stuff/Projects/simd-alphatensor-kotlin
@@ -473,7 +473,7 @@
 > Yes — I resurrected the CLI in ZLib.kotlin.
 
   - Branch: feature/zip-reader
-  - Path: /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/zlib/cli/
+  - Path: /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/cli/
   ZLibCli.kt
   - Commands (Native target):
       - compress | deflate <in> <out.zz> [level]
@@ -628,7 +628,7 @@
 ▌     git checkout -b feature/zip-reader
 ▌
 ▌
-▌ • Edited src/commonMain/kotlin/ai/solace/zlib/inflate/InflateStream.kt (+45 -0)
+▌ • Edited src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/inflate/InflateStream.kt (+45 -0)
 ▌     438        }
 ▌     439   +
 ▌     440   +    /**
@@ -685,10 +685,10 @@
 ▌     483   +    }
 ▌     484    }
 ▌
-▌ • Added src/commonMain/kotlin/ai/solace/zlib/zip/ZipReader.kt (+178 -0)
-▌     1     +package ai.solace.zlib.zip
+▌ • Added src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/zip/ZipReader.kt (+178 -0)
+▌     1     +package io.github.kotlinmania.llama.zlib.zip
 ▌     2     +
-▌     3     +import ai.solace.zlib.inflate.InflateStream
+▌     3     +import io.github.kotlinmania.llama.zlib.inflate.InflateStream
 ▌     4     +import okio.Buffer
 ▌     5     +import okio.BufferedSink
 ▌     6     +import okio.BufferedSource
@@ -881,8 +881,8 @@
 ▌     177   +}
 ▌     178   +
 ▌
-▌ • Added src/commonTest/kotlin/ai/solace/zlib/zip/ZipReaderTest.kt (+81 -0)
-▌     1     +package ai.solace.zlib.zip
+▌ • Added src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/zip/ZipReaderTest.kt (+81 -0)
+▌     1     +package io.github.kotlinmania.llama.zlib.zip
 ▌     2     +
 ▌     3     +import kotlin.test.Test
 ▌     4     +import kotlin.test.assertEquals
@@ -978,7 +978,7 @@
 ▌
 ▌     BUILD FAILED in 1m 1s
 ▌
-▌ • Deleted /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/ai/solace/zlib/cli/
+▌ • Deleted /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/cli/
 ▌ ZLibCli.kt (+0 -0)
 ▌
 ▌ • Ran cd /Volumes/stuff/Projects/ZLib.kotlin && ./gradlew -q build -PwithTests=true
@@ -1014,19 +1014,19 @@
 ▌   └ Read ktlintCommonMainSourceSetCheck.txt, ktlintCommonTestSourceSetCheck.txt,
 ▌          ArithmeticBitwiseOps.kt
 ▌
-▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/ai/solace/zlib/
+▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌ bitwise/
 ▌ ArithmeticBitwiseOps.kt (+1 -0)
 ▌     1      @file:Suppress("unused", "UNUSED_PARAMETER")
 ▌     2     +
-▌     3      package ai.solace.zlib.bitwise
+▌     3      package io.github.kotlinmania.llama.zlib.bitwise
 ▌
-▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/ai/solace/zlib/
+▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌ bitwise/
 ▌ BitShiftEngine.kt (+1 -0)
 ▌     1      @file:Suppress("unused", "UNUSED_PARAMETER")
 ▌     2     +
-▌     3      package ai.solace.zlib.bitwise
+▌     3      package io.github.kotlinmania.llama.zlib.bitwise
 ▌
 ▌ • Explored
 ▌   └ Read DeflateStream.kt
@@ -1063,17 +1063,17 @@
 ▌ • Explored
 ▌   └ Read ktlintCommonMainSourceSetCheck.txt, ktlintCommonTestSourceSetCheck.txt
 ▌
-▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/ai/solace/zlib/
+▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌ deflate/
 ▌ DeflateStream.kt (+2 -2)
-▌     9      import ai.solace.zlib.common.TREE_EXTRA_LBITS
-▌     10    +import ai.solace.zlib.common.Z_OK
-▌     11    +import ai.solace.zlib.common.Z_STREAM_ERROR
-▌     12     import ai.solace.zlib.inflate.CanonicalHuffman
+▌     9      import io.github.kotlinmania.llama.zlib.common.TREE_EXTRA_LBITS
+▌     10    +import io.github.kotlinmania.llama.zlib.common.Z_OK
+▌     11    +import io.github.kotlinmania.llama.zlib.common.Z_STREAM_ERROR
+▌     12     import io.github.kotlinmania.llama.zlib.inflate.CanonicalHuffman
 ▌     ⋮
 ▌     15     import okio.BufferedSource
-▌     14    -import ai.solace.zlib.common.Z_OK
-▌     15    -import ai.solace.zlib.common.Z_STREAM_ERROR
+▌     14    -import io.github.kotlinmania.llama.zlib.common.Z_OK
+▌     15    -import io.github.kotlinmania.llama.zlib.common.Z_STREAM_ERROR
 ▌     16
 ▌
 ▌ • Ran cd /Volumes/stuff/Projects/ZLib.kotlin && ./gradlew -q build -PwithTests=true
@@ -1089,14 +1089,14 @@
 ▌
 ▌     BUILD FAILED in 54s
 ▌
-▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonTest/kotlin/ai/solace/zlib/
+▌ • Edited /Volumes/stuff/Projects/ZLib.kotlin/src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/
 ▌ inflate/
 ▌ test/InflateErrorCasesTest.kt (+1 -1)
-▌     3      import ai.solace.zlib.common.Z_DATA_ERROR
-▌     4     +import ai.solace.zlib.inflate.CanonicalHuffman
-▌     5      import ai.solace.zlib.inflate.InflateStream
-▌     6      import ai.solace.zlib.inflate.StreamingBitWriter
-▌     6     -import ai.solace.zlib.inflate.CanonicalHuffman
+▌     3      import io.github.kotlinmania.llama.zlib.common.Z_DATA_ERROR
+▌     4     +import io.github.kotlinmania.llama.zlib.inflate.CanonicalHuffman
+▌     5      import io.github.kotlinmania.llama.zlib.inflate.InflateStream
+▌     6      import io.github.kotlinmania.llama.zlib.inflate.StreamingBitWriter
+▌     6     -import io.github.kotlinmania.llama.zlib.inflate.CanonicalHuffman
 ▌     7      import kotlin.test.Test
 ▌
 ▌ • Ran
@@ -1118,7 +1118,7 @@
 ▌   blocks directly.
 ▌       - Leaves Adler-32 unused for raw streams; returns (Z_STREAM_END, bytesOut).
 ▌   - Minimal ZIP reader (no bitwise; streaming)
-▌       - ai.solace.zlib.zip.ZipReader:
+▌       - io.github.kotlinmania.llama.zlib.zip.ZipReader:
 ▌           - Lists entries by scanning EOCD + Central Directory
 ▌           - Extracts entries by seeking to Local Header and streaming the data
 ▌           - Supports methods: STORE (0) and DEFLATE raw (8) via InflateStream.inflateRaw
@@ -1131,8 +1131,8 @@
 ▌   Important checks and clarifications
 ▌
 ▌   - Namespaces
-▌       - Your llama.kotlin bitwise lives at ai.solace.klang.bitwise
-▌       - Upstream ZLib stays at ai.solace.zlib.*; unchanged semantics unless you opt into
+▌       - Your llama.kotlin bitwise lives at io.github.kotlinmania.llama.klang.bitwise
+▌       - Upstream ZLib stays at io.github.kotlinmania.llama.zlib.*; unchanged semantics unless you opt into
 ▌   delegates later
 ▌   - We did not pre‑decompress NPZ; I removed the staged copies I had placed in
 ▌   llama.kotlin so we can load them streaming via ZIP+raw DEFLATE using ZLib.
@@ -1149,7 +1149,7 @@
 ▌       - (Optional) method-8 data descriptor handling (GPBF bit 3) for completeness;
 ▌   current flow uses central directory sizes and finishes fine without it.
 ▌   - llama.kotlin
-▌       - Add ai.solace.embersimd.io Npz/Npy loaders that wrap ZipReader + a tiny NPY
+▌       - Add io.github.kotlinmania.llama.embersimd.io Npz/Npy loaders that wrap ZipReader + a tiny NPY
 ▌ parser
 ▌   (no bitwise needed):
 ▌           - Npz.list(), Npz.openEntry(name): BufferedSource
@@ -1179,7 +1179,7 @@
 ▌   definition in the nativeMain path, which I want to inspect.
 ▌
 ▌ • Ran
-▌   └ sed -n '1,240p' /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/
+▌   └ sed -n '1,240p' /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.
 ▌         zlib/cli/ZLibCli.kt || echo 'no nativeMain CLI'
 ▌
 ▌ • I'm considering writing a small harness script or documenting a command to test
@@ -1221,7 +1221,7 @@
 ▌   Integrating CLI with zip functionality
 ▌
 ▌   I’m ready to integrate the CLI into the upstream project after adding the zip classes
-▌   and tests earlier. The plan is to create the file src/nativeMain/kotlin/ai/solace/
+▌   and tests earlier. The plan is to create the file src/nativeMain/kotlin/io.github.kotlinmania.llama.
 ▌ zlib/
 ▌   cli/ZLibCli.kt with code that supports compressing, decompressing, and listing
 ▌ entries.
@@ -1230,15 +1230,15 @@
 ▌ entries.
 ▌   Finally, I’ll commit these changes to the upstream.
 ▌
-▌ • Added /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/zlib/cli/
+▌ • Added /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/cli/
 ▌ ZLibCli.kt (+109 -0)
-▌     1     +package ai.solace.zlib.cli
+▌     1     +package io.github.kotlinmania.llama.zlib.cli
 ▌     2     +
-▌     3     +import ai.solace.zlib.common.Z_STREAM_END
-▌     4     +import ai.solace.zlib.common.ZlibLogger
-▌     5     +import ai.solace.zlib.deflate.DeflateStream
-▌     6     +import ai.solace.zlib.inflate.InflateStream
-▌     7     +import ai.solace.zlib.zip.ZipReader
+▌     3     +import io.github.kotlinmania.llama.zlib.common.Z_STREAM_END
+▌     4     +import io.github.kotlinmania.llama.zlib.common.ZlibLogger
+▌     5     +import io.github.kotlinmania.llama.zlib.deflate.DeflateStream
+▌     6     +import io.github.kotlinmania.llama.zlib.inflate.InflateStream
+▌     7     +import io.github.kotlinmania.llama.zlib.zip.ZipReader
 ▌     8     +import okio.FileSystem
 ▌     9     +import okio.Path
 ▌     10    +import okio.Path.Companion.toPath
@@ -1362,18 +1362,18 @@
 ▌   └ cd /Volumes/stuff/Projects/ZLib.kotlin && ./gradlew -q build -PwithTests=true &&
 ▌         git add -A && git commit -m "feat(cli): add unzip list/extract commands; wire to
 ▌         ZipReader; keep compress/decompress" && git status -sb
-▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/zlib/
+▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌     cli/ZLibCli.kt:7:23 Unresolved reference 'zip'.
-▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/zlib/
+▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌     cli/ZLibCli.kt:27:35 Argument type mismatch: actual type is 'Unit', but 'K (of fun
 ▌ <K>
 ▌     WHEN_CALL)' was expected.
-▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/
+▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.
 ▌     zlib/cli/ZLibCli.kt:37:13 Argument type mismatch: actual type is 'R (of fun <T :
 ▌     AutoCloseable?, R> T.use)', but 'K (of fun <K> WHEN_CALL)' was expected.
-▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/zlib/
+▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌     cli/ZLibCli.kt:37:40 Cannot infer type for this parameter. Specify it explicitly.
-▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/
+▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.
 ▌     zlib/cli/ZLibCli.kt:37:40 Unresolved reference. None of the following candidates is
 ▌     applicable because of a receiver type mismatch:
 ▌     … +62 lines
@@ -1420,11 +1420,11 @@
 ▌ Let’s
 ▌   get started!
 ▌
-▌ • Added /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/ai/solace/zlib/zip/
+▌ • Added /Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/zip/
 ▌ ZipReader.kt (+147 -0)
-▌     1     +package ai.solace.zlib.zip
+▌     1     +package io.github.kotlinmania.llama.zlib.zip
 ▌     2     +
-▌     3     +import ai.solace.zlib.inflate.InflateStream
+▌     3     +import io.github.kotlinmania.llama.zlib.inflate.InflateStream
 ▌     4     +import okio.Buffer
 ▌     5     +import okio.BufferedSink
 ▌     6     +import okio.FileSystem
@@ -1577,9 +1577,9 @@
 ▌   └ cd /Volumes/stuff/Projects/ZLib.kotlin && ./gradlew -q build -PwithTests=true && git
 ▌         add -A && git commit -m "feat(zip): add ZipReader (STORE, DEFLATE raw) and CLI
 ▌         unzip commands" && git status -sb
-▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/ai/solace/zlib/
+▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌     zip/ZipReader.kt:35:25 Cannot infer type for this parameter. Specify it explicitly.
-▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/ai/solace/zlib/
+▌     e: file:///Volumes/stuff/Projects/ZLib.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/
 ▌     zip/ZipReader.kt:35:25 Unresolved reference. None of the following candidates is
 ▌     applicable because of a receiver type mismatch:
 ▌     fun <T : AutoCloseable?, R> T.use(block: (T) -> R): R
@@ -1892,7 +1892,7 @@
 ▌   1. Add kotlinx-io
 ▌
 ▌   - Add kotlinx-io core + files to commonMain (Native-first; leave JVM if needed later).
-▌   - Create ai.solace.zlib.io facade (expect/actual or pure common if APIs are uniform):
+▌   - Create io.github.kotlinmania.llama.zlib.io facade (expect/actual or pure common if APIs are uniform):
 ▌       - interfaces: ZSource, ZSink, ZFileSystem, ZPath with the minimal methods we use
 ▌   (readByte, readFully, write, skip, size, open).
 ▌       - kotlinx-io impl in commonMain (SystemFileSystem, Path, buffered).
@@ -1924,7 +1924,7 @@
 ▌   1. Remove Okio dep added earlier (we’ll use the upstream I/O facade via ZLib.kotlin).
 ▌   2. Add NPZ/NPY loaders (Native)
 ▌
-▌   - ai.solace.embersimd.io:
+▌   - io.github.kotlinmania.llama.embersimd.io:
 ▌       - Npz.list(), Npz.open(name) → ZSource
 ▌       - Npy.read(source) (header: magic/version/dtype/shape; payload as ZSource)
 ▌   - Feed 4×4/2×2 recipes from NPZ/NPY directly (no staging, no pre-decompress).
@@ -2308,10 +2308,10 @@
 ▌
 ▌   For llama.kotlin, we have core bitwise and SIMD benchmarks in src/commonMain/kotlin/
 ▌ ai/
-▌   solace/klang/bitwise, and benches in src/nativeMain/kotlin/ai/solace/bench. There's
+▌   solace/klang/bitwise, and benches in src/nativeMain/kotlin/io.github.kotlinmania.llama.bench. There's
 ▌ also
-▌   a Metal SWAR bench and vendored ZLib files in src/commonMain/kotlin/ai/solace/zlib. We
-▌   added the ZipReader test in src/commonTest/kotlin/ai/solace/zlib/zip, along with tools
+▌   a Metal SWAR bench and vendored ZLib files in src/commonMain/kotlin/io.github.kotlinmania.llama.zlib. We
+▌   added the ZipReader test in src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/zip, along with tools
 ▌   for alphatensor-codegen and alphatensor-scripts.
 ▌
 ▌   In ZLib.kotlin, the files include InflateStream.kt, ZipReader.kt, and ZLibCli.kt.
@@ -2328,25 +2328,25 @@
 ▌   llama.kotlin (/Volumes/stuff/Projects/llama.kotlin)
 ▌
 ▌   - Core bitwise + engine
-▌       - src/commonMain/kotlin/ai/solace/klang/bitwise/BitShiftEngine.kt
-▌       - src/commonMain/kotlin/ai/solace/klang/bitwise/BitShiftConfig.kt
-▌       - src/commonMain/kotlin/ai/solace/klang/bitwise/ArrayBitShifts.kt
-▌       - src/commonMain/kotlin/ai/solace/klang/bitwise/BitwiseOps.kt
-▌       - src/commonMain/kotlin/ai/solace/klang/bitwise/ArithmeticBitwiseOps.kt
-▌       - src/commonMain/kotlin/ai/solace/klang/bitwise/SwAR.kt
-▌       - src/commonMain/kotlin/ai/solace/klang/bitwise/ShiftTables.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/BitShiftEngine.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/BitShiftConfig.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/ArrayBitShifts.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/BitwiseOps.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/ArithmeticBitwiseOps.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/SwAR.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.klang/bitwise/ShiftTables.kt
 ▌   - Benches (CPU)
-▌       - src/nativeMain/kotlin/ai/solace/bench/BenchMain.kt
-▌       - src/nativeMain/kotlin/ai/solace/bench/SwARBench.kt
-▌       - src/nativeMain/kotlin/ai/solace/bench/HexStringShiftBench.kt
-▌       - src/nativeMain/kotlin/ai/solace/bench/MaskKernelsBench.kt
+▌       - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/BenchMain.kt
+▌       - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/SwARBench.kt
+▌       - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/HexStringShiftBench.kt
+▌       - src/nativeMain/kotlin/io.github.kotlinmania.llama.bench/MaskKernelsBench.kt
 ▌   - Metal SWAR bench (Swift/Metal)
 ▌       - metal-swar-avg/ (Package.swift, Sources/main.swift)
 ▌   - Vendored ZLib.kotlin sources used by llama.kotlin (separate from upstream)
-▌       - src/commonMain/kotlin/ai/solace/zlib/** (inflate/deflate/common/bitwise/util)
-▌       - src/nativeMain/kotlin/ai/solace/zlib/cli/ZLibCli.kt (native CLI copy used by our
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/** (inflate/deflate/common/bitwise/util)
+▌       - src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/cli/ZLibCli.kt (native CLI copy used by our
 ▌   benches)
-▌       - Tests we added locally: src/commonTest/kotlin/ai/solace/zlib/zip/
+▌       - Tests we added locally: src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/zip/
 ▌ ZipReaderTest.kt
 ▌   - Tools (reference only; not built)
 ▌       - tools/alphatensor-codegen/ (Cargo.toml, README.md)
@@ -2356,17 +2356,17 @@
 ▌   /Volumes/stuff/Projects/ZLib.kotlin
 ▌
 ▌   - Inflate/Deflate core (arithmetic)
-▌       - src/commonMain/kotlin/ai/solace/zlib/inflate/InflateStream.kt (includes
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/inflate/InflateStream.kt (includes
 ▌   inflateRaw)
-▌       - src/commonMain/kotlin/ai/solace/zlib/deflate/DeflateStream.kt
-▌       - src/commonMain/kotlin/ai/solace/zlib/inflate/{StreamingBitReader,
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/deflate/DeflateStream.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/inflate/{StreamingBitReader,
 ▌   CanonicalHuffman}.kt
 ▌   - ZIP reader (will be refactored to kotlinx-io; Native/KMP)
-▌       - src/commonMain/kotlin/ai/solace/zlib/zip/ZipReader.kt
+▌       - src/commonMain/kotlin/io.github.kotlinmania.llama.zlib/zip/ZipReader.kt
 ▌   - Native CLI (no JVM)
-▌       - src/nativeMain/kotlin/ai/solace/zlib/cli/ZLibCli.kt (compress|decompress|unzip)
+▌       - src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/cli/ZLibCli.kt (compress|decompress|unzip)
 ▌   - Tests
-▌       - src/commonTest/kotlin/ai/solace/zlib/** (inflate/zip tests)
+▌       - src/commonTest/kotlin/io.github.kotlinmania.llama.zlib/** (inflate/zip tests)
 ▌
 ▌   simd-alphatensor-kotlin (reference only)
 ▌   /Volumes/stuff/Projects/simd-alphatensor-kotlin
@@ -2385,7 +2385,7 @@
 ▌ > Yes — I resurrected the CLI in ZLib.kotlin.
 ▌
 ▌   - Branch: feature/zip-reader
-▌   - Path: /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/ai/solace/zlib/cli/
+▌   - Path: /Volumes/stuff/Projects/ZLib.kotlin/src/nativeMain/kotlin/io.github.kotlinmania.llama.zlib/cli/
 ▌   ZLibCli.kt
 ▌   - Commands (Native target):
 ▌       - compress | deflate <in> <out.zz> [level]
@@ -2639,7 +2639,7 @@ wrapper.properties (+1 -1)
   and simply run 'gradlew -q build' to get things working again.
 
 • Ran ./gradlew -q build
-  └ e: file:///Volumes/stuff/Projects/llama.kotlin/src/commonMain/kotlin/ai/solace/klang/
+  └ e: file:///Volumes/stuff/Projects/llama.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.klang/
     bitwise/ArrayBitShifts.kt:90:9 Unresolved reference 'runBlocking'.
     e: file:///Volumes/stuff/Projects/llama.kotlin/src/commonMain/kotlin/ai/
     solace/klang/bitwise/ArrayBitShifts.kt:93:13 Suspend function 'suspend fun <R>
@@ -2649,7 +2649,7 @@ wrapper.properties (+1 -1)
     solace/klang/bitwise/ArrayBitShifts.kt:112:13 Suspend function 'suspend fun <R>
     coroutineScope(block: suspend CoroutineScope.() -> R): R' can only be called from a
     coroutine or another suspend function.
-    e: file:///Volumes/stuff/Projects/llama.kotlin/src/commonMain/kotlin/ai/solace/klang/
+    e: file:///Volumes/stuff/Projects/llama.kotlin/src/commonMain/kotlin/io.github.kotlinmania.llama.klang/
     bitwise/ArrayBitShifts.kt:268:9 Unresolved reference 'runBlocking'.
     e: file:///Volumes/stuff/Projects/llama.kotlin/src/commonMain/kotlin/ai/
     solace/klang/bitwise/ArrayBitShifts.kt:271:13 Suspend function 'suspend fun <R>

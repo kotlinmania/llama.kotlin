@@ -1,5 +1,5 @@
 
-package ai.solace.klangnative.common
+package io.github.kotlinmania.llama.klang.common
 
 import java.io.File
 import java.time.LocalDateTime

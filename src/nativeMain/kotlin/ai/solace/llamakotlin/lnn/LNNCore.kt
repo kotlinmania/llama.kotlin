@@ -1,6 +1,6 @@
-package ai.solace.llamakotlin.lnn
+package io.github.kotlinmania.llama..lnn
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 
 /**
  * Kotlin Native implementation of Liquid Neural Networks (LNN) core components.

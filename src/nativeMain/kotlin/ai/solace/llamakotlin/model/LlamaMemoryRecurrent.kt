@@ -1,7 +1,7 @@
 // port-lint: source llama.cpp/src/llama-memory-recurrent.h llama.cpp/src/llama-memory-recurrent.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 
 // =============================================================================
 // LlamaMemoryRecurrent – recurrent state cache for SSM / RWKV models

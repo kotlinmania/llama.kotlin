@@ -1,5 +1,5 @@
-package ai.solace.klangnative.bitwise
-import ai.solace.klangnative.mem.GlobalHeap
+package io.github.kotlinmania.llama.klang.bitwise
+import io.github.kotlinmania.llama.klang.mem.GlobalHeap
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope

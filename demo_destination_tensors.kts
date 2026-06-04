@@ -1,9 +1,9 @@
 #!/usr/bin/env kotlin
 
-@file:Import("src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLTypes.kt")
-@file:Import("src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLAlloc.kt")
-@file:Import("src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLComputeOps.kt")
-@file:Import("src/nativeMain/kotlin/ai/solace/llamakotlin/core/GGMLOps.kt")
+@file:Import("src/nativeMain/kotlin/io.github.kotlinmania.llama.llamakotlin/core/GGMLTypes.kt")
+@file:Import("src/nativeMain/kotlin/io.github.kotlinmania.llama.llamakotlin/core/GGMLAlloc.kt")
+@file:Import("src/nativeMain/kotlin/io.github.kotlinmania.llama.llamakotlin/core/GGMLComputeOps.kt")
+@file:Import("src/nativeMain/kotlin/io.github.kotlinmania.llama.llamakotlin/core/GGMLOps.kt")
 
 /**
  * Simple demonstration script showing the new destination tensor interface

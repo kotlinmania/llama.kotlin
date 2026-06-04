@@ -1,19 +1,19 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
-import ai.solace.llamakotlin.core.ByteArrayExtensions.getFloatLe
-import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
+import io.github.kotlinmania.llama.core.ByteArrayExtensions.getFloatLe
+import io.github.kotlinmania.llama.core.ByteArrayExtensions.setFloatLe
 import kotlin.test.*
 import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES // For F16
 
 class GGMLTypesTest {
 
-    private lateinit var graphAllocator: GGMLGraphAllocator
+    private lateinit var graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
     private lateinit var testBuffer: ByteArray
     private val testBufferSize = 1024 * 1024 // 1MB
 
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
+        graphAllocator = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLGraphAllocator()
         testBuffer = ByteArray(testBufferSize)
         // Directly assign the test buffer to the graph allocator's primary buffer
         // and reset the corresponding tensor allocator with the test buffer's size.
@@ -27,7 +27,8 @@ class GGMLTypesTest {
         } else {
             // This case implies GGMLGraphAllocator constructor didn't set up tensorAllocators[0]
             // which would be a problem. For this test setup, we assume it exists.
-            val dynTensorAllocator = GGMLDynTensorAllocator(bufferSize = testBuffer.size.toULong())
+            val dynTensorAllocator =
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLDynTensorAllocator(bufferSize = testBuffer.size.toULong())
             graphAllocator.tensorAllocators.add(dynTensorAllocator)
         }
     }
@@ -37,17 +38,17 @@ class GGMLTypesTest {
 
     private fun createTestTensor(
         name: String,
-        type: GGMLType,
+        type: io.github.kotlinmania.llama.core.GGMLType,
         dims: LongArray, // Effective dimensions e.g. longArrayOf(10) for 1D, longArrayOf(10,5) for 2D
         dataOffsetInTestBuffer: ULong,
         bufferIdToSet: Int = 0 // Assuming buffer 0 is our testBuffer
-    ): GGMLTensor {
-        val tensor = GGMLTensor(type = type)
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
+        val tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = type)
         tensor.name = name
 
         // Pad ne to GGML_MAX_DIMS
-        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
-        dims.copyInto(tensor.ne, 0, 0, dims.size.coerceAtMost(GGML_MAX_DIMS))
+        tensor.ne = LongArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 1L }
+        dims.copyInto(tensor.ne, 0, 0, dims.size.coerceAtMost(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS))
 
         tensor.nb = calculateStrides(type, tensor.ne)
 
@@ -67,7 +68,7 @@ class GGMLTypesTest {
     fun testFloatAccess1D() {
         val dims = longArrayOf(10)
         val offset = 100uL // Start this tensor at byte offset 100 in the buffer
-        val tensor = createTestTensor("testF32_1D", GGMLType.F32, dims, offset)
+        val tensor = createTestTensor("testF32_1D", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dims, offset)
 
         val testData = FloatArray(dims[0].toInt()) { it.toFloat() * 1.1f }
 
@@ -91,7 +92,7 @@ class GGMLTypesTest {
     fun testFloatAccess2D() {
         val dims = longArrayOf(3, 4) // e.g., 3 columns, 4 rows
         val offset = 200uL
-        val tensor = createTestTensor("testF32_2D", GGMLType.F32, dims, offset)
+        val tensor = createTestTensor("testF32_2D", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dims, offset)
 
         // Populate with test data: value = row * 10 + col
         for (row in 0 until dims[1].toInt()) {
@@ -119,7 +120,7 @@ class GGMLTypesTest {
     fun testIntAccess1D() {
         val dims = longArrayOf(8)
         val offset = 300uL
-        val tensor = createTestTensor("testI32_1D", GGMLType.I32, dims, offset)
+        val tensor = createTestTensor("testI32_1D", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.I32, dims, offset)
         val testData = IntArray(dims[0].toInt()) { it * 10 }
 
         testData.forEachIndexed { i, value ->
@@ -135,7 +136,7 @@ class GGMLTypesTest {
     fun testShortAccess1D() {
         val dims = longArrayOf(12)
         val offset = 400uL
-        val tensor = createTestTensor("testI16_1D", GGMLType.I16, dims, offset)
+        val tensor = createTestTensor("testI16_1D", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.I16, dims, offset)
         val testData = ShortArray(dims[0].toInt()) { (it * 5 - 20).toShort() }
 
         testData.forEachIndexed { i, value ->
@@ -151,7 +152,7 @@ class GGMLTypesTest {
     fun testHalfAccess1D() {
         val dims = longArrayOf(10)
         val offset = 500uL
-        val tensor = createTestTensor("testF16_1D", GGMLType.F16, dims, offset)
+        val tensor = createTestTensor("testF16_1D", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, dims, offset)
 
         // Test values including some that might have precision differences
         val originalFloats = FloatArray(dims[0].toInt()) {
@@ -168,8 +169,10 @@ class GGMLTypesTest {
         }
 
         originalFloats.forEachIndexed { i, originalFloat ->
-            val f16Bits = floatToHalf(originalFloat) // Convert original to F16 bits
-            val floatFromF16 = halfToFloat(f16Bits)   // Convert F16 bits back to F32 for comparison
+            val f16Bits =
+                _root_ide_package_.io.github.kotlinmania.llama.core.floatToHalf(originalFloat) // Convert original to F16 bits
+            val floatFromF16 =
+                _root_ide_package_.io.github.kotlinmania.llama.core.halfToFloat(f16Bits)   // Convert F16 bits back to F32 for comparison
 
             assertDoesNotThrow("Set F16 1D index $i with value $originalFloat (becomes $floatFromF16)") {
                  // We set using the original float, setHalf will convert it.
@@ -186,7 +189,7 @@ class GGMLTypesTest {
 
     @Test
     fun testAccessOutOfBounds_Indices() {
-        val tensorF32 = createTestTensor("f32", GGMLType.F32, longArrayOf(2, 2), 0uL) // 2x2 tensor
+        val tensorF32 = createTestTensor("f32", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, longArrayOf(2, 2), 0uL) // 2x2 tensor
 
         // Too many indices
         assertFailsWith<IllegalArgumentException>("Should fail with too many indices") {
@@ -209,7 +212,7 @@ class GGMLTypesTest {
     @Test
     fun testBufferBoundaryChecks() {
         val tensorSizeElements = 4
-        val type = GGMLType.F32
+        val type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32
         val elementByteSize = type.byteSize.toInt()
         val tensorByteSize = tensorSizeElements * elementByteSize // 4 * 4 = 16 bytes
 

@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -12,29 +12,29 @@ import kotlin.test.assertFalse
 class GGMLBackendTest {
     @BeforeTest
     fun ensureRegistryInitialized() {
-        GGMLBackendRegistry.init()
+        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendRegistry.init()
     }
 
     @Test
     fun cpuBackendIsRegistered() {
-        val index = GGMLBackendRegistry.findByName("CPU")
+        val index = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendRegistry.findByName("CPU")
         assertNotNull(index, "CPU backend should be registered")
-        assertEquals("CPU", GGMLBackendRegistry.getName(index!!))
-        assertEquals(1, GGMLBackendRegistry.getCount(), "Only CPU backend expected")
+        assertEquals("CPU", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendRegistry.getName(index!!))
+        assertEquals(1, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendRegistry.getCount(), "Only CPU backend expected")
     }
 
     @Test
     fun cpuBackendCreationAndBufferType() {
-        val cpuIndex = GGMLBackendRegistry.findByName("CPU")
+        val cpuIndex = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendRegistry.findByName("CPU")
         assertNotNull(cpuIndex)
 
-        val backend = GGMLBackendRegistry.initBackend(cpuIndex!!)
-        assertTrue(backend is GGMLCpuBackend)
+        val backend = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendRegistry.initBackend(cpuIndex!!)
+        assertTrue(backend is io.github.kotlinmania.llama.core.GGMLCpuBackend)
         assertEquals("CPU", backend.getName())
         assertTrue(backend.getGuid().isNotEmpty())
 
         val bufferType = backend.getDefaultBufferType()
-        assertTrue(bufferType is GGMLCpuBufferType)
+        assertTrue(bufferType is io.github.kotlinmania.llama.core.GGMLCpuBufferType)
         assertTrue(bufferType.isHost())
         assertEquals("CPU", bufferType.getName())
         assertTrue(bufferType.getAlignment() > 0u)
@@ -42,12 +42,12 @@ class GGMLBackendTest {
 
     @Test
     fun cpuBufferLifecycle() {
-        val backend = GGMLCpuBackend()
+        val backend = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackend()
         val bufferType = backend.getDefaultBufferType()
 
         val buffer = bufferType.allocBuffer(1024u)
         assertNotNull(buffer)
-        assertTrue(buffer is GGMLCpuBuffer)
+        assertTrue(buffer is io.github.kotlinmania.llama.core.GGMLCpuBuffer)
         assertEquals(1024u, buffer.getSize())
         assertTrue(buffer.getBase() is ByteArray)
 
@@ -60,9 +60,11 @@ class GGMLBackendTest {
 
     @Test
     fun cpuBufferReadWriteRoundTrip() {
-        val buffer = GGMLCpuBufferType().allocBuffer(1024u) as GGMLCpuBuffer
+        val buffer = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBufferType()
+            .allocBuffer(1024u) as io.github.kotlinmania.llama.core.GGMLCpuBuffer
 
-        val tensor = GGMLTensor(type = GGMLType.F32)
+        val tensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         tensor.ne[0] = 10L
         tensor.nb[0] = 4u
         tensor.dataOffset = 0u
@@ -84,15 +86,16 @@ class GGMLBackendTest {
 
     @Test
     fun cpuBackendSupportsExpectedOps() {
-        val backend = GGMLCpuBackend()
+        val backend = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackend()
 
-        val supportedOps = listOf(GGMLOp.ADD, GGMLOp.MUL, GGMLOp.MUL_MAT)
+        val supportedOps = listOf(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.ADD, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MUL, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.MUL_MAT)
         supportedOps.forEach { op ->
-            val tensor = GGMLTensor(op = op)
+            val tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(op = op)
             assertTrue(backend.supportsOp(tensor), "CPU should support $op")
         }
 
-        val unsupported = GGMLTensor(op = GGMLOp.NONE)
+        val unsupported =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(op = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLOp.NONE)
         assertFalse(backend.supportsOp(unsupported))
 
         val bufferType = backend.getDefaultBufferType()
@@ -103,15 +106,15 @@ class GGMLBackendTest {
 
     @Test
     fun graphAllocatorBindsCpuBackendBuffers() {
-        val backend = GGMLCpuBackend()
-        val allocator = GGMLGraphAllocator(backend)
+        val backend = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackend()
+        val allocator = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLGraphAllocator(backend)
 
         assertEquals(backend, allocator.backend)
-        assertTrue(allocator.backendBuffers.first() is GGMLCpuBuffer)
+        assertTrue(allocator.backendBuffers.first() is io.github.kotlinmania.llama.core.GGMLCpuBuffer)
 
-        val graph = GGMLCGraph(allocator = allocator)
+        val graph = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCGraph(allocator = allocator)
         val status = backend.graphCompute(graph)
-        assertEquals(GGMLStatus.SUCCESS, status)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLStatus.SUCCESS, status)
 
         backend.free()
     }

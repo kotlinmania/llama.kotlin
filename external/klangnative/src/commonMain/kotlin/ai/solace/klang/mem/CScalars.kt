@@ -1,6 +1,6 @@
-package ai.solace.klangnative.mem
+package io.github.kotlinmania.llama.klang.mem
 
-import ai.solace.klangnative.fp.CDouble
+import io.github.kotlinmania.llama.klang.fp.CDouble
 
 /**
  * CVar: Base interface for C-style scalar variables stored in heap memory.

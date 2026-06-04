@@ -1,7 +1,7 @@
-package ai.solace.klangnative.stringshift
+package io.github.kotlinmania.llama.klang.stringshift
 
-import ai.solace.klangnative.bitwise.BitShiftEngine
-import ai.solace.klangnative.bitwise.BitShiftConfig
+import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.klang.bitwise.BitShiftConfig
 import kotlin.math.min
 
 /**

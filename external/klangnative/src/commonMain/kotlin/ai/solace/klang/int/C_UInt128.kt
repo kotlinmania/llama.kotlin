@@ -1,9 +1,9 @@
-package ai.solace.klangnative.int
+package io.github.kotlinmania.llama.klang.int
 
-import ai.solace.klangnative.bitwise.BitShiftEngine
-import ai.solace.klangnative.bitwise.BitShiftMode
-import ai.solace.klangnative.mem.GlobalHeap
-import ai.solace.klangnative.mem.KMalloc
+import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.klang.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+import io.github.kotlinmania.llama.klang.mem.KMalloc
 
 /**
  * C_UInt128: C-compatible `unsigned __int128` type with zero-copy heap operations.

@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.test.*
 import kotlin.math.*
@@ -12,7 +12,7 @@ class GGMLDryPrincipleTest {
     @Test
     fun testConsolidatedTensorDimensionValidation() {
         val tensor = GGMLTestUtils.createStandardTestTensor(
-            GGMLType.F32, 
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32,
             longArrayOf(4, 4, 1)
         )
         
@@ -26,9 +26,9 @@ class GGMLDryPrincipleTest {
     fun testConsolidatedTensorComparison() {
         val (graphAllocator, _) = GGMLTestUtils.createTestAllocator()
         
-        val tensor1 = GGMLTestUtils.createStandardTestTensor(GGMLType.F32, longArrayOf(2, 2))
-        val tensor2 = GGMLTestUtils.createStandardTestTensor(GGMLType.F32, longArrayOf(2, 2))
-        val tensor3 = GGMLTestUtils.createStandardTestTensor(GGMLType.F16, longArrayOf(2, 2))
+        val tensor1 = GGMLTestUtils.createStandardTestTensor(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, longArrayOf(2, 2))
+        val tensor2 = GGMLTestUtils.createStandardTestTensor(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, longArrayOf(2, 2))
+        val tensor3 = GGMLTestUtils.createStandardTestTensor(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, longArrayOf(2, 2))
         
         // Test structural comparison
         assertTrue(GGMLTestUtils.TensorComparison.tensorsStructurallyEqual(tensor1, tensor2))
@@ -72,25 +72,51 @@ class GGMLDryPrincipleTest {
         val floatArray = floatArrayOf(1.0f, 2.5f, -1.5f, 0.0f)
         
         // Test consolidated conversion functions
-        val halfArray = convertFloatArrayToHalf(floatArray)
-        val backToFloat = convertHalfArrayToFloat(halfArray)
+        val halfArray = _root_ide_package_.io.github.kotlinmania.llama.core.convertFloatArrayToHalf(floatArray)
+        val backToFloat = _root_ide_package_.io.github.kotlinmania.llama.core.convertHalfArrayToFloat(halfArray)
         
         assertEquals(floatArray.size, halfArray.size)
         assertEquals(floatArray.size, backToFloat.size)
         
         // Test array validation utility
-        assertTrue(validateNumericArray(floatArray))
-        assertFalse(validateNumericArray(floatArrayOf(Float.NaN, 1.0f)))
-        assertTrue(validateNumericArray(floatArrayOf(Float.NaN, 1.0f), allowNaN = true))
+        assertTrue(_root_ide_package_.io.github.kotlinmania.llama.core.validateNumericArray(floatArray))
+        assertFalse(
+            _root_ide_package_.io.github.kotlinmania.llama.core.validateNumericArray(
+                floatArrayOf(
+                    Float.NaN,
+                    1.0f
+                )
+            )
+        )
+        assertTrue(
+            _root_ide_package_.io.github.kotlinmania.llama.core.validateNumericArray(
+                floatArrayOf(
+                    Float.NaN,
+                    1.0f
+                ), allowNaN = true
+            )
+        )
         
         // Test clamping utility
-        val clampedArray = clampFloatArray(floatArray, -1.0f, 2.0f)
+        val clampedArray = _root_ide_package_.io.github.kotlinmania.llama.core.clampFloatArray(floatArray, -1.0f, 2.0f)
         assertEquals(-1.0f, clampedArray[2]) // -1.5f clamped to -1.0f
         assertEquals(2.0f, clampedArray[1])  // 2.5f clamped to 2.0f
         
         // Test tolerance comparison utility
         val similarArray = floatArrayOf(1.000001f, 2.500001f, -1.500001f, 0.000001f)
-        assertTrue(arraysEqualWithinTolerance(floatArray, similarArray, 1e-5f))
-        assertFalse(arraysEqualWithinTolerance(floatArray, similarArray, 1e-7f))
+        assertTrue(
+            _root_ide_package_.io.github.kotlinmania.llama.core.arraysEqualWithinTolerance(
+                floatArray,
+                similarArray,
+                1e-5f
+            )
+        )
+        assertFalse(
+            _root_ide_package_.io.github.kotlinmania.llama.core.arraysEqualWithinTolerance(
+                floatArray,
+                similarArray,
+                1e-7f
+            )
+        )
     }
 }

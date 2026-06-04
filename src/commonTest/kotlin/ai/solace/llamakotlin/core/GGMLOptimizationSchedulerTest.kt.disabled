@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

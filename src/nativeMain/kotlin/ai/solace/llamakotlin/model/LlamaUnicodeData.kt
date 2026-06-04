@@ -1,5 +1,5 @@
 // port-lint: source llama.cpp/src/unicode-data.h llama.cpp/src/unicode-data.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
 /**
  * Unicode range entry for NFD normalization.

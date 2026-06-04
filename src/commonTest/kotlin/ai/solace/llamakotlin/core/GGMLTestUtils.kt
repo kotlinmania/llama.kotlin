@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.math.*
 import kotlin.random.Random
@@ -25,12 +25,12 @@ object GGMLTestUtils {
     /**
      * Initialize a standard test allocator with buffer
      */
-    fun createTestAllocator(bufferSize: Int = DEFAULT_TEST_BUFFER_SIZE): Pair<GGMLGraphAllocator, ByteArray> {
-        val graphAllocator = GGMLGraphAllocator()
+    fun createTestAllocator(bufferSize: Int = DEFAULT_TEST_BUFFER_SIZE): Pair<io.github.kotlinmania.llama.core.GGMLGraphAllocator, ByteArray> {
+        val graphAllocator = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLGraphAllocator()
         val testBuffer = ByteArray(bufferSize)
 
         if (graphAllocator.buffers.isEmpty()) graphAllocator.buffers.add(null)
-        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator())
+        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLDynTensorAllocator())
 
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
@@ -43,15 +43,15 @@ object GGMLTestUtils {
      * CONSOLIDATION: Unified tensor dimension validation
      * Replaces repeated validation logic across test files
      */
-    fun validateTensorDimensions(tensor: GGMLTensor, expectedShape: LongArray): Boolean {
-        if (expectedShape.size > GGML_MAX_DIMS) return false
+    fun validateTensorDimensions(tensor: io.github.kotlinmania.llama.core.GGMLTensor, expectedShape: LongArray): Boolean {
+        if (expectedShape.size > _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) return false
         
         for (i in expectedShape.indices) {
             if (tensor.ne[i] != expectedShape[i]) return false
         }
         
         // Check that dimensions beyond expected shape are 1 (default padding)
-        for (i in expectedShape.size until GGML_MAX_DIMS) {
+        for (i in expectedShape.size until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) {
             if (tensor.ne[i] != 1L) return false
         }
         
@@ -63,15 +63,15 @@ object GGMLTestUtils {
      * Eliminates duplicate tensor setup patterns found in multiple test files
      */
     fun createStandardTestTensor(
-        type: GGMLType, 
-        shape: LongArray, 
+        type: io.github.kotlinmania.llama.core.GGMLType,
+        shape: LongArray,
         name: String = "test_tensor"
-    ): GGMLTensor {
-        val tensor = GGMLTensor(type = type, name = name)
-        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
+        val tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = type, name = name)
+        tensor.ne = LongArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 1L }
         
         shape.forEachIndexed { index, dimSize ->
-            if (index < GGML_MAX_DIMS) {
+            if (index < _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) {
                 tensor.ne[index] = dimSize
             }
         }
@@ -84,11 +84,11 @@ object GGMLTestUtils {
      * Allocate a destination tensor backed by the test allocator without initial data.
      */
     fun allocateDestinationTensor(
-        graphAllocator: GGMLGraphAllocator,
+        graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
         name: String,
-        type: GGMLType,
+        type: io.github.kotlinmania.llama.core.GGMLType,
         shape: LongArray
-    ): GGMLTensor {
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
         val tensor = createStandardTestTensor(type, shape, name)
         val byteSize = calculateTensorByteSize(type, tensor.ne)
         if (byteSize > 0uL) {
@@ -103,16 +103,16 @@ object GGMLTestUtils {
      * Create a contiguous F32 matrix tensor populated with generated values.
      */
     fun createF32Matrix(
-        graphAllocator: GGMLGraphAllocator,
+        graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
         name: String,
         rows: Int,
         cols: Int,
         generator: (Int) -> Float
-    ): GGMLTensor {
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
         val tensor = allocateDestinationTensor(
             graphAllocator = graphAllocator,
             name = name,
-            type = GGMLType.F32,
+            type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32,
             shape = longArrayOf(cols.toLong(), rows.toLong())
         )
         val elementCount = rows * cols
@@ -126,26 +126,30 @@ object GGMLTestUtils {
      * Create a quantized matrix by generating F32 data and quantizing to the requested type.
      */
     fun createQuantizedMatrix(
-        graphAllocator: GGMLGraphAllocator,
+        graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
         name: String,
-        type: GGMLType,
+        type: io.github.kotlinmania.llama.core.GGMLType,
         rows: Int,
         cols: Int,
         generator: (Int) -> Float
-    ): GGMLTensor {
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
         val elements = rows * cols
         when (type) {
-            GGMLType.Q8_0 -> require(elements % QK8_0 == 0) { "Q8_0 matrix requires element count divisible by $QK8_0 (got $elements)" }
-            GGMLType.Q4_0 -> require(elements % QK4_0 == 0) { "Q4_0 matrix requires element count divisible by $QK4_0 (got $elements)" }
-            GGMLType.Q4_1 -> require(elements % QK4_1 == 0) { "Q4_1 matrix requires element count divisible by $QK4_1 (got $elements)" }
-            GGMLType.Q5_0, GGMLType.Q5_1, GGMLType.Q6_K, GGMLType.Q4_K, GGMLType.Q5_K, GGMLType.Q3_K, GGMLType.Q2_K -> {
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0 -> require(elements % _root_ide_package_.io.github.kotlinmania.llama.core.QK8_0 == 0) { "Q8_0 matrix requires element count divisible by ${_root_ide_package_.io.github.kotlinmania.llama.core.QK8_0} (got $elements)" }
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0 -> require(elements % _root_ide_package_.io.github.kotlinmania.llama.core.QK4_0 == 0) { "Q4_0 matrix requires element count divisible by ${_root_ide_package_.io.github.kotlinmania.llama.core.QK4_0} (got $elements)" }
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1 -> require(elements % _root_ide_package_.io.github.kotlinmania.llama.core.QK4_1 == 0) { "Q4_1 matrix requires element count divisible by ${_root_ide_package_.io.github.kotlinmania.llama.core.QK4_1} (got $elements)" }
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q5_0, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q5_1, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q6_K, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_K, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q5_K, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q3_K, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q2_K -> {
                 // Future K-quant helpers can refine these requirements when block sizes are finalized
             }
-            else -> require(type == GGMLType.F32) { "Unsupported quantized matrix type: $type" }
+            else -> require(type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32) { "Unsupported quantized matrix type: $type" }
         }
 
         val base = createF32Matrix(graphAllocator, "${name}_f32", rows, cols, generator)
-        val quantized = if (type == GGMLType.F32) base else quantizeTensor(graphAllocator, base, type)
+        val quantized = if (type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32) base else _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            base,
+            type
+        )
         quantized.name = name
         return quantized
     }
@@ -154,12 +158,12 @@ object GGMLTestUtils {
      * Allocate a destination tensor sized for matmul output (rows × cols, F32 by default).
      */
     fun allocateMatMulResult(
-        graphAllocator: GGMLGraphAllocator,
+        graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
         name: String,
         rows: Int,
         cols: Int,
-        type: GGMLType = GGMLType.F32
-    ): GGMLTensor = allocateDestinationTensor(
+        type: io.github.kotlinmania.llama.core.GGMLType = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32
+    ): io.github.kotlinmania.llama.core.GGMLTensor = allocateDestinationTensor(
         graphAllocator = graphAllocator,
         name = name,
         type = type,
@@ -169,8 +173,8 @@ object GGMLTestUtils {
     /**
      * Calculate tensor byte size for any tensor type
      */
-    fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong {
-        if (type.byteSize == 0uL && type != GGMLType.COUNT && !type.name.startsWith("Q")) {
+    fun calculateTensorByteSize(type: io.github.kotlinmania.llama.core.GGMLType, ne: LongArray): ULong {
+        if (type.byteSize == 0uL && type != _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.COUNT && !type.name.startsWith("Q")) {
             return 0uL
         }
         
@@ -194,28 +198,28 @@ object GGMLTestUtils {
 
         // Handle quantized types
         return when (type) {
-            GGMLType.Q8_0 -> {
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0 -> {
                 if (elements > 0uL) {
-                    if (elements.toLong() % QK8_0 != 0L) {
-                        println("Warning: Total elements $elements for Q8_0 is not divisible by block size $QK8_0.")
+                    if (elements.toLong() % _root_ide_package_.io.github.kotlinmania.llama.core.QK8_0 != 0L) {
+                        println("Warning: Total elements $elements for Q8_0 is not divisible by block size ${_root_ide_package_.io.github.kotlinmania.llama.core.QK8_0}.")
                     }
-                    (elements.toLong() / QK8_0).toULong() * type.byteSize
+                    (elements.toLong() / _root_ide_package_.io.github.kotlinmania.llama.core.QK8_0).toULong() * type.byteSize
                 } else 0uL
             }
-            GGMLType.Q4_0 -> {
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0 -> {
                 if (elements > 0uL) {
-                    if (elements.toLong() % QK4_0 != 0L) {
-                        println("Warning: Total elements $elements for Q4_0 is not divisible by block size $QK4_0.")
+                    if (elements.toLong() % _root_ide_package_.io.github.kotlinmania.llama.core.QK4_0 != 0L) {
+                        println("Warning: Total elements $elements for Q4_0 is not divisible by block size ${_root_ide_package_.io.github.kotlinmania.llama.core.QK4_0}.")
                     }
-                    (elements.toLong() / QK4_0).toULong() * type.byteSize
+                    (elements.toLong() / _root_ide_package_.io.github.kotlinmania.llama.core.QK4_0).toULong() * type.byteSize
                 } else 0uL
             }
-            GGMLType.Q4_1 -> {
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1 -> {
                 if (elements > 0uL) {
-                    if (elements.toLong() % QK4_1 != 0L) {
-                        println("Warning: Total elements $elements for Q4_1 is not divisible by block size $QK4_1.")
+                    if (elements.toLong() % _root_ide_package_.io.github.kotlinmania.llama.core.QK4_1 != 0L) {
+                        println("Warning: Total elements $elements for Q4_1 is not divisible by block size ${_root_ide_package_.io.github.kotlinmania.llama.core.QK4_1}.")
                     }
-                    (elements.toLong() / QK4_1).toULong() * type.byteSize
+                    (elements.toLong() / _root_ide_package_.io.github.kotlinmania.llama.core.QK4_1).toULong() * type.byteSize
                 } else 0uL
             }
             else -> elements * type.byteSize
@@ -225,7 +229,7 @@ object GGMLTestUtils {
     /**
      * Calculate contiguous tensor strides
      */
-    fun calculateStrides(type: GGMLType, ne: LongArray, maxDims: Int = GGML_MAX_DIMS): ULongArray {
+    fun calculateStrides(type: io.github.kotlinmania.llama.core.GGMLType, ne: LongArray, maxDims: Int = _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS): ULongArray {
         val nb = ULongArray(maxDims) { 0uL }
         if (type.byteSize > 0uL) {
             nb[0] = type.byteSize
@@ -243,14 +247,14 @@ object GGMLTestUtils {
      * Create and initialize a tensor with data
      */
     fun createTensorWithData(
-        graphAllocator: GGMLGraphAllocator,
+        graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
         name: String,
-        type: GGMLType,
+        type: io.github.kotlinmania.llama.core.GGMLType,
         ne: LongArray,
         data: FloatArray,
         dataOffset: ULong = 0uL
-    ): GGMLTensor {
-        val tensor = GGMLTensor(type = type, name = name)
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
+        val tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = type, name = name)
         tensor.ne = ne.copyOf()
        tensor.nb = calculateStrides(type, ne)
 
@@ -264,10 +268,10 @@ object GGMLTestUtils {
         // Set data based on tensor type
         for (i in data.indices) {
             when (type) {
-                GGMLType.F32 -> tensor.setFloat(graphAllocator, data[i], i)
-                GGMLType.F16 -> tensor.setHalf(graphAllocator, data[i], i)
-                GGMLType.I32 -> tensor.setInt(graphAllocator, data[i].toInt(), i)
-                GGMLType.I16 -> tensor.setShort(graphAllocator, data[i].toInt().toShort(), i)
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 -> tensor.setFloat(graphAllocator, data[i], i)
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16 -> tensor.setHalf(graphAllocator, data[i], i)
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.I32 -> tensor.setInt(graphAllocator, data[i].toInt(), i)
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.I16 -> tensor.setShort(graphAllocator, data[i].toInt().toShort(), i)
                 else -> tensor.setFloat(graphAllocator, data[i], i)
             }
         }
@@ -284,7 +288,7 @@ object GGMLTestUtils {
         /**
          * Compare two tensors for structural equality (type, dimensions, strides)
          */
-        fun tensorsStructurallyEqual(a: GGMLTensor, b: GGMLTensor): Boolean {
+        fun tensorsStructurallyEqual(a: io.github.kotlinmania.llama.core.GGMLTensor, b: io.github.kotlinmania.llama.core.GGMLTensor): Boolean {
             if (a.type != b.type) return false
             if (!a.ne.contentEquals(b.ne)) return false
             if (!a.nb.contentEquals(b.nb)) return false
@@ -295,9 +299,9 @@ object GGMLTestUtils {
          * Compare tensor data values within tolerance
          */
         fun tensorsDataEqual(
-            a: GGMLTensor, 
-            b: GGMLTensor, 
-            graphAllocator: GGMLGraphAllocator,
+            a: io.github.kotlinmania.llama.core.GGMLTensor,
+            b: io.github.kotlinmania.llama.core.GGMLTensor,
+            graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
             tolerance: Float = 1e-6f
         ): Boolean {
             if (!tensorsStructurallyEqual(a, b)) return false
@@ -318,9 +322,9 @@ object GGMLTestUtils {
          * Find first difference between two tensors
          */
         fun findFirstDifference(
-            a: GGMLTensor, 
-            b: GGMLTensor, 
-            graphAllocator: GGMLGraphAllocator
+            a: io.github.kotlinmania.llama.core.GGMLTensor,
+            b: io.github.kotlinmania.llama.core.GGMLTensor,
+            graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
         ): String? {
             if (a.type != b.type) return "Types differ: ${a.type} vs ${b.type}"
             if (!a.ne.contentEquals(b.ne)) return "Dimensions differ: ${a.ne.contentToString()} vs ${b.ne.contentToString()}"
@@ -339,7 +343,7 @@ object GGMLTestUtils {
             return null // No differences found
         }
     }
-    fun extractFloatData(tensor: GGMLTensor, graphAllocator: GGMLGraphAllocator): FloatArray {
+    fun extractFloatData(tensor: io.github.kotlinmania.llama.core.GGMLTensor, graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator): FloatArray {
         val numElements = tensor.numElements().toInt()
         if (numElements == 0) return floatArrayOf()
         
@@ -347,10 +351,10 @@ object GGMLTestUtils {
         
         for (i in 0 until numElements) {
             result[i] = when (tensor.type) {
-                GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
-                GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
-                GGMLType.I32 -> tensor.getInt(graphAllocator, i).toFloat()
-                GGMLType.I16 -> tensor.getShort(graphAllocator, i).toFloat()
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 -> tensor.getFloat(graphAllocator, i)
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.I32 -> tensor.getInt(graphAllocator, i).toFloat()
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.I16 -> tensor.getShort(graphAllocator, i).toFloat()
                 else -> tensor.getFloat(graphAllocator, i)
             }
         }
@@ -678,7 +682,7 @@ object GGMLTestUtils {
         /**
          * Assert tensor dimensions match
          */
-        fun assertDimensionsMatch(tensor1: GGMLTensor, tensor2: GGMLTensor, message: String = "Tensor dimensions should match") {
+        fun assertDimensionsMatch(tensor1: io.github.kotlinmania.llama.core.GGMLTensor, tensor2: io.github.kotlinmania.llama.core.GGMLTensor, message: String = "Tensor dimensions should match") {
             if (!tensor1.ne.contentEquals(tensor2.ne)) {
                 throw AssertionError("$message - Expected: ${tensor1.ne.contentToString()}, Actual: ${tensor2.ne.contentToString()}")
             }
@@ -706,9 +710,9 @@ object GGMLTestUtils {
     object ReferenceMath {
 
         fun matMulBaselineF32(
-            graphAllocator: GGMLGraphAllocator,
-            a: GGMLTensor,
-            b: GGMLTensor
+            graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
+            a: io.github.kotlinmania.llama.core.GGMLTensor,
+            b: io.github.kotlinmania.llama.core.GGMLTensor
         ): FloatArray {
             val aData = toF32Array(graphAllocator, a)
             val bData = toF32Array(graphAllocator, b)
@@ -736,15 +740,21 @@ object GGMLTestUtils {
             return result
         }
 
-        private fun toF32Array(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor): FloatArray {
-            val source = if (tensor.type == GGMLType.F32) tensor else dequantizeTensor(graphAllocator, tensor)
+        private fun toF32Array(graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator, tensor: io.github.kotlinmania.llama.core.GGMLTensor): FloatArray {
+            val source = if (tensor.type == _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32) tensor else _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(
+                graphAllocator,
+                tensor
+            )
             val rawData = source.data
             val elementCount = source.numElements().toInt()
             return when (rawData) {
                 is FloatArray -> rawData.copyOf()
                 else -> {
                     val values = FloatArray(elementCount)
-                    applyNDIter(source, elementCount) { flatIndex, indices ->
+                    _root_ide_package_.io.github.kotlinmania.llama.core.applyNDIter(
+                        source,
+                        elementCount
+                    ) { flatIndex, indices ->
                         if (flatIndex < elementCount) {
                             values[flatIndex] = source.getFloat(graphAllocator, *indices)
                         }
@@ -756,7 +766,7 @@ object GGMLTestUtils {
     }
 
     object TensorIO {
-        fun materializeTensorData(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor) {
+        fun materializeTensorData(graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator, tensor: io.github.kotlinmania.llama.core.GGMLTensor) {
             when (val raw = tensor.data) {
                 is ByteArray -> copyByteArray(graphAllocator, tensor, raw)
                 else -> {
@@ -765,7 +775,7 @@ object GGMLTestUtils {
             }
         }
 
-        private fun copyByteArray(graphAllocator: GGMLGraphAllocator, tensor: GGMLTensor, raw: ByteArray) {
+        private fun copyByteArray(graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator, tensor: io.github.kotlinmania.llama.core.GGMLTensor, raw: ByteArray) {
             if (raw.isEmpty()) return
 
             val bufferId = tensor.bufferId.takeIf { it >= 0 } ?: 0
@@ -799,8 +809,8 @@ object GGMLTestUtils {
         }
 
         private fun ensureBuffer(
-            graphAllocator: GGMLGraphAllocator,
-            tensor: GGMLTensor,
+            graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator,
+            tensor: io.github.kotlinmania.llama.core.GGMLTensor,
             bufferId: Int,
             requiredSize: Int
         ): ByteArray {
@@ -821,15 +831,15 @@ object GGMLTestUtils {
 }
 
 // Convenience overloads matching legacy helpers used across the test suite
-fun calculateTensorByteSize(tensor: GGMLTensor): ULong =
+fun calculateTensorByteSize(tensor: io.github.kotlinmania.llama.core.GGMLTensor): ULong =
     GGMLTestUtils.calculateTensorByteSize(tensor.type, tensor.ne)
 
-fun calculateTensorSize(tensor: GGMLTensor): ULong = calculateTensorByteSize(tensor)
+fun calculateTensorSize(tensor: io.github.kotlinmania.llama.core.GGMLTensor): ULong = calculateTensorByteSize(tensor)
 
-fun calculateTensorByteSize(type: GGMLType, ne: LongArray): ULong =
+fun calculateTensorByteSize(type: io.github.kotlinmania.llama.core.GGMLType, ne: LongArray): ULong =
     GGMLTestUtils.calculateTensorByteSize(type, ne)
 
-fun calculateStrides(type: GGMLType, ne: LongArray): ULongArray =
+fun calculateStrides(type: io.github.kotlinmania.llama.core.GGMLType, ne: LongArray): ULongArray =
     GGMLTestUtils.calculateStrides(type, ne)
 
 inline fun <T> assertDoesNotThrow(message: String, block: () -> T): T {
@@ -840,12 +850,12 @@ inline fun <T> assertDoesNotThrow(message: String, block: () -> T): T {
     }
 }
 
-fun GGMLGraphAllocator.allocateLike(
-    reference: GGMLTensor,
+fun io.github.kotlinmania.llama.core.GGMLGraphAllocator.allocateLike(
+    reference: io.github.kotlinmania.llama.core.GGMLTensor,
     nameSuffix: String = "dst",
-    type: GGMLType = reference.type,
+    type: io.github.kotlinmania.llama.core.GGMLType = reference.type,
     shape: LongArray = reference.ne.copyOf()
-): GGMLTensor {
+): io.github.kotlinmania.llama.core.GGMLTensor {
     val baseName = reference.name.ifBlank { "tensor" }
     val tensorName = "${baseName}_$nameSuffix"
     return GGMLTestUtils.allocateDestinationTensor(
@@ -859,17 +869,17 @@ fun GGMLGraphAllocator.allocateLike(
 object GGMLTestAllocatorState {
     private data class Arena(var offset: ULong, var capacity: ULong)
 
-    private val arenas = mutableMapOf<GGMLGraphAllocator, Arena>()
+    private val arenas = mutableMapOf<io.github.kotlinmania.llama.core.GGMLGraphAllocator, Arena>()
 
-    fun bind(allocator: GGMLGraphAllocator, capacity: ULong) {
+    fun bind(allocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator, capacity: ULong) {
         arenas[allocator] = Arena(0u, capacity)
     }
 
-    fun reset(allocator: GGMLGraphAllocator) {
+    fun reset(allocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator) {
         ensureArena(allocator).offset = 0u
     }
 
-    fun registerManualAllocation(allocator: GGMLGraphAllocator, endOffset: ULong) {
+    fun registerManualAllocation(allocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator, endOffset: ULong) {
         val arena = ensureArena(allocator)
         require(endOffset <= arena.capacity) {
             "Manual allocation exceeded arena capacity: requested end $endOffset > capacity ${arena.capacity}"
@@ -879,7 +889,7 @@ object GGMLTestAllocatorState {
         }
     }
 
-    fun bumpAllocate(allocator: GGMLGraphAllocator, size: ULong, alignment: Int): ULong {
+    fun bumpAllocate(allocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator, size: ULong, alignment: Int): ULong {
         require(size >= 0u) { "size must be non-negative" }
         val arena = ensureArena(allocator)
         val align = alignment.coerceAtLeast(1).toULong()
@@ -896,7 +906,7 @@ object GGMLTestAllocatorState {
         return alignedOffset
     }
 
-    private fun ensureArena(allocator: GGMLGraphAllocator): Arena {
+    private fun ensureArena(allocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator): Arena {
         val existing = arenas[allocator]
         if (existing != null) return existing
         val inferredCapacity = allocator.buffers.firstOrNull()?.let {
@@ -911,16 +921,16 @@ object GGMLTestAllocatorState {
     }
 }
 
-fun resetAllocatorTracking(allocator: GGMLGraphAllocator) {
+fun resetAllocatorTracking(allocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator) {
     GGMLTestAllocatorState.reset(allocator)
 }
 
-fun GGMLGraphAllocator.allocateTensorData(byteSize: Int, alignment: Int = 16): ULong {
+fun io.github.kotlinmania.llama.core.GGMLGraphAllocator.allocateTensorData(byteSize: Int, alignment: Int = 16): ULong {
     require(byteSize >= 0) { "byteSize must be non-negative" }
     val bufferId = if (buffers.isEmpty()) {
         val newBuffer = ByteArray(maxOf(byteSize, 1))
         buffers.add(newBuffer)
-        tensorAllocators.add(GGMLDynTensorAllocator(bufferSize = newBuffer.size.toULong()))
+        tensorAllocators.add(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLDynTensorAllocator(bufferSize = newBuffer.size.toULong()))
         0
     } else {
         0

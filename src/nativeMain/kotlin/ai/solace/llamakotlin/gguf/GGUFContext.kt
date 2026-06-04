@@ -1,5 +1,5 @@
 // port-lint: source ggml/src/gguf.c
-package ai.solace.llamakotlin.gguf
+package io.github.kotlinmania.llama..gguf
 
 /**
  * GGUF context holding parsed model data

@@ -1,5 +1,5 @@
 @file:Suppress("unused")
-package ai.solace.klangnative
+package io.github.kotlinmania.llama.klangnative
 
 /**
  * KLang: Kotlin Language Numeric Core
@@ -28,11 +28,11 @@ package ai.solace.klangnative
  * Import types directly from their respective packages:
  *
  * ```kotlin
- * import ai.solace.klangnative.fp.CFloat32
- * import ai.solace.klangnative.fp.CDouble
- * import ai.solace.klangnative.int.C_UInt128
- * import ai.solace.klangnative.mem.GlobalHeap
- * import ai.solace.klangnative.bitwise.BitShiftEngine
+ * import io.github.kotlinmania.llama.klang.fp.CFloat32
+ * import io.github.kotlinmania.llama.klang.fp.CDouble
+ * import io.github.kotlinmania.llama.klang.int.C_UInt128
+ * import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+ * import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
  *
  * // Create C-compatible floats
  * val x = CFloat32.fromFloat(3.14f)
@@ -52,10 +52,10 @@ package ai.solace.klangnative
  *
  * ## Package Structure
  *
- * - [ai.solace.klang.bitwise]: Bit shift engine and bitwise operations
- * - [ai.solace.klang.fp]: Floating point types (CDouble, CFloat16, CFloat128, etc.)
- * - [ai.solace.klang.int]: Extended precision integers (C_UInt128, C_Int128)
- * - [ai.solace.klang.mem]: Memory management, heap, malloc/free, pointers
- * - [ai.solace.klang.common]: Common utilities and logging
- * - [ai.solace.klang.internal]: Internal implementation (unstable, do not use directly)
+ * - [io.github.kotlinmania.llama.klang.bitwise]: Bit shift engine and bitwise operations
+ * - [io.github.kotlinmania.llama.klang.fp]: Floating point types (CDouble, CFloat16, CFloat128, etc.)
+ * - [io.github.kotlinmania.llama.klang.int]: Extended precision integers (C_UInt128, C_Int128)
+ * - [io.github.kotlinmania.llama.klang.mem]: Memory management, heap, malloc/free, pointers
+ * - [io.github.kotlinmania.llama.klang.common]: Common utilities and logging
+ * - [io.github.kotlinmania.llama.klang.internal]: Internal implementation (unstable, do not use directly)
  */

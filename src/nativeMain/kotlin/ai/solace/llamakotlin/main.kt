@@ -1,7 +1,7 @@
-package ai.solace.llamakotlin
+package io.github.kotlinmania.llama.
 
-import ai.solace.llamakotlin.core.*
-import ai.solace.llamakotlin.examples.runComprehensiveDemo
+import io.github.kotlinmania.llama.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.examples.runComprehensiveDemo
 
 fun main() {
     kotlin.io.println("🦙 LLaMA Kotlin Native - Advanced Capabilities Demonstration")
@@ -243,7 +243,7 @@ fun demonstrateLlamaModelArchitecture() {
         
         // Test 1: Model Configuration and Creation
         kotlin.io.println("\n1. Model Configuration")
-        val config = ai.solace.llamakotlin.model.LlamaConfig(
+        val config = io.github.kotlinmania.llama.llamakotlin.model.LlamaConfig(
             vocabSize = 100,
             hiddenSize = 64,
             intermediateSize = 128,
@@ -252,7 +252,7 @@ fun demonstrateLlamaModelArchitecture() {
             numKeyValueHeads = 4
         )
         
-        val model = ai.solace.llamakotlin.model.LlamaModel(config)
+        val model = io.github.kotlinmania.llama.llamakotlin.model.LlamaModel(config)
         kotlin.io.println("   ✓ LLaMA model created with ${config.numHiddenLayers} layers")
         kotlin.io.println("   ✓ Hidden size: ${config.hiddenSize}, Head dimension: ${config.headDim}")
         
@@ -412,7 +412,7 @@ fun demonstrateLlamaModelArchitecture() {
         
         // Test 7: KV Cache for Efficient Inference
         kotlin.io.println("\n7. KV Cache for Efficient Inference")
-        val kvCache = ai.solace.llamakotlin.model.KVCache(
+        val kvCache = io.github.kotlinmania.llama.llamakotlin.model.KVCache(
             maxSequenceLength = 10,
             numHeads = 4,
             headDim = 8

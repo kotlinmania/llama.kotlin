@@ -199,7 +199,7 @@ The architecture is designed to support future improvements:
 
 The model implementation depends on:
 
-- Core GGML tensor operations (`ai.solace.llamakotlin.core`)
+- Core GGML tensor operations (`io.github.kotlinmania.llama.llamakotlin.core`)
 - Kotlin coroutines for streaming
 - Kotlin/Native standard library
 

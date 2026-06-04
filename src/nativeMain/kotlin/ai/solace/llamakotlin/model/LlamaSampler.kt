@@ -1,7 +1,7 @@
 // port-lint: source llama.cpp/src/llama-sampler.h llama.cpp/src/llama-sampler.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 import kotlin.math.*
 import kotlin.random.Random
 import kotlin.time.TimeSource

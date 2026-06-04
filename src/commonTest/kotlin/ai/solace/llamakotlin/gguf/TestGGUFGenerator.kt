@@ -1,9 +1,9 @@
-package ai.solace.llamakotlin.gguf
+package io.github.kotlinmania.llama..gguf
 
-import ai.solace.llamakotlin.core.*
-import ai.solace.llamakotlin.core.ByteArrayExtensions.setFloatLe
-import ai.solace.llamakotlin.core.ByteArrayExtensions.setIntLe
-import ai.solace.llamakotlin.core.ByteArrayExtensions.setLongLe
+import io.github.kotlinmania.llama.llamakotlin.core.*
+import io.github.kotlinmania.llama.core.ByteArrayExtensions.setFloatLe
+import io.github.kotlinmania.llama.core.ByteArrayExtensions.setIntLe
+import io.github.kotlinmania.llama.core.ByteArrayExtensions.setLongLe
 
 /**
  * Simple GGUF file generator for testing purposes

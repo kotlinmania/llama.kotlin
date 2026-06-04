@@ -1,7 +1,7 @@
-package ai.solace.llamakotlin.examples
+package io.github.kotlinmania.llama..examples
 
-import ai.solace.llamakotlin.core.*
-import ai.solace.llamakotlin.gguf.ModelLoader
+import io.github.kotlinmania.llama.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.gguf.ModelLoader
 import kotlin.math.abs
 
 /**

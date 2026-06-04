@@ -1,7 +1,7 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 /**
- * JVM actual for [ggml_aligned_malloc].
+ * JVM actual for [io.github.kotlinmania.llama.core.ggml_aligned_malloc].
  *
  * Falls back to [ByteArray] — JVM does not expose aligned memory allocation.
  * The GC manages the lifecycle.

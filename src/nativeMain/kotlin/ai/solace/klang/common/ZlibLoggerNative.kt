@@ -1,7 +1,7 @@
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
 
-package ai.solace.klangnative.common
+package io.github.kotlinmania.llama.klang.common
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.alloc

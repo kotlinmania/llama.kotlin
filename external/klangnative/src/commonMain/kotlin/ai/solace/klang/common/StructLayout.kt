@@ -1,6 +1,6 @@
-package ai.solace.klangnative.common
+package io.github.kotlinmania.llama.klang.common
 
-import ai.solace.klangnative.mem.GlobalHeap
+import io.github.kotlinmania.llama.klang.mem.GlobalHeap
 
 /**
  * StructLayout: C-style struct/union layout computation with natural alignment.

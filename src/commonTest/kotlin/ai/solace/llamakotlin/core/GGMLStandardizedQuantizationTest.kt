@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.math.*
 import kotlin.random.Random
@@ -18,7 +18,7 @@ import kotlin.time.TimeSource
  */
 class GGMLStandardizedQuantizationTest {
 
-    private lateinit var graphAllocator: GGMLGraphAllocator
+    private lateinit var graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
     private lateinit var testBuffer: ByteArray
     private val bufferSize = 4 * 1024 * 1024 // 4MB for larger test datasets
 
@@ -50,10 +50,10 @@ class GGMLStandardizedQuantizationTest {
 
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
+        graphAllocator = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLGraphAllocator()
         testBuffer = ByteArray(bufferSize)
         if (graphAllocator.buffers.isEmpty()) graphAllocator.buffers.add(null)
-        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator())
+        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLDynTensorAllocator())
 
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
@@ -144,18 +144,21 @@ class GGMLStandardizedQuantizationTest {
     /**
      * Create and populate F32 tensor with test data
      */
-    private fun createF32TestTensor(name: String, data: FloatArray): GGMLTensor {
+    private fun createF32TestTensor(name: String, data: FloatArray): io.github.kotlinmania.llama.core.GGMLTensor {
         val dims = longArrayOf(data.size.toLong())
-        val tensor = GGMLTensor(type = GGMLType.F32, name = name)
-        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+        val tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(
+            type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32,
+            name = name
+        )
+        tensor.ne = LongArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 1L }
         tensor.ne[0] = dims[0]
-        tensor.nb = ULongArray(GGML_MAX_DIMS) { 0uL }
-        tensor.nb[0] = GGMLType.F32.byteSize
-        for (d in 1 until GGML_MAX_DIMS) {
+        tensor.nb = ULongArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 0uL }
+        tensor.nb[0] = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32.byteSize
+        for (d in 1 until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) {
             tensor.nb[d] = tensor.nb[d-1] * tensor.ne.getOrElse(d-1) { 1L }.toULong()
         }
         
-        val byteSize = data.size * GGMLType.F32.byteSize.toInt()
+        val byteSize = data.size * _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32.byteSize.toInt()
         if (byteSize > 0) {
             val offset = graphAllocator.allocateTensorData(byteSize)
             tensor.bufferId = 0
@@ -173,17 +176,17 @@ class GGMLStandardizedQuantizationTest {
     /**
      * Extract float data from any tensor type
      */
-    private fun extractFloatData(tensor: GGMLTensor, graphAllocator: GGMLGraphAllocator): FloatArray {
+    private fun extractFloatData(tensor: io.github.kotlinmania.llama.core.GGMLTensor, graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator): FloatArray {
         val size = tensor.numElements().toInt()
         val result = FloatArray(size)
         
         for (i in 0 until size) {
             result[i] = when (tensor.type) {
-                GGMLType.F32 -> {
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32 -> {
                     val raw = tensor.data
                     if (raw is FloatArray && i < raw.size) raw[i] else tensor.getFloat(graphAllocator, i)
                 }
-                GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16 -> tensor.getHalf(graphAllocator, i)
                 else -> tensor.getFloat(graphAllocator, i) // Try generic access
             }
         }
@@ -199,18 +202,23 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("q8_0_synthetic", testData)
         
         val quantizedTensor = try {
-            quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+            _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+                graphAllocator,
+                originalTensor,
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0
+            )
         } catch (t: Throwable) {
             println("Q8_0 quantization failed: size=${testData.size} message=${t.message}")
             throw t
         }
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-        assertEquals(GGMLType.Q8_0, quantizedTensor.type, "Quantization should produce Q8_0 tensor")
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0, quantizedTensor.type, "Quantization should produce Q8_0 tensor")
         println("Q8_0 quantized bufferId=${quantizedTensor.bufferId} offset=${quantizedTensor.dataOffset}")
 
         // Dequantize back to F32
-        val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
-        assertEquals(GGMLType.F32, dequantizedTensor.type, "Dequantization should produce F32 tensor")
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, quantizedTensor)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dequantizedTensor.type, "Dequantization should produce F32 tensor")
         
         // Extract and compare data
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
@@ -230,9 +238,14 @@ class GGMLStandardizedQuantizationTest {
         val testData = generateRandomData(256, seed = 54321, range = 5.0f)
         val originalTensor = createF32TestTensor("q8_0_random", testData)
         
-        val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+        val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            originalTensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0
+        )
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-        val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
         
@@ -247,9 +260,14 @@ class GGMLStandardizedQuantizationTest {
         val edgeCaseData = generateEdgeCaseData()
         val originalTensor = createF32TestTensor("q8_0_edge", edgeCaseData)
         
-        val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q8_0)
+        val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            originalTensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0
+        )
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-        val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         
         // Edge case validation - may have larger errors for extreme values
@@ -273,9 +291,14 @@ class GGMLStandardizedQuantizationTest {
         val testData = generateSyntheticData(512)
         val originalTensor = createF32TestTensor("q4_0_synthetic", testData)
         
-        val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_0)
+        val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            originalTensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0
+        )
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-        val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
         
@@ -292,9 +315,14 @@ class GGMLStandardizedQuantizationTest {
         val testData = generateSyntheticData(96, offset = 1.5f) // 3 blocks
         val originalTensor = createF32TestTensor("q4_0_multiblock", testData)
         
-        val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_0)
+        val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            originalTensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0
+        )
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-        val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
         
@@ -311,9 +339,14 @@ class GGMLStandardizedQuantizationTest {
         val testData = generateSyntheticData(384) // Multiple Q4_1 blocks
         val originalTensor = createF32TestTensor("q4_1_synthetic", testData)
         
-        val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_1)
+        val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            originalTensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1
+        )
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-        val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
         
@@ -329,9 +362,14 @@ class GGMLStandardizedQuantizationTest {
         val testData = generateRandomData(64, seed = 98765, range = 1.0f) // Small range
         val originalTensor = createF32TestTensor("q4_1_small", testData)
         
-        val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, GGMLType.Q4_1)
+        val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            originalTensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1
+        )
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-        val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, quantizedTensor)
         val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
         val metrics = calculateQuantizationMetrics(testData, dequantizedData)
         
@@ -349,14 +387,21 @@ class GGMLStandardizedQuantizationTest {
         val originalTensor = createF32TestTensor("comparison_test", testData)
         
         // Test Q8_0, Q4_0, Q4_1 on same data
-        val quantTypes = arrayOf(GGMLType.Q8_0, GGMLType.Q4_0, GGMLType.Q4_1)
-        val results = mutableMapOf<GGMLType, QuantizationMetrics>()
+        val quantTypes = arrayOf(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1)
+        val results = mutableMapOf<io.github.kotlinmania.llama.core.GGMLType, QuantizationMetrics>()
         
         for (quantType in quantTypes) {
             try {
-                val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, quantType)
+                val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+                    graphAllocator,
+                    originalTensor,
+                    quantType
+                )
                 GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-                val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+                val dequantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(
+                    graphAllocator,
+                    quantizedTensor
+                )
                 val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)
                 val metrics = calculateQuantizationMetrics(testData, dequantizedData)
                 
@@ -368,14 +413,16 @@ class GGMLStandardizedQuantizationTest {
         }
         
         // Validate ordering: Q8_0 should be most accurate, then Q4_1, then Q4_0
-        if (results.containsKey(GGMLType.Q8_0) && results.containsKey(GGMLType.Q4_0)) {
-            assertTrue(results[GGMLType.Q8_0]!!.mse <= results[GGMLType.Q4_0]!!.mse, 
+        if (results.containsKey(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0) && results.containsKey(
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0)) {
+            assertTrue(results[_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0]!!.mse <= results[_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0]!!.mse,
                       "Q8_0 should be more accurate than Q4_0")
         }
         
-        if (results.containsKey(GGMLType.Q4_1) && results.containsKey(GGMLType.Q4_0)) {
+        if (results.containsKey(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1) && results.containsKey(
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0)) {
             // Q4_1 often better than Q4_0 due to min/max quantization
-            println("Q4_1 vs Q4_0 accuracy comparison: Q4_1 MSE=${results[GGMLType.Q4_1]!!.mse}, Q4_0 MSE=${results[GGMLType.Q4_0]!!.mse}")
+            println("Q4_1 vs Q4_0 accuracy comparison: Q4_1 MSE=${results[_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1]!!.mse}, Q4_0 MSE=${results[_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0]!!.mse}")
         }
     }
 
@@ -395,12 +442,16 @@ class GGMLStandardizedQuantizationTest {
         val vec1Tensor = createF32TestTensor("dot_vec1", vec1Data)
         val vec2Tensor = createF32TestTensor("dot_vec2", vec2Data)
         
-        val vec1Q8_0 = quantizeTensor(graphAllocator, vec1Tensor, GGMLType.Q8_0)
+        val vec1Q8_0 = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            vec1Tensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0
+        )
         GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, vec1Q8_0)
         
         try {
             // Compute quantized dot product (this would use internal dot product functions)
-            val quantizedDotProduct = computeDotProductQ80F32(
+            val quantizedDotProduct = _root_ide_package_.io.github.kotlinmania.llama.core.computeDotProductQ80F32(
                 graphAllocator, vec1Q8_0, vec2Tensor, 0, 0, size
             )
             
@@ -426,12 +477,19 @@ class GGMLStandardizedQuantizationTest {
         val testData = generateSyntheticData(largeSize, offset = 2.0f)
         val originalTensor = createF32TestTensor("stress_large", testData)
         
-        for (quantType in arrayOf(GGMLType.Q8_0, GGMLType.Q4_0, GGMLType.Q4_1)) {
+        for (quantType in arrayOf(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q8_0, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_0, _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.Q4_1)) {
             try {
                 val mark = TimeSource.Monotonic.markNow()
-                val quantizedTensor = quantizeTensor(graphAllocator, originalTensor, quantType)
+                val quantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+                    graphAllocator,
+                    originalTensor,
+                    quantType
+                )
                 GGMLTestUtils.TensorIO.materializeTensorData(graphAllocator, quantizedTensor)
-                val dequantizedTensor = dequantizeTensor(graphAllocator, quantizedTensor)
+                val dequantizedTensor = _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(
+                    graphAllocator,
+                    quantizedTensor
+                )
                 val elapsed = mark.elapsedNow().inWholeMilliseconds
 
                 val dequantizedData = extractFloatData(dequantizedTensor, graphAllocator)

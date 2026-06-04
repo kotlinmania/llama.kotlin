@@ -5,9 +5,9 @@
  * These functions provide graph reservation, quantization state management,
  * and tensor-level quantization decisions used by the model quantizer.
  */
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 
 // ---------------------------------------------------------------------------
 // Graph reservation

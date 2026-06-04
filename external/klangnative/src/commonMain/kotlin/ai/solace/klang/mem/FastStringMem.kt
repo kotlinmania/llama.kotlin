@@ -1,7 +1,7 @@
-package ai.solace.klangnative.mem
+package io.github.kotlinmania.llama.klang.mem
 
-import ai.solace.klangnative.bitwise.BitShiftEngine
-import ai.solace.klangnative.bitwise.BitShiftMode
+import io.github.kotlinmania.llama.klang.bitwise.BitShiftEngine
+import io.github.kotlinmania.llama.klang.bitwise.BitShiftMode
 
 /**
  * FastStringMem: High-performance word-at-a-time string operations.

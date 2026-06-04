@@ -1,4 +1,4 @@
-package ai.solace.bench
+package io.github.kotlinmania.llama.bench
 
 // Optimized 3-pass (in-place) left shift on 16-bit limbs in IntArray
 // Assumptions: 0 < s < 16, a.size > 0

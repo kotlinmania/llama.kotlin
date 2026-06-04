@@ -1,6 +1,6 @@
-package ai.solace.llamakotlin.lnn
+package io.github.kotlinmania.llama..lnn
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel

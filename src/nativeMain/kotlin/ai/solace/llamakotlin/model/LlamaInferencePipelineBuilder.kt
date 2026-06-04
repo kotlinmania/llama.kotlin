@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
 /**
  * Minimal pipeline builder used by the InferenceExample programs.

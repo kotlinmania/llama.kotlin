@@ -1,9 +1,9 @@
-package ai.solace.zlib.cli
+package io.github.kotlinmania.llama.zlib.cli
 
-import ai.solace.zlib.common.Z_STREAM_END
-import ai.solace.zlib.common.ZlibLogger
-import ai.solace.zlib.deflate.DeflateStream
-import ai.solace.zlib.inflate.InflateStream
+import io.github.kotlinmania.llama.zlib.common.Z_STREAM_END
+import io.github.kotlinmania.llama.zlib.common.ZlibLogger
+import io.github.kotlinmania.llama.zlib.deflate.DeflateStream
+import io.github.kotlinmania.llama.zlib.inflate.InflateStream
 import kotlinx.io.buffered
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path

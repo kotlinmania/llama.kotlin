@@ -1,4 +1,4 @@
-package ai.solace.zlib.common
+package io.github.kotlinmania.llama.zlib.common
 
 import kotlin.js.Date
 

@@ -1,7 +1,7 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 /**
- * JS actual for [ggml_aligned_malloc].
+ * JS actual for [io.github.kotlinmania.llama.core.ggml_aligned_malloc].
  *
  * Falls back to [ByteArray] — JavaScript does not expose aligned memory allocation.
  */
@@ -11,7 +11,7 @@ actual fun ggml_aligned_malloc(size: Long): Any? {
 }
 
 /**
- * JS actual for [ggml_aligned_free].
+ * JS actual for [io.github.kotlinmania.llama.core.ggml_aligned_free].
  *
  * No-op: JavaScript garbage collector handles deallocation.
  */
@@ -20,10 +20,10 @@ actual fun ggml_aligned_free(ptr: Any?, size: Long) {
 }
 
 /**
- * JS actual for [createDefaultCpuBufferType].
+ * JS actual for [io.github.kotlinmania.llama.core.createDefaultCpuBufferType].
  *
- * Returns the ByteArray-backed [GGMLCpuBufferType].
+ * Returns the ByteArray-backed [io.github.kotlinmania.llama.core.GGMLCpuBufferType].
  */
-actual fun createDefaultCpuBufferType(): GGMLBackendBufferType {
-    return GGMLCpuBufferType()
+actual fun createDefaultCpuBufferType(): io.github.kotlinmania.llama.core.GGMLBackendBufferType {
+    return _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBufferType()
 }

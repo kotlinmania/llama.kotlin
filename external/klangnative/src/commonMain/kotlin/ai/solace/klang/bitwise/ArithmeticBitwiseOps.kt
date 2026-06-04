@@ -1,7 +1,7 @@
 @file:Suppress("unused", "UNUSED_PARAMETER")
-package ai.solace.klangnative.bitwise
+package io.github.kotlinmania.llama.klang.bitwise
 
-import ai.solace.klangnative.common.ZlibLogger
+import io.github.kotlinmania.llama.klang.common.ZlibLogger
 
 /**
  * ArithmeticBitwiseOps: Pure arithmetic bitwise operations for cross-platform determinism.

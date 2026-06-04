@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.math.*
 import kotlin.test.*
@@ -10,17 +10,17 @@ import kotlin.Short.Companion.SIZE_BYTES as SHORT_SIZE_BYTES
  */
 class GGMLExtendedOpsTest {
 
-    private lateinit var graphAllocator: GGMLGraphAllocator
+    private lateinit var graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
     private lateinit var testBuffer: ByteArray
     private val bufferSize = 2 * 1024 * 1024 // 2MB for more complex tests
 
     @BeforeTest
     fun setup() {
-        graphAllocator = GGMLGraphAllocator()
+        graphAllocator = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLGraphAllocator()
         testBuffer = ByteArray(bufferSize)
         // Ensure buffer and allocator lists are not empty before assignment
         if (graphAllocator.buffers.isEmpty()) graphAllocator.buffers.add(null)
-        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator())
+        if (graphAllocator.tensorAllocators.isEmpty()) graphAllocator.tensorAllocators.add(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLDynTensorAllocator())
 
         graphAllocator.buffers[0] = testBuffer
         graphAllocator.tensorAllocators[0].reset(bufferSize.toULong())
@@ -34,13 +34,13 @@ class GGMLExtendedOpsTest {
     // Use shared utility for tensor creation
     private fun createAndInitTensor(
         name: String,
-        type: GGMLType,
+        type: io.github.kotlinmania.llama.core.GGMLType,
         ne: LongArray
-    ): GGMLTensor {
-        val tensor = GGMLTensor(type = type, name = name)
-        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
+        val tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = type, name = name)
+        tensor.ne = LongArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 1L }
         ne.forEachIndexed { index, dim ->
-            if (index < GGML_MAX_DIMS) tensor.ne[index] = dim
+            if (index < _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) tensor.ne[index] = dim
         }
         tensor.nb = GGMLTestUtils.calculateStrides(type, tensor.ne)
 
@@ -56,13 +56,13 @@ class GGMLExtendedOpsTest {
 
     private fun createDestinationTensor(
         name: String,
-        type: GGMLType,
+        type: io.github.kotlinmania.llama.core.GGMLType,
         ne: LongArray
-    ): GGMLTensor {
-        val tensor = GGMLTensor(type = type, name = name)
-        tensor.ne = LongArray(GGML_MAX_DIMS) { 1L }
+    ): io.github.kotlinmania.llama.core.GGMLTensor {
+        val tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = type, name = name)
+        tensor.ne = LongArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 1L }
         ne.forEachIndexed { index, dim ->
-            if (index < GGML_MAX_DIMS) tensor.ne[index] = dim
+            if (index < _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) tensor.ne[index] = dim
         }
         tensor.nb = GGMLTestUtils.calculateStrides(type, tensor.ne)
 
@@ -76,7 +76,8 @@ class GGMLExtendedOpsTest {
         return tensor
     }
 
-    private val dummyContext = GGMLContext() // Reusable dummy context
+    private val dummyContext =
+        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLContext() // Reusable dummy context
 
     // --- SUB Operation Tests ---
     @Test
@@ -86,16 +87,16 @@ class GGMLExtendedOpsTest {
         val src1Data = floatArrayOf(1.0f, 5.0f, 10.0f, 15.0f)
         val expectedData = floatArrayOf(9.0f, 15.0f, 20.0f, 25.0f)
 
-        val src0 = createAndInitTensor("sub_f32_src0", GGMLType.F32, srcNe)
+        val src0 = createAndInitTensor("sub_f32_src0", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in src0Data.indices) src0.setFloat(graphAllocator, src0Data[i], i)
 
-        val src1 = createAndInitTensor("sub_f32_src1", GGMLType.F32, srcNe)
+        val src1 = createAndInitTensor("sub_f32_src1", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in src1Data.indices) src1.setFloat(graphAllocator, src1Data[i], i)
 
-        val dst = createDestinationTensor("sub_f32_dst", GGMLType.F32, srcNe)
-        computeSub(graphAllocator, src0, src1, dst)
+        val dst = createDestinationTensor("sub_f32_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeSub(graphAllocator, src0, src1, dst)
 
-        assertEquals(GGMLType.F32, dst.type)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dst.type)
         assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for SUB F32")
 
         val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
@@ -113,16 +114,16 @@ class GGMLExtendedOpsTest {
         val src1DataF32 = floatArrayOf(2.5f, 3.0f, -1.0f)
         val expectedDataF32 = floatArrayOf(3.0f, 7.0f, -1.5f)
 
-        val src0 = createAndInitTensor("sub_f16_src0", GGMLType.F16, srcNe)
+        val src0 = createAndInitTensor("sub_f16_src0", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, srcNe)
         for (i in src0DataF32.indices) src0.setHalf(graphAllocator, src0DataF32[i], i)
 
-        val src1 = createAndInitTensor("sub_f16_src1", GGMLType.F16, srcNe)
+        val src1 = createAndInitTensor("sub_f16_src1", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, srcNe)
         for (i in src1DataF32.indices) src1.setHalf(graphAllocator, src1DataF32[i], i)
 
-        val dst = createDestinationTensor("sub_f16_dst", GGMLType.F16, srcNe)
-        computeSub(graphAllocator, src0, src1, dst)
+        val dst = createDestinationTensor("sub_f16_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, srcNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeSub(graphAllocator, src0, src1, dst)
 
-        assertEquals(GGMLType.F16, dst.type)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, dst.type)
         assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for SUB F16")
 
         val resultDataF32 = GGMLTestUtils.extractFloatData(dst, graphAllocator)
@@ -130,7 +131,9 @@ class GGMLExtendedOpsTest {
         
         for (i in expectedDataF32.indices) {
             // Account for F16 precision loss
-            val expected = halfToFloat(floatToHalf(expectedDataF32[i]))
+            val expected = _root_ide_package_.io.github.kotlinmania.llama.core.halfToFloat(
+                _root_ide_package_.io.github.kotlinmania.llama.core.floatToHalf(expectedDataF32[i])
+            )
             assertEquals(expected, resultDataF32[i], 0.01f, "SUB F16 output mismatch at index $i")
         }
     }
@@ -142,13 +145,13 @@ class GGMLExtendedOpsTest {
         val srcData = floatArrayOf(-5.0f, -1.0f, 0.0f, 1.0f, 5.0f)
         val expectedData = floatArrayOf(5.0f, 1.0f, 0.0f, -1.0f, -5.0f)
 
-        val srcTensor = createAndInitTensor("neg_f32_src", GGMLType.F32, srcNe)
+        val srcTensor = createAndInitTensor("neg_f32_src", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
-        val dst = createDestinationTensor("neg_f32_dst", GGMLType.F32, srcNe)
-        computeNeg(graphAllocator, srcTensor, dst)
+        val dst = createDestinationTensor("neg_f32_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeNeg(graphAllocator, srcTensor, dst)
 
-        assertEquals(GGMLType.F32, dst.type)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dst.type)
         assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for NEG F32")
 
         val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
@@ -165,20 +168,22 @@ class GGMLExtendedOpsTest {
         val srcDataF32 = floatArrayOf(-2.5f, 0.0f, 1.5f, -10.0f)
         val expectedDataF32 = floatArrayOf(2.5f, 0.0f, -1.5f, 10.0f)
 
-        val srcTensor = createAndInitTensor("neg_f16_src", GGMLType.F16, srcNe)
+        val srcTensor = createAndInitTensor("neg_f16_src", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, srcNe)
         for (i in srcDataF32.indices) srcTensor.setHalf(graphAllocator, srcDataF32[i], i)
 
-        val dst = createDestinationTensor("neg_f16_dst", GGMLType.F16, srcNe)
-        computeNeg(graphAllocator, srcTensor, dst)
+        val dst = createDestinationTensor("neg_f16_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, srcNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeNeg(graphAllocator, srcTensor, dst)
 
-        assertEquals(GGMLType.F16, dst.type)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F16, dst.type)
         assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for NEG F16")
 
         val resultDataF32 = GGMLTestUtils.extractFloatData(dst, graphAllocator)
         assertEquals(expectedDataF32.size, resultDataF32.size, "NEG F16 result size mismatch")
         
         for (i in expectedDataF32.indices) {
-            val expected = halfToFloat(floatToHalf(expectedDataF32[i]))
+            val expected = _root_ide_package_.io.github.kotlinmania.llama.core.halfToFloat(
+                _root_ide_package_.io.github.kotlinmania.llama.core.floatToHalf(expectedDataF32[i])
+            )
             assertEquals(expected, resultDataF32[i], 0.01f, "NEG F16 output mismatch at index $i")
         }
     }
@@ -191,16 +196,16 @@ class GGMLExtendedOpsTest {
         val src1Data = floatArrayOf(2.0f, 4.0f, -3.0f, 10.0f)
         val expectedData = floatArrayOf(5.0f, 5.0f, 5.0f, 10.0f)
 
-        val src0 = createAndInitTensor("div_f32_src0", GGMLType.F32, srcNe)
+        val src0 = createAndInitTensor("div_f32_src0", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in src0Data.indices) src0.setFloat(graphAllocator, src0Data[i], i)
 
-        val src1 = createAndInitTensor("div_f32_src1", GGMLType.F32, srcNe)
+        val src1 = createAndInitTensor("div_f32_src1", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in src1Data.indices) src1.setFloat(graphAllocator, src1Data[i], i)
 
-        val dst = createDestinationTensor("div_f32_dst", GGMLType.F32, srcNe)
-        computeDiv(graphAllocator, src0, src1, dst)
+        val dst = createDestinationTensor("div_f32_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeDiv(graphAllocator, src0, src1, dst)
 
-        assertEquals(GGMLType.F32, dst.type)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dst.type)
         assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for DIV F32")
 
         val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
@@ -217,16 +222,16 @@ class GGMLExtendedOpsTest {
         val src0Data = floatArrayOf(1.0f, -1.0f, 0.0f, Float.POSITIVE_INFINITY)
         val src1Data = floatArrayOf(Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, 5.0f, 2.0f)
         
-        val src0 = createAndInitTensor("div_edge_src0", GGMLType.F32, srcNe)
+        val src0 = createAndInitTensor("div_edge_src0", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in src0Data.indices) src0.setFloat(graphAllocator, src0Data[i], i)
 
-        val src1 = createAndInitTensor("div_edge_src1", GGMLType.F32, srcNe)
+        val src1 = createAndInitTensor("div_edge_src1", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in src1Data.indices) src1.setFloat(graphAllocator, src1Data[i], i)
 
-        val dst = createDestinationTensor("div_edge_dst", GGMLType.F32, srcNe)
-        computeDiv(graphAllocator, src0, src1, dst)
+        val dst = createDestinationTensor("div_edge_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeDiv(graphAllocator, src0, src1, dst)
 
-        assertEquals(GGMLType.F32, dst.type)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dst.type)
         assertTrue(src0.ne.contentEquals(dst.ne), "Dimensions should match for DIV F32 edge cases")
 
         val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
@@ -245,15 +250,15 @@ class GGMLExtendedOpsTest {
         val srcData = floatArrayOf(-3.0f, -1.0f, 0.0f, 2.0f, 4.0f)
         val expectedData = floatArrayOf(9.0f, 1.0f, 0.0f, 4.0f, 16.0f)
 
-        val srcTensor = createAndInitTensor("sqr_f32_src", GGMLType.F32, srcNe)
+        val srcTensor = createAndInitTensor("sqr_f32_src", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
         // Note: computeSqr might not be implemented yet, so let's check for its existence
         try {
-            val dst = createDestinationTensor("sqr_f32_dst", GGMLType.F32, srcNe)
-            computeSqr(graphAllocator, srcTensor, dst)
+            val dst = createDestinationTensor("sqr_f32_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
+            _root_ide_package_.io.github.kotlinmania.llama.core.computeSqr(graphAllocator, srcTensor, dst)
 
-            assertEquals(GGMLType.F32, dst.type)
+            assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dst.type)
             assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for SQR F32")
 
             val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
@@ -274,14 +279,14 @@ class GGMLExtendedOpsTest {
         val srcData = floatArrayOf(0.0f, 1.0f, 4.0f, 9.0f)
         val expectedData = floatArrayOf(0.0f, 1.0f, 2.0f, 3.0f)
 
-        val srcTensor = createAndInitTensor("sqrt_f32_src", GGMLType.F32, srcNe)
+        val srcTensor = createAndInitTensor("sqrt_f32_src", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
         for (i in srcData.indices) srcTensor.setFloat(graphAllocator, srcData[i], i)
 
         try {
-            val dst = createDestinationTensor("sqrt_f32_dst", GGMLType.F32, srcNe)
-            computeSqrt(graphAllocator, srcTensor, dst)
+            val dst = createDestinationTensor("sqrt_f32_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, srcNe)
+            _root_ide_package_.io.github.kotlinmania.llama.core.computeSqrt(graphAllocator, srcTensor, dst)
 
-            assertEquals(GGMLType.F32, dst.type)
+            assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dst.type)
             assertTrue(srcTensor.ne.contentEquals(dst.ne), "Dimensions should match for SQRT F32")
 
             val resultData = GGMLTestUtils.extractFloatData(dst, graphAllocator)
@@ -301,20 +306,20 @@ class GGMLExtendedOpsTest {
         // Test operations with scalar (1-element) tensors
         val scalarNe = longArrayOf(1)
         
-        val scalar1 = createAndInitTensor("scalar1", GGMLType.F32, scalarNe)
+        val scalar1 = createAndInitTensor("scalar1", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, scalarNe)
         scalar1.setFloat(graphAllocator, 5.0f, 0)
         
-        val scalar2 = createAndInitTensor("scalar2", GGMLType.F32, scalarNe)  
+        val scalar2 = createAndInitTensor("scalar2", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, scalarNe)
         scalar2.setFloat(graphAllocator, 3.0f, 0)
         
         // Test SUB with scalars
-        val subDst = createDestinationTensor("scalar_sub_dst", GGMLType.F32, scalarNe)
-        computeSub(graphAllocator, scalar1, scalar2, subDst)
+        val subDst = createDestinationTensor("scalar_sub_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, scalarNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeSub(graphAllocator, scalar1, scalar2, subDst)
         assertEquals(2.0f, subDst.getFloat(graphAllocator, 0), 0.001f, "Scalar subtraction failed")
         
         // Test NEG with scalar
-        val negDst = createDestinationTensor("scalar_neg_dst", GGMLType.F32, scalarNe)
-        computeNeg(graphAllocator, scalar1, negDst)
+        val negDst = createDestinationTensor("scalar_neg_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, scalarNe)
+        _root_ide_package_.io.github.kotlinmania.llama.core.computeNeg(graphAllocator, scalar1, negDst)
         assertEquals(-5.0f, negDst.getFloat(graphAllocator, 0), 0.001f, "Scalar negation failed")
     }
 
@@ -323,13 +328,13 @@ class GGMLExtendedOpsTest {
         // Test with empty tensors (0 elements)
         val emptyNe = longArrayOf(0)
         
-        val empty1 = createAndInitTensor("empty1", GGMLType.F32, emptyNe)
-        val empty2 = createAndInitTensor("empty2", GGMLType.F32, emptyNe)
+        val empty1 = createAndInitTensor("empty1", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, emptyNe)
+        val empty2 = createAndInitTensor("empty2", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, emptyNe)
         
         // These operations should either handle empty tensors gracefully or throw appropriate exceptions
         try {
-            val subDst = createDestinationTensor("empty_sub_dst", GGMLType.F32, emptyNe)
-            computeSub(graphAllocator, empty1, empty2, subDst)
+            val subDst = createDestinationTensor("empty_sub_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, emptyNe)
+            _root_ide_package_.io.github.kotlinmania.llama.core.computeSub(graphAllocator, empty1, empty2, subDst)
             assertEquals(0, subDst.numElements(), "Empty tensor SUB should result in empty tensor")
         } catch (e: Exception) {
             // It's acceptable for operations to throw exceptions on empty tensors
@@ -344,8 +349,8 @@ class GGMLExtendedOpsTest {
         val tensor1Ne = longArrayOf(4, 1) // 4x1
         val tensor2Ne = longArrayOf(1, 3) // 1x3
         
-        val tensor1 = createAndInitTensor("broadcast1", GGMLType.F32, tensor1Ne)
-        val tensor2 = createAndInitTensor("broadcast2", GGMLType.F32, tensor2Ne)
+        val tensor1 = createAndInitTensor("broadcast1", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, tensor1Ne)
+        val tensor2 = createAndInitTensor("broadcast2", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, tensor2Ne)
         
         // Initialize with simple patterns
         for (i in 0 until 4) {
@@ -357,8 +362,13 @@ class GGMLExtendedOpsTest {
         
         try {
             // This might not be supported yet, but let's test
-            val broadcastDst = createDestinationTensor("broadcast_dst", GGMLType.F32, longArrayOf(4, 3))
-            computeAdd(graphAllocator, tensor1, tensor2, broadcastDst)
+            val broadcastDst = createDestinationTensor("broadcast_dst", _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, longArrayOf(4, 3))
+            _root_ide_package_.io.github.kotlinmania.llama.core.computeAdd(
+                graphAllocator,
+                tensor1,
+                tensor2,
+                broadcastDst
+            )
             println("Broadcasting ADD succeeded with result shape: ${broadcastDst.ne.contentToString()}")
         } catch (e: Exception) {
             println("Broadcasting not yet supported: ${e.message}")

@@ -1,7 +1,7 @@
 // port-lint: source llama.cpp/src/llama-memory.h llama.cpp/src/llama-memory.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 
 // =============================================================================
 // LlamaMemory – abstract memory interfaces for LLM inference

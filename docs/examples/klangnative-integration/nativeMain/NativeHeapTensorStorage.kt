@@ -1,4 +1,4 @@
-package ai.solace.ember.backend.klang
+package io.github.kotlinmania.llama.ember.backend.klang
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer

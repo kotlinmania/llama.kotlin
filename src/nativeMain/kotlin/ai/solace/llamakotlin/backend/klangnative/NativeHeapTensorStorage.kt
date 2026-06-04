@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.backend.klangnative
+package io.github.kotlinmania.llama..backend.klangnative
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer

@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.test.*
 
@@ -11,19 +11,23 @@ class GGMLBitNet158SmokeTest {
     fun testBitNet158BasicFunctionality() {
         // Create a simple test setup
         val testBuffer = ByteArray(1024 * 1024) { 0 }
-        val graphAllocator = GGMLGraphAllocator()
+        val graphAllocator = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLGraphAllocator()
         if (graphAllocator.buffers.isEmpty()) {
             graphAllocator.buffers.add(testBuffer)
         } else {
             graphAllocator.buffers[0] = testBuffer
         }
         if (graphAllocator.tensorAllocators.isEmpty()) {
-            graphAllocator.tensorAllocators.add(GGMLDynTensorAllocator(bufferSize = testBuffer.size.toULong()))
+            graphAllocator.tensorAllocators.add(
+                _root_ide_package_.io.github.kotlinmania.llama.core.GGMLDynTensorAllocator(
+                    bufferSize = testBuffer.size.toULong()
+                )
+            )
         } else {
             graphAllocator.tensorAllocators[0].reset(testBuffer.size.toULong())
         }
         resetAllocatorTracking(graphAllocator)
-        graphAllocator.context = GGMLContext()
+        graphAllocator.context = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLContext()
         var currentOffset = 0uL
 
         // Test data that should work well with ternary quantization
@@ -35,12 +39,19 @@ class GGMLBitNet158SmokeTest {
         ) // 32 values (1 block)
         
         // Create F32 tensor
-        val f32Tensor = GGMLTensor(type = GGMLType.F32, name = "test_f32")
+        val f32Tensor = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(
+            type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32,
+            name = "test_f32"
+        )
         f32Tensor.ne[0] = testData.size.toLong()
         f32Tensor.ne[1] = 1L
         f32Tensor.ne[2] = 1L  
         f32Tensor.ne[3] = 1L
-        f32Tensor.nb = calculateContiguousStrides(f32Tensor.ne, GGMLType.F32, f32Tensor.rank())
+        f32Tensor.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            f32Tensor.ne,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32,
+            f32Tensor.rank()
+        )
         
         val f32Size = calculateTensorByteSize(f32Tensor).toInt()
         val alignment = 16uL
@@ -55,9 +66,13 @@ class GGMLBitNet158SmokeTest {
         }
         
         // Test quantization to BitNet 1.58
-        val bitNetTensor = quantizeTensor(graphAllocator, f32Tensor, GGMLType.BITNET_1_58)
+        val bitNetTensor = _root_ide_package_.io.github.kotlinmania.llama.core.quantizeTensor(
+            graphAllocator,
+            f32Tensor,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.BITNET_1_58
+        )
         assertNotNull(bitNetTensor, "Quantization should succeed")
-        assertEquals(GGMLType.BITNET_1_58, bitNetTensor.type, "Quantized tensor should have BitNet 1.58 type")
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.BITNET_1_58, bitNetTensor.type, "Quantized tensor should have BitNet 1.58 type")
         assertEquals(testData.size.toLong(), bitNetTensor.numElements(), "Element count should be preserved")
         assertEquals(1L, bitNetTensor.getNumBlocks(), "Should have 1 block for 32 elements")
         
@@ -66,15 +81,16 @@ class GGMLBitNet158SmokeTest {
         assertTrue(scale > 0, "Block scale should be positive, got $scale")
         
         // Test ternary weight accessors
-        for (i in 0 until QK_BITNET_1_58) {
+        for (i in 0 until _root_ide_package_.io.github.kotlinmania.llama.core.QK_BITNET_1_58) {
             val weight = bitNetTensor.getBitNet158TernaryWeight(graphAllocator, 0, i)
             assertTrue(weight in -1..1, "Ternary weight should be -1, 0, or 1, got $weight at index $i")
         }
         
         // Test dequantization
-        val dequantizedTensor = dequantizeTensor(graphAllocator, bitNetTensor)
+        val dequantizedTensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.dequantizeTensor(graphAllocator, bitNetTensor)
         assertNotNull(dequantizedTensor, "Dequantization should succeed")
-        assertEquals(GGMLType.F32, dequantizedTensor.type, "Dequantized tensor should be F32")
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32, dequantizedTensor.type, "Dequantized tensor should be F32")
         assertEquals(testData.size.toLong(), dequantizedTensor.numElements(), "Element count should be preserved")
         
         // Verify dequantized values are reasonable (all finite)
@@ -85,7 +101,9 @@ class GGMLBitNet158SmokeTest {
         
         println("✅ BitNet 1.58 smoke test passed!")
         println("   - Scale: $scale")
-        println("   - Sample weights: ${(0 until kotlin.math.min(8, QK_BITNET_1_58)).map { 
+        println("   - Sample weights: ${(0 until kotlin.math.min(8,
+            _root_ide_package_.io.github.kotlinmania.llama.core.QK_BITNET_1_58
+        )).map { 
             bitNetTensor.getBitNet158TernaryWeight(graphAllocator, 0, it) 
         }}")
         println("   - Sample dequantized: ${(0 until kotlin.math.min(8, testData.size)).map { 

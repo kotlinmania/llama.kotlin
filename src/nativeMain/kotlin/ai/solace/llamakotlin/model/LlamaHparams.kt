@@ -1,5 +1,5 @@
 // port-lint: source llama.cpp/src/llama-hparams.h
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
 // =============================================================================
 // LlamaHparams – Model hyperparameters

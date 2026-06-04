@@ -1,9 +1,9 @@
 // port-lint: source llama.cpp/src/llama-model.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
-import ai.solace.llamakotlin.gguf.LlamaModelLoader
-import ai.solace.llamakotlin.gguf.TensorLoadFlags
+import io.github.kotlinmania.llama.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.gguf.LlamaModelLoader
+import io.github.kotlinmania.llama.llamakotlin.gguf.TensorLoadFlags
 
 // =============================================================================
 // Model Architecture Enum

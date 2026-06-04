@@ -1,7 +1,7 @@
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
 
-package ai.solace.zlib.common
+package io.github.kotlinmania.llama.zlib.common
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.alloc

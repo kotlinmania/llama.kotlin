@@ -1,4 +1,4 @@
-package ai.solace.zlib.zip
+package io.github.kotlinmania.llama.zlib.zip
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

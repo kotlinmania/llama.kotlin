@@ -1,7 +1,7 @@
-package ai.solace.bench
+package io.github.kotlinmania.llama.bench
 
 // Engine-based benchmark: use ArrayBitShifts/BitShiftEngine for apples-to-apples comparison.
-import ai.solace.klangnative.bitwise.ArrayBitShifts
+import io.github.kotlinmania.llama.klang.bitwise.ArrayBitShifts
 import kotlin.time.TimeSource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
@@ -126,8 +126,8 @@ private suspend fun benchMain(args: Array<String>) {
         "--hex" -> runHexStringShiftBenchSuite()
         "--engine-left" -> runShiftSuite()
         "--engine-right" -> runRightShiftSuite()
-        "--engine-left-native" -> runShiftSuiteWithMode(ai.solace.klangnative.bitwise.BitShiftMode.NATIVE)
-        "--engine-right-native" -> runRightShiftSuiteWithMode(ai.solace.klangnative.bitwise.BitShiftMode.NATIVE)
+        "--engine-left-native" -> runShiftSuiteWithMode(io.github.kotlinmania.llama.klang.bitwise.BitShiftMode.NATIVE)
+        "--engine-right-native" -> runRightShiftSuiteWithMode(io.github.kotlinmania.llama.klang.bitwise.BitShiftMode.NATIVE)
         "--engine-left-par" -> runShiftSuiteParallel()
         "--engine-right-par" -> runRightShiftSuiteParallel()
         "--masks" -> runMaskBenchSuite()
@@ -144,12 +144,12 @@ private suspend fun benchMain(args: Array<String>) {
     }
 }
 
-private fun runShiftSuiteWithMode(mode: ai.solace.klangnative.bitwise.BitShiftMode) {
-    ai.solace.klangnative.bitwise.BitShiftConfig.withMode(mode) { runShiftSuite() }
+private fun runShiftSuiteWithMode(mode: io.github.kotlinmania.llama.klang.bitwise.BitShiftMode) {
+    io.github.kotlinmania.llama.klang.bitwise.BitShiftConfig.withMode(mode) { runShiftSuite() }
 }
 
-private fun runRightShiftSuiteWithMode(mode: ai.solace.klangnative.bitwise.BitShiftMode) {
-    ai.solace.klangnative.bitwise.BitShiftConfig.withMode(mode) { runRightShiftSuite() }
+private fun runRightShiftSuiteWithMode(mode: io.github.kotlinmania.llama.klang.bitwise.BitShiftMode) {
+    io.github.kotlinmania.llama.klang.bitwise.BitShiftConfig.withMode(mode) { runRightShiftSuite() }
 }
 
 // ===== Parallel variants =====

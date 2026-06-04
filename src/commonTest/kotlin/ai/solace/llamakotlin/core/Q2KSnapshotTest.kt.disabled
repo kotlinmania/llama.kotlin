@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalUnsignedTypes::class)
 
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlinx.io.Buffer
 import kotlinx.io.files.Path

@@ -1,4 +1,4 @@
-package ai.solace.bench
+package io.github.kotlinmania.llama.bench
 
 import kotlin.time.TimeSource
 

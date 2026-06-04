@@ -1,10 +1,10 @@
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 import kotlin.math.*
 import kotlin.test.*
 
-private fun GGMLTensor.allocateTestBuffer(graphAllocator: GGMLGraphAllocator) {
+private fun io.github.kotlinmania.llama.core.GGMLTensor.allocateTestBuffer(graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator) {
     val byteSize = calculateTensorByteSize(this.type, this.ne).toInt()
     if (byteSize <= 0) return
     val offset = graphAllocator.allocateTensorData(byteSize)
@@ -14,8 +14,8 @@ private fun GGMLTensor.allocateTestBuffer(graphAllocator: GGMLGraphAllocator) {
 
 class LlamaAttentionTest {
     
-    private lateinit var graphAllocator: GGMLGraphAllocator
-    private lateinit var context: GGMLContext
+    private lateinit var graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
+    private lateinit var context: io.github.kotlinmania.llama.core.GGMLContext
     private val bufferSize = 1024 * 1024 // 1MB
     
     @BeforeTest
@@ -23,7 +23,7 @@ class LlamaAttentionTest {
         val (allocator, _) = GGMLTestUtils.createTestAllocator(bufferSize)
         graphAllocator = allocator
         resetAllocatorTracking(graphAllocator)
-        context = GGMLContext()
+        context = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLContext()
     }
     
     @Test
@@ -59,12 +59,17 @@ class LlamaAttentionTest {
         )
         
         // Create test tensor [head_dim, num_heads, seq_len, batch_size] = [2, 2, 1, 1]
-        val input = GGMLTensor(type = GGMLType.F32)
+        val input =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         input.ne[0] = 2L // head_dim
         input.ne[1] = 2L // num_heads
         input.ne[2] = 1L // seq_len
         input.ne[3] = 1L // batch_size
-        input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
+        input.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            input.ne,
+            input.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         
         input.allocateTestBuffer(graphAllocator)
         
@@ -126,24 +131,29 @@ class LlamaAttentionTest {
         assertFalse(outputVal.isInfinite(), "Attention output should not be infinite")
     }
     
-    private fun createTestTensor(dim0: Int, dim1: Int, dim2: Int, dim3: Int): GGMLTensor {
-        val tensor = GGMLTensor(type = GGMLType.F32)
+    private fun createTestTensor(dim0: Int, dim1: Int, dim2: Int, dim3: Int): io.github.kotlinmania.llama.core.GGMLTensor {
+        val tensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         tensor.ne[0] = dim0.toLong()
         tensor.ne[1] = dim1.toLong()
         tensor.ne[2] = dim2.toLong()
         tensor.ne[3] = dim3.toLong()
-        tensor.nb = calculateContiguousStrides(tensor.ne, tensor.type, GGML_MAX_DIMS)
+        tensor.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            tensor.ne,
+            tensor.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         
         tensor.allocateTestBuffer(graphAllocator)
         return tensor
     }
     
-    private fun initializeTestTensor(tensor: GGMLTensor) {
+    private fun initializeTestTensor(tensor: io.github.kotlinmania.llama.core.GGMLTensor) {
         val totalElements = tensor.numElements().toInt()
         for (i in 0 until totalElements) {
-            val indices = IntArray(GGML_MAX_DIMS) { 0 }
+            val indices = IntArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 0 }
             var temp = i
-            for (d in 0 until GGML_MAX_DIMS) {
+            for (d in 0 until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) {
                 indices[d] = temp % tensor.ne[d].toInt()
                 temp /= tensor.ne[d].toInt()
             }
@@ -154,7 +164,7 @@ class LlamaAttentionTest {
 
 class KVCacheTest {
     
-    private lateinit var graphAllocator: GGMLGraphAllocator
+    private lateinit var graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
     
     @BeforeTest
     fun setup() {
@@ -187,12 +197,17 @@ class KVCacheTest {
         cache.initialize(graphAllocator)
         
         // Create new key tensor
-        val newKey = GGMLTensor(type = GGMLType.F32)
+        val newKey =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         newKey.ne[0] = 4L // head_dim
         newKey.ne[1] = 2L // num_heads
         newKey.ne[2] = 3L // new_seq_len
         newKey.ne[3] = 1L // batch
-        newKey.nb = calculateContiguousStrides(newKey.ne, newKey.type, GGML_MAX_DIMS)
+        newKey.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            newKey.ne,
+            newKey.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         
         newKey.allocateTestBuffer(graphAllocator)
         
@@ -216,12 +231,17 @@ class KVCacheTest {
         cache.initialize(graphAllocator)
         
         // Add some data
-        val newKey = GGMLTensor(type = GGMLType.F32)
+        val newKey =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         newKey.ne[0] = 4L
         newKey.ne[1] = 2L
         newKey.ne[2] = 3L
         newKey.ne[3] = 1L
-        newKey.nb = calculateContiguousStrides(newKey.ne, newKey.type, GGML_MAX_DIMS)
+        newKey.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            newKey.ne,
+            newKey.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         
         newKey.allocateTestBuffer(graphAllocator)
         cache.updateKey(graphAllocator, newKey)
@@ -237,7 +257,7 @@ class KVCacheTest {
 
 class SamplingTest {
     
-    private lateinit var graphAllocator: GGMLGraphAllocator
+    private lateinit var graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
     
     @BeforeTest
     fun setup() {
@@ -269,10 +289,15 @@ class SamplingTest {
         val context = SamplingContext(config, vocabSize = 10)
         
         // Create test logits tensor
-        val logits = GGMLTensor(type = GGMLType.F32)
+        val logits =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         logits.ne[0] = 10L // vocab size
-        for (i in 1 until GGML_MAX_DIMS) logits.ne[i] = 1L
-        logits.nb = calculateContiguousStrides(logits.ne, logits.type, GGML_MAX_DIMS)
+        for (i in 1 until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) logits.ne[i] = 1L
+        logits.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            logits.ne,
+            logits.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         
         logits.allocateTestBuffer(graphAllocator)
         
@@ -336,11 +361,16 @@ class SamplingTest {
         assertTrue(sampledTokens.all { it < 3 })
     }
     
-    private fun createLogitsTensor(vocabSize: Int): GGMLTensor {
-        val tensor = GGMLTensor(type = GGMLType.F32)
+    private fun createLogitsTensor(vocabSize: Int): io.github.kotlinmania.llama.core.GGMLTensor {
+        val tensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         tensor.ne[0] = vocabSize.toLong()
-        for (i in 1 until GGML_MAX_DIMS) tensor.ne[i] = 1L
-        tensor.nb = calculateContiguousStrides(tensor.ne, tensor.type, GGML_MAX_DIMS)
+        for (i in 1 until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) tensor.ne[i] = 1L
+        tensor.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            tensor.ne,
+            tensor.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         
         tensor.allocateTestBuffer(graphAllocator)
         return tensor
@@ -404,15 +434,15 @@ class GrammarTest {
 
 class LlamaModelTest {
     
-    private lateinit var graphAllocator: GGMLGraphAllocator
-    private lateinit var context: GGMLContext
+    private lateinit var graphAllocator: io.github.kotlinmania.llama.core.GGMLGraphAllocator
+    private lateinit var context: io.github.kotlinmania.llama.core.GGMLContext
     
     @BeforeTest
     fun setup() {
         val (allocator, _) = GGMLTestUtils.createTestAllocator(10 * 1024 * 1024)
         graphAllocator = allocator
         resetAllocatorTracking(graphAllocator)
-        context = GGMLContext()
+        context = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLContext()
     }
     
     @Test
@@ -482,9 +512,9 @@ class LlamaModelTest {
         for (weight in weights) {
             val numElements = weight.numElements().toInt()
             for (i in 0 until numElements) {
-                val indices = IntArray(GGML_MAX_DIMS) { 0 }
+                val indices = IntArray(_root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) { 0 }
                 var temp = i
-                for (d in 0 until GGML_MAX_DIMS) {
+                for (d in 0 until _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS) {
                     indices[d] = temp % weight.ne[d].toInt()
                     temp /= weight.ne[d].toInt()
                 }
@@ -493,9 +523,14 @@ class LlamaModelTest {
         }
         
         // Create input tensor
-        val input = GGMLTensor(type = GGMLType.F32)
+        val input =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         input.ne = longArrayOf(32, 3, 1, 1) // [hidden, seq, batch]
-        input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
+        input.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            input.ne,
+            input.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         input.allocateTestBuffer(graphAllocator)
         
         // Initialize input with small values
@@ -524,7 +559,11 @@ class LlamaModelTest {
         
         // Initialize norm weight
         norm.weight.ne = longArrayOf(4, 1, 1, 1)
-        norm.weight.nb = calculateContiguousStrides(norm.weight.ne, norm.weight.type, GGML_MAX_DIMS)
+        norm.weight.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            norm.weight.ne,
+            norm.weight.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         norm.weight.allocateTestBuffer(graphAllocator)
         
         // Set weights to 1.0
@@ -533,9 +572,14 @@ class LlamaModelTest {
         }
         
         // Create input tensor
-        val input = GGMLTensor(type = GGMLType.F32)
+        val input =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         input.ne = longArrayOf(4, 2, 1, 1) // [hidden, seq, batch]
-        input.nb = calculateContiguousStrides(input.ne, input.type, GGML_MAX_DIMS)
+        input.nb = _root_ide_package_.io.github.kotlinmania.llama.core.calculateContiguousStrides(
+            input.ne,
+            input.type,
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGML_MAX_DIMS
+        )
         input.allocateTestBuffer(graphAllocator)
         
         // Set input values [1.0, 2.0, 3.0, 4.0] for first sequence position

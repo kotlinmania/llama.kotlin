@@ -1,8 +1,8 @@
-package ai.solace.bench
+package io.github.kotlinmania.llama.bench
 
-import ai.solace.klangnative.stringshift.leftShiftHexString
-import ai.solace.klangnative.stringshift.rightShiftHexString
-import ai.solace.klangnative.stringshift.limbsToHex
+import io.github.kotlinmania.llama.klang.stringshift.leftShiftHexString
+import io.github.kotlinmania.llama.klang.stringshift.rightShiftHexString
+import io.github.kotlinmania.llama.klang.stringshift.limbsToHex
 import kotlin.time.TimeSource
 
 private fun checksumHex(s: String): Long {

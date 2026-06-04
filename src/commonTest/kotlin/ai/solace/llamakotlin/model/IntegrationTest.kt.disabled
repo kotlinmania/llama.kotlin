@@ -1,6 +1,6 @@
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 import kotlin.test.*
 
 class InferencePipelineIntegrationTest {

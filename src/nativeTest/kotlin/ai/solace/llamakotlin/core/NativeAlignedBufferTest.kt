@@ -1,6 +1,6 @@
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer

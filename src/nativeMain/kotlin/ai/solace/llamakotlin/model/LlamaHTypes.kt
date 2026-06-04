@@ -1,7 +1,7 @@
 // port-lint: source llama.h
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 
 // =============================================================================
 // Types and constants from llama.h that are NOT already defined elsewhere.

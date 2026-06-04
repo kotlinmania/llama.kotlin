@@ -1,6 +1,6 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
-import ai.solace.llamakotlin.core.ByteArrayExtensions.getShortLe
+import io.github.kotlinmania.llama.llamakotlin.core.ByteArrayExtensions.getShortLe
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.test.*

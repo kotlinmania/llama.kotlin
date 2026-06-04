@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 object Q2KReferenceInputs {
     val C_VALUES: FloatArray = floatArrayOf(

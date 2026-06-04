@@ -1,5 +1,5 @@
 // port-lint: source llama.cpp/src/llama-grammar.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
 /**
  * Grammar-based constrained generation for LLaMA models.

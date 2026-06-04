@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -11,24 +11,25 @@ class GGMLBackendIntegrationTest {
 
     @BeforeTest
     fun setUp() {
-        GGMLBackendRegistry.init()
+        _root_ide_package_.io.github.kotlinmania.llama.core.GGMLBackendRegistry.init()
     }
 
     @Test
     fun endToEndCpuExecution() {
-        val backend = GGMLCpuBackend()
-        val graph = createGraph(5, backend)
+        val backend = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackend()
+        val graph = _root_ide_package_.io.github.kotlinmania.llama.core.createGraph(5, backend)
         val status = backend.graphCompute(graph)
-        assertEquals(GGMLStatus.SUCCESS, status)
+        assertEquals(_root_ide_package_.io.github.kotlinmania.llama.core.GGMLStatus.SUCCESS, status)
         backend.free()
     }
 
     @Test
     fun bufferDataIntegrity() {
-        val backend = GGMLCpuBackend()
-        val buffer = backend.allocBuffer(64u) as GGMLCpuBuffer
+        val backend = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLCpuBackend()
+        val buffer = backend.allocBuffer(64u) as io.github.kotlinmania.llama.core.GGMLCpuBuffer
 
-        val tensor = GGMLTensor(type = GGMLType.F32)
+        val tensor =
+            _root_ide_package_.io.github.kotlinmania.llama.core.GGMLTensor(type = _root_ide_package_.io.github.kotlinmania.llama.core.GGMLType.F32)
         tensor.ne[0] = 4L
         tensor.nb[0] = 4u
         tensor.dataOffset = 0u

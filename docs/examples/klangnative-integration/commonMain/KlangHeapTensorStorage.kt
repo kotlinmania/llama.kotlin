@@ -1,9 +1,9 @@
-package ai.solace.ember.backend.klang
+package io.github.kotlinmania.llama.ember.backend.klang
 
-import ai.solace.klangnative.fp.CFloat32
-import ai.solace.klangnative.mem.CIntVar
-import ai.solace.klangnative.mem.GlobalHeap
-import ai.solace.klangnative.mem.KAligned
+import io.github.kotlinmania.llama.klang.fp.CFloat32
+import io.github.kotlinmania.llama.klang.mem.CIntVar
+import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+import io.github.kotlinmania.llama.klang.mem.KAligned
 import kotlin.math.max
 
 /**

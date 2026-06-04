@@ -1,7 +1,7 @@
 // port-lint: source ggml/src/ggml.c (ggml_aligned_malloc / ggml_aligned_free)
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer

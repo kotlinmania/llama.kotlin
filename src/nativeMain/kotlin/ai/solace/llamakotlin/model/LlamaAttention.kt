@@ -2,9 +2,9 @@
 // correspond to any single C++ source file. It is retained because
 // LlamaModel.kt and tests depend on it. It may be removed in the future
 // once the model layer is fully ported.
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 import kotlin.math.*
 
 /**

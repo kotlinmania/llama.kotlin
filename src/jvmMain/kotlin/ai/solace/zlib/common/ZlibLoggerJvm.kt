@@ -1,5 +1,5 @@
 
-package ai.solace.zlib.common
+package io.github.kotlinmania.llama.zlib.common
 
 import java.io.File
 import java.time.LocalDateTime

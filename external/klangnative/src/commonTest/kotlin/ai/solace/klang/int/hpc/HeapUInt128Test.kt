@@ -1,7 +1,7 @@
-package ai.solace.klangnative.int.hpc
+package io.github.kotlinmania.llama.klang.int.hpc
 
-import ai.solace.klangnative.mem.GlobalHeap
-import ai.solace.klangnative.mem.KMalloc
+import io.github.kotlinmania.llama.klang.mem.GlobalHeap
+import io.github.kotlinmania.llama.klang.mem.KMalloc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

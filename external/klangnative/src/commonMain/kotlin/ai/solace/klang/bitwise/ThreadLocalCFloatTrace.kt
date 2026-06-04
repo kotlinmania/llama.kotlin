@@ -1,6 +1,6 @@
-package ai.solace.klangnative.bitwise
+package io.github.kotlinmania.llama.klang.bitwise
 
-import io.github.kotlinmania.threadlocal.ThreadLocal
+import io.github.kotlinmania.llama.threadlocal.ThreadLocal
 
 /**
  * Thread-local CFloat32 operation tracer.

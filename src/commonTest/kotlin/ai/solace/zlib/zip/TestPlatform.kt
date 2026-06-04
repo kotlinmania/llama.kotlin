@@ -1,4 +1,4 @@
-package ai.solace.zlib.zip
+package io.github.kotlinmania.llama.zlib.zip
 
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem

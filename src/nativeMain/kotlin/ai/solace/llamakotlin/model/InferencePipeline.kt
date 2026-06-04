@@ -1,7 +1,7 @@
 // port-lint: source llama.cpp/src/models/models.h
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.core.*
 
 
 open class LlmBuildMambaBase(params: LlmGraphParams) : LlmGraphContext(params) {

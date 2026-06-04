@@ -45,7 +45,7 @@ The comprehensive demo is automatically run when you execute the main applicatio
 Or call directly:
 
 ```kotlin
-import ai.solace.llamakotlin.examples.runComprehensiveDemo
+import io.github.kotlinmania.llama.llamakotlin.examples.runComprehensiveDemo
 
 fun main() {
     val result = runComprehensiveDemo()

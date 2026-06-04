@@ -1,9 +1,9 @@
-package ai.solace.ember.scalar
+package io.github.kotlinmania.llama.ember.scalar
 
-import ai.solace.ember.dtype.DType
-import ai.solace.klangnative.fp.CDouble
-import ai.solace.klangnative.fp.CFloat16
-import ai.solace.klangnative.fp.CFloat32
+import io.github.kotlinmania.llama.ember.dtype.DType
+import io.github.kotlinmania.llama.klang.fp.CDouble
+import io.github.kotlinmania.llama.klang.fp.CFloat16
+import io.github.kotlinmania.llama.klang.fp.CFloat32
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

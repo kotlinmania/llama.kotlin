@@ -1,4 +1,4 @@
-package ai.solace.klangnative.fp
+package io.github.kotlinmania.llama.klang.fp
 
 /**
  * CFloat128: Quad-precision (128-bit) floating-point using double-double arithmetic.

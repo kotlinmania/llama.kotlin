@@ -1,7 +1,7 @@
 // port-lint: source llama.cpp/src/llama-mmap.h
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
 import kotlinx.cinterop.*
 import platform.posix.*

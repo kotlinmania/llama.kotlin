@@ -1,4 +1,4 @@
-package ai.solace.klangnative.bitwise
+package io.github.kotlinmania.llama.klang.bitwise
 
 import kotlin.concurrent.Volatile
 

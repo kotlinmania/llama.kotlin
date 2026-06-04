@@ -1,4 +1,4 @@
-package ai.solace.llamakotlin.core
+package io.github.kotlinmania.llama..core
 
 /**
  * Simple verification test for the new optimized matmul implementations.

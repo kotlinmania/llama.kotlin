@@ -1,8 +1,8 @@
 // port-lint: source llama.cpp/src/llama.cpp
-package ai.solace.llamakotlin.model
+package io.github.kotlinmania.llama..model
 
-import ai.solace.llamakotlin.core.*
-import ai.solace.llamakotlin.gguf.ModelLoader
+import io.github.kotlinmania.llama.llamakotlin.core.*
+import io.github.kotlinmania.llama.llamakotlin.gguf.ModelLoader
 import kotlin.math.max
 import kotlin.math.min
 import platform.posix.sysconf
