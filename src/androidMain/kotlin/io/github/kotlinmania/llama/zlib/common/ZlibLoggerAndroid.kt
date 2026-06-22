@@ -1,14 +1,14 @@
 package io.github.kotlinmania.llama.lib.common
 
-import java.io.File
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
+import io.github.kotlinmania.io.files.Path
+import io.github.kotlinmania.io.path.appendText
+import kotlin.io.path.appendText
 
 actual var LOG_FILE_PATH: String? = null
 
 actual fun logToFile(line: String) {
     val path = LOG_FILE_PATH ?: "zlib.log"
-    File(path).appendText(line)
+    Path(path).appendText(line)
 }
 
 actual fun getEnv(name: String): String? = System.getenv(name)
